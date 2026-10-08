@@ -5,10 +5,7 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
-use pumpkin_util::text::click::ClickEvent;
-use pumpkin_util::text::hover::HoverEvent;
-use pumpkin_util::text::{TextComponent, color::NamedColor};
-use std::borrow::Cow;
+use pumpkin_util::text::TextComponent;
 
 const DESCRIPTION: &str = "Displays the world seed.";
 const PERMISSION: &str = "minecraft:command.seed";
@@ -19,18 +16,7 @@ fn create_copy_on_click_text(content: String) -> TextComponent {
     TextComponent::translate_cross(
         translation::java::COMMANDS_SEED_SUCCESS,
         translation::bedrock::COMMANDS_SEED_SUCCESS,
-        [TextComponent::wrap_in_square_brackets(
-            TextComponent::text(content.clone())
-                .hover_event(HoverEvent::show_text(TextComponent::translate_cross(
-                    translation::java::CHAT_COPY_CLICK,
-                    translation::java::CHAT_COPY_CLICK,
-                    [],
-                )))
-                .click_event(ClickEvent::CopyToClipboard {
-                    value: Cow::from(content),
-                })
-                .color_named(NamedColor::Green),
-        )],
+        [TextComponent::copy_on_click_text(content)],
     )
 }
 

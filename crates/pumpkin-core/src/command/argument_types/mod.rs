@@ -11,6 +11,7 @@ macro_rules! examples {
 
 pub use pumpkin_command::argument_types::*;
 
+pub mod dimension;
 pub mod entity;
 pub mod entity_anchor;
 pub mod entity_selector;

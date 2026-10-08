@@ -22,6 +22,7 @@ use crate::command::argument_types::coordinates::rotation::RotationArgumentType;
 use crate::command::argument_types::coordinates::swizzle::SwizzleArgumentType;
 use crate::command::argument_types::coordinates::vec3::Vec3ArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
+use crate::command::argument_types::dimension::DimensionArgument;
 use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::entity_anchor::{EntityAnchorArgumentType, EntityAnchorExt};
 use crate::command::argument_types::identifier::IdentifierArgumentType;
@@ -29,7 +30,7 @@ use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
 use crate::command::argument_types::range::{FloatRangeArgumentType, IntRangeArgumentType};
 use crate::command::argument_types::resource::{ENTITY_TYPE_ARGUMENT, ResourceArgument};
-use crate::command::argument_types::resource_key::{BIOME_REGISTRY, ResourceKeyArgument};
+use crate::command::argument_types::resource_key::BIOME_REGISTRY;
 use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrTagArgument};
 use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
 use crate::command::commands::data::{
@@ -65,15 +66,10 @@ use uuid::Uuid;
 const DESCRIPTION: &str = "Execute a command with a modified context.";
 const PERMISSION: &str = "minecraft:command.execute";
 
-static ERROR_INVALID_DIMENSION: CommandErrorType<1> =
-    CommandErrorType::new("argument.dimension.invalid", "argument.dimension.invalid");
-
 const ERROR_CONDITIONAL_FAILED: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_EXECUTE_CONDITIONAL_FAIL,
     translation::java::COMMANDS_EXECUTE_CONDITIONAL_FAIL,
 );
-
-static DIMENSION_REGISTRY: &Identifier = &Identifier::vanilla_static("dimension");
 
 fn execute_as_modifier(context: &CommandContext) -> crate::command::node::RedirectModifierResult {
     let targets = EntityArgumentType::get_optional_entities(context, "targets")?;
@@ -105,27 +101,9 @@ fn execute_at_modifier(context: &CommandContext) -> crate::command::node::Redire
 }
 
 fn execute_in_modifier(context: &CommandContext) -> crate::command::node::RedirectModifierResult {
-    let dimension_key = ResourceKeyArgument::get_registry_key(
-        context,
-        "dimension",
-        &Identifier::vanilla_static("dimension"),
-        &ERROR_INVALID_DIMENSION,
-    )?;
-    let dimension_name = dimension_key.identifier.to_string();
-    let server = context.server();
-    let worlds = server.worlds.load();
-    let target_world = worlds
-        .iter()
-        .find(|w| w.dimension.minecraft_name == dimension_name);
-
-    target_world.map_or_else(
-        || Err(ERROR_INVALID_DIMENSION.create_without_context(TextComponent::text(dimension_name))),
-        |target_world| {
-            let mut source = context.source.as_ref().clone();
-            source.world = Some(target_world.clone());
-            Ok(vec![Arc::new(source)])
-        },
-    )
+    let mut source = context.source.as_ref().clone();
+    source.world = Some(DimensionArgument::get_dimension(context, "dimension")?);
+    Ok(vec![Arc::new(source)])
 }
 
 fn execute_positioned_modifier(
@@ -337,16 +315,10 @@ fn execute_unless_loaded_modifier(
 fn execute_if_dimension_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let dimension_key = ResourceKeyArgument::get_registry_key(
-        context,
-        "dimension",
-        &Identifier::vanilla_static("dimension"),
-        &ERROR_INVALID_DIMENSION,
-    )?;
-    let dimension_name = dimension_key.identifier.to_string();
+    let dimension = DimensionArgument::get_dimension(context, "dimension")?;
 
     if let Some(ref world) = context.source.world
-        && world.dimension.minecraft_name == dimension_name
+        && Arc::ptr_eq(world, &dimension)
     {
         return Ok(vec![context.source.clone()]);
     }
@@ -356,16 +328,10 @@ fn execute_if_dimension_modifier(
 fn execute_unless_dimension_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let dimension_key = ResourceKeyArgument::get_registry_key(
-        context,
-        "dimension",
-        &Identifier::vanilla_static("dimension"),
-        &ERROR_INVALID_DIMENSION,
-    )?;
-    let dimension_name = dimension_key.identifier.to_string();
+    let dimension = DimensionArgument::get_dimension(context, "dimension")?;
 
     if let Some(ref world) = context.source.world {
-        if world.dimension.minecraft_name != dimension_name {
+        if !Arc::ptr_eq(world, &dimension) {
             return Ok(vec![context.source.clone()]);
         }
     } else {
@@ -1121,7 +1087,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
             )),
         )
         .then(literal("in").then(
-            argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY)).redirect_with_modifier(
+            argument("dimension", DimensionArgument).redirect_with_modifier(
                 Redirection::Root,
                 RedirectModifier::Custom(Arc::new(execute_in_modifier)),
             ),
@@ -1254,15 +1220,12 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                         RedirectModifier::Custom(Arc::new(execute_if_loaded_modifier)),
                     ),
                 ))
-                .then(
-                    literal("dimension").then(
-                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
-                            .redirect_with_modifier(
-                                Redirection::Root,
-                                RedirectModifier::Custom(Arc::new(execute_if_dimension_modifier)),
-                            ),
+                .then(literal("dimension").then(
+                    argument("dimension", DimensionArgument).redirect_with_modifier(
+                        Redirection::Root,
+                        RedirectModifier::Custom(Arc::new(execute_if_dimension_modifier)),
                     ),
-                )
+                ))
                 .then(
                     literal("biome").then(
                         argument("pos", BlockPosArgumentType).then(
@@ -1410,17 +1373,12 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                         RedirectModifier::Custom(Arc::new(execute_unless_loaded_modifier)),
                     ),
                 ))
-                .then(
-                    literal("dimension").then(
-                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
-                            .redirect_with_modifier(
-                                Redirection::Root,
-                                RedirectModifier::Custom(Arc::new(
-                                    execute_unless_dimension_modifier,
-                                )),
-                            ),
+                .then(literal("dimension").then(
+                    argument("dimension", DimensionArgument).redirect_with_modifier(
+                        Redirection::Root,
+                        RedirectModifier::Custom(Arc::new(execute_unless_dimension_modifier)),
                     ),
-                )
+                ))
                 .then(
                     literal("biome").then(
                         argument("pos", BlockPosArgumentType).then(

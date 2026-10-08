@@ -1819,6 +1819,26 @@ impl TextComponent {
         Self::translate("chat.square_brackets", [self])
     }
 
+    /// Creates `text` in green square brackets that copies itself to the clipboard on click.
+    ///
+    /// Mirrors vanilla `ComponentUtils.copyOnClickText`.
+    #[allow(deprecated)]
+    #[must_use]
+    pub fn copy_on_click_text<P: Into<Cow<'static, str>>>(text: P) -> Self {
+        let text = text.into();
+        Self::text(text.clone())
+            .color_named(color::NamedColor::Green)
+            .click_event(ClickEvent::CopyToClipboard {
+                value: text.clone(),
+            })
+            .hover_event(HoverEvent::show_text(Self::translate(
+                "chat.copy.click",
+                [],
+            )))
+            .insertion(text.into_owned())
+            .wrap_in_square_brackets()
+    }
+
     /// Makes the text bold.
     ///
     /// # Returns
@@ -2179,6 +2199,42 @@ mod test {
         let click = compound.get_compound("click_event").unwrap();
         assert_eq!(click.get_string("url"), Some("https://example.com"));
         assert!(click.get_string("value").is_none());
+    }
+
+    #[test]
+    fn copy_on_click_text_matches_vanilla() {
+        let component = TextComponent::copy_on_click_text("12 64 -3");
+        let compound = component
+            .0
+            .to_nbt_compound_for_version(&JavaMinecraftVersion::V_26_3);
+        assert_eq!(
+            compound.get_string("translate"),
+            Some("chat.square_brackets")
+        );
+        let pumpkin_nbt::tag::NbtTag::List(with) = compound.get("with").unwrap() else {
+            panic!("`with` is not a list");
+        };
+        let pumpkin_nbt::tag::NbtTag::Compound(inner) = &with[0] else {
+            panic!("the bracketed text is not a compound");
+        };
+        assert_eq!(inner.get_string("text"), Some("12 64 -3"));
+        assert_eq!(inner.get_string("color"), Some("green"));
+        assert_eq!(inner.get_string("insertion"), Some("12 64 -3"));
+        let click = inner.get_compound("click_event").unwrap();
+        assert_eq!(click.get_string("action"), Some("copy_to_clipboard"));
+        assert_eq!(click.get_string("value"), Some("12 64 -3"));
+        let hover = inner.get_compound("hover_event").unwrap();
+        assert_eq!(hover.get_string("action"), Some("show_text"));
+        assert_eq!(
+            hover.get_compound("value").unwrap().get_string("translate"),
+            Some("chat.copy.click")
+        );
+
+        let json = component.to_json_value_for_version(&JavaMinecraftVersion::V_26_3);
+        assert_eq!(
+            json["with"][0]["click_event"],
+            serde_json::json!({"action": "copy_to_clipboard", "value": "12 64 -3"})
+        );
     }
 
     #[test]
