@@ -1,0 +1,4 @@
+# Build into the target directory of the server workspace, so the server is not built a second
+# time. Cargo reads this file only when it runs from this directory, not with --manifest-path.
+[build]
+target-dir = "../../target"

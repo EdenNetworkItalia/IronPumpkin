@@ -393,6 +393,8 @@ impl Server {
             });
         }
 
+        crate::plugin::startup::run(&server);
+
         let mut worlds_vec = Vec::new();
         for dim in &server.dimensions {
             info!(

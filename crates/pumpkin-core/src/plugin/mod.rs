@@ -26,6 +26,7 @@ pub mod loader;
 /// Plugins can request these permissions in their metadata to access specific
 /// host features.
 pub mod permissions;
+pub mod startup;
 
 use crate::{LOGGER_IMPL, server::Server};
 pub use api::*;
@@ -560,6 +561,16 @@ impl PluginManager {
         loader: Arc<dyn PluginLoader>,
         path: PathBuf,
     ) -> Result<tokio::task::JoinHandle<()>, ManagerError> {
+        if startup::is_native_mod_id(&metadata.name) {
+            return Err(ManagerError::LoaderError(LoaderError::RuntimeError(
+                format!(
+                    "Plugin \"{}\" ({}) has the id of a native mod compiled into the server; rename the plugin",
+                    metadata.name,
+                    path.display()
+                ),
+            )));
+        }
+
         // Mark plugin as loading
         self.plugin_states
             .write()

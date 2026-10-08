@@ -5,6 +5,15 @@ description = "Empowering everyone to host fast and efficient Minecraft servers.
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+autobins = false
+
+# The library root keeps upstream's file name, so upstream edits to it merge in place.
+[lib]
+path = "src/main.rs"
+
+[[bin]]
+name = "pumpkin"
+path = "src/bin/pumpkin.rs"
 
 [package.metadata.tauri-winres]
 # FileDescription is handled as the Program name by Windows!
@@ -19,6 +28,7 @@ pumpkin-config.workspace = true
 pumpkin-data = { workspace = true, features = ["default"] }
 pumpkin-util.workspace = true
 pumpkin-world.workspace = true
+ironpumpkin-mods.workspace = true
 
 rayon.workspace = true
 rustls.workspace = true

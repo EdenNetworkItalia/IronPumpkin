@@ -47,9 +47,14 @@ static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
 // WARNING: All rayon calls from the tokio runtime must be non-blocking! This includes things
 // like `par_iter`. These should be spawned in the the rayon pool and then passed to the tokio
 // runtime with a channel! See `Level::fetch_chunks` as an example!
+/// Loads the configuration from the current directory, starts the server and runs it until it
+/// stops. Exits the process with the server exit code.
+///
+/// # Panics
+/// Panics when called from inside a Tokio runtime, because it starts its own.
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
-async fn main() {
+pub async fn run() {
     let _ = MAIN_THREAD.set(thread::current().id());
 
     // reqwest is built with `rustls-no-provider`, so pick the ring provider (the one
@@ -122,6 +127,8 @@ async fn main() {
             tracing::error!("Unable to setup signal handlers: {err}");
         }
     });
+
+    let _ = pumpkin_core::plugin::startup::STARTUP_HOOK.set(ironpumpkin_mods::init_mods);
 
     let plugin_loaders: Vec<Arc<dyn PluginLoader>> = vec![Arc::new(WasmPluginLoader::new(
         config.advanced.plugins.verify_signatures,

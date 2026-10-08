@@ -1,0 +1,16 @@
+[package]
+name = "ironpumpkin-mods"
+version.workspace = true
+description = "Registration of native mods compiled into an IronPumpkin server binary."
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+pumpkin-core.workspace = true
+pumpkin-util.workspace = true
+inventory.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

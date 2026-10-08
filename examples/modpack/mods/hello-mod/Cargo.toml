@@ -1,0 +1,13 @@
+[package]
+name = "hello-mod"
+version = "0.1.0"
+description = "Example native mod: registers /hello, which answers with the mod id."
+edition = "2024"
+rust-version = "1.96"
+license = "GPL-3.0"
+publish = false
+
+[dependencies]
+ironpumpkin-mods = { path = "../../../../crates/ironpumpkin-mods" }
+pumpkin-core = { path = "../../../../crates/pumpkin-core" }
+pumpkin-util = { path = "../../../../crates/pumpkin-util" }
