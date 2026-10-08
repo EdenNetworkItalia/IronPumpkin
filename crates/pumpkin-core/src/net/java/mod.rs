@@ -54,6 +54,7 @@ use tracing::{debug, error, warn};
 pub mod chunk_data;
 pub mod handshake;
 pub mod login;
+pub mod neoforge;
 mod outgoing;
 pub mod pending;
 pub mod play;

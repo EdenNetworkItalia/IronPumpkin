@@ -8,8 +8,8 @@ use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::entity::EntityBase;
+use crate::net::GameProfile;
 use crate::net::authentication::{fetch_profile_by_uuid, lookup_profile_by_name};
-use crate::net::{GameProfile, offline_uuid};
 use crate::server::Server;
 use pumpkin_data::translation;
 use pumpkin_nbt::compound::NbtCompound;
@@ -18,6 +18,7 @@ use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::click::ClickEvent;
 use pumpkin_util::text::{TextComponent, color::NamedColor};
+use pumpkin_util::uuid::offline_player_uuid;
 use std::borrow::Cow;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -195,9 +196,8 @@ async fn fetch_profile_by_name_helper(server: &Server, name: &str) -> Option<Gam
         });
     }
 
-    if !server.advanced_config.networking.java.online_mode
-        && let Ok(uuid) = offline_uuid(name)
-    {
+    if !server.advanced_config.networking.java.online_mode {
+        let uuid = offline_player_uuid(name);
         let profile = GameProfile {
             id: uuid,
             name: name.to_string(),

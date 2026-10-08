@@ -333,7 +333,13 @@ pub struct StatusResponse {
     /// The icon displayed. (Optional)
     pub favicon: Option<String>,
     /// Whether players are forced to use secure chat.
+    /// The vanilla client reads the key `enforcesSecureChat`, not `enforceSecureChat`.
+    #[serde(rename = "enforcesSecureChat")]
     pub enforce_secure_chat: bool,
+    /// Marks the server as modded in the client server list (`NeoForge` `isModded`).
+    /// Omitted from the JSON when false, so the output matches the vanilla status.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_modded: bool,
 }
 #[derive(Clone, serde::Serialize)]
 pub struct Version {

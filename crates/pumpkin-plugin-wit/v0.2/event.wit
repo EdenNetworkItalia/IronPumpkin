@@ -323,6 +323,62 @@ interface event {
         favicon: option<string>
     }
 
+    /// What is on the other side of a connection, as `NeoForge`'s `ConnectionType` sees it.
+    enum connection-type {
+        neoforge,
+        /// Vanilla or a platform other than `NeoForge`.
+        other,
+    }
+
+    /// Vanilla's `ConnectionProtocol`.
+    enum connection-protocol {
+        handshaking,
+        play,
+        status,
+        login,
+        configuration,
+    }
+
+    /// Vanilla's `PacketFlow`.
+    enum packet-flow {
+        serverbound,
+        clientbound,
+    }
+
+    /// One channel of a `neoforge:register` reply (`ModdedNetworkQueryComponent`).
+    record modded-channel {
+        protocol: connection-protocol,
+        id: string,
+        version: string,
+        /// None for a channel that flows both ways.
+        flow: option<packet-flow>,
+        optional: bool
+    }
+
+    /// A custom payload that the server sends to a client.
+    record outgoing-payload {
+        channel: string,
+        data: list<u8>
+    }
+
+    /// A custom payload that a Java client sent during the configuration phase, before a player
+    /// exists. It fires after the server handled the payload itself. A blocking handler can
+    /// answer by appending to `responses`; the server sends them in order.
+    record config-custom-payload-event-data {
+        connection-id: u64,
+        player-name: string,
+        player-uuid: uuid,
+        protocol-version: s32,
+        connection-type: connection-type,
+        /// The channels of the client's `neoforge:register` reply.
+        modded-channels: list<modded-channel>,
+        /// The channels of `minecraft:register` minus those of `minecraft:unregister`.
+        ad-hoc-channels: list<string>,
+        channel: string,
+        data: list<u8>,
+        responses: list<outgoing-payload>
+    }
+
     enum server-load-type {
         startup,
         reload,
@@ -2158,6 +2214,7 @@ interface event {
         raid-stop-event,
         raid-trigger-event,
         lightning-strike-event,
+        config-custom-payload-event,
     }
 
     variant event {
@@ -2434,5 +2491,6 @@ interface event {
         raid-stop-event(raid-stop-event-data),
         raid-trigger-event(raid-trigger-event-data),
         lightning-strike-event(lightning-strike-event-data),
+        config-custom-payload-event(config-custom-payload-event-data),
     }
 }

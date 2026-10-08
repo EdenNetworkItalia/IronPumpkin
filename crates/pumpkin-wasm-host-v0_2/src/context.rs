@@ -1337,6 +1337,7 @@ fn register_server_event(
     event_type: EventType,
 ) {
     use pumpkin_core::plugin::server::{
+        config_custom_payload::ConfigCustomPayloadEvent,
         list_ping::ServerListPingEvent,
         packet::{PacketReceivedEvent, PacketSentEvent},
         server_broadcast::ServerBroadcastEvent,
@@ -1358,6 +1359,9 @@ fn register_server_event(
         }
         EventType::ServerListPingEvent => {
             register_typed_event::<ServerListPingEvent>(resource, handler, priority, blocking);
+        }
+        EventType::ConfigCustomPayloadEvent => {
+            register_typed_event::<ConfigCustomPayloadEvent>(resource, handler, priority, blocking);
         }
         EventType::ServerBroadcastEvent => {
             register_typed_event::<ServerBroadcastEvent>(resource, handler, priority, blocking);
@@ -1447,6 +1451,7 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
             | EventType::PacketSentEvent
             | EventType::ServerCommandEvent
             | EventType::ServerListPingEvent
+            | EventType::ConfigCustomPayloadEvent
             | EventType::ServerBroadcastEvent
             | EventType::ServerLoadEvent
             | EventType::ServerTickEndEvent

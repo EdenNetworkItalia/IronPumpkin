@@ -5,8 +5,9 @@ use std::{net::IpAddr, net::SocketAddr};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::net::{GameProfile, offline_uuid};
+use crate::net::GameProfile;
 use pumpkin_protocol::Property;
+use pumpkin_util::uuid::offline_player_uuid;
 
 /// The property name the `BungeeGuard` plugin uses to forward its shared
 /// secret inside the profile properties.
@@ -20,8 +21,6 @@ pub enum BungeeCordError {
     FailedParseUUID,
     #[error("Failed to parse properties")]
     FailedParseProperties,
-    #[error("Failed to make offline UUID")]
-    FailedMakeOfflineUUID,
     #[error("No BungeeGuard token in forwarded data")]
     MissingToken,
     #[error("Invalid BungeeGuard token")]
@@ -68,7 +67,7 @@ pub fn bungeecord_login(
         Some(uuid_str) if !uuid_str.is_empty() => uuid_str
             .parse()
             .map_err(|_| BungeeCordError::FailedParseUUID)?,
-        _ => offline_uuid(&name).map_err(|_| BungeeCordError::FailedMakeOfflineUUID)?,
+        _ => offline_player_uuid(&name),
     };
 
     let mut properties: Vec<Property> = match parts.next() {

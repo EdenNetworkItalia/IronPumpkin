@@ -13,10 +13,9 @@ use pumpkin_protocol::{
         SEncryptionResponse, SLoginCookieResponse, SLoginPluginResponse, SLoginStart,
     },
 };
-use pumpkin_util::text::TextComponent;
+use pumpkin_util::{text::TextComponent, uuid::offline_player_uuid};
 use std::sync::Arc;
 use tracing::debug;
-use uuid::Uuid;
 
 use crate::{
     net::{
@@ -24,7 +23,6 @@ use crate::{
         authentication::{self, AuthError},
         is_valid_player_name,
         java::pending::PendingConnection,
-        offline_uuid,
         proxy::{bungeecord, velocity, vine},
     },
     server::Server,

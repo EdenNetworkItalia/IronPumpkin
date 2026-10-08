@@ -1,0 +1,11 @@
+# Clientbound configuration payloads that IronPumpkin sends to a NeoForge client, with
+# detect_neoforge_clients = true and the channel map channels/neoforge-26.3.toml.
+# The probe:
+minecraft:unregister
+minecraft:register
+neoforge:register
+# After the pong, the negotiation (initializeNeoForgeConnection):
+neoforge:network
+minecraft:register
+# The vanilla configuration:
+minecraft:brand

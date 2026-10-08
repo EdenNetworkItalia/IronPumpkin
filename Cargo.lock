@@ -3330,6 +3330,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "pumpkin-neoforge-client"
+version = "0.2.0+26.3-26.51"
+dependencies = [
+ "bytes",
+ "clap",
+ "hex",
+ "pumpkin-data",
+ "pumpkin-protocol",
+ "pumpkin-util",
+ "rand 0.10.3",
+ "rsa",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "pumpkin-plugin-api"
 version = "0.2.0+26.3-26.51"
 dependencies = [
@@ -3466,6 +3486,15 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wasmtime-wasi-http",
+]
+
+[[package]]
+name = "pumpkin-wasm-host-neo"
+version = "0.2.0+26.3-26.51"
+dependencies = [
+ "pumpkin-wasm-host-common",
+ "pumpkin-wasm-host-v0_2",
+ "wasmtime",
 ]
 
 [[package]]

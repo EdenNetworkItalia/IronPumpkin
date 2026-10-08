@@ -1,5 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use pumpkin_util::uuid::name_uuid_from_bytes;
 
 impl PendingConnection {
     pub async fn handle_login_acknowledged(
@@ -8,6 +9,17 @@ impl PendingConnection {
     ) -> Option<PacketHandlerResult> {
         debug!("Handling login acknowledgement");
         self.connection_state.store(ConnectionState::Config);
+        if server.basic_config.detect_neoforge_clients {
+            self.send_neoforge_probe(server).await;
+        } else {
+            self.run_configuration(server).await;
+        }
+        None
+    }
+
+    /// Vanilla `startConfiguration`. `NeoForge` renames it `runConfiguration` and runs it after
+    /// the probe pong.
+    pub async fn run_configuration(&mut self, server: &Server) {
         self.send_packet_now(&server.get_branding()).await;
 
         if server.advanced_config.server_links.enabled {
@@ -73,7 +85,8 @@ impl PendingConnection {
 
         let resource_config = &server.advanced_config.resource_pack.java;
         if resource_config.enabled {
-            let uuid = Uuid::new_v3(&uuid::Uuid::NAMESPACE_DNS, resource_config.url.as_bytes());
+            // Vanilla's default when `resource-pack-id` is empty: `UUID.nameUUIDFromBytes(url)`.
+            let uuid = name_uuid_from_bytes(resource_config.url.as_bytes());
             let resource_pack = CConfigAddResourcePack::new(
                 &uuid,
                 &resource_config.url,
@@ -91,7 +104,6 @@ impl PendingConnection {
             self.send_known_packs(server).await;
         }
         debug!("login acknowledged");
-        None
     }
 
     pub async fn send_known_packs(&mut self, server: &Server) {

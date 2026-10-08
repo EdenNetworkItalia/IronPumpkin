@@ -1,5 +1,5 @@
 use crate::{
-    entity::player::ChatMode,
+    entity::player::{ChatMode, ParticleStatus},
     net::{bedrock::BedrockClient, java::JavaClient},
     server::Server,
 };
@@ -23,8 +23,6 @@ use pumpkin_util::{
     version::{BedrockMinecraftVersion, JavaMinecraftVersion},
 };
 use serde::{Deserialize, Deserializer};
-use sha1::Digest;
-use sha2::Sha256;
 use tokio::task::JoinHandle;
 
 use thiserror::Error;
@@ -71,10 +69,6 @@ where
     Ok(ArcSwap::new(Arc::new(v)))
 }
 
-pub fn offline_uuid(username: &str) -> Result<Uuid, uuid::Error> {
-    Uuid::from_slice(&Sha256::digest(username)[..16])
-}
-
 /// Represents a player's configuration settings.
 ///
 /// This struct contains various options that can be customized by the player, affecting their gameplay experience.
@@ -100,6 +94,8 @@ pub struct PlayerConfig {
     pub text_filtering: bool,
     /// Whether the player wants to appear in the server list.
     pub server_listing: bool,
+    /// How many particles the client renders.
+    pub particle_status: ParticleStatus,
 }
 
 impl Default for PlayerConfig {
@@ -113,6 +109,7 @@ impl Default for PlayerConfig {
             main_hand: Hand::Right,
             text_filtering: false,
             server_listing: false,
+            particle_status: ParticleStatus::All,
         }
     }
 }

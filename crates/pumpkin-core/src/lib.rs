@@ -596,37 +596,38 @@ impl PumpkinServer {
                                      let mut java_client = JavaClient::from_pending(pending, profile.clone(), config.clone());
                                      java_client.start_outgoing_packet_task();
 
-                                     if let Some((player, world)) = server_clone
+                                     if let Some((player, world, online_profile)) = server_clone
                                          .add_player(Arc::new(ClientPlatform::Java(java_client)), profile, Some(config))
+                                         && let ClientPlatform::Java(client) = player.client.as_ref()
                                  {
-
-                                     if let ClientPlatform::Java(client) = player.client.as_ref() {
-                                         client.set_player(player.clone());
-                                     }
-                                     world
+                                     client.set_player(player.clone());
+                                     // A player that never joined is neither announced as leaving nor saved.
+                                     let joined = world
                                          .spawn_java_player(&server_clone.basic_config, &player, &server_clone)
                                          .await;
 
-                                     if let ClientPlatform::Java(client) = player.client.as_ref() {
+                                     if joined {
                                          client.progress_player_packets(&player, &server_clone).await;
-
-                                         // Close when done
-                                         client.close();
-                                         client.await_tasks().await;
                                      }
-                                     player.remove().await;
+                                     // Close when done
+                                     client.close();
+                                     client.await_tasks().await;
+                                     player.remove(joined).await;
                                      server_clone.remove_player(&player);
-                                    if let Err(e) = server_clone
-                                        .player_data_storage
-                                        .handle_player_leave(&player)
-                                    {
-                                        error!("Failed to save player data on disconnect: {e}");
-                                    }
-                                    if let Err(e) = server_clone.advancement_manager
-                                        .save_player(&player)
-                                        .await {
-                                            error!("Failed to save player advancement on disconnect: {e}");
-                                        }
+                                     if joined {
+                                         if let Err(e) = server_clone
+                                             .player_data_storage
+                                             .handle_player_leave(&player)
+                                         {
+                                             error!("Failed to save player data on disconnect: {e}");
+                                         }
+                                         if let Err(e) = server_clone.advancement_manager
+                                             .save_player(&player)
+                                             .await {
+                                                 error!("Failed to save player advancement on disconnect: {e}");
+                                             }
+                                     }
+                                     drop(online_profile);
                                     }
                                 },
                             }
@@ -711,7 +712,7 @@ impl PumpkinServer {
                     client.await_tasks().await;
                 }
                 PacketHandlerResult::ReadyToPlay(profile, config) => {
-                    if let Some((player, _world)) = server.add_player(
+                    if let Some((player, _world, online_profile)) = server.add_player(
                         Arc::new(ClientPlatform::Bedrock(client.clone())),
                         profile,
                         Some(config),
@@ -720,12 +721,13 @@ impl PumpkinServer {
                         client.progress_player_packets(&player).await;
                         client.close().await;
                         client.await_tasks().await;
-                        player.remove().await;
+                        player.remove(true).await;
                         server.remove_player(&player);
                         if let Err(error) = server.player_data_storage.handle_player_leave(&player)
                         {
                             error!("Failed to save player data on disconnect: {error}");
                         }
+                        drop(online_profile);
                     }
                 }
             }

@@ -1,4 +1,4 @@
-use crate::entity::player::Player;
+use crate::{entity::player::Player, net::java::pending::BRAND_CHANNEL};
 use base64::{Engine as _, engine::general_purpose};
 use core::error;
 use pumpkin_config::BasicConfiguration;
@@ -76,7 +76,7 @@ impl CachedBranding {
 
     #[must_use]
     pub const fn get_branding(&self) -> CPluginMessage<'_> {
-        CPluginMessage::new("minecraft:brand", self.cached_server_brand)
+        CPluginMessage::new(BRAND_CHANNEL, self.cached_server_brand)
     }
 }
 
@@ -220,6 +220,7 @@ impl CachedStatus {
             // This should stay true even when reports are disabled.
             // It prevents the annoying popup when joining the server.
             enforce_secure_chat: true,
+            is_modded: config.advertise_modded,
         }
     }
 }
@@ -231,5 +232,38 @@ impl Default for CachedStatus {
             "A blazingly fast Pumpkin server!",
             1000,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BasicConfiguration, CachedStatus};
+
+    fn status_json(advertise_modded: bool) -> serde_json::Value {
+        let config = BasicConfiguration {
+            use_favicon: false,
+            advertise_modded,
+            ..BasicConfiguration::default()
+        };
+        let response = CachedStatus::build_response(&config, "test", 20);
+        serde_json::to_value(&response).unwrap()
+    }
+
+    #[test]
+    fn status_advertises_is_modded_when_enabled() {
+        assert_eq!(status_json(true)["isModded"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn status_omits_is_modded_when_disabled() {
+        let json = status_json(false);
+        assert!(json.get("isModded").is_none());
+    }
+
+    #[test]
+    fn status_uses_the_vanilla_enforces_secure_chat_key() {
+        let json = status_json(false);
+        assert_eq!(json["enforcesSecureChat"], serde_json::Value::Bool(true));
+        assert!(json.get("enforceSecureChat").is_none());
     }
 }

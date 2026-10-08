@@ -10,11 +10,12 @@ use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::string_reader::StringReader;
 use crate::command::suggestion::suggestions::{Suggestions, SuggestionsBuilder};
+use crate::net::GameProfile;
 use crate::net::authentication::lookup_profile_by_name_blocking;
-use crate::net::{GameProfile, offline_uuid};
 use crate::server::Server;
 use arc_swap::ArcSwap;
 use pumpkin_data::translation;
+use pumpkin_util::uuid::offline_player_uuid;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -96,8 +97,9 @@ impl GameProfileResult {
                         }
                         _ => Err(Self::unknown_player_syntax_error()),
                     }
-                } else if let Ok(uuid) = offline_uuid(name) {
-                    let profile = Self::profile_from_uuid_name(uuid, name.clone());
+                } else {
+                    let profile =
+                        Self::profile_from_uuid_name(offline_player_uuid(name), name.clone());
                     server
                         .data
                         .user_cache
@@ -105,8 +107,6 @@ impl GameProfileResult {
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .upsert(profile.id, profile.name.clone());
                     Ok(vec![profile])
-                } else {
-                    Err(Self::unknown_player_syntax_error())
                 }
             }
             Self::Uuid(uuid) => {

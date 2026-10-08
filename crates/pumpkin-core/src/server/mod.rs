@@ -23,6 +23,7 @@ use connection_cache::{CachedBranding, CachedStatus};
 use key_store::KeyStore;
 use pumpkin_config::{AdvancedConfiguration, BasicConfiguration, TelemetryConfig};
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::translation;
 use pumpkin_util::permission::PermissionManager;
 use pumpkin_util::text::color::NamedColor;
 use pumpkin_world::dimension::into_level;
@@ -55,6 +56,7 @@ mod connection_cache;
 pub(crate) mod debug_profiler;
 pub mod enchantment;
 mod key_store;
+pub mod online_profiles;
 pub mod recipe;
 pub mod scheduler;
 pub mod seasonal_events;
@@ -65,6 +67,7 @@ pub mod ticker;
 pub use recipe::RecipeManager;
 
 use crate::data::advancement_data::AdvancementManager;
+use online_profiles::{OnlineProfile, OnlineProfiles};
 
 /// Represents a Minecraft server instance.
 pub struct Server {
@@ -97,6 +100,8 @@ pub struct Server {
     pub item_registry: Arc<ItemRegistry>,
     /// Manages multiple worlds within the server.
     pub worlds: ArcSwap<Vec<Arc<World>>>,
+    /// The profiles with a player in a world, or with a disconnect that has not saved it yet.
+    pub online_profiles: Arc<OnlineProfiles>,
     /// All the dimensions that exist on the server.
     pub dimensions: Vec<Dimension>,
     /// Assigns unique IDs to containers.
@@ -104,6 +109,8 @@ pub struct Server {
     pub recipe_manager: Arc<recipe::RecipeManager>,
     pub datapack_manager: Arc<crate::data::datapack::DatapackManager>,
     pub enchantment_manager: Arc<enchantment::EnchantmentManager>,
+    /// The modded channels the server negotiates with `NeoForge` clients.
+    pub network_registry: crate::net::java::neoforge::NetworkRegistry,
     /// Assigns unique IDs to maps.
     map_id: AtomicI32,
     /// Mojang's public keys, used for chat session signing
@@ -287,8 +294,10 @@ impl Server {
             recipe_manager: Arc::new(recipe::RecipeManager::new()),
             datapack_manager: Arc::new(crate::data::datapack::DatapackManager::new()),
             enchantment_manager: Arc::new(enchantment::EnchantmentManager::new()),
+            network_registry: crate::net::java::neoforge::NetworkRegistry::new(),
             map_id: level_info.load().map_id.into(),
             worlds: ArcSwap::from_pointee(vec![]),
+            online_profiles: Arc::default(),
             dimensions,
             command_dispatcher,
             block_registry: block_registry.clone(),
@@ -634,6 +643,7 @@ impl Server {
     ///
     /// - `Arc<Player>`: A reference to the newly created player object.
     /// - `Arc<World>`: A reference to the world the player was added to.
+    /// - `OnlineProfile`: Keeps the profile online. Drop it once the disconnect has saved the player.
     ///
     /// # Note
     ///
@@ -643,7 +653,17 @@ impl Server {
         client: Arc<ClientPlatform>,
         profile: GameProfile,
         config: Option<PlayerConfig>,
-    ) -> Option<(Arc<Player>, Arc<World>)> {
+    ) -> Option<(Arc<Player>, Arc<World>, OnlineProfile)> {
+        // Vanilla `handleConfigurationFinished`: a profile that is still online turns the new
+        // session away. Claiming before the data load means the load never sees a stale save.
+        let Some(online_profile) = self.online_profiles.claim(profile.id) else {
+            client.try_kick(
+                DisconnectReason::LoggedInOtherLocation,
+                &duplicate_login_disconnect_message(),
+            );
+            return None;
+        };
+
         let gamemode = self
             .defaultgamemode
             .lock()
@@ -704,6 +724,12 @@ impl Server {
             'after: {
                 player.screen_handler_sync_handler.store_player(player.clone());
                 world.add_player(&player).is_ok().then(|| {
+                    if !online_profile.attach(&player) {
+                        player.kick(
+                            DisconnectReason::LoggedInOtherLocation,
+                            &duplicate_login_disconnect_message(),
+                        );
+                    }
                     {
                         let mut user_cache = self
                             .data
@@ -730,7 +756,7 @@ impl Server {
                     );
                     self.management_hub.broadcast_player_joined(&player_dto);
 
-                    (player, world)
+                    (player, world, online_profile)
                 })
             }
 
@@ -758,6 +784,35 @@ impl Server {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove_player(player);
+    }
+
+    /// Vanilla `PlayerList.disconnectAllPlayersWithProfile` for a new login of the profile: kicks
+    /// the online player of the profile and waits until its session is released. Returns the
+    /// reason to refuse the new login when the wait reaches `MAX_TICKS_BEFORE_LOGIN`.
+    pub async fn disconnect_all_players_with_profile(
+        &self,
+        id: uuid::Uuid,
+    ) -> Option<TextComponent> {
+        let max_wait = Duration::from_nanos(
+            self.tick_rate_manager
+                .nanoseconds_per_tick()
+                .unsigned_abs()
+                .saturating_mul(MAX_TICKS_BEFORE_LOGIN),
+        );
+        let message = duplicate_login_disconnect_message();
+        let released = self
+            .online_profiles
+            .replace(id, max_wait, |player| {
+                player.kick(DisconnectReason::LoggedInOtherLocation, &message);
+            })
+            .await;
+        (!released).then(|| {
+            TextComponent::translate_cross(
+                translation::java::MULTIPLAYER_DISCONNECT_SLOW_LOGIN,
+                translation::bedrock::DISCONNECTIONSCREEN_TIMEOUT,
+                [],
+            )
+        })
     }
 
     pub async fn shutdown(&self) {
@@ -1332,4 +1387,17 @@ impl Server {
             );
         self.plugin_manager.fire(self, &mut disable_event).await;
     }
+}
+
+/// Vanilla `ServerLoginPacketListenerImpl.MAX_TICKS_BEFORE_LOGIN`.
+const MAX_TICKS_BEFORE_LOGIN: u64 = 600;
+
+/// Vanilla `PlayerList.DUPLICATE_LOGIN_DISCONNECT_MESSAGE`.
+#[must_use]
+fn duplicate_login_disconnect_message() -> TextComponent {
+    TextComponent::translate_cross(
+        translation::java::MULTIPLAYER_DISCONNECT_DUPLICATE_LOGIN,
+        translation::bedrock::DISCONNECTIONSCREEN_LOGGEDINOTHERLOCATION,
+        [],
+    )
 }

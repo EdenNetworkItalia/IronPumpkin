@@ -57,6 +57,7 @@ impl JavaClient {
                     main_hand,
                     text_filtering: client_information.text_filtering,
                     server_listing: client_information.server_listing,
+                    particle_status: ParticleStatus::from(client_information.particle_status.0),
                 };
 
                 // 4. Atomically swap the new config into the player

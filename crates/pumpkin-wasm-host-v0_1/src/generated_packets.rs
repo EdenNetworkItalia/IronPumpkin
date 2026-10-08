@@ -1118,6 +1118,7 @@ pub fn deserialize_java_serverbound_packet(
                     main_hand: p.main_hand.0.try_into().unwrap(),
                     text_filtering: p.text_filtering.try_into().unwrap(),
                     server_listing: p.server_listing.try_into().unwrap(),
+                    particle_status: p.particle_status.0.try_into().unwrap(),
                 },
             ))
         }
@@ -1242,6 +1243,7 @@ pub fn deserialize_java_serverbound_packet(
                     main_hand: p.main_hand.0.try_into().unwrap(),
                     text_filtering: p.text_filtering.try_into().unwrap(),
                     server_listing: p.server_listing.try_into().unwrap(),
+                    particle_status: p.particle_status.0.try_into().unwrap(),
                 },
             ))
         }

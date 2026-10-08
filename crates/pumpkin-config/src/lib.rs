@@ -208,6 +208,12 @@ pub struct BasicConfiguration {
     pub use_favicon: bool,
     /// Path to optional server favicon.
     pub favicon_path: Option<String>,
+    /// Whether the server status sends `isModded`, so `NeoForge` clients mark the server as modded.
+    pub advertise_modded: bool,
+    /// Whether the configuration phase starts with the `NeoForge` channel probe, which detects
+    /// `NeoForge` clients and negotiates their channels. Vanilla clients see five extra packets
+    /// before the brand.
+    pub detect_neoforge_clients: bool,
     /// The default level name
     pub default_level_name: String,
     /// Whether chat messages should be signed or not.
@@ -240,6 +246,8 @@ impl Default for BasicConfiguration {
             scrub_ips: true,
             use_favicon: true,
             favicon_path: None,
+            advertise_modded: false,
+            detect_neoforge_clients: false,
             default_level_name: "world".to_string(),
             allow_chat_reports: false,
             white_list: false,

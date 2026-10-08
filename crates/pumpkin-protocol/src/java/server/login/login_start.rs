@@ -1,6 +1,6 @@
 use pumpkin_data::packet::serverbound::login::HELLO;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
+use pumpkin_util::{uuid::offline_player_uuid, version::JavaMinecraftVersion};
 
 use crate::{
     ServerPacket,
@@ -42,12 +42,7 @@ impl<'a> ServerPacket<'a> for SLoginStart {
             }
         }
 
-        let uuid = uuid.unwrap_or_else(|| {
-            uuid::Uuid::new_v3(
-                &uuid::Uuid::nil(),
-                format!("OfflinePlayer:{name}").as_bytes(),
-            )
-        });
+        let uuid = uuid.unwrap_or_else(|| offline_player_uuid(&name));
 
         Ok(Self { name, uuid })
     }

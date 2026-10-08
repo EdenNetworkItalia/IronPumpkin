@@ -11,6 +11,7 @@ interface java-packets {
     main-hand: s32,
     text-filtering: bool,
     server-listing: bool,
+    particle-status: s32,
   }
   record config-s-config-cookie-response {
     key: string,
@@ -144,6 +145,7 @@ interface java-packets {
     main-hand: s32,
     text-filtering: bool,
     server-listing: bool,
+    particle-status: s32,
   }
   record s-close-container {
     window-id: s32,

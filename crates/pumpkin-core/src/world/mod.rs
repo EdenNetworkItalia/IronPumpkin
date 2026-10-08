@@ -156,7 +156,10 @@ use pumpkin_world::{
     chunk::{io::Dirtiable, palette::bedrock_water_state},
 };
 use pumpkin_world::{chunk::ChunkData, world::BlockAccessor};
-use pumpkin_world::{level::Level, tick::TickPriority};
+use pumpkin_world::{
+    level::{Level, SyncChunk},
+    tick::TickPriority,
+};
 pub use pumpkin_world::{world::BlockFlags, world_info::LevelData};
 use rand::seq::SliceRandom;
 use rand::{RngExt, rng};
@@ -3145,13 +3148,15 @@ impl World {
         }
     }
 
+    /// `false` when the connection closed while the spawn waited for chunks: like vanilla
+    /// `PrepareSpawnTask.close`, the player never joined.
     #[expect(clippy::too_many_lines)]
     pub async fn spawn_java_player(
         &self,
         base_config: &BasicConfiguration,
         player: &Arc<Player>,
         server: &Arc<Server>,
-    ) {
+    ) -> bool {
         let dimensions: Vec<ResourceLocation> = server
             .dimensions
             .iter()
@@ -3167,7 +3172,7 @@ impl World {
         );
 
         let Some(client) = player.client.java() else {
-            return;
+            return true;
         };
         // Send the login packet for our new player
         client
@@ -3261,7 +3266,9 @@ impl World {
             let info = &self.level_info.load();
             let spawn_position = Vector2::new(info.spawn_x, info.spawn_z);
             let chunk_pos = Vector2::new(info.spawn_x >> 4, info.spawn_z >> 4);
-            self.level.get_or_fetch_chunk(chunk_pos, |_| ()).await;
+            if self.fetch_spawn_chunk(client, chunk_pos).await.is_none() {
+                return false;
+            }
             let top = self.get_top_block(spawn_position);
             let pos_y = if top > self.dimension.min_y {
                 top + 1
@@ -3284,16 +3291,15 @@ impl World {
         chunker::update_position(player);
 
         let center_chunk = player.living_entity.entity.chunk_pos.load();
-        let chunk = self
-            .level
-            .get_or_fetch_chunk(center_chunk, std::clone::Clone::clone)
-            .await;
+        let Some(chunk) = self.fetch_spawn_chunk(client, center_chunk).await else {
+            return false;
+        };
         if let Some(server) = self.server.upgrade() {
             let mut event =
                 crate::plugin::world::chunk_send::ChunkSend::new(player.world(), chunk.clone());
             server.plugin_manager.fire(&server, &mut event).await;
             if event.cancelled {
-                return;
+                return true;
             }
         }
         client.send_chunks(&[chunk]).await;
@@ -3700,6 +3706,25 @@ impl World {
             self.broadcast_system_message(&event.join_message, false);
             // TODO: Switch to structured logging, e.g. info!(player = %name, "connected")
             info!("{}", event.join_message.to_pretty_console());
+        }
+        true
+    }
+
+    /// `Level::get_or_fetch_chunk` that gives up when `client` closes first. The fetch runs in its
+    /// own task: dropping it mid-wait would leak its chunk ticket.
+    async fn fetch_spawn_chunk(&self, client: &JavaClient, pos: Vector2<i32>) -> Option<SyncChunk> {
+        let level = self.level.clone();
+        let fetch = tokio::spawn(async move { level.get_or_fetch_chunk(pos, Clone::clone).await });
+        tokio::select! {
+            biased;
+            () = client.await_close_interrupt() => None,
+            chunk = fetch => match chunk {
+                Ok(chunk) => Some(chunk),
+                Err(error) => {
+                    error!("Failed to fetch spawn chunk {pos:?}: {error}");
+                    None
+                }
+            },
         }
     }
 

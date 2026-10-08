@@ -2,14 +2,20 @@ use crate::{
     events::{ToFromWasmEvent, cleanup_event, consume_text_component},
     generated_packets,
     pumpkin::plugin::event::{
-        ClientboundPacket, Event, MapInitializeEventData, PacketReceivedEventData,
-        PacketSentEventData, ServerBroadcastEventData, ServerCommandEventData,
-        ServerListPingAddress, ServerListPingEventData, ServerLoadEventData, ServerLoadType,
-        ServerTickEndEventData, ServerTickStartEventData, ServerboundPacket,
+        ClientboundPacket, ConfigCustomPayloadEventData,
+        ConnectionProtocol as WitConnectionProtocol, ConnectionType as WitConnectionType, Event,
+        MapInitializeEventData, ModdedChannel, OutgoingPayload, PacketFlow as WitPacketFlow,
+        PacketReceivedEventData, PacketSentEventData, ServerBroadcastEventData,
+        ServerCommandEventData, ServerListPingAddress, ServerListPingEventData,
+        ServerLoadEventData, ServerLoadType, ServerTickEndEventData, ServerTickStartEventData,
+        ServerboundPacket,
     },
+    uuid::UuidExt,
 };
-use pumpkin_core::net::ClientPlatform;
+use bytes::Bytes;
+use pumpkin_core::net::{ClientPlatform, java::neoforge::ConnectionType};
 use pumpkin_core::plugin::server::{
+    config_custom_payload::ConfigCustomPayloadEvent,
     list_ping::ServerListPingEvent,
     map_initialize::MapInitializeEvent,
     packet::{PacketReceivedEvent, PacketSentEvent},
@@ -19,7 +25,12 @@ use pumpkin_core::plugin::server::{
     server_tick_end::ServerTickEndEvent,
     server_tick_start::ServerTickStartEvent,
 };
+use pumpkin_protocol::java::neoforge::{
+    ConnectionProtocol, ModdedNetworkQueryComponent, PacketFlow,
+};
+use pumpkin_util::{identifier::Identifier, version::JavaMinecraftVersion};
 use pumpkin_wasm_host_common::state::PluginHostState;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl ToFromWasmEvent for PacketReceivedEvent {
     fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
@@ -290,6 +301,140 @@ impl ToFromWasmEvent for MapInitializeEvent {
     }
 }
 
+fn to_wit_modded_channels(
+    channels: &BTreeMap<ConnectionProtocol, BTreeSet<ModdedNetworkQueryComponent>>,
+) -> Vec<ModdedChannel> {
+    channels
+        .iter()
+        .flat_map(|(protocol, components)| {
+            components.iter().map(|component| ModdedChannel {
+                protocol: match protocol {
+                    ConnectionProtocol::Handshaking => WitConnectionProtocol::Handshaking,
+                    ConnectionProtocol::Play => WitConnectionProtocol::Play,
+                    ConnectionProtocol::Status => WitConnectionProtocol::Status,
+                    ConnectionProtocol::Login => WitConnectionProtocol::Login,
+                    ConnectionProtocol::Configuration => WitConnectionProtocol::Configuration,
+                },
+                id: component.id.to_string(),
+                version: component.version.clone(),
+                flow: component.flow.map(|flow| match flow {
+                    PacketFlow::Serverbound => WitPacketFlow::Serverbound,
+                    PacketFlow::Clientbound => WitPacketFlow::Clientbound,
+                }),
+                optional: component.optional,
+            })
+        })
+        .collect()
+}
+
+fn from_wit_modded_channels(
+    channels: Vec<ModdedChannel>,
+) -> BTreeMap<ConnectionProtocol, BTreeSet<ModdedNetworkQueryComponent>> {
+    let mut map: BTreeMap<_, BTreeSet<_>> = BTreeMap::new();
+    for channel in channels {
+        let Ok(id) = Identifier::parse(&channel.id) else {
+            continue;
+        };
+        let protocol = match channel.protocol {
+            WitConnectionProtocol::Handshaking => ConnectionProtocol::Handshaking,
+            WitConnectionProtocol::Play => ConnectionProtocol::Play,
+            WitConnectionProtocol::Status => ConnectionProtocol::Status,
+            WitConnectionProtocol::Login => ConnectionProtocol::Login,
+            WitConnectionProtocol::Configuration => ConnectionProtocol::Configuration,
+        };
+        map.entry(protocol)
+            .or_default()
+            .insert(ModdedNetworkQueryComponent {
+                id,
+                version: channel.version,
+                flow: channel.flow.map(|flow| match flow {
+                    WitPacketFlow::Serverbound => PacketFlow::Serverbound,
+                    WitPacketFlow::Clientbound => PacketFlow::Clientbound,
+                }),
+                optional: channel.optional,
+            });
+    }
+    map
+}
+
+impl ToFromWasmEvent for ConfigCustomPayloadEvent {
+    fn to_wasm_event(&self, _state: &mut PluginHostState) -> Event {
+        Event::ConfigCustomPayloadEvent(ConfigCustomPayloadEventData {
+            connection_id: self.connection_id,
+            player_name: self.player_name.clone(),
+            player_uuid: crate::pumpkin::plugin::uuid::Uuid::to_wit(&self.player_uuid),
+            protocol_version: self.version.protocol_version(),
+            connection_type: match self.connection_type {
+                ConnectionType::NeoForge => WitConnectionType::Neoforge,
+                ConnectionType::Other => WitConnectionType::Other,
+            },
+            modded_channels: to_wit_modded_channels(&self.modded_channels),
+            ad_hoc_channels: self
+                .ad_hoc_channels
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            channel: self.channel.clone(),
+            data: self.data.to_vec(),
+            responses: self
+                .responses
+                .iter()
+                .map(|(channel, data)| OutgoingPayload {
+                    channel: channel.clone(),
+                    data: data.to_vec(),
+                })
+                .collect(),
+        })
+    }
+
+    fn from_wasm_event(event: Event, _state: &mut PluginHostState) -> Self {
+        match event {
+            Event::ConfigCustomPayloadEvent(data) => Self {
+                connection_id: data.connection_id,
+                player_name: data.player_name,
+                player_uuid: crate::pumpkin::plugin::uuid::Uuid::from_wit(&data.player_uuid),
+                version: JavaMinecraftVersion::from_protocol(
+                    data.protocol_version.try_into().unwrap_or_default(),
+                ),
+                connection_type: match data.connection_type {
+                    WitConnectionType::Neoforge => ConnectionType::NeoForge,
+                    WitConnectionType::Other => ConnectionType::Other,
+                },
+                modded_channels: from_wit_modded_channels(data.modded_channels),
+                ad_hoc_channels: data
+                    .ad_hoc_channels
+                    .iter()
+                    .filter_map(|channel| Identifier::parse(channel).ok())
+                    .collect(),
+                channel: data.channel,
+                data: Bytes::from(data.data),
+                responses: data
+                    .responses
+                    .into_iter()
+                    .map(|payload| (payload.channel, Bytes::from(payload.data)))
+                    .collect(),
+            },
+            _ => panic!("unexpected event type"),
+        }
+    }
+
+    // Only the guest's own additions to the response queue come back; the queued responses of
+    // earlier handlers and the identity and channel fields stay as they were.
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        if let Event::ConfigCustomPayloadEvent(data) = event {
+            let queued = self.responses.len();
+            self.responses.extend(
+                data.responses
+                    .into_iter()
+                    .skip(queued)
+                    .map(|payload| (payload.channel, Bytes::from(payload.data))),
+            );
+        } else {
+            cleanup_event(&event, state);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,6 +486,66 @@ mod tests {
                 .resource_table
                 .get::<TextComponent>(&Resource::new_own(motd_rep))
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn config_custom_payload_appends_only_guest_responses() {
+        let mut state = PluginHostState::new();
+        let component = ModdedNetworkQueryComponent {
+            id: Identifier::parse_static("probe:sync"),
+            version: "2".to_string(),
+            flow: Some(PacketFlow::Clientbound),
+            optional: true,
+        };
+        let modded_channels = BTreeMap::from([(
+            ConnectionProtocol::Configuration,
+            BTreeSet::from([component]),
+        )]);
+        let mut event = ConfigCustomPayloadEvent {
+            connection_id: 7,
+            player_name: "Probe".to_string(),
+            player_uuid: uuid::Uuid::from_u128(1),
+            version: pumpkin_data::packet::CURRENT_MC_VERSION,
+            connection_type: ConnectionType::NeoForge,
+            modded_channels: modded_channels.clone(),
+            ad_hoc_channels: Vec::new(),
+            channel: "minecraft:brand".to_string(),
+            data: Bytes::from_static(b"neoforge"),
+            responses: vec![("native:reply".to_string(), Bytes::from_static(b"n"))],
+        };
+        let Event::ConfigCustomPayloadEvent(mut returned) = event.to_wasm_event(&mut state) else {
+            panic!("expected a config custom payload event");
+        };
+        assert_eq!(
+            from_wit_modded_channels(returned.modded_channels.clone()),
+            modded_channels
+        );
+        returned.player_name = "Rewritten".to_string();
+        returned.connection_type = WitConnectionType::Other;
+        returned.modded_channels.clear();
+        returned.channel = "probe:other".to_string();
+        returned.responses = vec![OutgoingPayload {
+            channel: "guest:reply".to_string(),
+            data: b"g".to_vec(),
+        }];
+        returned.responses.push(OutgoingPayload {
+            channel: "guest:second".to_string(),
+            data: b"s".to_vec(),
+        });
+
+        event.apply_wasm_event(Event::ConfigCustomPayloadEvent(returned), &mut state);
+
+        assert_eq!(event.player_name, "Probe");
+        assert_eq!(event.connection_type, ConnectionType::NeoForge);
+        assert_eq!(event.modded_channels, modded_channels);
+        assert_eq!(event.channel, "minecraft:brand");
+        assert_eq!(
+            event.responses,
+            vec![
+                ("native:reply".to_string(), Bytes::from_static(b"n")),
+                ("guest:second".to_string(), Bytes::from_static(b"s")),
+            ]
         );
     }
 }

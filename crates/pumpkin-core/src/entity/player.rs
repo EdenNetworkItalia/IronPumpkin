@@ -1177,8 +1177,9 @@ impl Player {
         )
     }
 
-    /// Removes the [`Player`] out of the current [`World`].
-    pub async fn remove(self: &Arc<Self>) {
+    /// Removes the [`Player`] out of the current [`World`]. `fire_event` announces the leave with
+    /// [`PlayerLeaveEvent`](crate::plugin::player::player_leave::PlayerLeaveEvent).
+    pub async fn remove(self: &Arc<Self>, fire_event: bool) {
         if !self
             .current_screen_handler
             .lock()
@@ -1211,7 +1212,7 @@ impl Player {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .increment_custom(statistics::CustomStatistic::LeaveGame, 1);
         let world = self.world();
-        world.remove_player(self, true).await;
+        world.remove_player(self, fire_event).await;
 
         let cylindrical = self.watched_section.load();
         self.clean_up_chunk_tickets(&world.level);
@@ -7397,6 +7398,26 @@ pub enum ChatMode {
     Hidden,
 }
 
+/// How many particles the client renders.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParticleStatus {
+    All,
+    Decreased,
+    Minimal,
+}
+
+impl From<i32> for ParticleStatus {
+    /// Vanilla reads the id with `ByIdMap.continuous(..., WRAP)`, so an out-of-range id wraps
+    /// around (`floorMod`) and does not fail the packet.
+    fn from(id: i32) -> Self {
+        match id.rem_euclid(3) {
+            0 => Self::All,
+            1 => Self::Decreased,
+            _ => Self::Minimal,
+        }
+    }
+}
+
 pub struct InvalidChatMode;
 
 impl TryFrom<i32> for ChatMode {
@@ -8074,7 +8095,7 @@ impl InventoryPlayer for Player {
 
 #[cfg(test)]
 mod tests {
-    use super::{bedrock_inventory_slot, read_root_vehicle, write_root_vehicle};
+    use super::{ParticleStatus, bedrock_inventory_slot, read_root_vehicle, write_root_vehicle};
     use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
     use uuid::Uuid;
 
@@ -8159,5 +8180,15 @@ mod tests {
             });
         }
         assert_eq!(counter.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn particle_status_wraps_out_of_range_ids_like_vanilla() {
+        assert_eq!(ParticleStatus::from(0), ParticleStatus::All);
+        assert_eq!(ParticleStatus::from(2), ParticleStatus::Minimal);
+        assert_eq!(ParticleStatus::from(3), ParticleStatus::All);
+        assert_eq!(ParticleStatus::from(4), ParticleStatus::Decreased);
+        assert_eq!(ParticleStatus::from(-1), ParticleStatus::Minimal);
+        assert_eq!(ParticleStatus::from(-2), ParticleStatus::Decreased);
     }
 }

@@ -12,9 +12,10 @@ use pumpkin_protocol::{
     ClientPacket, ConnectionState, PacketDecodeError, RawPacket, ServerPacket,
     codec::var_int::VarInt,
     java::{
-        client::config::CConfigDisconnect,
+        client::config::{CConfigDisconnect, CPluginMessage},
         client::login::CLoginDisconnect,
         client::play::CPlayDisconnect,
+        neoforge::{NetworkPayloadSetup, decode_exact},
         packet_decoder::TCPNetworkDecoder,
         packet_encoder::TCPNetworkEncoder,
         server::config::{
@@ -23,9 +24,11 @@ use pumpkin_protocol::{
         },
     },
     packet::MultiVersionJavaPacket,
-    ser::{NetworkReadExt, NetworkWriteExt, ReadingError},
+    ser::{NetworkReadExt, NetworkReadSliceExt, NetworkWriteExt, ReadingError},
 };
-use pumpkin_util::{Hand, text::TextComponent, version::JavaMinecraftVersion};
+use pumpkin_util::{
+    Hand, identifier::Identifier, text::TextComponent, version::JavaMinecraftVersion,
+};
 use tokio::{
     io::{BufReader, BufWriter},
     net::{
@@ -37,18 +40,28 @@ use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, warn};
 
 use crate::{
-    entity::player::ChatMode,
+    entity::player::{ChatMode, ParticleStatus},
     net::{
         EncryptionError, GameProfile, PacketHandlerResult, PacketRateLimiter, PlayerConfig,
         can_not_join,
     },
-    plugin::server::packet::{ConnectionPacketReceivedEvent, ConnectionPacketSentEvent},
+    plugin::server::{
+        config_custom_payload::ConfigCustomPayloadEvent,
+        packet::{ConnectionPacketReceivedEvent, ConnectionPacketSentEvent},
+    },
     server::Server,
 };
 
-use super::JavaClient;
+use super::{JavaClient, neoforge::ClientChannels};
 
-const BRAND_CHANNEL_PREFIX: &str = "minecraft:brand";
+/// The channel of vanilla `BrandPayload`.
+pub const BRAND_CHANNEL: &str = "minecraft:brand";
+
+/// `BrandPayload.STREAM_CODEC`: `FriendlyByteBuf.readUtf()`, a `VarInt` byte length, then UTF-8 of
+/// at most 32767 UTF-16 units, and nothing after it.
+fn read_brand(data: &[u8]) -> Result<String, ReadingError> {
+    decode_exact(data, |read| Ok(read.get_str_borrowed()?.to_owned()))
+}
 
 /// How long a connection may stay silent before login finishes.
 ///
@@ -75,6 +88,12 @@ pub struct PendingConnection {
     pub packet_limiter: PacketRateLimiter,
     pub verify_token: Option<[u8; 4]>,
     pub vine_challenge: Option<[u8; 16]>,
+    pub client_channels: ClientChannels,
+    /// The `NeoForge` probe ping went out and its pong has not come back.
+    pub neoforge_probe_pending: bool,
+    /// The channels negotiated with a `NeoForge` client, like `ChannelAttributes.setPayloadSetup`.
+    /// Empty for any other client.
+    pub payload_setup: NetworkPayloadSetup,
     /// For the connection packet events.
     server: Weak<Server>,
 }
@@ -104,6 +123,9 @@ impl PendingConnection {
             packet_limiter,
             verify_token: None,
             vine_challenge: None,
+            client_channels: ClientChannels::default(),
+            neoforge_probe_pending: false,
+            payload_setup: NetworkPayloadSetup::default(),
             server,
         }
     }
@@ -292,7 +314,11 @@ impl PendingConnection {
     }
 
     pub async fn handle_login_sequence(&mut self, server: &Arc<Server>) -> PacketHandlerResult {
-        while let Some(packet) = self.get_packet().await {
+        // Like vanilla `Connection.channelRead0`, a closed connection handles nothing more,
+        // including packets that were already buffered when the kick closed it.
+        while let Some(packet) = self.get_packet().await
+            && !self.is_closed()
+        {
             if !self.packet_limiter.check_packet() {
                 warn!(
                     "Pending client {} exceeded packet rate limit (rate: {}/s)",
@@ -499,8 +525,8 @@ impl PendingConnection {
                 Ok(None)
             }
             id if id == SPluginMessage::to_id(version) => {
-                self.handle_plugin_message(SPluginMessage::read(&mut payload, &version)?)
-                    .await;
+                self.handle_plugin_message(server, SPluginMessage::read(&mut payload, &version)?)
+                    .await?;
                 Ok(None)
             }
             id if id == SAcknowledgeFinishConfig::to_id(version) => {
@@ -536,7 +562,8 @@ impl PendingConnection {
                 Ok(None)
             }
             id if id == SConfigPong::to_id(version) => {
-                let _pong = SConfigPong::read(&mut payload, &version)?;
+                let pong = SConfigPong::read(&mut payload, &version)?;
+                self.handle_neoforge_probe_pong(server, &pong).await;
                 Ok(None)
             }
             id if id == SAcceptCodeOfConduct::to_id(version) => {
@@ -577,6 +604,7 @@ impl PendingConnection {
                 main_hand,
                 text_filtering: client_information.text_filtering,
                 server_listing: client_information.server_listing,
+                particle_status: ParticleStatus::from(client_information.particle_status.0),
             });
         } else {
             self.kick(TextComponent::text("Invalid hand or chat type"))
@@ -584,15 +612,87 @@ impl PendingConnection {
         }
     }
 
-    pub async fn handle_plugin_message(&mut self, plugin_message: SPluginMessage<'_>) {
+    pub async fn handle_plugin_message(
+        &mut self,
+        server: &Arc<Server>,
+        plugin_message: SPluginMessage<'_>,
+    ) -> Result<(), ReadingError> {
         debug!("Handling plugin message");
-        if plugin_message.channel.starts_with(BRAND_CHANNEL_PREFIX) {
-            debug!("Got a client brand");
-            match core::str::from_utf8(plugin_message.data) {
-                Ok(brand) => self.brand = Some(brand.to_string()),
-                Err(e) => self.kick(TextComponent::text(e.to_string())).await,
+        if plugin_message.channel == BRAND_CHANNEL {
+            let brand = read_brand(plugin_message.data)?;
+            debug!("Got a client brand {brand:?}");
+            self.brand = Some(brand);
+        } else {
+            let handled = server.basic_config.detect_neoforge_clients
+                && self
+                    .handle_neoforge_payload(server, plugin_message.channel, plugin_message.data)
+                    .await?;
+            if !handled {
+                debug!(
+                    "Client {} sent a payload on unknown configuration channel {}",
+                    self.id, plugin_message.channel
+                );
             }
         }
+        self.fire_config_custom_payload(server, &plugin_message)
+            .await;
+        Ok(())
+    }
+
+    /// Fires `ConfigCustomPayloadEvent` after the built-in handling, so handlers see the channels
+    /// this payload declared and cannot change what the server does with it.
+    async fn fire_config_custom_payload(
+        &mut self,
+        server: &Arc<Server>,
+        plugin_message: &SPluginMessage<'_>,
+    ) {
+        if self.is_closed()
+            || !server
+                .plugin_manager
+                .has_handlers::<ConfigCustomPayloadEvent>()
+        {
+            return;
+        }
+        let (player_name, player_uuid) = self
+            .gameprofile
+            .as_ref()
+            .map(|profile| (profile.name.clone(), profile.id))
+            .unwrap_or_default();
+        let channels = &self.client_channels;
+        let mut event = ConfigCustomPayloadEvent {
+            connection_id: self.id,
+            player_name,
+            player_uuid,
+            version: self.version.load(),
+            connection_type: channels.connection_type,
+            modded_channels: channels.modded.clone(),
+            ad_hoc_channels: channels.ad_hoc.iter().cloned().collect(),
+            channel: plugin_message.channel.to_string(),
+            data: Bytes::copy_from_slice(plugin_message.data),
+            responses: Vec::new(),
+        };
+        server.plugin_manager.fire(server, &mut event).await;
+        for (channel, data) in event.responses {
+            if self.is_closed() {
+                break;
+            }
+            self.send_custom_payload(&channel, &data).await;
+        }
+    }
+
+    /// Sends a custom payload with the configuration-phase `CPluginMessage`.
+    ///
+    /// A payload on a channel that is not a valid identifier is dropped with a warning.
+    pub async fn send_custom_payload(&mut self, channel: &str, data: &[u8]) {
+        if Identifier::parse(channel).is_err() {
+            warn!(
+                "Dropping a custom payload for client {} on invalid channel {channel}",
+                self.id
+            );
+            return;
+        }
+        self.send_packet_now(&CPluginMessage::new(channel, data))
+            .await;
     }
 
     pub async fn handle_resource_pack_response(
@@ -645,5 +745,26 @@ impl PendingConnection {
             packet.key,
             packet.payload.as_ref().map(|p| p.len())
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Serverbound `minecraft:brand` bodies recorded by `pumpkin-neoforge-client` from a
+    // vanilla client and a NeoForge 26.3 client.
+    #[test]
+    fn brand_decodes_recorded_bytes() {
+        let vanilla = [0x07, 0x76, 0x61, 0x6e, 0x69, 0x6c, 0x6c, 0x61];
+        assert_eq!(read_brand(&vanilla).unwrap(), "vanilla");
+        let neoforge = [0x08, 0x6e, 0x65, 0x6f, 0x66, 0x6f, 0x72, 0x67, 0x65];
+        assert_eq!(read_brand(&neoforge).unwrap(), "neoforge");
+    }
+
+    #[test]
+    fn brand_rejects_bytes_after_the_string() {
+        let data = [0x07, 0x76, 0x61, 0x6e, 0x69, 0x6c, 0x6c, 0x61, 0x00];
+        assert!(matches!(read_brand(&data), Err(ReadingError::TooLarge(_))));
     }
 }

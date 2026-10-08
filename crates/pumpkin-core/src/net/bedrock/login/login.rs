@@ -1,5 +1,7 @@
 use pumpkin_protocol::bedrock::client::PackIdVersion;
 
+use crate::net::can_not_join;
+
 #[allow(clippy::wildcard_imports)]
 use super::*;
 
@@ -29,6 +31,10 @@ impl BedrockClient {
         self.try_handle_login(packet, server).await
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one linear login sequence, mirrors the Bedrock login packet flow"
+    )]
     pub async fn try_handle_login(
         self: &Arc<Self>,
         packet: SLogin,
@@ -100,6 +106,18 @@ impl BedrockClient {
                     "NetherNet and Bedrock login identities do not match".into(),
                 ),
             ));
+        }
+
+        // Like a Java login, a login that may join replaces the online session of its profile.
+        if let Some(reason) = can_not_join(&profile, &self.address, server).await {
+            self.kick(DisconnectReason::NotAllowed, reason.get_text())
+                .await;
+            return Ok(PacketHandlerResult::Stop);
+        }
+        if let Some(reason) = server.disconnect_all_players_with_profile(profile.id).await {
+            self.kick(DisconnectReason::Timeout, reason.get_text())
+                .await;
+            return Ok(PacketHandlerResult::Stop);
         }
 
         self.enqueue_client_packet(&CPlayStatus::LoginSuccess).await;

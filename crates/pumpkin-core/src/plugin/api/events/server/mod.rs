@@ -1,3 +1,4 @@
+pub mod config_custom_payload;
 pub mod list_ping;
 pub mod map_initialize;
 pub mod packet;
@@ -12,6 +13,7 @@ pub mod service_register;
 pub mod service_unregister;
 pub mod tab_complete;
 
+pub use config_custom_payload::*;
 pub use list_ping::*;
 pub use map_initialize::*;
 pub use packet::*;

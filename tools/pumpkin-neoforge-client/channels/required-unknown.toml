@@ -1,0 +1,8 @@
+# A NeoForge client with one required configuration channel that no server knows. The negotiation
+# must fail with neoforge:modded_network_setup_failed for probe:required, then a disconnect.
+
+[[configuration]]
+id = "probe:required"
+version = "1"
+flow = "clientbound"
+optional = false
