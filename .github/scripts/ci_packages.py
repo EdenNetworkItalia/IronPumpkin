@@ -45,6 +45,7 @@ FULL_REBUILD_PATHS = {
 RUST_CI_IGNORED_ROOTS = {
     ".github/ISSUE_TEMPLATE",
     ".devcontainer",
+    "blueprint",
     "docs",
 }
 
@@ -81,6 +82,8 @@ RUST_CI_IGNORED_FILES = {
 }
 
 WIT_ROOT = Path("crates/pumpkin-plugin-wit")
+# Its own Cargo workspace, built by the `blueprint` job rather than by the package jobs.
+BLUEPRINT_ROOT = Path("blueprint")
 
 
 def run_command(command: list[str], *, capture: bool = False) -> str:
@@ -167,6 +170,10 @@ def has_wit_changes(changed: list[Path]) -> bool:
     return any(path == WIT_ROOT or WIT_ROOT in path.parents for path in changed)
 
 
+def has_blueprint_changes(changed: list[Path]) -> bool:
+    return any(BLUEPRINT_ROOT in path.parents for path in changed)
+
+
 def reverse_dependency_closure(
     directly_affected: set[str], reverse_dependencies: dict[str, set[str]]
 ) -> set[str]:
@@ -232,10 +239,12 @@ def plan(args: argparse.Namespace) -> None:
             changed, package_roots, reverse_dependencies
         )
         should_check_wit = has_wit_changes(changed)
+        blueprint_changed = has_blueprint_changes(changed)
     else:
         selected = all_packages
         run_full = True
         should_check_wit = True
+        blueprint_changed = True
         reason = {
             "push": "Pushed to master",
             "workflow_dispatch": "Started manually",
@@ -245,6 +254,7 @@ def plan(args: argparse.Namespace) -> None:
     test_matrix = FULL_TEST_MATRIX if run_full else PR_TEST_MATRIX
     outputs = {
         "affected_packages": json.dumps(selected, separators=(",", ":")),
+        "blueprint_changed": str(blueprint_changed).lower(),
         "has_code": str(has_code).lower(),
         "run_full": str(run_full).lower(),
         "should_check_wit": str(should_check_wit).lower(),

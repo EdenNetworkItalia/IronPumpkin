@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       affected_packages: ${{ steps.plan.outputs.affected_packages }}
+      blueprint_changed: ${{ steps.plan.outputs.blueprint_changed }}
       has_code: ${{ steps.plan.outputs.has_code }}
       run_full: ${{ steps.plan.outputs.run_full }}
       should_check_wit: ${{ steps.plan.outputs.should_check_wit }}
@@ -426,6 +427,44 @@ jobs:
           name: pumpkin-aarch64-android
           compression-level: 9
           path: dist/pumpkin-aarch64-android
+
+  blueprint:
+    name: Build the modpack blueprint
+    needs: prepare
+    if: >-
+      needs.prepare.outputs.run_full == 'true' ||
+      needs.prepare.outputs.has_code == 'true' ||
+      needs.prepare.outputs.blueprint_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: blueprint
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup update ${{ env.CI_RUST_TOOLCHAIN_VER }} && rustup default ${{ env.CI_RUST_TOOLCHAIN_VER }}
+      - run: rustup component add clippy rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: blueprint -> target
+          shared-key: blueprint-${{ runner.os }}-${{ runner.arch }}
+      - name: Point the pack at this checkout
+        run: >-
+          sed -i
+          -e '/^\[ironpumpkin\]/,/^\[/ s|^git = .*|git = "file://${{ github.workspace }}"|'
+          -e '/^\[ironpumpkin\]/,/^\[/ s|^commit = .*|commit = "${{ github.sha }}"|'
+          modpack.toml
+      - run: cargo fmt --check
+      - run: cargo clippy -p xtask --all-targets
+      - run: cargo test -p xtask
+      - run: cargo xtask check
+      - run: cargo xtask build --debug
+      - name: Boot the pack binary
+        run: |
+          mkdir -p "$RUNNER_TEMP/server"
+          cd "$RUNNER_TEMP/server"
+          timeout 60 "$GITHUB_WORKSPACE/blueprint/target/debug/$(cd "$GITHUB_WORKSPACE/blueprint" && cargo xtask name)" < /dev/null > boot.log 2>&1 || true
+          cat boot.log
+          grep -F "[ironpumpkin] loaded 1 native mod: hello-mod" boot.log
 
   draft_canary_release:
     name: Update canary release
