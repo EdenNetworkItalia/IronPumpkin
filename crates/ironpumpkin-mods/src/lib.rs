@@ -3,20 +3,76 @@
 //! A mod crate implements [`NativeMod`] and registers it with [`register_mod!`]. A modpack binary
 //! references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`. The server calls
 //! the [`NativeMod::init`] of every linked mod once, in id order, before the first world loads.
+//!
+//! This crate is the only `IronPumpkin` dependency a mod needs. It re-exports the server types:
+//!
+//! | Module          | Contents                                                                  |
+//! |-----------------|---------------------------------------------------------------------------|
+//! | [`command`]     | command tree builders, argument types, `CommandContext`, `CommandSender`  |
+//! | [`event`]       | the event types, `EventHandler`, `EventPriority`, `Payload`, `Cancellable` |
+//! | [`text`]        | `TextComponent`, colours, click and hover events, `translate_cross!`      |
+//! | [`permission`]  | `Permission`, `PermissionDefault`, `PermissionLvl`                        |
+//! | [`identifier`]  | `Identifier`, the key of registries and resources                         |
+//! | [`math`]        | `Vector3`, `BlockPos` and the other positions                             |
+//! | [`world`]       | `World` and its parts                                                     |
+//! | [`server`]      | `Server`                                                                  |
+//! | [`entity`]      | `Player` and the other entities                                           |
+//!
+//! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
+//! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
+//! [`pumpkin_util`], [`pumpkin_data`] (translation keys, registries), [`pumpkin_macros`] and
+//! [`pumpkin_world`].
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
-    plugin::{Context, EventHandler, EventPriority, Payload, PluginMetadata, startup},
-    server::Server,
+    plugin::{Context, PluginMetadata, startup},
 };
-use pumpkin_util::permission::Permission;
 use tracing::{error, info};
 
 #[doc(hidden)]
 pub use inventory;
+
+pub use pumpkin_core;
+pub use pumpkin_data;
+pub use pumpkin_macros;
+pub use pumpkin_util;
+pub use pumpkin_world;
+
+pub use pumpkin_core::{command, entity, server, world};
+pub use pumpkin_util::{identifier, math, permission};
+
+/// The events a mod can listen to, and the traits to handle them.
+pub mod event {
+    pub use pumpkin_core::plugin::api::events::*;
+    pub use pumpkin_core::plugin::{BoxFuture, EventHandler};
+}
+
+/// Text components and the translation macro.
+pub mod text {
+    pub use crate::__translate_cross as translate_cross;
+    pub use pumpkin_util::text::*;
+}
+
+// `pumpkin_macros::translate_cross!` expands to a `pumpkin_util::` path, which a mod without that
+// dependency cannot resolve.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __translate_cross {
+    ($($tokens:tt)*) => {{
+        use $crate::pumpkin_util;
+        $crate::pumpkin_macros::translate_cross!($($tokens)*)
+    }};
+}
+
+use event::{EventHandler, EventPriority, Payload};
+use permission::Permission;
+use server::Server;
 
 /// A mod compiled into the server binary.
 pub trait NativeMod: Sync {
@@ -50,12 +106,22 @@ type Registration = Box<dyn FnOnce(&Context)>;
 ///
 /// It passes `pumpkin-core` types through until the native API lands: the stable boundary for
 /// mods is `ironpumpkin-neo`, not this crate.
-#[derive(Default)]
 pub struct ModInit {
+    id: &'static str,
+    data_root: PathBuf,
     registrations: Vec<Registration>,
 }
 
 impl ModInit {
+    fn new(id: &'static str) -> Self {
+        Self {
+            id,
+            // Must agree with `Context::get_data_folder`, which is not reachable without a server.
+            data_root: Path::new("plugins").join("data"),
+            registrations: Vec::new(),
+        }
+    }
+
     /// See [`Context::register_command`].
     pub fn register_command(
         &mut self,
@@ -66,6 +132,21 @@ impl ModInit {
         let permission = permission.into();
         self.registrations
             .push(Box::new(move |cx| cx.register_command(node, permission)));
+    }
+
+    /// See [`Context::register_command_with_aliases`].
+    pub fn register_command_with_aliases(
+        &mut self,
+        node: impl Into<CommandDetachedNode>,
+        aliases: &[String],
+        permission: impl Into<String>,
+    ) {
+        let node = node.into();
+        let aliases = aliases.to_vec();
+        let permission = permission.into();
+        self.registrations.push(Box::new(move |cx| {
+            cx.register_command_with_aliases(node, &aliases, permission);
+        }));
     }
 
     /// See [`Context::register_event`].
@@ -85,6 +166,46 @@ impl ModInit {
         self.registrations.push(Box::new(move |cx| {
             if let Err(err) = cx.register_permission(permission) {
                 error!("[ironpumpkin] {}: {err}", cx.get_metadata().name);
+            }
+        }));
+    }
+
+    /// See [`Context::register_service`]. The service is registered before the first world
+    /// loads, so plugins find it from their `on_load`.
+    pub fn register_service<T: Payload + 'static>(
+        &mut self,
+        name: impl Into<String>,
+        service: Arc<T>,
+    ) {
+        let name = name.into();
+        self.registrations.push(Box::new(move |cx| {
+            // The startup hook runs synchronously in `Server::new`, inside the runtime's
+            // `block_on`. Blocking is safe: no plugin has loaded yet, so the services lock is
+            // uncontended. `unconstrained` keeps an exhausted coop budget from spinning.
+            futures::executor::block_on(tokio::task::unconstrained(
+                cx.register_service(name, service),
+            ));
+        }));
+    }
+
+    /// See [`Context::get_data_folder`]: `plugins/data/<mod id>`, created on first use.
+    #[must_use]
+    pub fn get_data_folder(&self) -> PathBuf {
+        let path = self.data_root.join(self.id);
+        if !path.exists() {
+            let _ = std::fs::create_dir_all(&path);
+        }
+        path
+    }
+
+    /// See [`Context::init_log`]. A mod linked into the server binary shares the server's
+    /// tracing subscriber, so its log lines already reach the server log; the subscriber is
+    /// installed only when the server has none.
+    pub fn init_log(&mut self) {
+        self.registrations.push(Box::new(|cx| {
+            // `Context::init_log` panics when a global subscriber is already set.
+            if !tracing::dispatcher::has_been_set() {
+                cx.init_log();
             }
         }));
     }
@@ -149,7 +270,7 @@ pub fn init_mods(server: &Arc<Server>) {
             .collect(),
     );
     for native_mod in &mods {
-        let mut init = ModInit::default();
+        let mut init = ModInit::new(native_mod.id());
         native_mod.init(&mut init);
         let metadata = PluginMetadata {
             name: native_mod.id().to_owned(),
@@ -176,9 +297,17 @@ pub fn init_mods(server: &Arc<Server>) {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::{
+        any::Any,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
 
-    use pumpkin_util::permission::PermissionDefault;
+    use crate::{
+        command::argument_builder::command, event::Payload, permission::PermissionDefault,
+    };
 
     use super::{ModInit, NativeMod, mods, sorted};
 
@@ -222,7 +351,7 @@ mod tests {
         let ids: Vec<&str> = mods.iter().map(|native_mod| native_mod.id()).collect();
         assert_eq!(ids, ["alpha-mod", "zeta-mod"]);
 
-        let mut init = ModInit::default();
+        let mut init = ModInit::new(mods[0].id());
         mods[0].init(&mut init);
         assert_eq!(INITS.load(Ordering::Relaxed), 1);
         assert_eq!(init.registrations.len(), 1);
@@ -237,5 +366,65 @@ mod tests {
         );
         let invalid = sorted(vec![&INVALID]).err().unwrap();
         assert!(invalid.contains("invalid id \"Bad Id\""), "{invalid}");
+    }
+
+    struct TestService;
+
+    impl Payload for TestService {
+        fn get_name_static() -> &'static str {
+            "TestService"
+        }
+
+        fn get_name(&self) -> &'static str {
+            Self::get_name_static()
+        }
+
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+
+        fn as_any_mut(&mut self) -> &mut dyn Any {
+            self
+        }
+    }
+
+    #[test]
+    fn records_a_command_with_aliases() {
+        let mut init = ModInit::new("test-mod");
+        init.register_command_with_aliases(
+            command("ping", "Test command."),
+            &["p".to_owned()],
+            "command.ping",
+        );
+        assert_eq!(init.registrations.len(), 1);
+    }
+
+    #[test]
+    fn records_a_service() {
+        let mut init = ModInit::new("test-mod");
+        init.register_service("test-mod:service", Arc::new(TestService));
+        assert_eq!(init.registrations.len(), 1);
+    }
+
+    #[test]
+    fn records_the_log_initialization() {
+        let mut init = ModInit::new("test-mod");
+        init.init_log();
+        assert_eq!(init.registrations.len(), 1);
+    }
+
+    #[test]
+    fn creates_the_data_folder_on_first_use() {
+        let root = tempfile::tempdir().unwrap();
+        let mut init = ModInit::new("test-mod");
+        init.data_root = root.path().join("plugins").join("data");
+        let expected = init.data_root.join("test-mod");
+        assert!(!expected.exists());
+
+        let folder = init.get_data_folder();
+        assert_eq!(folder, expected);
+        assert!(folder.is_dir());
+        assert_eq!(init.get_data_folder(), expected);
+        assert!(init.registrations.is_empty());
     }
 }

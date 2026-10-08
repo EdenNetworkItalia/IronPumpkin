@@ -9,5 +9,3 @@ publish = false
 
 [dependencies]
 ironpumpkin-mods = { path = "../../../../crates/ironpumpkin-mods" }
-pumpkin-core = { path = "../../../../crates/pumpkin-core" }
-pumpkin-util = { path = "../../../../crates/pumpkin-util" }

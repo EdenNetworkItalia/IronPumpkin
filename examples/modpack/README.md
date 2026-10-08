@@ -6,6 +6,9 @@ A Cargo workspace that compiles the IronPumpkin server with the native mods of t
 - `src/main.rs` references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`.
   A mod crate that the binary does not reference is not linked, and its mod does not load.
 - `mods/` holds the mod crates. Each one is a workspace member and a dependency of the binary.
+- A mod crate depends on `ironpumpkin-mods` only. That crate re-exports the server types a mod
+  uses: `ironpumpkin_mods::command`, `::event`, `::text`, `::permission`, `::world` and the
+  others listed in its crate documentation.
 
 ## Build and run
 

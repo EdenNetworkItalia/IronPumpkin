@@ -8,9 +8,17 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 pumpkin-core.workspace = true
+pumpkin-data.workspace = true
+pumpkin-macros.workspace = true
 pumpkin-util.workspace = true
+pumpkin-world.workspace = true
+futures = { workspace = true, features = ["executor"] }
 inventory.workspace = true
+tokio = { workspace = true, features = ["rt"] }
 tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

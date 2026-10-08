@@ -1,14 +1,16 @@
 //! Example native mod. It registers `/hello`, which answers with the mod id.
 
-use ironpumpkin_mods::{ModInit, NativeMod, register_mod};
-use pumpkin_core::command::{
-    argument_builder::{ArgumentBuilder, command},
-    context::command_context::CommandContext,
-    node::{CommandExecutor, CommandExecutorResult},
-};
-use pumpkin_util::{
+use ironpumpkin_mods::{
+    ModInit, NativeMod,
+    command::{
+        argument_builder::{ArgumentBuilder, command},
+        context::command_context::CommandContext,
+        node::{CommandExecutor, CommandExecutorResult},
+    },
     permission::{Permission, PermissionDefault},
-    text::TextComponent,
+    pumpkin_data::translation::java::CHAT_SQUARE_BRACKETS,
+    register_mod,
+    text::{TextComponent, translate_cross},
 };
 
 const ID: &str = "hello-mod";
@@ -48,9 +50,14 @@ struct HelloExecutor;
 
 impl CommandExecutor for HelloExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        context
-            .source
-            .send_feedback(TextComponent::text(format!("Hello from {ID}")), false);
+        context.source.send_feedback(
+            translate_cross!(
+                CHAT_SQUARE_BRACKETS,
+                CHAT_SQUARE_BRACKETS,
+                TextComponent::text(format!("Hello from {ID}"))
+            ),
+            false,
+        );
         Ok(1)
     }
 }
