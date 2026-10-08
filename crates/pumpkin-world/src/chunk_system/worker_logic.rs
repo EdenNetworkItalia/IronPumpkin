@@ -60,6 +60,11 @@ fn load_proto_chunk(chunk: &crate::chunk::ChunkData, level: &Level) -> ProtoChun
 
 fn process_loaded_chunk(chunk: Arc<crate::chunk::ChunkData>, level: &Level) -> Chunk {
     let pos = ChunkPos::new(chunk.x, chunk.z);
+    if let Some(cache) = level.world_gen.load().global_structure_cache() {
+        for start in chunk.structure_starts() {
+            cache.add_saved_start(start);
+        }
+    }
     if chunk.status == ChunkStatus::Full {
         let needs_relight = needs_relighting(&chunk, level.lighting_config);
         if needs_relight {

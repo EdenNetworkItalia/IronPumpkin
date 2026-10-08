@@ -3,6 +3,7 @@ use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::item::{BedrockItem, BedrockItemVersion};
 use pumpkin_data::packet::CURRENT_MC_VERSION;
+use pumpkin_data::structures::StructureKeys;
 use pumpkin_protocol::bedrock::client::item_registry::{CItemRegistry, ItemData};
 use pumpkin_protocol::bedrock::client::level_event::{CLevelEvent, LevelEvent};
 use pumpkin_protocol::bedrock::client::{
@@ -11,6 +12,7 @@ use pumpkin_protocol::bedrock::client::{
 use pumpkin_protocol::bedrock::network_item::NetworkItemDescriptor;
 use pumpkin_protocol::codec::data_component::data_to_proto_sound;
 use pumpkin_world::generation::proto_chunk::GenerationCache;
+use pumpkin_world::generation::structure::start::StructureStart;
 use rayon::prelude::*;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, RwLock, Weak};
@@ -5529,6 +5531,36 @@ impl World {
             .level
             .light_engine
             .set_sky_light_level(&self.level, position, light_level);
+    }
+
+    /// The structure starts whose bounding box contains `pos`, as vanilla
+    /// `StructureManager.startsForStructure` and `BoundingBox.isInside` select them.
+    ///
+    /// Reads the references of the chunk that holds `pos` and the starts they point to.
+    /// Like [`Self::get_block_state`], it does not load chunks: an unloaded chunk at `pos`
+    /// gives no starts, and a start is found when its chunk is loaded or the generator
+    /// computed it in this run.
+    pub fn structure_starts_at(&self, pos: &BlockPos) -> Vec<StructureStart> {
+        let world_gen = self.level.world_gen.load();
+        let Some(cache) = world_gen.global_structure_cache() else {
+            return Vec::new();
+        };
+        let Some(references) = self
+            .level
+            .read_chunk_sync(&pos.chunk_position(), |chunk| chunk.structure_references())
+        else {
+            return Vec::new();
+        };
+        cache.structure_starts_at(pos, &references)
+    }
+
+    /// Whether a start of `structure` contains `pos`: vanilla
+    /// `StructureManager.getStructureAt(pos, structure).isValid()`. Reads loaded chunks only,
+    /// like [`Self::structure_starts_at`].
+    pub fn is_inside_structure(&self, pos: &BlockPos, structure: StructureKeys) -> bool {
+        self.structure_starts_at(pos)
+            .iter()
+            .any(|start| start.structure == structure)
     }
 
     pub fn get_biome(&self, position: &BlockPos) -> &'static Biome {

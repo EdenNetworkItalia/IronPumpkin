@@ -11,6 +11,8 @@ replaceables = "replaceables"
 convertable = "convertable"
 # NeoForge package name (`common.advancements.critereon`)
 critereon = "critereon"
+# Vanilla structure piece id of the stronghold straight corridor (`minecraft:shs`)
+shs = "shs"
 
 [default.extend-identifiers]
 # Vanilla method names

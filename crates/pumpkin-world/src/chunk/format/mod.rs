@@ -8,10 +8,13 @@ use std::{
 };
 
 use bytes::Bytes;
-use pumpkin_data::{Block, BlockStateId, chunk::ChunkStatus, fluid::Fluid};
+use pumpkin_data::{
+    Block, BlockStateId, chunk::ChunkStatus, fluid::Fluid, structures::StructureKeys,
+};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::resource_location::{FromResourceLocation, ResourceLocation, ToResourceLocation};
 use rustc_hash::FxHashMap;
+use tracing::{error, warn};
 
 use crate::{
     block::state_nbt::block_state_to_nbt,
@@ -20,7 +23,10 @@ use crate::{
         format::anvil::{SingleChunkDataSerializer, WORLD_DATA_VERSION},
         io::{Dirtiable, file_manager::PathFromLevelFolder},
     },
-    generation::section_coords,
+    generation::{
+        section_coords,
+        structure::start::{StructureStart, unpack_chunk_pos},
+    },
     level::LevelFolder,
     tick::{ScheduledTick, TickPriority, scheduler::ChunkTickScheduler},
 };
@@ -428,6 +434,10 @@ impl ChunkData {
             .or_else(|| root_tag.get_compound("BukkitValues"))
             .cloned()
             .unwrap_or_default();
+        let structures = root_tag
+            .get_compound("structures")
+            .cloned()
+            .unwrap_or_default();
 
         Ok(Self {
             section,
@@ -445,6 +455,7 @@ impl ChunkData {
             blending_data: None,
             inhabited_time: AtomicU64::new(root_tag.get_long("InhabitedTime").unwrap_or(0) as u64),
             custom_data: std::sync::Mutex::new(custom_data),
+            structures,
         })
     }
 
@@ -628,9 +639,62 @@ impl ChunkData {
         if !custom_data.is_empty() {
             root_compound.put_compound("PumpkinCustomData", custom_data.clone());
         }
+        if !self.structures.is_empty() {
+            root_compound.put_compound("structures", self.structures.clone());
+        }
 
         let nbt = pumpkin_nbt::Nbt::from(root_compound);
         nbt.write()
+    }
+
+    /// Vanilla `SerializableChunkData.unpackStructureStart`: the valid starts this chunk owns.
+    #[must_use]
+    pub fn structure_starts(&self) -> Vec<StructureStart> {
+        let Some(starts) = self.structures.get_compound("starts") else {
+            return Vec::new();
+        };
+        starts
+            .child_tags
+            .iter()
+            .filter_map(|(key, tag)| {
+                if StructureKeys::from_name(key).is_none() {
+                    error!("Unknown structure start: {key}");
+                    return None;
+                }
+                StructureStart::load_static_start(tag.extract_compound()?)
+            })
+            .collect()
+    }
+
+    /// Vanilla `SerializableChunkData.unpackStructureReferences`: the structure and start chunk
+    /// of every start whose bounding box reaches into this chunk.
+    #[must_use]
+    pub fn structure_references(&self) -> Vec<(StructureKeys, Vector2<i32>)> {
+        let Some(references) = self.structures.get_compound("References") else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for (key, tag) in &references.child_tags {
+            let Some(structure) = StructureKeys::from_name(key) else {
+                warn!(
+                    "Found reference to unknown structure '{key}' in chunk [{}, {}], discarding",
+                    self.x, self.z
+                );
+                continue;
+            };
+            for &packed in tag.extract_long_array().unwrap_or_default() {
+                let start = unpack_chunk_pos(packed);
+                if start.x.abs_diff(self.x).max(start.y.abs_diff(self.z)) > 8 {
+                    warn!(
+                        "Found invalid structure reference [ {key} @ [{}, {}] ] for chunk [{}, {}].",
+                        start.x, start.y, self.x, self.z
+                    );
+                    continue;
+                }
+                out.push((structure, start));
+            }
+        }
+        out
     }
 
     pub fn set_custom_data(&self, namespace: &str, key: &str, value: pumpkin_nbt::tag::NbtTag) {
@@ -1228,6 +1292,132 @@ mod tests {
             pumpkin_data::biome::Biome::from_name("the_void")
                 .unwrap()
                 .id
+        );
+    }
+
+    /// A small chunk with a `structures` tag in the layout of vanilla 26.3
+    /// `SerializableChunkData`: one village start with one piece, and references. Written by
+    /// hand, the repository has no region file from the vanilla server. The piece's extra
+    /// fields are not the real `PoolElementStructurePiece` layout: the test proves that the
+    /// box comes from `BB` and that fields Pumpkin does not read are kept on save.
+    fn vanilla_chunk_with_structures() -> pumpkin_nbt::Nbt {
+        use crate::generation::structure::start::pack_chunk_pos;
+
+        let mut pool_element = NbtCompound::new();
+        pool_element.put_string(
+            "element_type",
+            "minecraft:legacy_single_pool_element".into(),
+        );
+        pool_element.put_string(
+            "location",
+            "minecraft:village/plains/town_centers/plains_fountain_01".into(),
+        );
+        pool_element.put_string("projection", "rigid".into());
+        let mut piece = NbtCompound::new();
+        piece.put_string("id", "minecraft:jigsaw".into());
+        piece.put("BB", NbtTag::IntArray(vec![-31, 63, 17, -22, 72, 26]));
+        piece.put_int("O", 0);
+        piece.put_int("GD", 0);
+        piece.put_int("pos_x", -31);
+        piece.put_int("pos_y", 63);
+        piece.put_int("pos_z", 17);
+        piece.put_int("ground_level_delta", 1);
+        piece.put("pool_element", NbtTag::Compound(pool_element));
+        piece.put_string("rotation", "NONE".into());
+        piece.put_list("junctions", Vec::new());
+
+        let mut start = NbtCompound::new();
+        start.put_string("id", "minecraft:village_plains".into());
+        start.put_int("ChunkX", -2);
+        start.put_int("ChunkZ", 1);
+        start.put_int("references", 0);
+        start.put_list("Children", vec![NbtTag::Compound(piece)]);
+        let mut starts = NbtCompound::new();
+        starts.put("minecraft:village_plains", NbtTag::Compound(start));
+
+        let mut references = NbtCompound::new();
+        references.put(
+            "minecraft:village_plains",
+            NbtTag::LongArray(vec![pack_chunk_pos(-2, 1)]),
+        );
+        // Vanilla drops a reference more than 8 chunks away and an unknown structure.
+        references.put(
+            "minecraft:mineshaft",
+            NbtTag::LongArray(vec![pack_chunk_pos(-2, 1), pack_chunk_pos(20, 1)]),
+        );
+        references.put(
+            "othermod:tower",
+            NbtTag::LongArray(vec![pack_chunk_pos(-2, 1)]),
+        );
+
+        let mut structures = NbtCompound::new();
+        structures.put("starts", NbtTag::Compound(starts));
+        structures.put("References", NbtTag::Compound(references));
+
+        let mut root = NbtCompound::new();
+        root.put_int("DataVersion", 4903);
+        root.put_int("xPos", -2);
+        root.put_int("zPos", 1);
+        root.put_int("yPos", -4);
+        root.put_string("Status", "minecraft:full".to_string());
+        root.put_list("sections", Vec::new());
+        root.put("structures", NbtTag::Compound(structures));
+        pumpkin_nbt::Nbt::new(String::new(), root)
+    }
+
+    #[test]
+    fn vanilla_structures_tag_feeds_the_lookup_and_survives_a_save() {
+        use crate::chunk::ChunkData;
+        use crate::generation::structure::placement::GlobalStructureCache;
+        use pumpkin_data::structures::StructureKeys;
+        use pumpkin_util::math::{block_box::BlockBox, position::BlockPos, vector2::Vector2};
+
+        let bytes = vanilla_chunk_with_structures().write();
+        let chunk = ChunkData::from_bytes(&bytes, Vector2::new(-2, 1))
+            .expect("chunk with a structures tag parses");
+
+        let references = chunk.structure_references();
+        let mut structures: Vec<_> = references.iter().map(|(key, _)| *key).collect();
+        structures.sort_by_key(StructureKeys::to_name);
+        assert_eq!(
+            structures,
+            [StructureKeys::Mineshaft, StructureKeys::VillagePlains]
+        );
+        assert!(
+            references
+                .iter()
+                .all(|(_, start)| *start == Vector2::new(-2, 1))
+        );
+
+        let cache = GlobalStructureCache::new();
+        for start in chunk.structure_starts() {
+            cache.add_saved_start(start);
+        }
+        let found = cache.structure_starts_at(&BlockPos::new(-26, 70, 20), &references);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].structure, StructureKeys::VillagePlains);
+        assert_eq!(
+            found[0].bounding_box,
+            BlockBox::new(-43, 51, 5, -10, 84, 38)
+        );
+
+        // Saving writes the tag back as it was read, with the fields Pumpkin does not use.
+        let saved = ChunkData::from_bytes(
+            &chunk.to_bytes().expect("chunk serializes"),
+            Vector2::new(-2, 1),
+        )
+        .expect("saved chunk parses");
+        assert_eq!(saved.structures, chunk.structures);
+        assert_eq!(
+            saved
+                .structures
+                .get_compound("starts")
+                .and_then(|starts| starts.get_compound("minecraft:village_plains"))
+                .and_then(|start| start.get_list("Children"))
+                .and_then(|children| children.first())
+                .and_then(NbtTag::extract_compound)
+                .and_then(|piece| piece.get_int("ground_level_delta")),
+            Some(1)
         );
     }
 }

@@ -151,6 +151,145 @@ mod test {
         panic!("no bastion remnant start found in sampled nether complex regions");
     }
 
+    /// A village generated, saved and read back with an empty structure cache is still found
+    /// at its position, through the `structures` tag of the chunk data.
+    #[test]
+    fn structure_starts_survive_a_save_and_a_cleared_cache() {
+        use crate::chunk::ChunkData;
+        use crate::chunk::format::anvil::SingleChunkDataSerializer;
+        use crate::chunk_system::chunk_state::Chunk;
+        use crate::generation::structure::{
+            placement::GlobalStructureCache, start::pack_chunk_pos,
+        };
+        use pumpkin_config::lighting::LightingEngineConfig;
+        use pumpkin_data::structures::StructureKeys;
+        use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
+        use std::sync::Arc;
+
+        let seed = Seed(1_782_124_772_053_846_960);
+        let world_gen = get_world_gen(seed, Dimension::OVERWORLD, false, Vec::new(), String::new());
+        let WorldGenerator::Noise(generator) = &*world_gen else {
+            unreachable!()
+        };
+        // `/locate structure minecraft:village_plains` from 0 0 for this seed: the start chunk
+        // and the located position, which `find_nearest_structure_start` takes minutes to find
+        // in a debug build.
+        let chunk_pos = Vector2::new(36, -126);
+        let village_pos = BlockPos::new(583, 56, -2019);
+
+        let mut proto = ProtoChunk::new(chunk_pos.x, chunk_pos.y, &world_gen);
+        proto.step_to_biomes(generator);
+        proto.set_structure_starts(generator);
+        proto.set_structure_references(generator);
+        assert!(proto.has_structure(StructureKeys::VillagePlains));
+
+        let mut staged = Chunk::Proto(Box::new(proto));
+        staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+        let Chunk::Level(chunk_data) = staged else {
+            unreachable!()
+        };
+        let bytes = chunk_data.to_bytes().expect("chunk serializes");
+        let reloaded = ChunkData::from_bytes(&bytes, chunk_pos).expect("chunk parses");
+
+        let start = reloaded
+            .structures
+            .get_compound("starts")
+            .and_then(|starts| starts.get_compound("minecraft:village_plains"))
+            .expect("the village start is saved");
+        assert_eq!(start.get_string("id"), Some("minecraft:village_plains"));
+        assert_eq!(start.get_int("ChunkX"), Some(chunk_pos.x));
+        assert_eq!(start.get_int("ChunkZ"), Some(chunk_pos.y));
+        let first_piece = start
+            .get_list("Children")
+            .and_then(|children| children.first())
+            .and_then(pumpkin_nbt::tag::NbtTag::extract_compound)
+            .expect("the start has pieces");
+        assert_eq!(first_piece.get_string("id"), Some("minecraft:jigsaw"));
+        assert_eq!(first_piece.get_int_array("BB").map(<[i32]>::len), Some(6));
+        let own_reference = reloaded
+            .structures
+            .get_compound("References")
+            .and_then(|references| references.get("minecraft:village_plains"))
+            .and_then(pumpkin_nbt::tag::NbtTag::extract_long_array)
+            .expect("the chunk references its own start");
+        assert!(own_reference.contains(&pack_chunk_pos(chunk_pos.x, chunk_pos.y)));
+
+        // A new cache stands for a restarted server: only the chunk data knows the village.
+        let cache = GlobalStructureCache::new();
+        for start in reloaded.structure_starts() {
+            cache.add_saved_start(start);
+        }
+        let found = cache.structure_starts_at(&village_pos, &reloaded.structure_references());
+        assert!(
+            found
+                .iter()
+                .any(|start| start.structure == StructureKeys::VillagePlains
+                    && start.chunk_pos == chunk_pos),
+            "village at {village_pos:?} not found after reload: {found:?}"
+        );
+
+        // A chunk resumed past the structure stages keeps the tag it was read with.
+        let mut full = Arc::into_inner(chunk_data).expect("only owner");
+        full.status = pumpkin_data::chunk::ChunkStatus::Full;
+        let resumed = ProtoChunk::from_chunk_data(&full, &world_gen);
+        assert_eq!(resumed.structure_data(), full.structures);
+        assert_eq!(
+            full.structures, reloaded.structures,
+            "save and load keep the structures tag"
+        );
+    }
+
+    /// A chunk saved before the structure stages gets its starts and references in the tag
+    /// once generation resumes, instead of the empty tag it was saved with.
+    #[test]
+    fn structure_tag_is_rebuilt_for_a_chunk_saved_before_structure_stages() {
+        use crate::chunk_system::chunk_state::Chunk;
+        use crate::generation::structure::start::pack_chunk_pos;
+        use pumpkin_config::lighting::LightingEngineConfig;
+
+        let seed = Seed(1_782_124_772_053_846_960);
+        let world_gen = get_world_gen(seed, Dimension::OVERWORLD, false, Vec::new(), String::new());
+        let WorldGenerator::Noise(generator) = &*world_gen else {
+            unreachable!()
+        };
+        // The start chunk of the village from `structure_starts_survive_a_save_and_a_cleared_cache`.
+        let mut proto = ProtoChunk::new(36, -126, &world_gen);
+        proto.step_to_biomes(generator);
+        let mut staged = Chunk::Proto(Box::new(proto));
+        staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+        let Chunk::Level(at_biomes) = staged else {
+            unreachable!()
+        };
+        assert!(!at_biomes.structures.is_empty(), "the empty tag is written");
+
+        let mut resumed = ProtoChunk::from_chunk_data(&at_biomes, &world_gen);
+        assert_eq!(resumed.stage, StagedChunkEnum::Biomes);
+        resumed.set_structure_starts(generator);
+        resumed.set_structure_references(generator);
+        let mut staged = Chunk::Proto(Box::new(resumed));
+        staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+        let Chunk::Level(chunk_data) = staged else {
+            unreachable!()
+        };
+
+        assert!(
+            chunk_data
+                .structures
+                .get_compound("starts")
+                .is_some_and(|starts| starts.get_compound("minecraft:village_plains").is_some()),
+            "the village start is in the tag"
+        );
+        assert!(
+            chunk_data
+                .structures
+                .get_compound("References")
+                .and_then(|references| references.get("minecraft:village_plains"))
+                .and_then(pumpkin_nbt::tag::NbtTag::extract_long_array)
+                .is_some_and(|chunks| chunks.contains(&pack_chunk_pos(36, -126))),
+            "the village reference is in the tag"
+        );
+    }
+
     /// Verifies that structure references survive a partial-generation round trip.
     #[test]
     fn structure_references_are_rebuilt_when_resuming_generation() {

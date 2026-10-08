@@ -14,7 +14,7 @@ use pumpkin_util::random::xoroshiro128::XoroshiroSplitter;
 use pumpkin_util::random::{RandomImpl, get_large_feature_seed, legacy_rand::LegacyRand};
 use pumpkin_util::{
     HeightMap,
-    math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
+    math::{block_box::BlockBox, position::BlockPos, vector2::Vector2, vector3::Vector3},
     random::{RandomGenerator, get_decorator_seed, worldgen_random::WorldgenRandom},
 };
 use rustc_hash::FxHashMap;
@@ -46,6 +46,7 @@ use crate::generation::noise::{CHUNK_DIM, ChunkNoiseGenerator, LAVA_BLOCK, WATER
 use crate::generation::section_coords::section_to_block;
 use crate::generation::structure::lazily_generate_structure;
 use crate::generation::structure::placement::should_generate_structure;
+use crate::generation::structure::start::{self, StructureStart, pack_chunk_pos};
 use crate::generation::structure::structures::{
     StructureGeneratorContext, StructureInstance, create_chunk_random,
 };
@@ -57,7 +58,7 @@ use crate::{
     world::{BlockAccessor, WorldPortalExt},
 };
 use pumpkin_data::tag::get_tag_ids;
-use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 
 use crate::generation::structure::template::BlockPlacer;
 use crate::tick::{ScheduledTick, TickPriority};
@@ -136,6 +137,12 @@ pub struct ProtoChunk {
     pub flat_motion_blocking_height_map: [i16; CHUNK_AREA],
     pub flat_motion_blocking_no_leaves_height_map: [i16; CHUNK_AREA],
     structure_starts: FxHashMap<StructureKeys, StructureInstance>,
+    /// Start chunks of the structures that reach into this chunk, packed with
+    /// `pack_chunk_pos`, as vanilla `ChunkAccess.structureReferences` keeps them.
+    structure_references: FxHashMap<StructureKeys, Vec<i64>>,
+    /// The `structures` tag of the chunk data this chunk resumed from, kept when its starts
+    /// and references are not rebuilt so that saving does not drop them.
+    saved_structure_data: Option<NbtCompound>,
 
     height: u16,
     bottom_y: i8,
@@ -238,6 +245,8 @@ impl ProtoChunk {
             flat_motion_blocking_height_map: default_heightmap,
             flat_motion_blocking_no_leaves_height_map: default_heightmap,
             structure_starts: FxHashMap::default(),
+            structure_references: FxHashMap::default(),
+            saved_structure_data: None,
             height,
             bottom_y,
             generation_height,
@@ -369,17 +378,51 @@ impl ProtoChunk {
         if let super::generator::WorldGenerator::Noise(generator) = generator
             && (StagedChunkEnum::StructureStart..StagedChunkEnum::Features).contains(&saved_stage)
         {
-            // Structure starts and references are currently transient proto-chunk data.
-            // Rebuild them when resuming a partially generated chunk so structures that
-            // cross chunk boundaries are not truncated at the unload boundary.
+            // The saved `structures` tag holds no pieces to place, so rebuild the starts and
+            // references when resuming before features. Before the structure stages the tag is
+            // empty and generation fills it; past them, keep it so that saving does not drop it.
             proto_chunk.stage = StagedChunkEnum::Biomes;
             proto_chunk.set_structure_starts(generator);
             if saved_stage >= StagedChunkEnum::StructureReferences {
                 proto_chunk.set_structure_references(generator);
             }
             proto_chunk.stage = saved_stage;
+        } else if saved_stage >= StagedChunkEnum::StructureStart {
+            proto_chunk.saved_structure_data = Some(chunk_data.structures.clone());
         }
         proto_chunk
+    }
+
+    /// The vanilla `structures` tag of this chunk, as `SerializableChunkData.packStructureData`
+    /// builds it.
+    #[must_use]
+    pub fn structure_data(&self) -> NbtCompound {
+        if let Some(saved) = &self.saved_structure_data {
+            return saved.clone();
+        }
+        let chunk_pos = Vector2::new(self.x, self.z);
+        let mut starts = NbtCompound::new();
+        for (structure, instance) in &self.structure_starts {
+            if let StructureInstance::Start(position) = instance
+                && StructureStart::from_position(*structure, chunk_pos, position).is_some()
+            {
+                starts.put_compound(
+                    &format!("minecraft:{}", structure.to_name()),
+                    start::create_tag(*structure, chunk_pos, position),
+                );
+            }
+        }
+        let mut references = NbtCompound::new();
+        for (structure, chunks) in &self.structure_references {
+            references.put(
+                &format!("minecraft:{}", structure.to_name()),
+                NbtTag::LongArray(chunks.clone()),
+            );
+        }
+        let mut tag = NbtCompound::new();
+        tag.put_compound("starts", starts);
+        tag.put_compound("References", references);
+        tag
     }
 
     #[inline]
@@ -1437,6 +1480,7 @@ impl ProtoChunk {
             crate::generation::structure::height_sampler::NoiseHeightSampler::new(generator);
 
         let mut references = Vec::new();
+        let mut structure_references = Vec::new();
         // Constant across every chunk in the dimension, so hoist it out of the loop
         // and out of the (cached) structure-start computation below.
         // Matches vanilla WorldGenerationContext:
@@ -1551,6 +1595,21 @@ impl ProtoChunk {
                             {
                                 references.push((entry.structure, start_data.collector.clone()));
                             }
+                            // Vanilla `ChunkGenerator.createReferences` tests the adjusted box
+                            // of `StructureStart.getBoundingBox`.
+                            if let Some(start) = StructureStart::from_position(
+                                entry.structure,
+                                Vector2::new(candidate_chunk_x, candidate_chunk_z),
+                                &start_data,
+                            ) && start
+                                .bounding_box
+                                .intersects_raw_xz(start_x, start_z, end_x, end_z)
+                            {
+                                structure_references.push((
+                                    entry.structure,
+                                    pack_chunk_pos(candidate_chunk_x, candidate_chunk_z),
+                                ));
+                            }
                             break;
                         }
                     }
@@ -1562,6 +1621,12 @@ impl ProtoChunk {
             self.structure_starts
                 .entry(key)
                 .or_insert_with(|| StructureInstance::Reference(pos));
+        }
+        for (key, packed) in structure_references {
+            let chunks = self.structure_references.entry(key).or_default();
+            if !chunks.contains(&packed) {
+                chunks.push(packed);
+            }
         }
 
         self.stage = StagedChunkEnum::StructureReferences;
