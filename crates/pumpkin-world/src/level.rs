@@ -2,6 +2,7 @@ use crate::chunk::format::linear::LinearV2File;
 use crate::chunk::format::pump::PumpFile;
 use crate::chunk_system::{ChunkListener, ChunkLoading, GenerationSchedule, LevelChannel};
 use crate::generation::generator::WorldGenerator;
+use crate::generation::structure::start::StructureStart;
 use crate::lighting::DynamicLightEngine;
 use crate::{
     chunk::{
@@ -659,6 +660,47 @@ impl Level {
         f(&chunk)
     }
 
+    /// [`Self::get_or_fetch_chunk`] in its own task: a caller that drops the future mid-wait
+    /// would otherwise leak the chunk ticket of `fetch_chunk`.
+    async fn get_or_fetch_chunk_detached(self: &Arc<Self>, pos: Vector2<i32>) -> Option<SyncChunk> {
+        let level = self.clone();
+        tokio::spawn(async move { level.get_or_fetch_chunk(pos, Clone::clone).await })
+            .await
+            .inspect_err(|error| error!("Failed to fetch chunk {pos:?}: {error}"))
+            .ok()
+    }
+
+    /// The structure starts whose bounding box contains `pos`: vanilla
+    /// `StructureManager.startsForStructure` over every structure, filtered by
+    /// `BoundingBox.isInside` as `getStructureAt` does.
+    ///
+    /// Like vanilla `level.getChunk`, it loads or generates the chunk that holds `pos`, and the
+    /// chunk of each referenced start that this run has not read or computed. For commands and
+    /// one-off queries, not for tick or worldgen paths: the fetch path gives full chunks only,
+    /// where vanilla stops at `STRUCTURE_REFERENCES` and `STRUCTURE_STARTS`. So each of the
+    /// 1 + k fetches (k starts missing from the cache) loads or generates up to 121 chunks
+    /// (radius 5) to `Surface` or higher, and they unload about a second after the fetch.
+    pub async fn structure_starts_at(self: &Arc<Self>, pos: &BlockPos) -> Vec<StructureStart> {
+        let world_gen = self.world_gen.load_full();
+        let Some(cache) = world_gen.global_structure_cache() else {
+            return Vec::new();
+        };
+        let Some(chunk) = self.get_or_fetch_chunk_detached(pos.chunk_position()).await else {
+            return Vec::new();
+        };
+        let mut starts = Vec::new();
+        for (structure, chunk_pos) in chunk.structure_references() {
+            let mut start = cache.get_start_for_structure(structure, chunk_pos);
+            if start.is_none() {
+                // Loading the start chunk records its saved starts in the cache.
+                self.get_or_fetch_chunk_detached(chunk_pos).await;
+                start = cache.get_start_for_structure(structure, chunk_pos);
+            }
+            starts.extend(start.filter(|start| start.is_inside(pos)));
+        }
+        starts
+    }
+
     pub fn loaded_chunk_changes(&self) -> impl Iterator<Item = LoadedChunkChange> + '_ {
         std::iter::from_fn(|| self.loaded_chunk_changes.pop())
     }
@@ -1020,7 +1062,10 @@ impl Level {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chunk::format::anvil::SingleChunkDataSerializer;
+    use crate::chunk_system::chunk_state::StagedChunkEnum;
     use pumpkin_config::world::LevelConfig;
+    use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -1076,5 +1121,117 @@ mod tests {
 
         let end_level = Level::from_root_folder(&config, root.clone(), 0, Dimension::THE_END);
         assert_eq!(end_level.level_folder.dim_folder, root.join("DIM1"));
+    }
+
+    /// A saved Full chunk at `pos`, lit so that it loads without a relight, with `structures`
+    /// as its `structures` tag.
+    fn saved_chunk(
+        pos: Vector2<i32>,
+        structures: Option<NbtCompound>,
+    ) -> (Vector2<i32>, SyncChunk) {
+        let mut root = NbtCompound::new();
+        root.put_int("DataVersion", 4903);
+        root.put_int("xPos", pos.x);
+        root.put_int("zPos", pos.y);
+        root.put_int("yPos", -4);
+        root.put_string("Status", "minecraft:full".to_string());
+        root.put_bool("isLightOn", true);
+        root.put_list("sections", Vec::new());
+        if let Some(structures) = structures {
+            root.put("structures", NbtTag::Compound(structures));
+        }
+        let bytes = pumpkin_nbt::Nbt::new(String::new(), root).write();
+        let chunk = ChunkData::from_bytes(&bytes, pos).expect("saved chunk parses");
+        chunk.mark_dirty(true);
+        (pos, Arc::new(chunk))
+    }
+
+    /// A position whose chunk is saved but not loaded, inside a mineshaft that starts 8 chunks
+    /// away: the lookup loads the position chunk, misses the start in the cache and loads the
+    /// start chunk. Every chunk that the two fetches touch is saved as Full, so nothing is
+    /// generated, and the start chunk lies outside the radius of the position fetch.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn structure_starts_at_fetches_unloaded_chunks() {
+        use crate::generation::structure::start::pack_chunk_pos;
+        use pumpkin_data::structures::StructureKeys;
+
+        let pos = BlockPos::new(5, 20, 5);
+        let pos_chunk = pos.chunk_position();
+        let start_chunk = Vector2::new(8, 0);
+
+        let mut piece = NbtCompound::new();
+        piece.put_string("id", "minecraft:mineshaft_corridor".into());
+        piece.put("BB", NbtTag::IntArray(vec![2, 10, 2, 140, 30, 14]));
+        let mut start = NbtCompound::new();
+        start.put_string("id", "minecraft:mineshaft".into());
+        start.put_int("ChunkX", start_chunk.x);
+        start.put_int("ChunkZ", start_chunk.y);
+        start.put_list("Children", vec![NbtTag::Compound(piece)]);
+        let mut starts = NbtCompound::new();
+        starts.put("minecraft:mineshaft", NbtTag::Compound(start));
+        let mut references = NbtCompound::new();
+        references.put(
+            "minecraft:mineshaft",
+            NbtTag::LongArray(vec![pack_chunk_pos(start_chunk.x, start_chunk.y)]),
+        );
+        let mut start_structures = NbtCompound::new();
+        start_structures.put("starts", NbtTag::Compound(starts));
+        start_structures.put("References", NbtTag::Compound(references.clone()));
+        let mut pos_structures = NbtCompound::new();
+        pos_structures.put("References", NbtTag::Compound(references));
+
+        let radius = StagedChunkEnum::FULL_RADIUS;
+        let mut saved = Vec::new();
+        for x in pos_chunk.x - radius..=start_chunk.x + radius {
+            for z in pos_chunk.y - radius..=pos_chunk.y + radius {
+                let chunk = Vector2::new(x, z);
+                let structures = if chunk == pos_chunk {
+                    Some(pos_structures.clone())
+                } else if chunk == start_chunk {
+                    Some(start_structures.clone())
+                } else {
+                    None
+                };
+                saved.push(saved_chunk(chunk, structures));
+            }
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            temp_dir.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        level.write_chunks(saved).await;
+        assert_eq!(level.loaded_chunk_count(), 0);
+        let world_gen = level.world_gen.load_full();
+        let cache = world_gen
+            .global_structure_cache()
+            .expect("the noise generator has a structure cache");
+
+        level.get_or_fetch_chunk(pos_chunk, |_| ()).await;
+        assert!(
+            cache
+                .get_start_for_structure(StructureKeys::Mineshaft, start_chunk)
+                .is_none(),
+            "the position fetch alone recorded the start"
+        );
+        assert!(level.read_chunk_sync(&start_chunk, |_| ()).is_none());
+
+        let starts = level.structure_starts_at(&pos).await;
+        assert!(
+            starts
+                .iter()
+                .any(|start| start.structure == StructureKeys::Mineshaft
+                    && start.chunk_pos == start_chunk),
+            "no mineshaft at {pos:?}: {starts:?}"
+        );
+        assert!(
+            cache
+                .get_start_for_structure(StructureKeys::Mineshaft, start_chunk)
+                .is_some()
+        );
+        level.shutdown().await;
     }
 }

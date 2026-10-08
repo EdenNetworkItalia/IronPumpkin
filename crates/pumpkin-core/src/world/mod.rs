@@ -5536,29 +5536,20 @@ impl World {
     /// The structure starts whose bounding box contains `pos`, as vanilla
     /// `StructureManager.startsForStructure` and `BoundingBox.isInside` select them.
     ///
-    /// Reads the references of the chunk that holds `pos` and the starts they point to.
-    /// Like [`Self::get_block_state`], it does not load chunks: an unloaded chunk at `pos`
-    /// gives no starts, and a start is found when its chunk is loaded or the generator
-    /// computed it in this run.
-    pub fn structure_starts_at(&self, pos: &BlockPos) -> Vec<StructureStart> {
-        let world_gen = self.level.world_gen.load();
-        let Some(cache) = world_gen.global_structure_cache() else {
-            return Vec::new();
-        };
-        let Some(references) = self
-            .level
-            .read_chunk_sync(&pos.chunk_position(), |chunk| chunk.structure_references())
-        else {
-            return Vec::new();
-        };
-        cache.structure_starts_at(pos, &references)
+    /// Loads or generates the chunk that holds `pos` and the chunks of the starts it
+    /// references, like vanilla. For commands and one-off queries, not for tick or worldgen
+    /// paths: each fetch loads or generates up to 121 chunks, see [`Level::structure_starts_at`].
+    pub async fn structure_starts_at(&self, pos: &BlockPos) -> Vec<StructureStart> {
+        self.level.structure_starts_at(pos).await
     }
 
     /// Whether a start of `structure` contains `pos`: vanilla
-    /// `StructureManager.getStructureAt(pos, structure).isValid()`. Reads loaded chunks only,
-    /// like [`Self::structure_starts_at`].
-    pub fn is_inside_structure(&self, pos: &BlockPos, structure: StructureKeys) -> bool {
+    /// `StructureManager.getStructureAt(pos, structure).isValid()`. Loads chunks like
+    /// [`Self::structure_starts_at`]: for commands and one-off queries, not for tick or
+    /// worldgen paths.
+    pub async fn is_inside_structure(&self, pos: &BlockPos, structure: StructureKeys) -> bool {
         self.structure_starts_at(pos)
+            .await
             .iter()
             .any(|start| start.structure == structure)
     }
