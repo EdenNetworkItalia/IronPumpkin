@@ -142,7 +142,6 @@ jobs:
           version: 0.62.0
       - run: wit-bindgen rust crates/pumpkin-plugin-wit/v0.1
       - run: wit-bindgen rust crates/pumpkin-plugin-wit/v0.2
-      - run: wit-bindgen rust crates/pumpkin-plugin-wit/neo --world neo-plugin --generate-all
 
   test:
     name: Test (${{ matrix.name }})

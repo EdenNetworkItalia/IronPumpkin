@@ -1,0 +1,2 @@
+# Clientbound configuration payloads that IronPumpkin sends to a vanilla client.
+minecraft:brand

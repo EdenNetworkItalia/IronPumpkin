@@ -26,6 +26,7 @@ members = [
     "crates/pumpkin-world",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
+    "tools/pumpkin-neoforge-client",
 ]
 
 # [workspace.lints.rust]
