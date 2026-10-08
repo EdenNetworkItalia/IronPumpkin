@@ -2105,11 +2105,13 @@ Per mod: only mods with at least one mixin class (259 rows). Server mixins are t
 
 ## 9. Mixin targets by method
 
-This section sizes the three primitives of the native mod channel (build-time accessors, hook points and service seams) by the members of the mixin classes, not by the classes. Section 8 counts the mixin classes; this section reads every member of every mixin class and its target member.
+This section sizes the two primitives of the native mod channel (the NeoForge-shaped API and compile-time source patches) by the members of the mixin classes, not by the classes. Section 8 counts the mixin classes; this section reads every member of every mixin class and its target member.
 
 ### 9.1 Method
 
 The scanner is `tools/modpack-scan/mixin_scan.py` (its README gives the command). It reads the 414 jars of the folder and their Jar-in-Jar jars with `zipfile` and its own class file parser, and it does not load or run code from the jars. A class is a mixin class when it carries `@Mixin`. The scanner reads `RuntimeInvisibleAnnotations` and `RuntimeVisibleAnnotations` of the class, its fields and its methods, with all element values. The mixin configs are the JSON files at the root of a jar that have a `package` and a `mixins`, `client` or `server` list. 0 class files with the `@Mixin` descriptor did not parse.
+
+Read errors: 0 jars or entries were skipped because they are larger than the size limit or do not decompress.
 
 For each member the scanner records the annotation, the target class (from `value` and `targets` of `@Mixin`), the target member, the `@At` value and target, `cancellable`, and the mixin plugin class of the config. The target member comes from `method` of the injector (a selector with or without descriptor; overloads merge by name), from `value` of `@Accessor` and `@Invoker` or from the method name without the `get`, `set`, `is`, `call` or `invoke` prefix, and from the member name for `@Shadow` and `@Overwrite`. Names are Mojang names: NeoForge runs Mojang mappings in production.
 
@@ -2124,6 +2126,13 @@ Intent of a member:
 - **value**: a value modifier: `@Redirect`, `@WrapOperation`, `@ModifyArg`, `@ModifyArgs`, `@ModifyConstant`, `@ModifyExpressionValue`, `@ModifyVariable`, `@ModifyReturnValue`, `@ModifyReceiver`, `@WrapWithCondition`.
 - **overwrite**: `@Overwrite`, a whole-method override.
 - **accessor**: `@Accessor`, `@Invoker`, `@Shadow`.
+
+The analysis groups the intents in four classes: accessor (accessor), hook (pre, post, cancel), call site (mid, value) and override (overwrite). The classes describe what the mixin does. The two primitives of the native channel serve them as follows:
+
+- **accessor**: a source patch, or the NeoForge-shaped API when it exposes the field or method.
+- **hook**: a NeoForge event when one fires on that method, otherwise a source patch.
+- **call site**: a source patch.
+- **override**: a source patch.
 
 ### 9.2 Totals
 
@@ -2153,13 +2162,13 @@ Members in the scope by annotation: Inject 1096, Shadow 681, Accessor 304, Modif
 
 ### 9.3 Coverage curve
 
-A member is covered when the catalogue holds all its target members. A mod is covered when every one of its server-side members with a vanilla target is covered (157 mods). Mixins into NeoForge and into other mods are out of this count (section 9.6). Three catalogue orders:
+A set of target members covers a member when the set holds all target members of that member. It covers a mod when it covers every server-side member of the mod with a vanilla target (157 mods). Mixins into NeoForge and into other mods are out of this count (section 9.6). Three orders of the target members:
 
 - **by members**: target members ordered by the number of mixin members, highest first.
 - **by mods**: the order of the table in section 9.4.
-- **cheapest mod first**: at each step the catalogue adds all target members of the mod that needs the fewest new ones. This order gives the most mods for a catalogue size.
+- **cheapest mod first**: at each step the set adds all target members of the mod that needs the fewest new ones. This order covers the most mods for a number of target members.
 
-The first rows count all members. The last rows count the members that need a hook point or a service seam: accessors are left out, because build-time accessors come from code generation for any field or method and need no catalogue entry. A mod with accessor members only is covered at 0.
+The rows `all` count all members. The rows `not accessors` count the members of the hook, call site and override classes only. A mod with accessor members only is covered at 0 in those rows.
 
 Target members needed to cover a share of the members or of the 157 mods:
 
@@ -2171,16 +2180,16 @@ Target members needed to cover a share of the members or of the 157 mods:
 | all | by members | mods | 157 | 1302 | 1717 | 1848 | 1931 |
 | all | by mods | mods | 157 | 1302 | 1717 | 1848 | 1931 |
 | all | cheapest mod first | mods | 157 | 162 | 526 | 910 | 1931 |
-| hook and seam | by members | members | 1588 | 300 | 786 | 959 | 1120 |
-| hook and seam | by mods | members | 1588 | 301 | 786 | 959 | 1120 |
-| hook and seam | cheapest mod first | members | 1588 | 464 | 826 | 961 | 1120 |
-| hook and seam | by members | mods | 157 | 762 | 1014 | 1094 | 1120 |
-| hook and seam | by mods | mods | 157 | 763 | 1016 | 1094 | 1120 |
-| hook and seam | cheapest mod first | mods | 157 | 97 | 329 | 526 | 1120 |
+| not accessors | by members | members | 1588 | 300 | 786 | 959 | 1120 |
+| not accessors | by mods | members | 1588 | 301 | 786 | 959 | 1120 |
+| not accessors | cheapest mod first | members | 1588 | 464 | 826 | 961 | 1120 |
+| not accessors | by members | mods | 157 | 762 | 1014 | 1094 | 1120 |
+| not accessors | by mods | mods | 157 | 763 | 1016 | 1094 | 1120 |
+| not accessors | cheapest mod first | mods | 157 | 97 | 329 | 526 | 1120 |
 
 The 200 target members of the table in section 9.4 cover 700 of 2674 members (26%) and 17 of 157 mods (11%).
 
-With accessors left out, the same 200 target members cover 475 of 1588 hook and seam members (30%) and 33 of 157 mods (21%).
+With accessors left out, the same 200 target members cover 475 of 1588 members that are not accessors (30%) and 33 of 157 mods (21%).
 
 By class: the vanilla classes ordered by members, highest first, cover 50%, 80%, 90% and 100% of the members with 42, 179, 291, 519 classes.
 
@@ -2543,11 +2552,11 @@ Long tail: 1731 more target members in 511 classes, with 1974 members. The class
 
 The other 366 classes of the long tail have one mod each (735 members). By package (classes, members, mods): `world.level` 133/272/46, `world.entity` 75/131/31, `server` 35/63/15, `world.item` 33/59/23, `com` 4/32/1, `core` 11/29/7, `world.phys` 6/29/1, `network` 9/26/7, `util` 9/14/5, `world.inventory` 8/11/4, `data` 6/8/5, `nbt` 4/8/2, `advancements` 6/7/3, `resources` 4/7/4, `tags` 3/6/3, `gametest` 3/5/2, `world.damagesource` 3/5/2, `stats` 2/4/1, `SystemReport` 1/3/1, `world.food` 1/3/1, `commands` 2/2/2, `world.CompoundContainer` 1/2/1, `world.Containers` 1/2/1, `world.RandomizableContainer` 1/2/1, `world.effect` 2/2/2, `ChatFormatting` 1/1/1, `recipebook` 1/1/1, `world.Container` 1/1/1.
 
-### 9.5 Primitives per target member
+### 9.5 Intent classes per target member
 
-For each target member of section 9.4: the members that each primitive satisfies, and the strongest primitive the member needs. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow` (a build-time accessor). **Hook**: pre, post and cancel (a hook point at the start or the end of the method). **Call site**: value modifiers and mid-method injections (a hook point at an identified call site, field access or constant inside the method); **Sites** is the number of distinct `@At` points. **Override**: `@Overwrite` (a whole-method override, a service seam). **Needs** is the strongest primitive in the order accessor, hook, call site, override.
+For each target member of section 9.4: the members in each intent class (section 9.1), and the strongest class. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow`; a source patch serves it, or the NeoForge-shaped API when it exposes the field or method. **Hook**: pre, post and cancel, at the start or the end of the method; a NeoForge event serves it when one fires on that method, otherwise a source patch. **Call site**: value modifiers and mid-method injections, at an identified call, field access or constant inside the method; a source patch serves it. **Sites** is the number of distinct `@At` points. **Override**: `@Overwrite`, a whole-method override; a source patch serves it. **Strongest** is the strongest class of the members of the target member, in the order accessor, hook, call site, override. A target member whose strongest class is call site or override needs a source patch.
 
-| # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Needs |
+| # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Strongest |
 |--:|:--|--:|--:|--:|--:|--:|--:|:--|
 | 1 | `world.item.crafting.RecipeManager.apply` | 11 | 0 | 11 | 6 | 4 | 0 | call site |
 | 2 | `world.entity.LivingEntity.travel` | 9 | 0 | 1 | 9 | 7 | 0 | call site |
@@ -2750,13 +2759,13 @@ For each target member of section 9.4: the members that each primitive satisfies
 | 199 | `world.entity.Entity.playerTouch` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
 | 200 | `world.entity.Entity.remove` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
 
-Strongest primitive over the 200 target members: accessor 58, hook 56, call site 85, override 1.
+Strongest class over the 200 target members: accessor 58, hook 56, call site 85, override 1.
 
 Call-site points over all target members: 554 distinct points (target member, `@At` value and target); 520 of them have one member.
 
-#### Service candidates
+#### Classes that mods replace
 
-A class is a service candidate when mods replace its logic instead of hooking it: the named classes of the native channel decision, and every other class in the scope whose members are mostly `@Overwrite` or `@Redirect` (half or more of its members that are not accessors, with at least 2 mods). Columns: mods (all members), accessor members, members that are not accessors, `@Overwrite`, `@Redirect`, `@WrapOperation`, the share of `@Overwrite` and `@Redirect`, and the most targeted members.
+These are the classes whose logic mods replace instead of hooking it: the classes that #51 lists, and every other class in the scope whose members are mostly `@Overwrite` or `@Redirect` (half or more of its members that are not accessors, with at least 2 mods). Their members become a source patch, or a NeoForge API row where the inventory has one. Columns: mods (all members), accessor members, members that are not accessors, `@Overwrite`, `@Redirect`, `@WrapOperation`, the share of `@Overwrite` and `@Redirect`, and the most targeted members.
 
 | Class | Mods | Accessors | Members | Overwrite | Redirect | WrapOperation | Share | Top members |
 |:--|--:|--:|--:|--:|--:|--:|--:|:--|
@@ -2818,14 +2827,14 @@ The 25 most targeted classes of other mods, by mods, then by members:
 
 ### 9.7 Findings
 
-- **Demand is flat.** The most targeted member, `RecipeManager.apply`, has 11 mods. 16 target members have 5 or more mods (section 9.4). 2674 members in 157 mods target 1931 members of 519 vanilla classes. The 200 most targeted members cover 26% of the members and 11% of the mods, and 21% of the mods when build-time accessors are free (section 9.3). A catalogue of hand-written hook points sized by demand does not port the pack: with the best order, half of the mods need 97 hook and seam target members, 80% need 329, and all mods need 1120.
-- **Accessors are the largest primitive.** 1086 of the 2674 members (41%) are `@Shadow`, `@Accessor` or `@Invoker`. Build-time accessors that code generation makes for every field and method of a vanilla class cover them, with no catalogue entry.
-- **Most hooks sit at the start or the end of a method.** Of the 1588 hook and seam members, 1042 (66%) act at the start or the end of the target method: pre 157, post 282, cancel at `HEAD` 331, cancel at `RETURN` or `TAIL` 144, `@WrapMethod` 26, `@ModifyReturnValue` 102. A hook point at entry and exit, with cancel and a replaceable return value, covers them. When code generation makes it for every method, it needs no catalogue entry either.
-- **Call-site hooks are the real catalogue cost.** 525 hook and seam members (33%) act inside the method body: value modifiers other than `@ModifyReturnValue` 343, mid-method injections 123, cancellable injections at an inner point 59. Each needs a hook point at an identified call, field access, constant or local variable in the server source. The points seldom repeat: 520 of the 554 distinct call-site points have one member (section 9.5).
-- **Whole-method overrides are rare.** 21 members (1%) are `@Overwrite`, 13 of them in the performance mods `modernfix` (10) and `ferritecore` (3). The named service candidates have no `@Overwrite` and at most one `@Redirect` each: `RecipeManager` has 25 members that are not accessors, with 0 `@Overwrite` and 1 `@Redirect`; `LootTable`, `LootPool` and `PotionBrewing` are mostly accessors; `BaseSpawner` has 4 hooks at inner points of `serverTick`. Hook points and accessors cover their members, so the mixin data alone does not ask for a replaceable service in these classes. The classes whose members are mostly `@Overwrite` or `@Redirect` (`ServerChunkCache`, `StateHolder`, `PalettedContainer`, `BlockBehaviour$BlockStateBase$Cache`, `Biome`) are engine internals that `servercore`, `ferritecore` and `modernfix` replace for speed. They have no counterpart in a Rust server. `Blocks` is the exception: `amendments`, `apothic_enchanting` and `apothic_spawners` redirect its static initializer to construct their own subclass in place of a vanilla block, and a registry override covers that.
-- **Mods hook other mods.** 881 members in 73 mods target 339 classes of 46 other mods: `create` 284 members, `ae2` 114, `kubejs` 94, `refinedstorage` 65, `ars_nouveau` 62, `mekanism` 58. These are addons of the target mod. The most targeted class of another mod has 4 mods (section 9.6). A ported mod with addons must export its own hook points and accessors, so the hook and accessor mechanism must be open to mod crates, not only to the server.
-- **Mixins add state.** 443 `@Unique` members (293 fields, 150 methods) in 61 mods add state or methods to vanilla classes. Data attachments and extension traits cover them, not hook points.
-- **Conditional mixins.** 33 mods in the scope name a mixin plugin in their config. A plugin can turn mixins on or off at run time, for example when another mod is present. The port of such a mod needs a build-time or start-time condition on its hooks.
+- **Demand is flat.** The most targeted member, `RecipeManager.apply`, has 11 mods. 16 target members have 5 or more mods (section 9.4). 2674 members in 157 mods target 1931 members of 519 vanilla classes. The 200 most targeted members cover 26% of the members and 11% of the mods, and 21% of the mods when accessors are left out (section 9.3). No small set of patched methods ports the pack: with the best order, half of the mods need 97 target members of members that are not accessors, 80% need 329, and all mods need 1120.
+- **Accessors are the largest intent class.** 1086 of the 2674 members (41%) are `@Shadow`, `@Accessor` or `@Invoker`. A source patch that opens the field or method serves them, or the NeoForge-shaped API when it exposes the field or method.
+- **Most hooks sit at the start or the end of a method.** Of the 1588 members that are not accessors, 1042 (66%) act at the start or the end of the target method: pre 157, post 282, cancel at `HEAD` 331, cancel at `RETURN` or `TAIL` 144, `@WrapMethod` 26, `@ModifyReturnValue` 102. A NeoForge event that fires at that point, with cancel and a replaceable result, serves such a member. Where no event fires, a source patch serves it.
+- **Call-site members need source patches.** 525 members that are not accessors (33%) act inside the method body: value modifiers other than `@ModifyReturnValue` 343, mid-method injections 123, cancellable injections at an inner point 59. Each needs a source patch at an identified call, field access, constant or local variable in the server source. The points seldom repeat: 520 of the 554 distinct call-site points have one member (section 9.5).
+- **Whole-method overrides are rare.** 21 members (1%) are `@Overwrite`, 13 of them in the performance mods `modernfix` (10) and `ferritecore` (3). The classes that #51 lists have no `@Overwrite` and at most one `@Redirect` each: `RecipeManager` has 25 members that are not accessors, with 0 `@Overwrite` and 1 `@Redirect`; `LootTable`, `LootPool` and `PotionBrewing` are mostly accessors; `BaseSpawner` has 4 hooks at inner points of `serverTick`. NeoForge events and source patches serve their members. The classes whose members are mostly `@Overwrite` or `@Redirect` (`ServerChunkCache`, `StateHolder`, `PalettedContainer`, `BlockBehaviour$BlockStateBase$Cache`, `Biome`) are engine internals that `servercore`, `ferritecore` and `modernfix` replace for speed. They have no counterpart in a Rust server. `Blocks` is the exception: `amendments`, `apothic_enchanting` and `apothic_spawners` redirect its static initializer to construct their own subclass in place of a vanilla block. Those members become a source patch, or a NeoForge API row where the inventory has one.
+- **Mods hook other mods.** 881 members in 73 mods target 339 classes of 46 other mods: `create` 284 members, `ae2` 114, `kubejs` 94, `refinedstorage` 65, `ars_nouveau` 62, `mekanism` 58. These are addons of the target mod. The most targeted class of another mod has 4 mods (section 9.6). A ported mod with addons fires its own events and exposes its own API to them. Source patches apply to the IronPumpkin tree only.
+- **Mixins add state.** 443 `@Unique` members (293 fields, 150 methods) in 61 mods add state or methods to vanilla classes. Data attachments and extension traits cover them.
+- **Conditional mixins.** 33 mods in the scope name a mixin plugin in their config. A plugin can turn mixins on or off at run time, for example when another mod is present. The port of such a mod needs a build-time or start-time condition on its event handlers and source patches.
 
 ## 10. What this means for 26.3
 

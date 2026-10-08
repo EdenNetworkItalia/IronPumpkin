@@ -16,23 +16,39 @@ The goal is a server that NeoForge clients can join and that runs NeoForge mods 
 
 ## How mods work
 
-A ported mod is a Rust crate. A modpack is a Cargo workspace that depends on IronPumpkin and links one
-crate per mod; the build produces one server binary with the mods baked in. There is no Java, no JVM
-and no mod loading at runtime: a mod runs in-process, like it did on NeoForge, at native speed.
+A ported mod is a Rust crate. A modpack is a Cargo workspace that depends on IronPumpkin and links
+one crate per mod; the build produces one server binary with the mods baked in. There is no Java,
+no JVM and no mod loading at runtime: a mod runs in-process, like it did on NeoForge, at native
+speed.
 
-- The planned `ironpumpkin-neo` crate gives mods the NeoForge names and structure: event bus, deferred
-  registers, capabilities, attachments, mod config and `neoforge.mods.toml` metadata. A port keeps the
-  structure of the Java mod and translates it to Rust class by class.
-- Mixins and reflection have no bytecode to patch in a Rust server. They map to three primitives:
-  accessors generated at build time, hook points on server methods with cancel and value modifiers,
-  and replaceable service seams for subsystems such as recipes, loot and spawning.
-- A modpack blueprint repository with a GitHub Action builds the binaries for each pack, so operators
-  and players download a binary and never compile.
-- Wasm plugins stay what Pumpkin offers today: sandboxed, hot-reloadable, for administration and
-  integrations.
+A mod gets two primitives, and nothing else:
 
-A mod linked into the server binary is a derivative work of a GPLv3 program and must use a
-GPLv3-compatible licence. The planned `ironpumpkin-neo` API crate is MIT OR Apache-2.0.
+- **The NeoForge-shaped API.** The planned `ironpumpkin-neo` crate gives mods the shape a NeoForge
+  mod sees, with the NeoForge names: event bus, deferred registers, capabilities, attachments, mod
+  config, network payloads, loot modifiers, data maps and `neoforge.mods.toml` metadata. A port
+  keeps the structure of the Java mod and translates it to Rust class by class. A hook point for a
+  mod is a NeoForge event: there are no IronPumpkin-only hooks.
+- **Source patches.** Mixins, reflection and access transformers have no bytecode to patch in a
+  Rust server. What a mod did with them, and no NeoForge event does, becomes a patch to the
+  IronPumpkin source. The mod crate ships `patches/<name>.patch` with a justification file
+  `patches/<name>.md` and names the IronPumpkin commit in `[package.metadata.ironpumpkin] commit`.
+  The modpack build applies the patches of every mod with `git apply` (no fuzz, no three-way
+  merge), in the byte order of the `modpack.toml` keys, before it compiles. A patch for another
+  commit fails the build unless `modpack.toml` sets `allow-drift = true`; a conflict between two
+  mods, or a patch that touches generated files or `Cargo.lock`, always fails it.
+
+A patch is accepted in a mod only with a justification file next to it that says what the patch
+does, why a NeoForge event or API is not enough, and that the patch is bound to the IronPumpkin
+commit it names. Every accepted patch is a candidate NeoForge-shaped event for a later version, so
+the API grows from real patches.
+
+A modpack blueprint repository with a GitHub Action applies the patches and builds the binaries
+for each pack, so operators and players download a binary and never compile. Wasm plugins stay
+what Pumpkin offers today: sandboxed, hot-reloadable, for administration and integrations.
+
+A mod linked into the server binary and a source patch are derivative works of a GPLv3 program, and
+a mod must use a GPLv3-compatible licence. The planned `ironpumpkin-neo` API crate is MIT OR
+Apache-2.0.
 
 ## Relationship with Pumpkin
 
@@ -52,7 +68,7 @@ Work is tracked as [milestones](https://github.com/EdenNetworkItalia/IronPumpkin
 - [x] **NeoForge-aware networking.** The server recognises NeoForge clients, negotiates channels and
   exposes the configuration phase to plugins.
 - [ ] **M1: Native mod channel.** The server as a library crate, mod registration, the modpack
-  blueprint with its GitHub Action, the hook macro, build-time accessors and service seams.
+  blueprint with its GitHub Action, and source patches that the pack build applies.
 - [ ] **M2: Content registry.** Native mods add blocks, items and entity types that survive a world
   round trip.
 - [ ] **M3: NeoForge handshake and registry sync.** A NeoForge client with a test mod joins and sees

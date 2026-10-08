@@ -33,7 +33,7 @@ Each item mirrors one GitHub issue on EdenNetworkItalia/IronPumpkin. Close the i
 - [x] 7.1 Read particleStatus in both client_information packets (#15); verify: decode and encode tests against vanilla `ClientInformation.write()` bytes
 - [x] 7.2 Stop the login sequence loop after a kick (#14); verify: a regression test or boot check with a buffered pong after a malformed `neoforge:register`
 - [x] 7.3 Decode the configuration brand as a length-prefixed string (#28); verify: a decode test from captured bytes fails without the fix
-- [ ] 7.4 Decode translate components with plain string arguments from NBT (#25, parked with `later`); verify: a regression test from the captured NeoForge disconnect reason
+- [ ] 7.4 Decode translate components with plain string arguments from NBT; verify: a regression test from the captured NeoForge disconnect reason
 - [ ] 7.5 Kick the old session on duplicate_login and drop closed configuration sessions at once (#26, parked with `later`); verify: boot test with two logins of the same name
 - [x] 7.6 Offline-mode UUIDs equal Java `nameUUIDFromBytes` (#27); verify: a test vector computed by Java
 

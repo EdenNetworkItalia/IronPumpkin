@@ -53,7 +53,7 @@ INTENT_PRIMITIVE = {
     "accessor": "accessor", "pre": "hook", "post": "hook", "cancel": "hook",
     "mid": "call site", "value": "call site", "overwrite": "override",
 }
-SERVICE_NAMED = (
+REPLACE_NAMED = (
     "net.minecraft.world.item.crafting.RecipeManager",
     "net.minecraft.world.level.storage.loot.LootTable",
     "net.minecraft.world.level.storage.loot.LootPool",
@@ -486,8 +486,10 @@ def side_kind(cls, own, owners, mod_of):
 SIDE_RANK = {"server": 0, "common": 1, "client": 2}
 
 
-def members_of(mod, jar, cont, configs_outer, declared, owners, mod_of, jar_index):
-    """Yield one row per mixin member, target and injection point."""
+def members_of(mod, jar, cont, configs_outer, declared, owners, mod_of, jar_index, class_out):
+    """Yield one row per mixin member, target and injection point.
+
+    Appends (mod, config side, declared, target kinds) of each mixin class to class_out."""
     listed = collections.defaultdict(list)
     for cfg in configs_outer:
         for side_key, side in (("mixins", "common"), ("client", "client"), ("server", "server")):
@@ -502,6 +504,8 @@ def members_of(mod, jar, cont, configs_outer, declared, owners, mod_of, jar_inde
             undeclared, side, cfg = True, "unlisted", None
         mixin_anno = next(a for a in cls["annotations"] if a[0] == MIXIN_DESC)
         targets = target_classes(mixin_anno)
+        class_out.append((mod, side, not undeclared,
+                          tuple(side_kind(t, jar_index, owners, mod_of)[0] for t in targets)))
         for kind, mname, mdesc, annos in cls["members"]:
             for desc, el in annos:
                 if not desc.startswith(ANNOTATION_PACKAGES):
@@ -631,7 +635,7 @@ def coverage(order, members, member_mod, all_mods):
 
 
 def greedy_mod_order(members, member_mod, base_order):
-    """Catalogue order that adds, at each step, the mod that needs the fewest new methods."""
+    """Order of target members that adds, at each step, the mod that needs the fewest new methods."""
     mod_keys = collections.defaultdict(set)
     for mid, ks in members.items():
         mod_keys[member_mod[mid]].update(ks)
@@ -683,8 +687,8 @@ def report(rows, n_mods, stats):
     classes = {k[0] for k in per_key}
 
     w("## 9. Mixin targets by method\n")
-    w("This section sizes the three primitives of the native mod channel (build-time accessors, "
-      "hook points and service seams) by the members of the mixin classes, not by the classes. "
+    w("This section sizes the two primitives of the native mod channel (the NeoForge-shaped API "
+      "and compile-time source patches) by the members of the mixin classes, not by the classes. "
       "Section 8 counts the mixin classes; this section reads every member of every mixin class "
       "and its target member.\n")
     w("### 9.1 Method\n")
@@ -724,6 +728,14 @@ def report(rows, n_mods, stats):
       "`@ModifyReceiver`, `@WrapWithCondition`.\n"
       "- **overwrite**: `@Overwrite`, a whole-method override.\n"
       "- **accessor**: `@Accessor`, `@Invoker`, `@Shadow`.\n")
+    w("The analysis groups the intents in four classes: accessor (accessor), hook (pre, post, "
+      "cancel), call site (mid, value) and override (overwrite). The classes describe what the "
+      "mixin does. The two primitives of the native channel serve them as follows:\n")
+    w("- **accessor**: a source patch, or the NeoForge-shaped API when it exposes the field or "
+      "method.\n"
+      "- **hook**: a NeoForge event when one fires on that method, otherwise a source patch.\n"
+      "- **call site**: a source patch.\n"
+      "- **override**: a source patch.\n")
 
     w("### 9.2 Totals\n")
     w("| Measure | Value |\n|:--|--:|")
@@ -741,11 +753,17 @@ def report(rows, n_mods, stats):
     w("")
     fabric_cfg = {c for c in undeclared_cfg if "fabric" in c[1].lower()}
     fabric_left = {member_id(r) for r in rows if (r[1], r[3]) in fabric_cfg and member_id(r) in undeclared}
-    w("A config that the jar does not declare does not load through the jar metadata. %d of the %d "
+    # Section 8 counts a mixin class as server-side when its config does not list it as client.
+    class_mods = {c[0] for c in stats["mixin_classes"] if c[1] != "client" and "vanilla" in c[3]}
+    w("The mixins section counts %d mods with a common or server mixin class into vanilla server "
+      "code; this scope counts %d, because the other %d mods have only mixin classes with no "
+      "members in the scope or mixin classes in configs that the jar does not declare. A config "
+      "that the jar does not declare does not load through the jar metadata. %d of the %d "
       "have `fabric` in the file name: Fabric configs that multi-loader jars carry, some with Fabric "
       "intermediary names (`net.minecraft.class_1309`). %d of the %d members left out are in them. "
       "A mixin plugin or mod code can still add a config at run time; the scan does not follow "
-      "code.\n" % (len(fabric_cfg), len(undeclared_cfg), len(fabric_left), len(undeclared)))
+      "code.\n" % (len(class_mods), len(srv_mods), len(class_mods) - len(srv_mods), len(fabric_cfg),
+                   len(undeclared_cfg), len(fabric_left), len(undeclared)))
     w("Members of common or server mixin classes of declared configs by target kind (`@Unique` left out): %s.\n" % ", ".join(
         "%s %d" % (k, target_kinds[k]) for k in ("vanilla", "vanilla-client", "neoforge", "other", "own",
                                                   "unknown", "none") if target_kinds[k]))
@@ -769,24 +787,24 @@ def report(rows, n_mods, stats):
     hooks = {mid: ks for mid, ks in members.items() if member_intent[mid] != "accessor"}
     hook_count = collections.Counter(k for ks in hooks.values() for k in ks)
     hook_keys = sorted(hook_count, key=lambda k: (-hook_count[k], -len(per_key[k]["mods"]), key_label(k)))
-    w("A member is covered when the catalogue holds all its target members. A mod is covered when "
-      "every one of its server-side members with a vanilla target is covered (%d mods). Mixins "
-      "into NeoForge and into other mods are out of this count (section 9.6). Three catalogue "
-      "orders:\n" % n_cov_mods)
+    w("A set of target members covers a member when the set holds all target members of that "
+      "member. It covers a mod when it covers every server-side member of the mod with a vanilla "
+      "target (%d mods). Mixins into NeoForge and into other mods are out of this count (section "
+      "9.6). Three orders of the target members:\n" % n_cov_mods)
     w("- **by members**: target members ordered by the number of mixin members, highest first.\n"
       "- **by mods**: the order of the table in section 9.4.\n"
-      "- **cheapest mod first**: at each step the catalogue adds all target members of the mod "
-      "that needs the fewest new ones. This order gives the most mods for a catalogue size.\n")
-    w("The first rows count all members. The last rows count the members that need a "
-      "hook point or a service seam: accessors are left out, because build-time accessors come "
-      "from code generation for any field or method and need no catalogue entry. A mod with "
-      "accessor members only is covered at 0.\n")
+      "- **cheapest mod first**: at each step the set adds all target members of the mod that "
+      "needs the fewest new ones. This order covers the most mods for a number of target "
+      "members.\n")
+    w("The rows `all` count all members. The rows `not accessors` count the members of the hook, "
+      "call site and override classes only. A mod with accessor members only is covered at 0 in "
+      "those rows.\n")
     w("Target members needed to cover a share of the members or of the %d mods:\n" % n_cov_mods)
     w("| Members counted | Order | Covers | Total | 50% | 80% | 90% | 100% |")
     w("|:--|:--|:--|--:|--:|--:|--:|--:|")
     hook_by_mods = sorted(hook_count, key=lambda k: keys.index(k))
     for label, subset, order, table_order in (("all", members, by_members, keys),
-                                              ("hook and seam", hooks, hook_keys, hook_by_mods)):
+                                              ("not accessors", hooks, hook_keys, hook_by_mods)):
         runs = (("by members", coverage(order, subset, member_mod, srv_mods)),
                 ("by mods", coverage(table_order, subset, member_mod, srv_mods)),
                 ("cheapest mod first", coverage(greedy_mod_order(subset, member_mod, order), subset,
@@ -808,7 +826,8 @@ def report(rows, n_mods, stats):
     hook_mod_cov = {m: True for m in srv_mods}
     for mid, ks in hooks.items():
         hook_mod_cov[member_mod[mid]] &= ks <= top_set
-    w("With accessors left out, the same %d target members cover %d of %d hook and seam members "
+    w("With accessors left out, the same %d target members cover %d of %d members that are not "
+      "accessors "
       "(%s) and %d of %d mods (%s).\n" % (
           TOP_METHODS, hook_cover, len(hooks), pct(hook_cover, len(hooks)), sum(hook_mod_cov.values()),
           n_cov_mods, pct(sum(hook_mod_cov.values()), n_cov_mods)))
@@ -873,16 +892,19 @@ def report(rows, n_mods, stats):
           ", ".join("`%s` %d/%d/%d" % (g, v[0], v[1], len(v[2])) for g, v in
                     sorted(pkg.items(), key=lambda gv: (-gv[1][1], gv[0])))))
 
-    w("### 9.5 Primitives per target member\n")
-    w("For each target member of section 9.4: the members that each primitive satisfies, and the "
-      "strongest primitive the member needs. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow` (a "
-      "build-time accessor). **Hook**: pre, post and cancel (a hook point at the start or the end "
-      "of the method). **Call site**: value modifiers and mid-method injections (a hook point at "
-      "an identified call site, field access or constant inside the method); **Sites** is the "
-      "number of distinct `@At` points. **Override**: `@Overwrite` (a whole-method override, a "
-      "service seam). **Needs** is the strongest primitive in the order accessor, hook, call "
-      "site, override.\n")
-    w("| # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Needs |")
+    w("### 9.5 Intent classes per target member\n")
+    w("For each target member of section 9.4: the members in each intent class (section 9.1), and "
+      "the strongest class. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow`; a source patch serves "
+      "it, or the NeoForge-shaped API when it exposes the field or method. **Hook**: pre, post and "
+      "cancel, at the start or the end of the method; a NeoForge event serves it when one fires on "
+      "that method, otherwise a source patch. **Call site**: value modifiers and mid-method "
+      "injections, at an identified call, field access or constant inside the method; a source "
+      "patch serves it. **Sites** is the number of distinct `@At` points. **Override**: "
+      "`@Overwrite`, a whole-method override; a source patch serves it. **Strongest** is the "
+      "strongest class of the members of the target member, in the order accessor, hook, call "
+      "site, override. A target member whose strongest class is call site or override needs a "
+      "source patch.\n")
+    w("| # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Strongest |")
     w("|--:|:--|--:|--:|--:|--:|--:|--:|:--|")
     need_count = collections.Counter()
     for i, k in enumerate(keys[:TOP_METHODS], 1):
@@ -896,7 +918,7 @@ def report(rows, n_mods, stats):
             i, esc(key_label(k)), len(d["mods"]), prim["accessor"], prim["hook"], prim["call site"],
             len(d["sites"]), prim["override"], need))
     w("")
-    w("Strongest primitive over the %d target members: %s.\n" % (
+    w("Strongest class over the %d target members: %s.\n" % (
         TOP_METHODS, ", ".join("%s %d" % (p, need_count[p]) for p in PRIMITIVE_RANK)))
     site_members = collections.defaultdict(set)
     for r in srv:
@@ -906,12 +928,13 @@ def report(rows, n_mods, stats):
       "target); %d of them have one member.\n" % (
           len(site_members), sum(1 for v in site_members.values() if len(v) == 1)))
 
-    w("#### Service candidates\n")
-    w("A class is a service candidate when mods replace its logic instead of hooking it: the "
-      "named classes of the native channel decision, and every other class in the scope whose "
-      "members are mostly `@Overwrite` or `@Redirect` (half or more of its members that are "
-      "not accessors, with at least 2 mods). Columns: mods (all members), accessor members, "
-      "members that are not accessors, `@Overwrite`, `@Redirect`, `@WrapOperation`, the share of `@Overwrite` and `@Redirect`, "
+    w("#### Classes that mods replace\n")
+    w("These are the classes whose logic mods replace instead of hooking it: the classes that #51 "
+      "lists, and every other class in the scope whose members are mostly `@Overwrite` or "
+      "`@Redirect` (half or more of its members that are not accessors, with at least 2 mods). "
+      "Their members become a source patch, or a NeoForge API row where the inventory has one. "
+      "Columns: mods (all members), accessor members, members that are not accessors, "
+      "`@Overwrite`, `@Redirect`, `@WrapOperation`, the share of `@Overwrite` and `@Redirect`, "
       "and the most targeted members.\n")
     cls_stats = collections.defaultdict(lambda: {"mods": set(), "members": set(), "anno": collections.Counter(),
                                                  "keys": collections.Counter(), "accessors": 0})
@@ -933,7 +956,7 @@ def report(rows, n_mods, stats):
     for cls, c in cls_stats.items():
         n = len(c["members"])
         share = (c["anno"]["Overwrite"] + c["anno"]["Redirect"]) / n if n else 0.0
-        if cls in SERVICE_NAMED or (share >= 0.5 and len(c["mods"]) >= 2):
+        if cls in REPLACE_NAMED or (share >= 0.5 and len(c["mods"]) >= 2):
             cands.append((cls, share))
     w("| Class | Mods | Accessors | Members | Overwrite | Redirect | WrapOperation | Share | Top members |")
     w("|:--|--:|--:|--:|--:|--:|--:|--:|:--|")
@@ -944,7 +967,7 @@ def report(rows, n_mods, stats):
             c["anno"]["Redirect"], c["anno"]["WrapOperation"],
             pct(c["anno"]["Overwrite"] + c["anno"]["Redirect"], len(c["members"])) if c["members"] else "-",
             top_counts(c["keys"], 3) or "-"))
-    for cls in SERVICE_NAMED:
+    for cls in REPLACE_NAMED:
         if cls not in cls_stats:
             w("| `%s` | 0 | 0 | 0 | 0 | 0 | 0 | - | - |" % short(cls))
     w("")
@@ -1013,12 +1036,13 @@ def main(argv):
     dup = collections.Counter(mod_of)
     mod_of = [m if dup[m] == 1 else "%s (%s)" % (m, os.path.basename(j)) for m, j in zip(mod_of, jars)]
     rows = []
+    mixin_classes = []
     for i, (jar, conts) in enumerate(zip(jars, scans)):
         configs_outer = [cfg for c in conts for cfg in c["configs"]]
         declared = set().union(*(c["declared"] for c in conts))
         for c in conts:
             rows.extend(members_of(mod_of[i], os.path.basename(jar), c, configs_outer, declared,
-                                   owners, mod_of, i))
+                                   owners, mod_of, i, mixin_classes))
     rows = sorted(set(rows))
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "members.tsv"), "w", encoding="utf-8", newline="\n") as f:
@@ -1026,7 +1050,8 @@ def main(argv):
         for r in rows:
             f.write("\t".join(str(x).replace("\t", " ").replace("\n", " ") for x in r) + "\n")
     with open(os.path.join(out_dir, "report.md"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(report(rows, len(jars), {"errors": errors, "read_errors": read_errors}))
+        f.write(report(rows, len(jars), {"errors": errors, "read_errors": read_errors,
+                                                 "mixin_classes": mixin_classes}))
     return 0
 
 

@@ -103,7 +103,7 @@ Native listeners and Wasm listeners of one event SHALL run in one dispatch, in o
 - **THEN** the native listener gets the event canceled, and the entity takes no damage
 
 ### Requirement: One event pipeline
-A world mutation that a player or an entity causes through the API of a mod (an `ironpumpkin-neo` function, a hook listener, or a v0.2 import of a Wasm mod), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a listener cancels one, and SHALL reach v0.2 plugins and mods alike. Status: planned (tasks 2.4, 2.18, 3.4 and 3.18).
+A world mutation that a player or an entity causes through the API of a mod (an `ironpumpkin-neo` function, called from a listener or from other mod code, or a v0.2 import of a Wasm mod), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a listener cancels one, and SHALL reach v0.2 plugins and mods alike. Status: planned (tasks 2.4, 2.18, 3.4 and 3.18).
 
 #### Scenario: Every mutator is listed
 - **WHEN** a reviewer reads the `level-access` docs

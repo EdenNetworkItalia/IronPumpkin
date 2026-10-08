@@ -4,11 +4,12 @@
 
 The project goal is to make porting a NeoForge mod to IronPumpkin a guided translation. Today a port has no NeoForge-shaped API to target: events, registries, capabilities, config and metadata all have different names and shapes in Pumpkin, and some do not exist. The API must be designed against the whole NeoForge 26.3.x surface, not grown behind the first ported mod, so that every mod author knows in advance what is supported, planned, client-only or never supported.
 
-Ported mods also need what NeoForge mods get from mixins and reflection: per-entity and per-tick code inside vanilla logic. The reference modpack (FTB StoneBlock 4, `modpack-usage.md`) ships 3508 mixin classes in 259 of 414 mods, and its most targeted vanilla classes are `Entity` (43 mods), `LivingEntity` (42), `Player` (30) and `ItemStack` (23). A Wasm call cannot carry that load: each hook into a Wasm plugin is a cross-task round trip through the per-plugin `StoreExecutor` (`crates/pumpkin-plugin-runtime/src/executor.rs`, started from `crates/pumpkin-wasm-host-common/src/concurrent_store.rs`), and every world that calls the same plugin waits on that one executor.
+Ported mods also need what NeoForge mods get from mixins, reflection and access transformers: per-entity and per-tick code inside vanilla logic. The reference modpack (FTB StoneBlock 4, `modpack-usage.md`) ships 3508 mixin classes in 259 of 414 mods, and its most targeted vanilla classes are `Entity` (43 mods), `LivingEntity` (42), `Player` (30) and `ItemStack` (23). A Wasm call cannot carry that load: each hook into a Wasm plugin is a cross-task round trip through the per-plugin `StoreExecutor` (`crates/pumpkin-plugin-runtime/src/executor.rs`, started from `crates/pumpkin-wasm-host-common/src/concurrent_store.rs`), and every world that calls the same plugin waits on that one executor.
 
 Decisions, recorded in the pinned "Orchestration status" issue (#29):
 
 - Ported NeoForge mods are native Rust crates compiled into the server binary at build time (the xcaddy model). A modpack is a Cargo workspace that links the server library and one crate per mod; CI builds one binary per pack. Java mods also ran in-process with no sandbox, so the trust model does not change.
+- A mod gets two primitives: the NeoForge-shaped API, and source patches to the server that the mod carries and the modpack build applies before it compiles. There is no hook catalogue, no generated accessor API and no service-seam API of IronPumpkin's own. The method-level mixin scan (#51) shows flat demand: 2674 server-side mixin members from 157 mods hit 1931 distinct target members, and the 200 most targeted ones cover 26% of the members and 11% of the mods.
 - Wasm stays for plugins: sandbox, hot reload and coarse services. A Wasm API for mods is future work: a projection generated from the native API, kept where a Wasm call per use is cheap enough.
 - Loading real Java mod jars is out of scope. An embedded JVM and a NeoForge sidecar are rejected: a mod jar needs the whole `net.minecraft` Java API surface, which Pumpkin does not have, and the owner dropped the Java feasibility work on 2026-10-08.
 
@@ -16,31 +17,31 @@ Phase goal: a native Rust crate `ironpumpkin-neo` (MIT OR Apache-2.0) with the N
 
 ## What Changes
 
-- The native channel, which is the target. `crates/pumpkin` becomes a library with a thin binary, and `ironpumpkin-mods` (#52) collects the mods linked into a pack binary at build time. `ironpumpkin-neo` is the native API with the NeoForge names. Three primitives replace mixins and reflection: build-time accessors, hook points through a `#[hook]` attribute macro, and service seams (replaceable and decorable trait objects, like `BlockBehaviour` and `ItemBehaviour` in `crates/pumpkin-core`). Attachments hold the state that mixins add with `@Unique`. A blueprint repository with a GitHub Action produces the binaries per pack. design.md, section "Native channel", has the build model, the primitives, the performance rules, the API shape rules and the licence consequence.
-- The Wasm projection, which is secondary and future work. A generator derives a WIT package and its host adapter from `ironpumpkin-neo`, so the two never drift. The projection keeps what a Wasm call per use can carry: registration, lifecycle, config, network, capability lookups, menus, shapes, attachments, loot modifiers, data maps and the events; per-entity and per-tick events reach Wasm plugins only in batches. Hook points, accessors and fine-grained service seams are native only. It has no issue yet.
+- The native channel, which is the target. `crates/pumpkin` becomes a library with a thin binary, and `ironpumpkin-mods` (#52) collects the mods linked into a pack binary at build time. `ironpumpkin-neo` is the native API with the NeoForge names, and its surface is the NeoForge public API of the inventory and nothing more: a hook point for a mod is a NeoForge event. What a NeoForge mod does with a mixin, reflection or an access transformer becomes a source patch: a mod crate ships `patches/<name>.patch` files with a justification file each and the IronPumpkin commit they are written for, and the modpack build applies them strictly, in the byte order of the `modpack.toml` keys (the crate package names), before it compiles. Attachments hold the state that mixins add with `@Unique`. A blueprint repository with a GitHub Action applies the patches and produces the binaries per pack. design.md, section "Native channel", has the build model, the two primitives, the patch contract and its governance, the coverage of the reference modpack, the API shape rules and the licence consequence.
+- The Wasm projection, which is secondary and future work. A generator derives a WIT package and its host adapter from `ironpumpkin-neo`, so the two never drift. The projection keeps what a Wasm call per use can carry: registration, lifecycle, config, network, capability lookups, menus, shapes, attachments, loot modifiers, data maps and the events; per-entity and per-tick events reach Wasm plugins only in batches. Source patches are native only. It has no issue yet.
 - One event dispatch for everything: every world mutation through the API fires the Pumpkin event of the vanilla action, so v0.2 plugins and native mods see and can cancel each other's actions, and a Wasm listener of the projection joins the same dispatch.
 - An inventory of the NeoForge 26.3.x API surface, generated from the sources, with a side and a status for every row (design.md, #34). It is the contract of this phase.
-- An inventory of what the reference modpack uses (`modpack-usage.md`, #46). It sets the order of the work. A method-level scan of the mixin targets (#51) sizes the catalogue of hook points, accessors and service seams.
+- An inventory of what the reference modpack uses (`modpack-usage.md`, #46). It sets the order of the work. A method-level scan of the mixin targets (#51) measures how many mixin members a NeoForge event covers and how many need a source patch.
 - A mapping table (`mapping-table.md`, NeoForge class -> counterpart and status) where each supported row gets a test and each unsupported row an explicit reason.
 
 What changes for each existing artifact:
 
 | Artifact | Change |
 |:--|:--|
-| `mapping-table.md` | Stays the contract source: the inventory of rows, counterparts and verdicts. The counterpart column names the API item in interface notation (`registration.deferred-register.register`); the `ironpumpkin-neo` item has the same name in Rust case. The verdicts of the gaps that the native channel closes change from out of scope to a plan: mixins, access transformers, world generation and the world generation registry types. |
-| `modpack-usage.md` | Stays the usage inventory. Its mixin section sizes the three primitives; #51 adds the mixin targets by method. |
+| `mapping-table.md` | Stays the contract source: the inventory of rows, counterparts and verdicts. The counterpart column names the API item in interface notation (`registration.deferred-register.register`); the `ironpumpkin-neo` item has the same name in Rust case. The verdicts of the gaps that the native channel closes are a plan: mixins, reflection and access transformers become source patches; world generation and the world generation registry types go through the NeoForge-shaped API. |
+| `modpack-usage.md` | Stays the usage inventory. Its mixin sections count the mixin classes and the mixin targets by method (#51). |
 | WIT package `crates/pumpkin-plugin-wit/neo` | Removed. The Wasm projection is generated from `ironpumpkin-neo` when its work starts. |
 | `pumpkin-wasm-host-neo` | Removed. The generated host adapter of the Wasm projection takes its place. |
-| Delta specs | They name API items in interface notation and describe `ironpumpkin-neo`. The new spec `neoforge-native-channel` holds the build model, the primitives, the performance rules, the API shape and the licence. The event bus spec states the two event constraints for native mods and for the Wasm projection. |
+| Delta specs | They name API items in interface notation and describe `ironpumpkin-neo`. The new spec `neoforge-native-channel` holds the build model, the API surface, the patch contract and its governance, the API shape and the licence. The event bus spec states the two event constraints for native mods and for the Wasm projection. |
 | `tasks.md` | Section 2 is the native channel; section 3 is the Wasm projection, and each of its tasks depends on its native task. |
 
-Out of scope: loading Java mod jars, client-side content (models, textures, screens, key mappings), client mixins, and mixins that change data structures or data formats. Block entities, mod menu types, attachment storage and data maps are implemented in the modded gameplay parity phase; this phase defines their API.
+Out of scope: loading Java mod jars, client-side content (models, textures, screens, key mappings), client mixins, and mixins that change generated data (the tables under `crates/pumpkin-data/src/generated`); a mixin that changes a packet field or the save format becomes a source patch. Block entities, mod menu types, attachment storage and data maps are implemented in the modded gameplay parity phase; this phase defines their API.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `neoforge-native-channel`: native mods compiled into the server binary, their registration, the three primitives that replace mixins and reflection, the performance rules, the API shape rules and the licence of linked mods.
+- `neoforge-native-channel`: native mods compiled into the server binary, their registration, the two primitives (the NeoForge-shaped API and compile-time source patches), the patch contract and its governance, the API shape rules and the licence of linked mods and patches.
 
 One delta spec per interface of `ironpumpkin-neo`:
 
@@ -62,15 +63,15 @@ None.
 
 ## Impact
 
-- `crates/pumpkin` gets a library entry point; `src/main.rs` calls it (#52). New crates: `ironpumpkin-mods` (mod registration, #52) and `ironpumpkin-neo` (the native API) with its macro crate for `#[hook]` and the accessors, all MIT OR Apache-2.0, with no code copied from the GPL server crates or from NeoForge (LGPL-2.1).
-- Hook points, accessors and service seams touch upstream Pumpkin code. Each hook point is one attribute on an upstream function, the accessors are generated into one module per owning crate, and each service seam replaces one direct call with a call through a trait object. The catalogue grows only on demand, so `git merge upstream/master` stays cheap.
-- A native mod linked into a pack binary is a derivative work of the GPL-3.0 server and must have a GPL-3.0-compatible licence. Wasm plugins have no such constraint.
+- `crates/pumpkin` gets a library entry point; `src/main.rs` calls it (#52). New crates: `ironpumpkin-mods` (mod registration, #52) and `ironpumpkin-neo` (the native API) with its macro crate, all MIT OR Apache-2.0, with no code copied from the GPL server crates or from NeoForge (LGPL-2.1).
+- The internal hooks that fire NeoForge events touch upstream Pumpkin code in bounded modules. Source patches live in the mods and are bound to one IronPumpkin commit, so `git merge upstream/master` stays cheap for the server, and the mod author writes a patch again after an update.
+- A native mod linked into a pack binary is a derivative work of the GPL-3.0 server and must have a GPL-3.0-compatible licence; a source patch is a derivative work in the same way. Wasm plugins have no such constraint.
 - The v0.2 WIT and `pumpkin-wasm-host-v0_2` do not change. The future Wasm projection reuses the v0.2 types for players, entities, levels and item stacks.
 - Depends on the dynamic content registry phase for registration, and on the NeoForge handshake and registry sync phase for config sync and for NeoForge clients that see the ported content.
 
 ## Verification
 
 - Port one small NeoForge mod end to end as a native crate in an example modpack workspace.
-- The bench of the `#[hook]` task gives the cost of one hook point with no listener, with a native listener and with a call into a Wasm plugin through the v0.2 executor.
+- The blueprint build applies a valid patch and builds, and fails with a message on drift (the mod, the patch and both commits), on a conflict (the mods and the file) and on a patch that touches a generated file or `Cargo.lock` (the mod, the patch and the file).
 - The mapping table: every row has a test or an explicit "unsupported".
 - `openspec validate --all` passes.

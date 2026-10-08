@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Defines how ported NeoForge mods run as native Rust crates compiled into the server binary of a modpack, against the API crate `ironpumpkin-neo`: the build model, the names, the three primitives that replace mixins and reflection, the performance rules, the API shape and the licence of linked mods.
+Defines how ported NeoForge mods run as native Rust crates compiled into the server binary of a modpack, with two primitives: the NeoForge-shaped API crate `ironpumpkin-neo`, and source patches that a mod carries and the modpack build applies before it compiles. It covers the build model, the names, the API surface, the patch contract and its governance, the API shape and the licence of linked mods and patches.
 
 ## ADDED Requirements
 
 ### Requirement: Mods linked at build time
-`crates/pumpkin` SHALL expose a library entry point, and a modpack SHALL be a Cargo workspace whose bin crate depends on the `pumpkin` library and on one crate per mod. Each mod SHALL register itself at link time, and the server SHALL call each registered mod once, in mod id order, in the startup content phase before the first world loads. Status: planned (task 2.1.1).
+`crates/pumpkin` SHALL expose a library entry point, and a modpack SHALL be a Cargo workspace whose bin crate depends on the `pumpkin` library and on one crate per mod. Each mod SHALL register itself at link time, and the server SHALL call each registered mod once, in mod id order, in the startup content phase before the first world loads. Status: supported (task 2.1.1, landed with #52).
 
 #### Scenario: Example pack
 - **WHEN** the example modpack workspace links one mod crate and its binary starts
@@ -31,62 +31,81 @@ Code that NeoForge calls through a Java interface or lambda (listeners, provider
 - **WHEN** a mod registers a payload handler for a channel
 - **THEN** the host calls that handler for each payload of the channel
 
-### Requirement: Hook points
-A `#[hook]` attribute on a Pumpkin function SHALL create a hook point with a stable id and a typed context. A pre listener SHALL run at entry and SHALL be able to cancel or return a value where the hook point allows it, a post listener SHALL run at return and SHALL be able to change the return value, and a value point inside the function SHALL let a listener change the value of one expression. Each hook point SHALL name the vanilla 26.3 method it mirrors. Status: planned (task 2.1.2).
+### Requirement: NeoForge public API and nothing more
+The surface of `ironpumpkin-neo` that mods see SHALL be the NeoForge public API of the inventory in design.md and nothing more: no hook, accessor or service seam of IronPumpkin's own. A hook point for a mod SHALL be a NeoForge event. Internal hooks that the host puts on Pumpkin methods to fire NeoForge events SHALL NOT be reachable from a mod. Status: planned (tasks 2.2 to 2.18).
 
-#### Scenario: Cancel at entry
-- **WHEN** a mod adds a pre listener to a cancellable hook point and cancels it
-- **THEN** the body of the function does not run and the function returns the value the listener set
+#### Scenario: No IronPumpkin-only hook
+- **WHEN** a reviewer checks the public items of `ironpumpkin-neo`
+- **THEN** each item mirrors a NeoForge class, member or event of the inventory, and no item names a Pumpkin function as a hook point
 
-#### Scenario: Change a return value
-- **WHEN** a mod adds a post listener that doubles the return value of a hook point
-- **THEN** the caller of the function gets the doubled value
+### Requirement: The API grows from patches
+An event that the NeoForge inventory does not have SHALL enter `ironpumpkin-neo` only in the NeoForge shape, only to replace an accepted source patch, and with a row in the inventory. Status: planned (tasks 2.2 to 2.18).
 
-### Requirement: No-listener fast path
-A hook point with no listener SHALL cost one atomic check and no call, and SHALL build no context. Status: planned (task 2.1.2).
+#### Scenario: A new event comes from a patch
+- **WHEN** a maintainer adds an event that the inventory does not have
+- **THEN** the event has the NeoForge shape, its doc comment names the accepted patch it replaces, and the inventory has its row
 
-#### Scenario: Bench
-- **WHEN** the bench of task 2.1.2 runs one hook point with no listener, with a native listener and with a call into a Wasm plugin
-- **THEN** the run with no listener is within the noise of the same function without `#[hook]`, and the issue records the three costs
+### Requirement: Event fire sites with no listener
+A fire site of a NeoForge event in the server SHALL cost one atomic check and no call when the event has no listener, and SHALL build no event object. Status: planned (task 2.3).
 
-### Requirement: Batched hot hooks
-Hot hook points and events (entity tick, item tick and the other per-object points of one tick phase) SHALL be delivered once per tick phase with the batch of objects, not once per object, and a pre listener SHALL cancel single entries of the batch. Status: planned (tasks 2.1.2 and 2.15).
+#### Scenario: Server without listeners
+- **WHEN** the server runs with no mod that listens to the living hurt event, and an entity takes damage
+- **THEN** the damage code builds no event object and calls no dispatch
 
-#### Scenario: Entity tick
-- **WHEN** a mod listens to the entity tick of one entity type and 500 entities of that type tick
-- **THEN** the listener runs once per tick with the 500 entities, and an entity it cancels does not tick
+### Requirement: Source patches declared by the mod
+A mod crate that needs a change to the server SHALL ship it as `patches/<name>.patch` files against the IronPumpkin source tree (unified diff, paths from the repository root) and SHALL declare the IronPumpkin commit that the patches are written for in `[package.metadata.ironpumpkin] commit` of its `Cargo.toml`. Status: planned (task 2.1.2).
 
-### Requirement: Filters evaluated at registration
-A listener registered with a filter (entity type, block id, damage type) SHALL be indexed by the host under its filter key at registration, and the host SHALL NOT call it for an object outside its filter. Status: planned (task 2.1.2).
+#### Scenario: Patch without commit
+- **WHEN** a mod ships a patch and its `Cargo.toml` has no `[package.metadata.ironpumpkin] commit`
+- **THEN** the modpack build fails before it compiles, and the message names the mod and the patch
 
-#### Scenario: Entity type filter
-- **WHEN** a mod listens to the living hurt hook with the filter `minecraft:zombie` and a skeleton takes damage
-- **THEN** the listener does not run
+### Requirement: Mixins become source patches
+A mixin, a use of reflection or an access transformer of the Java mod SHALL be ported as a NeoForge event listener or API call when the inventory has one that does the same, and as a source patch otherwise. Status: planned (task 2.1.2).
 
-### Requirement: Build-time accessors
-A member of a Pumpkin type that a mod needs and that the API does not expose SHALL be reachable through an accessor (getter, setter or invoker) generated at build time from the accessor catalogue, in safe Rust, into one generated module of the crate that owns the type, and re-exported by `ironpumpkin-neo` under the vanilla name. Status: planned (task 2.1.3).
+#### Scenario: Mixin into a method that fires an event
+- **WHEN** a Java mod cancels `LivingEntity.hurt` with a mixin at its head
+- **THEN** the port listens to `living-incoming-damage-event` and cancels it, and ships no patch for it
 
-#### Scenario: Private field
-- **WHEN** the catalogue has an entry for a private field of a Pumpkin entity type and a mod calls its getter and setter
-- **THEN** the mod reads and changes the field, and the generated code has no `unsafe`
+### Requirement: Patch application
+The modpack build SHALL check out IronPumpkin at the commit that `modpack.toml` pins, SHALL apply the patches of every mod in the order of the keys of `modpack.toml`, which are the crate package names, in byte order, then by file name, with `git apply` and no fuzz, no whitespace leniency and no three-way merge. It SHALL fail the build on a patch that does not apply, and on a patch written for another commit unless the pack allows drift. Status: planned (task 2.1.2).
 
-### Requirement: Service seams
-A service (recipes, loot, spawner, world generation, explosion, enchantment, brewing, tags, reload) SHALL be a trait that the server holds as a trait object with Pumpkin's code as the default implementation. A mod SHALL be able to decorate a service, which wraps the current implementation in mod id order, or replace it; a second replacement of one service SHALL stop the startup with an error that names both mods. Status: planned (task 2.1.4).
+#### Scenario: A valid patch builds
+- **WHEN** a pack pins commit C and lists a mod whose patch is written for C, applies cleanly and has its justification file
+- **THEN** the build applies the patch, compiles the server with the mod, and the binary boots with the changed code
 
-#### Scenario: Decorate the loot service
-- **WHEN** a mod decorates the loot service to add one item to every chest loot roll
-- **THEN** a chest loot roll returns the vanilla items and the added item
+#### Scenario: Order of the mods
+- **WHEN** a pack lists the mod crates `hello_mod` and `hello-mod`, and both ship a patch
+- **THEN** the patch of `hello-mod` applies first, because `-` comes before `_` in byte order
 
-#### Scenario: Two replacements
-- **WHEN** two mods replace the recipe service
-- **THEN** the server does not start, and the error names both mods
+#### Scenario: A patch for another commit
+- **WHEN** a pack pins commit C, does not set `allow-drift`, and lists a mod whose `[package.metadata.ironpumpkin] commit` is D
+- **THEN** the build fails before it compiles, and the message names the mod, the patch, commit D and commit C
 
-### Requirement: Wasm service seams are coarse
-A service seam implemented in Wasm SHALL be allowed only for a service that runs per reload, per command or per world load, and data formats (loot tables, recipes as JSON, tags) SHALL be preferred to any hook. Status: planned (task 2.1.4).
+#### Scenario: Drift allowed
+- **WHEN** the same pack sets `allow-drift = true` under `[ironpumpkin]` in `modpack.toml`, and the patch written for D applies cleanly on C
+- **THEN** the build prints a warning that names the mod, the patch and both commits, applies the patch and builds
 
-#### Scenario: Per-tick service
-- **WHEN** a Wasm plugin tries to implement a service that runs per tick or per object
-- **THEN** the registration fails with an error that names the service
+#### Scenario: Two mods change the same hunk
+- **WHEN** mod `a` and mod `b` both ship a patch that changes the same lines of one file
+- **THEN** the patch of `a` applies, the build fails on the patch of `b`, and the message names both mods and the file
+
+### Requirement: Patch limits
+A source patch SHALL change the server source only. The modpack build SHALL reject a patch that touches a file under `crates/pumpkin-data/src/generated` or a `Cargo.lock`, and SHALL NOT apply it. Status: planned (task 2.1.2).
+
+#### Scenario: A patch touches a generated file
+- **WHEN** a mod ships a patch that changes `crates/pumpkin-data/src/generated/block.rs`
+- **THEN** the build fails, and the message names the mod, the patch and the file
+
+#### Scenario: A patch touches Cargo.lock
+- **WHEN** a mod ships a patch that changes `Cargo.lock`
+- **THEN** the build fails, and the message names the mod, the patch and the file
+
+### Requirement: Patch justification
+A source patch SHALL be accepted in a mod only with a justification file `patches/<name>.md` next to it that says what the patch does, why a NeoForge event or API is not enough, and that the patch is bound to the IronPumpkin commit it names. Every accepted patch SHALL be a candidate NeoForge-shaped event for a later version of `ironpumpkin-neo`. Status: planned (task 2.1.2).
+
+#### Scenario: Missing justification
+- **WHEN** a mod ships `patches/fall-damage.patch` and no `patches/fall-damage.md`
+- **THEN** the build fails before it applies the patch, and the message names the mod and the patch
 
 ### Requirement: Mixin state as attachments
 State that a NeoForge mod adds to a vanilla class through `@Unique` fields SHALL be ported as an attachment of the entity, block entity, chunk or level (spec `neoforge-attachments`), not as a field of a Pumpkin type. Status: planned (task 2.14).
@@ -96,7 +115,7 @@ State that a NeoForge mod adds to a vanilla class through `@Unique` fields SHALL
 - **THEN** the port stores it in an attachment of the player, and it survives a save and load when the attachment type is serializable
 
 ### Requirement: API shape
-Public types of `ironpumpkin-neo` on the mod boundary SHALL NOT be generic and SHALL have shapes that can be `repr(C)`: no generic types or methods, no `impl Trait` in signatures and no stored closure types. Listener, hook and service traits SHALL be synchronous; async work SHALL stay on the host side or behind a synchronous call or a completion callback. Status: planned (task 2.1.1).
+Public types of `ironpumpkin-neo` on the mod boundary SHALL NOT be generic and SHALL have shapes that can be `repr(C)`: no generic types or methods, no `impl Trait` in signatures and no stored closure types. Listener and callback traits SHALL be synchronous; async work SHALL stay on the host side or behind a synchronous call or a completion callback. Status: planned (task 2.1.1).
 
 #### Scenario: Precompiled mods stay possible
 - **WHEN** a reviewer checks the public items of `ironpumpkin-neo` on the mod boundary
@@ -110,15 +129,8 @@ Public types of `ironpumpkin-neo` on the mod boundary SHALL NOT be generic and S
 - **THEN** only the host side changes, and an example mod builds unchanged against the same `ironpumpkin-neo` version
 
 ### Requirement: Licence of linked mods
-`ironpumpkin-neo`, its macro crate and `ironpumpkin-mods` SHALL be licensed MIT OR Apache-2.0 and SHALL contain no server or NeoForge source. A mod linked into a pack binary SHALL have a GPL-3.0-compatible licence, because the binary is a derivative work of the GPL-3.0 server. Wasm plugins SHALL have no such constraint. Status: planned (task 2.1.1).
+`ironpumpkin-neo`, its macro crate and `ironpumpkin-mods` SHALL be licensed MIT OR Apache-2.0 and SHALL contain no server or NeoForge source. A mod linked into a pack binary SHALL have a GPL-3.0-compatible licence, because the binary is a derivative work of the GPL-3.0 server, and a source patch SHALL be distributed under terms compatible with GPL-3.0 for the same reason. Wasm plugins SHALL have no such constraint. Status: planned (task 2.1.1).
 
 #### Scenario: Licence stated
 - **WHEN** a mod author reads the README of `ironpumpkin-neo` or of the blueprint repository
-- **THEN** it states that the API crate is MIT OR Apache-2.0 and that a mod linked into a pack binary must have a GPL-3.0-compatible licence
-
-### Requirement: Long-tail requests
-A hook point, accessor or service seam SHALL enter the catalogue only through a request that names the mixin it replaces (target class, method, injection point, intent) and the mod that needs it, and SHALL come with a test and the vanilla 26.3 source it mirrors. Status: planned (tasks 2.1.2, 2.1.3 and 2.1.4).
-
-#### Scenario: New hook point
-- **WHEN** a maintainer adds a hook point for a request
-- **THEN** the hook point names the request, the vanilla 26.3 method and its test
+- **THEN** it states that the API crate is MIT OR Apache-2.0, that a mod linked into a pack binary must have a GPL-3.0-compatible licence, and that a source patch is a derivative work of the server
