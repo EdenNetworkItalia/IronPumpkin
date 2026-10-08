@@ -1,6 +1,6 @@
 # FTB StoneBlock 4 usage of NeoForge and Minecraft classes
 
-This document lists the NeoForge, Minecraft and Mojang API that the 414 mods of the FTB StoneBlock 4 modpack reference, aggregated across mods. It is the second benchmark for the `ironpumpkin:neo` plugin API contract: the contract is checked against what a large pack needs, not against one mod. The single-mod scan of #35 is the first benchmark. The tracking issue is #46.
+This document lists the NeoForge, Minecraft and Mojang API that the 414 mods of the FTB StoneBlock 4 modpack reference, aggregated across mods. It is the second benchmark for the contract of the native API `ironpumpkin-neo`: the contract is checked against what a large pack needs, not against one mod. The single-mod scan of #35 is the first benchmark. The tracking issue is #46.
 
 Source: the Prism Launcher instance `FTB StoneBlock 4` (Minecraft 1.21.1, NeoForge 21.1.248), folder `.minecraft/mods`, 414 jars, 738 MB. The folder was only read. No jar was run, and no class was loaded: jars are read with `zipfile`, class files with a class file parser. The scan used bytecode only, as in #35. The sources of the mods were not read.
 
@@ -28,7 +28,9 @@ python3 -I $S/report.py /home/cappyt/Documenti/Repos/Pumpkin/openspec/changes/ne
 
 ```
 
-The coverage section reads `mapping-table.md` as it was at generation time: SHA-1 `206a846fe701`, 1299 rows. Section 10 therefore predates the rewrite of `mapping-table.md` for #49, which added the mods column, the gap verdicts and the WIT additions; the current coverage is in the Coverage table of `mapping-table.md`.
+The coverage section reads `mapping-table.md` as it was at generation time: SHA-1 `206a846fe701`, 1299 rows. Section 11 therefore predates the rewrite of `mapping-table.md` for #49, which added the mods column, the gap verdicts and the WIT additions; the current coverage is in the Coverage table of `mapping-table.md`.
+
+Section 9 comes from the scanner `tools/modpack-scan/mixin_scan.py` in this repository. It reads the same folder, and its README gives the command.
 
 The class file parser was checked against `javap -p -v` on 351 random classes of 60 random jars: 7320 member references, 0 differences, and the `@SubscribeEvent` counts match. The mod counts of eight NeoForge classes were checked against a raw byte search over all class files of all jars and nested jars: seven match exactly, `IEventBus` differs by one jar (376 against 377), `IItemHandler` by the prefix match of `IItemHandlerModifiable`. The scan has no `javap` pass over the whole pack: `javap` on 118,000 classes adds nothing that the constant pool does not give, and the parser needs 2 s for all jars. The NeoForge 26.3.x source tree was not needed: the universal jar of 26.3.0.52-beta gives the signatures.
 
@@ -51,8 +53,9 @@ The class file parser was checked against `javap -p -v` on 351 random classes of
 | Event handlers | 3666 `@SubscribeEvent` methods in 1617 classes plus 2565 `addListener` calls, for 305 distinct NeoForge or Minecraft event classes (section 5) |
 | Registrations through `DeferredRegister` | 10860 register call sites resolved to a registry in 210 mods (section 6) |
 | Mixins | 3508 `@Mixin` classes in 259 mods, 460 mixin config files (section 8) |
+| Mixin members | 9183 in all mixin classes. 2674 server-side members with a vanilla target, in 157 mods, into 1931 target members of 519 classes (section 9) |
 | Network payload types | 1120 classes implement `CustomPacketPayload` in 188 mods; 1215 `PayloadRegistrar` registration calls |
-| Not at the same name in 26.3, server side | NeoForge 88 of 644, Minecraft 885 of 2980 (section 9) |
+| Not at the same name in 26.3, server side | NeoForge 88 of 644, Minecraft 885 of 2980 (section 10) |
 
 The server contract is the set of classes that server-side or mixed mod classes reference: 644 NeoForge, 2980 Minecraft and 165 Mojang classes. Client-only and dev-only classes are not part of a server-side plugin API.
 
@@ -62,7 +65,7 @@ The server contract is the set of classes that server-side or mixed mod classes 
 - **Refs** is the number of mod class files that reference the API class and are server-side or mixed. A class file is one `.class` entry, so nested and anonymous classes count on their own.
 - **S/C/D/M** splits all refs by the side of the referencing mod class. A mod class is `D` (dev) when its package has a segment `datagen`, `gametest`, `test` or `tests`, or it references `net.minecraft.data`, `net.minecraft.gametest` or the NeoForge data classes. It is `C` (client) when the mod is client-only in its `mods.toml` (the `neoforge` and `minecraft` dependencies have `side = "CLIENT"`), or it carries `@OnlyIn(Dist.CLIENT)`, `@EventBusSubscriber(value = Dist.CLIENT)` or `@Mod(dist = Dist.CLIENT)`, or its package has a segment `client`. It is `M` (mixed) when it has no such marker but references client API (`net.minecraft.client`, `com.mojang.blaze3d`, `net.neoforged.neoforge.client`, LWJGL, JOML). `S` (server) is everything else. Mixed classes count as server-side in the **srv** columns, so the srv numbers are an upper bound: a common class with a client-only helper method is mixed. Method-level `@OnlyIn` is not tracked.
 - Sensitivity: if mixed classes are not counted as server-side, the server NeoForge classes fall from 644 to 632 and the server Minecraft classes from 2980 to 2931 (client API classes are never server-side here: `net.minecraft.client`, `blaze3d` and `neoforge.client` classes are removed from the srv columns whoever references them).
-- **26.3** is `same` when a class with this exact name exists in the 26.3 artifacts, `moved` when a class with the same simple name exists under another package (or the manual rename list of #35 applies), and `GONE` when neither exists. `client` means the class is in a client package that the 26.3 server artifacts do not hold, so it is not checked. Section 9 gives the method.
+- **26.3** is `same` when a class with this exact name exists in the 26.3 artifacts, `moved` when a class with the same simple name exists under another package (or the manual rename list of #35 applies), and `GONE` when neither exists. `client` means the class is in a client package that the 26.3 server artifacts do not hold, so it is not checked. Section 10 gives the method.
 - **Members n/u** is the number of distinct members of the class that server-side or mixed classes reference (owner, name and erased descriptor), and the number of them that do not resolve in 26.3. `same` does not mean the members are unchanged.
 - A **mod** is an outer jar. Nested jars count for the jar that carries them: a library that is shaded as Jar-in-Jar into 10 mods counts 10 times, once per carrying mod.
 
@@ -190,10 +193,10 @@ Minecraft families by package, the 40 with most server refs. 17 more families ha
 ### 1.5 Findings
 
 - **Core surface.** 8 NeoForge classes are used by 200 or more mods (`IEventBus`, `Mod`, `ModContainer`, `DeferredHolder`, `NeoForge`, `DeferredRegister`, `SubscribeEvent`, `ModList`) and 26 more by 100 to 199 mods. 281 server-side NeoForge classes are used by 8 or more mods (section 3 table), and 363 by fewer (long tail).
-- **Contract.** Of 1274 contract rows 1011 are needed by at least one mod, 669 by 10 or more and 348 by 50 or more (section 10.1). 405 of 414 mods need at least one gap or contract-only row. The gap rows of the NeoForge inventory alone hit 383 mods. If the rows that Rust std and the byte-level payload design cover (Java helpers, DataFixerUpper codecs, stream codecs) are left out, 397 mods still need a gap row.
-- **Largest gaps** (section 10.2): Java helpers (312 mods); Mixins (291 mods); DFU codecs (278 mods); Stream codecs and byte buffers (263 mods); Registries the host rejects (247 mods); Access transformers (183 mods); Container menus (176 mods); Block shapes (170 mods).
-- **Mixins.** 259 of 414 mods ship mixin classes (3508 mixin classes); 165 mods have at least one common or server mixin into vanilla server code. These mods cannot be ported by an API alone. 183 mods ship or declare an access transformer.
-- **26.3.** The 21.1 item, fluid and energy handler classes are GONE in 26.3 (the transfer rework): `IItemHandler` 139 mods, `IFluidHandler` 89, `IEnergyStorage` 75, `Capabilities$ItemHandler` 112. `EventBusSubscriber$Bus` is GONE and used by 69 mods. 36% of the server-side members that mods reference do not resolve in 26.3, and 381 of 414 mods reference at least one of them (section 9.2).
+- **Contract.** Of 1274 contract rows 1011 are needed by at least one mod, 669 by 10 or more and 348 by 50 or more (section 11.1). 405 of 414 mods need at least one gap or contract-only row. The gap rows of the NeoForge inventory alone hit 383 mods. If the rows that Rust std and the byte-level payload design cover (Java helpers, DataFixerUpper codecs, stream codecs) are left out, 397 mods still need a gap row.
+- **Largest gaps** (section 11.2): Java helpers (312 mods); Mixins (291 mods); DFU codecs (278 mods); Stream codecs and byte buffers (263 mods); Registries the host rejects (247 mods); Access transformers (183 mods); Container menus (176 mods); Block shapes (170 mods).
+- **Mixins.** 259 of 414 mods ship mixin classes (3508 mixin classes); 165 mods have at least one common or server mixin into vanilla server code. These mods cannot be ported by an API alone. 183 mods ship or declare an access transformer. At member level (section 9), 41% of the server-side members into vanilla are accessors, 66% of the other members act at the start or the end of a method, and 1% override a whole method. The demand is flat: the 200 most targeted members cover 11% of the mods.
+- **26.3.** The 21.1 item, fluid and energy handler classes are GONE in 26.3 (the transfer rework): `IItemHandler` 139 mods, `IFluidHandler` 89, `IEnergyStorage` 75, `Capabilities$ItemHandler` 112. `EventBusSubscriber$Bus` is GONE and used by 69 mods. 36% of the server-side members that mods reference do not resolve in 26.3, and 381 of 414 mods reference at least one of them (section 10.2).
 - **Side.** 17 mods are client-only in their `mods.toml`; 18 mods have no server-side class. `@OnlyIn` appears 2074 times in 111 mods (classes 642, methods 1397, fields 35). 987 handlers are `@EventBusSubscriber(value = Dist.CLIENT)` only.
 
 ## 2. Per-mod table
@@ -1472,7 +1475,7 @@ Client events (106 classes, 300 mods): FMLClientSetupEvent(178), RegisterMenuScr
 
 Dev events: GatherDataEvent(124).
 
-Mod-defined event classes that mods subscribe to (events of other mods and own events): 115 classes in 66 mods. Mods that call `IEventBus#post` to fire events: 94 (section 10, row `IEventBus#post`).
+Mod-defined event classes that mods subscribe to (events of other mods and own events): 115 classes in 66 mods. Mods that call `IEventBus#post` to fire events: 94 (section 11, row `IEventBus#post`).
 
 ## 6. Registries
 
@@ -1759,7 +1762,7 @@ Each row counts mods (server-side or mixed classes) and, where it makes sense, t
 
 ## 8. Mixins
 
-A mixin into vanilla code cannot be ported to a Wasm plugin: it patches bytecode of the Java server. The numbers show how much of the pack depends on it. Mixin classes are the classes with `@Mixin`. Targets come from `@Mixin(value = ..., targets = ...)`. A target is **vanilla** when it is in `net.minecraft` or `com.mojang`, **NeoForge** in `net.neoforged`, **other mod** when the package belongs to another jar of the pack, **own** when it belongs to the same jar, and **unknown** otherwise (libraries not in the pack). A mixin counts as **client** when it is listed in the `client` array of its mixin config or targets `net.minecraft.client`/`blaze3d`.
+A mixin into vanilla code has no direct port: it patches bytecode of the Java server. Section 9 sizes the native primitives that replace it. The numbers show how much of the pack depends on it. This section counts mixin classes; section 9 gives their members and target methods. Mixin classes are the classes with `@Mixin`. Targets come from `@Mixin(value = ..., targets = ...)`. A target is **vanilla** when it is in `net.minecraft` or `com.mojang`, **NeoForge** in `net.neoforged`, **other mod** when the package belongs to another jar of the pack, **own** when it belongs to the same jar, and **unknown** otherwise (libraries not in the pack). A mixin counts as **client** when it is listed in the `client` array of its mixin config or targets `net.minecraft.client`/`blaze3d`.
 
 Totals: 3508 mixin classes in 259 of 414 mods. Config side: common 1931, client 1539, server 5, not listed in any config 33. Mixin targets (a class can have several): vanilla server-side 1488, vanilla client 1137, NeoForge 92, other mod 631, own mod 65, unknown 134, JDK or none 0. 108 mixin configs name a mixin plugin class. 174 mods ship an access transformer (4718 lines in total).
 
@@ -2100,15 +2103,739 @@ Per mod: only mods with at least one mixin class (259 rows). Server mixins are t
 | toofast | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 3 |
 | woodenshears | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | 3 |
 
-## 9. What this means for 26.3
+## 9. Mixin targets by method
+
+This section sizes the three primitives of the native mod channel (build-time accessors, hook points and service seams) by the members of the mixin classes, not by the classes. Section 8 counts the mixin classes; this section reads every member of every mixin class and its target member.
 
 ### 9.1 Method
+
+The scanner is `tools/modpack-scan/mixin_scan.py` (its README gives the command). It reads the 414 jars of the folder and their Jar-in-Jar jars with `zipfile` and its own class file parser, and it does not load or run code from the jars. A class is a mixin class when it carries `@Mixin`. The scanner reads `RuntimeInvisibleAnnotations` and `RuntimeVisibleAnnotations` of the class, its fields and its methods, with all element values. The mixin configs are the JSON files at the root of a jar that have a `package` and a `mixins`, `client` or `server` list. 0 class files with the `@Mixin` descriptor did not parse.
+
+For each member the scanner records the annotation, the target class (from `value` and `targets` of `@Mixin`), the target member, the `@At` value and target, `cancellable`, and the mixin plugin class of the config. The target member comes from `method` of the injector (a selector with or without descriptor; overloads merge by name), from `value` of `@Accessor` and `@Invoker` or from the method name without the `get`, `set`, `is`, `call` or `invoke` prefix, and from the member name for `@Shadow` and `@Overwrite`. Names are Mojang names: NeoForge runs Mojang mappings in production.
+
+Scope: members of mixin classes listed in the `mixins` (common) or `server` list of a config that the jar declares (in `[[mixins]]` of its `mods.toml` or in `MixinConfigs` of its manifest), with a vanilla target (`net.minecraft` or `com.mojang`) outside `net.minecraft.client` and `com.mojang.blaze3d`. `@Unique` members add a new member to the target and target no member: they are counted apart. `@Mutable` is a modifier of `@Shadow` and is not a member. A member with two target classes or two selectors counts once, and it needs all its target members.
+
+Intent of a member:
+
+- **pre**: `@Inject` at `HEAD`, not cancellable.
+- **post**: `@Inject` at `RETURN` or `TAIL`, not cancellable.
+- **mid**: `@Inject` at a point inside the method (`INVOKE`, `FIELD`, `NEW` and others), not cancellable.
+- **cancel**: `@Inject` with `cancellable = true` at any point, and `@WrapMethod` (it can skip the original method).
+- **value**: a value modifier: `@Redirect`, `@WrapOperation`, `@ModifyArg`, `@ModifyArgs`, `@ModifyConstant`, `@ModifyExpressionValue`, `@ModifyVariable`, `@ModifyReturnValue`, `@ModifyReceiver`, `@WrapWithCondition`.
+- **overwrite**: `@Overwrite`, a whole-method override.
+- **accessor**: `@Accessor`, `@Invoker`, `@Shadow`.
+
+### 9.2 Totals
+
+| Measure | Value |
+|:--|--:|
+| Mixin members, all sides and targets (`@Unique` included) | 9183 |
+| Members of common or server mixin classes of declared configs (`@Unique` included) | 4490 |
+| Server-side members with a vanilla target (the scope) | 2674 |
+| Mods with at least one member in the scope | 157 of 414 |
+| Distinct target members in the scope (methods, and fields for accessors) | 1931 |
+| Vanilla target classes in the scope | 519 |
+| Members with more than one target member | 27 |
+| `@Unique` members in common or server mixin classes with a vanilla target | 443 |
+| Mods in the scope whose config names a mixin plugin | 33 |
+| Configs with mixin members that the jar does not declare | 8 |
+| Common or server members with a vanilla target in those configs (left out) | 92 |
+
+The mixins section counts 165 mods with a common or server mixin class into vanilla server code; this scope counts 157, because the other 8 mods have only mixin classes with no members in the scope or mixin classes in configs that the jar does not declare. A config that the jar does not declare does not load through the jar metadata. 4 of the 8 have `fabric` in the file name: Fabric configs that multi-loader jars carry, some with Fabric intermediary names (`net.minecraft.class_1309`). 92 of the 92 members left out are in them. A mixin plugin or mod code can still add a config at run time; the scan does not follow code.
+
+Members of common or server mixin classes of declared configs by target kind (`@Unique` left out): vanilla 2674, vanilla-client 11, neoforge 103, other 881, own 66, unknown 117.
+
+Members in the scope by intent: pre 157 (6%), post 282 (11%), mid 123 (5%), cancel 560 (21%), value 445 (17%), overwrite 21 (1%), accessor 1086 (41%).
+
+Cancel members by point: at `HEAD` 331, at `RETURN` or `TAIL` 144, at another point 59, `@WrapMethod` 26.
+
+Members in the scope by annotation: Inject 1096, Shadow 681, Accessor 304, ModifyReturnValue 102, Invoker 101, WrapOperation 90, Redirect 83, ModifyExpressionValue 63, ModifyVariable 39, ModifyArg 29, WrapMethod 26, Overwrite 21, ModifyConstant 20, WrapWithCondition 15, ModifyReceiver 4.
+
+### 9.3 Coverage curve
+
+A member is covered when the catalogue holds all its target members. A mod is covered when every one of its server-side members with a vanilla target is covered (157 mods). Mixins into NeoForge and into other mods are out of this count (section 9.6). Three catalogue orders:
+
+- **by members**: target members ordered by the number of mixin members, highest first.
+- **by mods**: the order of the table in section 9.4.
+- **cheapest mod first**: at each step the catalogue adds all target members of the mod that needs the fewest new ones. This order gives the most mods for a catalogue size.
+
+The first rows count all members. The last rows count the members that need a hook point or a service seam: accessors are left out, because build-time accessors come from code generation for any field or method and need no catalogue entry. A mod with accessor members only is covered at 0.
+
+Target members needed to cover a share of the members or of the 157 mods:
+
+| Members counted | Order | Covers | Total | 50% | 80% | 90% | 100% |
+|:--|:--|:--|--:|--:|--:|--:|--:|
+| all | by members | members | 2674 | 570 | 1385 | 1662 | 1931 |
+| all | by mods | members | 2674 | 570 | 1385 | 1662 | 1931 |
+| all | cheapest mod first | members | 2674 | 801 | 1440 | 1689 | 1931 |
+| all | by members | mods | 157 | 1302 | 1717 | 1848 | 1931 |
+| all | by mods | mods | 157 | 1302 | 1717 | 1848 | 1931 |
+| all | cheapest mod first | mods | 157 | 162 | 526 | 910 | 1931 |
+| hook and seam | by members | members | 1588 | 300 | 786 | 959 | 1120 |
+| hook and seam | by mods | members | 1588 | 301 | 786 | 959 | 1120 |
+| hook and seam | cheapest mod first | members | 1588 | 464 | 826 | 961 | 1120 |
+| hook and seam | by members | mods | 157 | 762 | 1014 | 1094 | 1120 |
+| hook and seam | by mods | mods | 157 | 763 | 1016 | 1094 | 1120 |
+| hook and seam | cheapest mod first | mods | 157 | 97 | 329 | 526 | 1120 |
+
+The 200 target members of the table in section 9.4 cover 700 of 2674 members (26%) and 17 of 157 mods (11%).
+
+With accessors left out, the same 200 target members cover 475 of 1588 hook and seam members (30%) and 33 of 157 mods (21%).
+
+By class: the vanilla classes ordered by members, highest first, cover 50%, 80%, 90% and 100% of the members with 42, 179, 291, 519 classes.
+
+### 9.4 Target members by number of mods
+
+The 200 most targeted vanilla server-side members, by mods, then by mixin members. Class names drop the `net.minecraft.` prefix. **Desc** is the number of distinct descriptors that selectors name (0: the selectors give the name only). The intent columns count members (section 9.1). **Call targets** are the most common `@At` targets of `@Redirect` and `@WrapOperation`, with their count.
+
+| # | Target member | Mods | Members | Desc | pre | post | mid | cancel | value | overwrite | accessor | Call targets |
+|--:|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|:--|
+| 1 | `world.item.crafting.RecipeManager.apply` | 11 | 17 | 1 | 7 | 4 | 3 | 0 | 3 | 0 | 0 | `Logger.error` 1 |
+| 2 | `world.entity.LivingEntity.travel` | 9 | 10 | 1 | 0 | 0 | 1 | 1 | 8 | 0 | 0 | `BlockState.getFriction` 2, `LivingEntity.isInFluidType` 1 |
+| 3 | `world.entity.LivingEntity.hurt` | 6 | 9 | 1 | 2 | 2 | 2 | 2 | 1 | 0 | 0 | - |
+| 4 | `server.network.ServerGamePacketListenerImpl.player (field)` | 6 | 7 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 7 | - |
+| 5 | `world.entity.Entity.isAlliedTo` | 6 | 6 | 1 | 0 | 0 | 0 | 5 | 0 | 0 | 1 | - |
+| 6 | `world.entity.Entity.move` | 6 | 6 | 1 | 0 | 0 | 2 | 1 | 3 | 0 | 0 | - |
+| 7 | `world.entity.LivingEntity.canAttack` | 6 | 6 | 1 | 0 | 0 | 0 | 6 | 0 | 0 | 0 | - |
+| 8 | `world.level.block.state.BlockBehaviour$BlockStateBase.asState` | 6 | 6 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 6 | - |
+| 9 | `world.entity.Entity.load` | 5 | 7 | 1 | 1 | 4 | 1 | 1 | 0 | 0 | 0 | - |
+| 10 | `server.MinecraftServer.reloadResources` | 5 | 6 | 1 | 2 | 2 | 0 | 1 | 1 | 0 | 0 | - |
+| 11 | `world.entity.Entity.playStepSound` | 5 | 6 | 1 | 1 | 0 | 1 | 2 | 1 | 0 | 1 | - |
+| 12 | `world.inventory.AbstractContainerMenu.doClick` | 5 | 6 | 0 | 1 | 1 | 0 | 3 | 1 | 0 | 0 | `ItemStack.copyWithCount` 1 |
+| 13 | `world.level.levelgen.structure.templatesystem.StructureTemplate.palettes (field)` | 5 | 6 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6 | - |
+| 14 | `world.level.storage.loot.functions.EnchantedCountIncreaseFunction.run` | 5 | 6 | 1 | 1 | 1 | 0 | 0 | 4 | 0 | 0 | `EnchantmentHelper.getEnchantmentLevel` 1 |
+| 15 | `world.entity.player.Player.tick` | 5 | 5 | 1 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | - |
+| 16 | `world.level.levelgen.structure.templatesystem.StructureTemplate.placeInWorld` | 5 | 5 | 1 | 1 | 3 | 0 | 0 | 1 | 0 | 0 | `ServerLevelAccessor.setBlock` 1 |
+| 17 | `world.level.Explosion.finalizeExplosion` | 4 | 7 | 0 | 2 | 0 | 1 | 0 | 4 | 0 | 0 | `Block.popResource` 1 |
+| 18 | `world.entity.LivingEntity.updateFallFlying` | 4 | 6 | 0 | 0 | 0 | 0 | 1 | 5 | 0 | 0 | - |
+| 19 | `world.entity.player.Player.attack` | 4 | 6 | 1 | 0 | 0 | 0 | 1 | 5 | 0 | 0 | `Entity.hurt` 1, `LivingEntity.hurt` 1 |
+| 20 | `server.network.ServerGamePacketListenerImpl.handleMovePlayer` | 4 | 5 | 1 | 0 | 0 | 1 | 1 | 3 | 0 | 0 | `ServerPlayer.isChangingDimension` 1 |
+| 21 | `world.entity.Entity.level (field)` | 4 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | - |
+| 22 | `world.entity.LivingEntity.die` | 4 | 5 | 1 | 1 | 2 | 0 | 2 | 0 | 0 | 0 | - |
+| 23 | `world.level.block.FireBlock.tick` | 4 | 5 | 1 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | `FireBlock.getIgniteOdds` 1, `ServerLevel.setBlock` 1 |
+| 24 | `world.level.levelgen.structure.templatesystem.StructureTemplate.fillFromWorld` | 4 | 5 | 0 | 2 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 25 | `world.level.storage.loot.LootPool.entries (field)` | 4 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | - |
+| 26 | `server.MinecraftServer.storageSource (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 27 | `server.ReloadableServerResources.loadResources` | 4 | 4 | 1 | 1 | 0 | 0 | 2 | 1 | 0 | 0 | - |
+| 28 | `server.ReloadableServerResources.recipes (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 29 | `server.ReloadableServerResources.updateRegistryTags` | 4 | 4 | 1 | 0 | 2 | 1 | 0 | 1 | 0 | 0 | `Blocks.rebuildCache` 1 |
+| 30 | `server.players.PlayerList.placeNewPlayer` | 4 | 4 | 1 | 0 | 0 | 4 | 0 | 0 | 0 | 0 | - |
+| 31 | `world.entity.Entity.setLevel` | 4 | 4 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 32 | `world.entity.LivingEntity.onEffectAdded` | 4 | 4 | 1 | 1 | 2 | 0 | 1 | 0 | 0 | 0 | - |
+| 33 | `world.entity.LivingEntity.onEffectRemoved` | 4 | 4 | 1 | 1 | 2 | 0 | 1 | 0 | 0 | 0 | - |
+| 34 | `world.entity.LivingEntity.onEffectUpdated` | 4 | 4 | 1 | 1 | 2 | 0 | 0 | 0 | 0 | 1 | - |
+| 35 | `world.entity.Mob.goalSelector (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 36 | `world.entity.item.FallingBlockEntity.tick` | 4 | 4 | 1 | 0 | 0 | 2 | 0 | 2 | 0 | 0 | `FallingBlock.isFree` 1 |
+| 37 | `world.entity.item.ItemEntity.hurt` | 4 | 4 | 0 | 0 | 0 | 1 | 2 | 1 | 0 | 0 | `ItemEntity.isInvulnerableTo` 1 |
+| 38 | `world.entity.item.ItemEntity.tick` | 4 | 4 | 0 | 0 | 3 | 0 | 0 | 1 | 0 | 0 | - |
+| 39 | `world.entity.player.Inventory.player (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 40 | `world.entity.player.Player.tryToStartFallFlying` | 4 | 4 | 0 | 0 | 0 | 0 | 2 | 2 | 0 | 0 | - |
+| 41 | `world.item.BlockItem.getPlacementState` | 4 | 4 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 1 | `Block.getStateForPlacement` 1 |
+| 42 | `world.item.crafting.Ingredient.values (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 43 | `world.level.BaseSpawner.serverTick` | 4 | 4 | 1 | 0 | 0 | 3 | 1 | 0 | 0 | 0 | - |
+| 44 | `world.level.biome.BiomeManager.biomeZoomSeed (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 45 | `world.level.block.Blocks.<clinit>` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 4 | 0 | 0 | `(Lnet/minecraft/world/level/biome/Biome$Precipitation;Lnet/minecraft/core/cauldron/CauldronInteraction$InteractionMap;Lnet/minecraft/world/level/block/state/BlockBehaviour$Properties;)Lnet/minecraft/world/level/block/LayeredCauldronBlock;` 1, `BlockState.initCache` 1, `block.EnchantingTableBlock` 1 |
+| 46 | `world.level.block.DispenserBlock.getDispenseMethod` | 4 | 4 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 3 | - |
+| 47 | `world.level.storage.loot.LootTable.pools (field)` | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 48 | `world.item.MapItem.update` | 3 | 8 | 1 | 0 | 0 | 0 | 2 | 6 | 0 | 0 | `BlockState.getMapColor` 1, `Level.getChunk` 1, `LevelChunk.isEmpty` 1 |
+| 49 | `server.WorldLoader.load` | 3 | 7 | 0 | 2 | 0 | 3 | 0 | 2 | 0 | 0 | - |
+| 50 | `world.level.saveddata.maps.MapItemSavedData.tickCarriedBy` | 3 | 6 | 1 | 0 | 1 | 1 | 0 | 4 | 0 | 0 | `Component.getString` 1, `Inventory.contains` 1 |
+| 51 | `server.level.ServerLevel.tick` | 3 | 5 | 1 | 2 | 1 | 2 | 0 | 0 | 0 | 0 | - |
+| 52 | `server.level.ServerPlayerGameMode.destroyBlock` | 3 | 5 | 0 | 1 | 0 | 4 | 0 | 0 | 0 | 0 | - |
+| 53 | `world.level.levelgen.structure.pools.StructureTemplatePool.rawTemplates (field)` | 3 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 5 | - |
+| 54 | `server.level.ChunkMap.level (field)` | 3 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 55 | `server.level.ServerPlayer.<init>` | 3 | 4 | 1 | 0 | 1 | 0 | 0 | 3 | 0 | 0 | `ServerPlayer.adjustSpawnLocation` 2 |
+| 56 | `server.level.ServerPlayerGameMode.useItemOn` | 3 | 4 | 1 | 1 | 2 | 0 | 1 | 0 | 0 | 0 | - |
+| 57 | `server.network.ServerGamePacketListenerImpl.aboveGroundTickCount (field)` | 3 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 58 | `world.entity.npc.WanderingTrader.updateTrades` | 3 | 4 | 0 | 0 | 2 | 0 | 1 | 1 | 0 | 0 | `MerchantOffers.add` 1 |
+| 59 | `world.entity.npc.WanderingTraderSpawner.spawn` | 3 | 4 | 0 | 0 | 1 | 0 | 1 | 2 | 0 | 0 | - |
+| 60 | `world.item.BlockItem.place` | 3 | 4 | 0 | 0 | 0 | 1 | 2 | 1 | 0 | 0 | - |
+| 61 | `world.item.crafting.RecipeManager.byName (field)` | 3 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 62 | `world.item.crafting.RecipeManager.byType (field)` | 3 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 4 | - |
+| 63 | `world.level.block.FireBlock.checkBurnOut` | 3 | 4 | 1 | 0 | 0 | 0 | 0 | 3 | 0 | 1 | `Level.removeBlock` 1, `Level.setBlock` 1 |
+| 64 | `world.level.block.state.BlockBehaviour$BlockStateBase.initCache` | 3 | 4 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 1 | `Block.isRandomlyTicking` 1 |
+| 65 | `core.component.PatchedDataComponentMap.patch (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 66 | `server.PlayerAdvancements.player (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 67 | `server.ReloadableServerResources.<init>` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 68 | `server.level.ServerPlayer.tick` | 3 | 3 | 1 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | - |
+| 69 | `tags.TagLoader.build` | 3 | 3 | 2 | 1 | 1 | 0 | 0 | 1 | 0 | 0 | `List.isEmpty` 1 |
+| 70 | `util.datafix.fixes.ItemStackComponentizationFix.fixItemStack` | 3 | 3 | 0 | 1 | 2 | 0 | 0 | 0 | 0 | 0 | - |
+| 71 | `util.datafix.schemas.V1460.registerBlockEntities` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 72 | `world.entity.Entity.getXRot` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 2 | - |
+| 73 | `world.entity.Entity.getYRot` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 2 | - |
+| 74 | `world.entity.Entity.isCurrentlyGlowing` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 2 | - |
+| 75 | `world.entity.Entity.isInvulnerableTo` | 3 | 3 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 0 | - |
+| 76 | `world.entity.Entity.push` | 3 | 3 | 2 | 0 | 0 | 0 | 2 | 0 | 0 | 1 | - |
+| 77 | `world.entity.LightningBolt.tick` | 3 | 3 | 1 | 0 | 0 | 2 | 0 | 1 | 0 | 0 | - |
+| 78 | `world.entity.LivingEntity.actuallyHurt` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | `LivingEntity.setHealth` 1 |
+| 79 | `world.entity.LivingEntity.checkTotemDeathProtection` | 3 | 3 | 1 | 0 | 0 | 0 | 2 | 0 | 0 | 1 | - |
+| 80 | `world.entity.LivingEntity.eat` | 3 | 3 | 1 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | - |
+| 81 | `world.entity.LivingEntity.getJumpBoostPower` | 3 | 3 | 0 | 0 | 0 | 0 | 2 | 1 | 0 | 0 | - |
+| 82 | `world.entity.LivingEntity.getSoundVolume` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 2 | - |
+| 83 | `world.entity.LivingEntity.hasEffect` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 84 | `world.entity.LivingEntity.isCurrentlyGlowing` | 3 | 3 | 1 | 0 | 0 | 0 | 2 | 0 | 0 | 1 | - |
+| 85 | `world.entity.Mob.getAmbientSound` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 2 | - |
+| 86 | `world.entity.item.FallingBlockEntity.blockState (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 87 | `world.entity.item.ItemEntity.getItem` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 88 | `world.entity.npc.Villager.updateSpecialPrices` | 3 | 3 | 1 | 0 | 1 | 0 | 0 | 1 | 0 | 1 | - |
+| 89 | `world.entity.player.Player.aiStep` | 3 | 3 | 1 | 0 | 1 | 0 | 0 | 2 | 0 | 0 | - |
+| 90 | `world.entity.player.Player.canEat` | 3 | 3 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | 0 | - |
+| 91 | `world.inventory.AbstractContainerMenu.slots (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 92 | `world.inventory.AnvilMenu.createResult` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 2 | 0 | 0 | - |
+| 93 | `world.item.ItemStack.inventoryTick` | 3 | 3 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | - |
+| 94 | `world.item.crafting.Ingredient.getItems` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 1 | 1 | 1 | - |
+| 95 | `world.item.crafting.ShapedRecipe.pattern (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 96 | `world.item.enchantment.EnchantmentHelper.doPostAttackEffectsWithItemSource` | 3 | 3 | 1 | 1 | 2 | 0 | 0 | 0 | 0 | 0 | - |
+| 97 | `world.level.block.BushBlock.mayPlaceOn` | 3 | 3 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 1 | - |
+| 98 | `world.level.block.ConcretePowderBlock.concrete (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 99 | `world.level.block.FenceBlock.connectsTo` | 3 | 3 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 0 | - |
+| 100 | `world.level.block.state.BlockBehaviour$BlockStateBase.getBlock` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 101 | `world.level.block.state.BlockBehaviour$BlockStateBase.getCollisionShape` | 3 | 3 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 0 | `Block.getCollisionShape` 1 |
+| 102 | `world.level.block.state.BlockBehaviour$BlockStateBase.onRemove` | 3 | 3 | 0 | 2 | 0 | 0 | 0 | 1 | 0 | 0 | `Block.onRemove` 1 |
+| 103 | `world.level.levelgen.structure.pools.JigsawPlacement.addPieces` | 3 | 3 | 1 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | - |
+| 104 | `world.level.levelgen.structure.templatesystem.StructureTemplate.load` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 105 | `world.level.levelgen.structure.templatesystem.StructureTemplate.save` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 106 | `world.level.levelgen.structure.templatesystem.StructureTemplate.size (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 107 | `world.level.saveddata.maps.MapItemSavedData.load` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 108 | `world.level.saveddata.maps.MapItemSavedData.save` | 3 | 3 | 0 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 109 | `world.level.storage.loot.LootPool.conditions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 110 | `world.level.storage.loot.LootPool.functions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 111 | `world.level.storage.loot.LootTable.functions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 112 | `world.level.storage.loot.LootTable.randomSequence (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 113 | `world.level.storage.loot.entries.CompositeEntryBase.children (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 114 | `world.level.storage.loot.entries.LootItem.item (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 115 | `world.level.storage.loot.functions.ApplyBonusCount.enchantment (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 116 | `world.level.storage.loot.functions.ApplyBonusCount.run` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | - |
+| 117 | `world.level.storage.loot.functions.EnchantedCountIncreaseFunction.enchantment (field)` | 3 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 118 | `world.level.storage.loot.predicates.LootItemRandomChanceWithEnchantedBonusCondition.test` | 3 | 3 | 1 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | `EnchantmentHelper.getEnchantmentLevel` 1 |
+| 119 | `world.level.block.piston.PistonStructureResolver.addBlockLine` | 2 | 7 | 0 | 0 | 0 | 0 | 0 | 7 | 0 | 0 | `BlockState.canStickTo` 2, `BlockPos.equals` 1, `BlockState.isStickyBlock` 1 |
+| 120 | `world.entity.LivingEntity.getDamageAfterMagicAbsorb` | 2 | 5 | 1 | 0 | 0 | 0 | 0 | 5 | 0 | 0 | `CombatRules.getDamageAfterMagicAbsorb` 1, `LivingEntity.hasEffect` 1, `Math.max` 1 |
+| 121 | `world.level.block.piston.PistonBaseBlock.moveBlocks` | 2 | 5 | 0 | 0 | 0 | 1 | 1 | 3 | 0 | 0 | `Level.setBlockEntity` 1, `MovingPistonBlock.newMovingBlockEntity` 1, `PistonStructureResolver.resolve` 1 |
+| 122 | `server.commands.LocateCommand.locateStructure` | 2 | 4 | 0 | 1 | 1 | 0 | 1 | 1 | 0 | 0 | - |
+| 123 | `world.food.FoodData.tick` | 2 | 4 | 0 | 2 | 0 | 0 | 0 | 2 | 0 | 0 | `Player.heal` 1 |
+| 124 | `world.item.ItemStack.forEachModifier` | 2 | 4 | 2 | 0 | 2 | 0 | 2 | 0 | 0 | 0 | - |
+| 125 | `world.level.Explosion.explode` | 2 | 4 | 1 | 0 | 1 | 1 | 0 | 2 | 0 | 0 | `Entity.hurt` 1 |
+| 126 | `world.level.block.piston.PistonMovingBlockEntity.tick` | 2 | 4 | 0 | 0 | 1 | 3 | 0 | 0 | 0 | 0 | - |
+| 127 | `world.level.levelgen.structure.Structure.generate` | 2 | 4 | 0 | 1 | 1 | 0 | 2 | 0 | 0 | 0 | - |
+| 128 | `server.level.ServerLevel.<init>` | 2 | 3 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 | `(Ljava/lang/Class;Lnet/minecraft/world/level/entity/LevelCallback;Lnet/minecraft/world/level/entity/EntityPersistentStorage;)Lnet/minecraft/world/level/entity/PersistentEntitySectionManager;` 1, `(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lcom/mojang/datafixers/DataFixer;Lnet/minecraft/world/level/levelgen/structure/templatesystem/StructureTemplateManager;Ljava/util/concurrent/Executor;Lnet/minecraft/world/level/chunk/ChunkGenerator;IIZLnet/minecraft/server/level/progress/ChunkProgressListener;Lnet/minecraft/world/level/entity/ChunkStatusUpdateListener;Ljava/util/function/Supplier;)Lnet/minecraft/server/level/ServerChunkCache;` 1, `ChunkGeneratorStructureState.ensureStructuresGenerated` 1 |
+| 129 | `server.level.ServerLevel.addEntity` | 2 | 3 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 1 | - |
+| 130 | `server.level.ServerLevel.tickChunk` | 2 | 3 | 1 | 1 | 0 | 0 | 0 | 2 | 0 | 0 | `RandomSource.nextInt` 2 |
+| 131 | `server.level.ServerLevel.tickNonPassenger` | 2 | 3 | 1 | 0 | 1 | 0 | 0 | 2 | 0 | 0 | `Entity.tickCount` 1 |
+| 132 | `server.level.ServerPlayer.restoreFrom` | 2 | 3 | 1 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 133 | `world.entity.Entity.saveWithoutId` | 2 | 3 | 1 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 134 | `world.entity.Entity.setDeltaMovement` | 2 | 3 | 2 | 0 | 0 | 0 | 2 | 0 | 0 | 1 | - |
+| 135 | `world.entity.Entity.spawnAtLocation` | 2 | 3 | 3 | 0 | 0 | 0 | 1 | 0 | 0 | 2 | - |
+| 136 | `world.entity.LivingEntity.aiStep` | 2 | 3 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | - |
+| 137 | `world.entity.Mob.doHurtTarget` | 2 | 3 | 1 | 0 | 1 | 0 | 2 | 0 | 0 | 0 | - |
+| 138 | `world.entity.npc.AbstractVillager.addOffersFromItemListings` | 2 | 3 | 0 | 1 | 0 | 0 | 0 | 2 | 0 | 0 | `AbstractVillager.random` 1, `MerchantOffers.add` 1 |
+| 139 | `world.entity.projectile.ThrownTrident.onHitEntity` | 2 | 3 | 1 | 0 | 0 | 0 | 2 | 1 | 0 | 0 | - |
+| 140 | `world.inventory.AnvilMenu.onTake` | 2 | 3 | 0 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | `Player.giveExperienceLevels` 1 |
+| 141 | `world.item.ItemStack.getTooltipLines` | 2 | 3 | 1 | 0 | 0 | 2 | 1 | 0 | 0 | 0 | - |
+| 142 | `world.item.ItemStack.hurtAndBreak` | 2 | 3 | 2 | 0 | 0 | 1 | 2 | 0 | 0 | 0 | - |
+| 143 | `world.item.crafting.Ingredient.<init>` | 2 | 3 | 3 | 0 | 0 | 0 | 0 | 2 | 0 | 1 | - |
+| 144 | `world.level.Explosion.level (field)` | 2 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 145 | `world.level.block.DispenserBlock.dispenseFrom` | 2 | 3 | 0 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | - |
+| 146 | `world.level.block.entity.BlockEntity.setLevel` | 2 | 3 | 1 | 0 | 3 | 0 | 0 | 0 | 0 | 0 | - |
+| 147 | `world.level.chunk.ChunkGenerator.findNearestMapStructure` | 2 | 3 | 0 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | - |
+| 148 | `world.level.chunk.ChunkGeneratorStructureState.generateRingPositions` | 2 | 3 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 0 | `Util.backgroundExecutor` 1 |
+| 149 | `world.level.levelgen.structure.StructureStart.placeInChunk` | 2 | 3 | 0 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | - |
+| 150 | `world.level.levelgen.structure.pools.StructureTemplatePool.templates (field)` | 2 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 151 | `world.level.levelgen.structure.templatesystem.StructureTemplate.entityInfoList (field)` | 2 | 3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | - |
+| 152 | `world.level.storage.loot.parameters.LootContextParamSets.register` | 2 | 3 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 2 | `ResourceLocation.withDefaultNamespace` 1 |
+| 153 | `core.MappedRegistry.byValue (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 154 | `core.MappedRegistry.toId (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 155 | `core.component.DataComponents.lambda$static$1` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | - |
+| 156 | `core.component.PatchedDataComponentMap.prototype (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 157 | `data.models.ItemModelGenerators.GENERATED_TRIM_MODELS (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 158 | `server.MinecraftServer.createLevels` | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | - |
+| 159 | `server.MinecraftServer.lambda$reloadResources$29` | 2 | 2 | 0 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | `(Lnet/minecraft/server/packs/PackType;Ljava/util/List;)Lnet/minecraft/server/packs/resources/MultiPackResourceManager;` 1 |
+| 160 | `server.MinecraftServer.stopServer` | 2 | 2 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 1 | - |
+| 161 | `server.PlayerAdvancements.award` | 2 | 2 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | - |
+| 162 | `server.level.ChunkMap.anyPlayerCloseEnoughForSpawning` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 163 | `server.level.ChunkMap.lambda$scheduleUnload$12` | 2 | 2 | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 1 | - |
+| 164 | `server.level.ChunkMap.pendingUnloads (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 165 | `server.level.ChunkMap.processUnloads` | 2 | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | - |
+| 166 | `server.level.ServerLevel.findLightningTargetAround` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | - |
+| 167 | `server.level.ServerLevel.getEntity` | 2 | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 168 | `server.level.ServerLevel.levelEvent` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 169 | `server.level.ServerPlayerGameMode.level (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 170 | `server.level.ServerPlayerGameMode.player (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 171 | `server.network.ServerGamePacketListenerImpl.clientIsFloating (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 172 | `server.network.ServerGamePacketListenerImpl.handleMoveVehicle` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | - |
+| 173 | `server.network.ServerGamePacketListenerImpl.handlePlayerAbilities` | 2 | 2 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | - |
+| 174 | `server.players.PlayerList.reloadResources` | 2 | 2 | 1 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | - |
+| 175 | `server.players.PlayerList.stats (field)` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 176 | `tags.TagLoader.load` | 2 | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | - |
+| 177 | `tags.TagManager.createLoader` | 2 | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | - |
+| 178 | `util.datafix.schemas.V1460.registerInventory` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 179 | `util.datafix.schemas.V3818_3.lambda$registerTypes$0` | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | - |
+| 180 | `world.damagesource.DamageSources.source` | 2 | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 181 | `world.entity.Entity.<init>` | 2 | 2 | 1 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | - |
+| 182 | `world.entity.Entity.canAddPassenger` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | - |
+| 183 | `world.entity.Entity.canRide` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 184 | `world.entity.Entity.extinguishFire` | 2 | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | - |
+| 185 | `world.entity.Entity.getBlockSpeedFactor` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 186 | `world.entity.Entity.getDeltaMovement` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 187 | `world.entity.Entity.getGravity` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 188 | `world.entity.Entity.getSwimSplashSound` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | - |
+| 189 | `world.entity.Entity.getTeamColor` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 190 | `world.entity.Entity.getType` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 191 | `world.entity.Entity.getX` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 192 | `world.entity.Entity.getY` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 193 | `world.entity.Entity.getZ` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 194 | `world.entity.Entity.hurt` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | - |
+| 195 | `world.entity.Entity.ignoreExplosion` | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 196 | `world.entity.Entity.isInWaterOrRain` | 2 | 2 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | - |
+| 197 | `world.entity.Entity.lavaHurt` | 2 | 2 | 1 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | - |
+| 198 | `world.entity.Entity.level` | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | - |
+| 199 | `world.entity.Entity.playerTouch` | 2 | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | - |
+| 200 | `world.entity.Entity.remove` | 2 | 2 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 1 | - |
+
+Long tail: 1731 more target members in 511 classes, with 1974 members. The classes of the long tail that 2 or more mods target, by mods (target members, members, mods, intents):
+
+| Class | Target members | Members | Mods | Intents |
+|:--|--:|--:|--:|:--|
+| `world.entity.LivingEntity` | 101 | 125 | 28 | pre 5, post 10, mid 4, cancel 63, value 9, accessor 34 |
+| `world.entity.Entity` | 100 | 110 | 28 | pre 5, post 2, mid 2, cancel 46, value 12, accessor 43 |
+| `world.item.ItemStack` | 29 | 35 | 17 | pre 1, post 2, mid 1, cancel 15, value 6, accessor 10 |
+| `world.entity.player.Player` | 26 | 34 | 15 | pre 5, post 2, mid 1, cancel 7, value 6, accessor 13 |
+| `world.item.Item` | 25 | 32 | 11 | pre 4, post 3, cancel 17, value 1, overwrite 1, accessor 6 |
+| `world.level.block.state.BlockBehaviour$BlockStateBase` | 24 | 30 | 11 | pre 4, cancel 12, value 7, accessor 7 |
+| `world.level.block.state.BlockBehaviour` | 28 | 29 | 10 | post 2, cancel 13, value 1, accessor 13 |
+| `world.level.Level` | 15 | 16 | 10 | pre 1, post 3, cancel 2, value 4, accessor 8 |
+| `world.entity.Mob` | 29 | 34 | 9 | pre 1, post 6, cancel 19, value 3, accessor 5 |
+| `world.level.block.Block` | 11 | 12 | 8 | pre 2, post 2, cancel 4, value 2, accessor 2 |
+| `server.level.ServerPlayer` | 13 | 16 | 7 | pre 1, post 7, cancel 5, accessor 3 |
+| `world.item.crafting.RecipeManager` | 6 | 9 | 7 | pre 3, post 2, cancel 1, value 2, accessor 1 |
+| `server.level.ChunkMap` | 13 | 17 | 6 | pre 2, mid 2, cancel 1, value 3, accessor 9 |
+| `world.entity.item.ItemEntity` | 9 | 12 | 6 | mid 1, cancel 2, value 2, accessor 7 |
+| `server.level.ServerLevel` | 8 | 10 | 6 | post 2, mid 1, value 2, accessor 5 |
+| `world.inventory.AbstractContainerMenu` | 10 | 9 | 6 | cancel 1, value 5, accessor 5 |
+| `world.entity.npc.Villager` | 15 | 18 | 5 | post 2, cancel 1, value 3, overwrite 3, accessor 9 |
+| `server.MinecraftServer` | 17 | 17 | 5 | post 3, mid 1, value 4, accessor 9 |
+| `world.level.chunk.ChunkGenerator` | 7 | 10 | 5 | cancel 7, value 2, accessor 1 |
+| `world.item.enchantment.EnchantmentHelper` | 9 | 9 | 5 | cancel 4, value 5 |
+| `world.level.material.FlowingFluid` | 6 | 8 | 5 | post 1, cancel 4, value 1, accessor 2 |
+| `world.level.chunk.LevelChunk` | 7 | 7 | 5 | post 2, mid 1, cancel 1, value 1, accessor 2 |
+| `world.entity.monster.Zombie` | 4 | 6 | 5 | pre 1, cancel 2, value 2, accessor 1 |
+| `world.level.block.FarmBlock` | 4 | 6 | 5 | cancel 4, accessor 2 |
+| `world.level.Explosion` | 12 | 14 | 4 | post 1, cancel 1, value 1, accessor 11 |
+| `world.entity.player.Inventory` | 6 | 9 | 4 | pre 1, post 1, mid 2, cancel 4, accessor 1 |
+| `core.MappedRegistry` | 7 | 8 | 4 | pre 1, post 3, value 1, accessor 3 |
+| `server.players.PlayerList` | 7 | 8 | 4 | pre 2, post 1, cancel 1, value 2, accessor 2 |
+| `server.network.ServerGamePacketListenerImpl` | 7 | 7 | 4 | pre 1, mid 2, cancel 3, accessor 1 |
+| `world.item.BlockItem` | 6 | 6 | 4 | post 1, cancel 1, accessor 4 |
+| `world.entity.LightningBolt` | 3 | 5 | 4 | pre 1, post 1, accessor 3 |
+| `world.level.block.CropBlock` | 3 | 4 | 4 | cancel 1, accessor 3 |
+| `world.level.saveddata.maps.MapItemSavedData` | 17 | 23 | 3 | post 5, value 1, accessor 17 |
+| `server.level.ServerChunkCache` | 6 | 13 | 3 | post 1, mid 2, value 7, accessor 3 |
+| `world.entity.animal.allay.Allay` | 8 | 11 | 3 | pre 1, post 4, cancel 4, accessor 2 |
+| `world.item.crafting.Ingredient` | 9 | 11 | 3 | cancel 3, value 1, accessor 7 |
+| `world.level.block.piston.PistonMovingBlockEntity` | 10 | 11 | 3 | post 3, mid 2, accessor 6 |
+| `world.level.storage.loot.LootTable` | 8 | 11 | 3 | post 1, cancel 2, value 1, accessor 7 |
+| `world.level.storage.loot.LootPool` | 7 | 9 | 3 | post 1, accessor 8 |
+| `world.effect.MobEffectInstance` | 7 | 8 | 3 | pre 1, post 2, mid 1, cancel 1, value 1, accessor 2 |
+| `world.entity.monster.Creeper` | 5 | 8 | 3 | pre 1, post 4, cancel 1, value 2 |
+| `world.entity.projectile.AbstractArrow` | 7 | 8 | 3 | cancel 1, accessor 7 |
+| `world.item.CreativeModeTab` | 6 | 7 | 3 | post 1, cancel 1, accessor 5 |
+| `world.level.block.state.StateHolder` | 6 | 7 | 3 | post 1, value 2, overwrite 1, accessor 4 |
+| `world.damagesource.DamageSource` | 6 | 6 | 3 | cancel 2, accessor 4 |
+| `world.entity.projectile.Projectile` | 6 | 6 | 3 | pre 1, post 1, mid 1, cancel 3 |
+| `world.item.enchantment.Enchantment` | 11 | 6 | 3 | cancel 2, value 8, accessor 1 |
+| `world.entity.item.FallingBlockEntity` | 4 | 5 | 3 | pre 1, cancel 1, value 1, accessor 2 |
+| `world.item.alchemy.PotionBrewing` | 4 | 5 | 3 | post 1, accessor 4 |
+| `world.level.block.WallBlock` | 3 | 5 | 3 | post 1, cancel 4 |
+| `world.level.levelgen.structure.templatesystem.StructureTemplateManager` | 5 | 5 | 3 | post 3, cancel 1, accessor 1 |
+| `world.entity.decoration.ItemFrame` | 3 | 4 | 3 | cancel 1, value 2, accessor 1 |
+| `world.entity.monster.piglin.PiglinAi` | 3 | 4 | 3 | cancel 2, value 1, accessor 1 |
+| `world.level.levelgen.Beardifier` | 5 | 4 | 3 | mid 1, cancel 2, accessor 2 |
+| `world.level.levelgen.structure.StructureStart` | 4 | 4 | 3 | accessor 4 |
+| `world.inventory.TransientCraftingContainer` | 2 | 3 | 3 | accessor 3 |
+| `world.level.BaseSpawner` | 2 | 3 | 3 | accessor 3 |
+| `world.level.block.BaseFireBlock` | 3 | 3 | 3 | cancel 2, value 1 |
+| `world.level.block.PowderSnowBlock` | 2 | 3 | 3 | cancel 2, value 1 |
+| `world.item.trading.MerchantOffer` | 15 | 19 | 2 | post 2, cancel 4, value 1, accessor 12 |
+| `world.inventory.EnchantmentMenu` | 12 | 14 | 2 | post 1, mid 1, cancel 3, value 2, accessor 7 |
+| `world.level.block.entity.LecternBlockEntity` | 11 | 13 | 2 | pre 1, cancel 3, accessor 9 |
+| `world.level.storage.loot.functions.ExplorationMapFunction` | 11 | 12 | 2 | post 2, cancel 1, accessor 9 |
+| `world.item.alchemy.PotionBrewing$Builder` | 7 | 10 | 2 | pre 3, accessor 7 |
+| `world.level.levelgen.structure.placement.RandomSpreadStructurePlacement` | 6 | 10 | 2 | post 1, value 4, accessor 5 |
+| `world.level.levelgen.structure.structures.JigsawStructure` | 7 | 10 | 2 | value 5, accessor 5 |
+| `world.level.block.entity.BlockEntity` | 6 | 9 | 2 | pre 1, post 2, accessor 6 |
+| `server.level.ChunkHolder` | 8 | 8 | 2 | post 2, mid 2, accessor 4 |
+| `world.entity.animal.horse.AbstractHorse` | 8 | 8 | 2 | pre 1, cancel 2, accessor 5 |
+| `world.entity.npc.AbstractVillager` | 7 | 8 | 2 | pre 2, accessor 6 |
+| `world.entity.npc.WanderingTraderSpawner` | 5 | 8 | 2 | pre 1, cancel 1, value 1, accessor 5 |
+| `world.level.chunk.PalettedContainer` | 7 | 8 | 2 | post 1, mid 1, overwrite 2, accessor 4 |
+| `world.level.block.piston.PistonStructureResolver` | 5 | 7 | 2 | value 4, accessor 3 |
+| `world.level.chunk.ChunkAccess` | 7 | 7 | 2 | post 2, overwrite 1, accessor 4 |
+| `world.entity.animal.horse.SkeletonHorse` | 6 | 6 | 2 | post 2, cancel 1, accessor 3 |
+| `world.entity.monster.AbstractSkeleton` | 5 | 6 | 2 | post 1, mid 1, cancel 2, accessor 2 |
+| `world.level.levelgen.structure.TemplateStructurePiece` | 4 | 6 | 2 | pre 1, post 1, accessor 4 |
+| `world.level.storage.loot.functions.EnchantedCountIncreaseFunction` | 3 | 6 | 2 | accessor 6 |
+| `core.Holder$Reference` | 4 | 5 | 2 | value 1, accessor 4 |
+| `world.entity.projectile.FishingHook` | 5 | 5 | 2 | post 1, value 1, accessor 3 |
+| `world.level.NaturalSpawner` | 5 | 5 | 2 | mid 1, value 5 |
+| `world.level.block.state.BlockBehaviour$BlockStateBase$Cache` | 4 | 5 | 2 | value 2, accessor 3 |
+| `world.level.levelgen.NoiseChunk` | 5 | 5 | 2 | post 1, cancel 1, overwrite 1, accessor 2 |
+| `world.level.levelgen.structure.Structure` | 5 | 5 | 2 | cancel 3, accessor 2 |
+| `world.entity.ai.goal.target.NearestAttackableTargetGoal` | 4 | 4 | 2 | pre 1, post 1, accessor 2 |
+| `world.entity.monster.Skeleton` | 3 | 4 | 2 | post 3, cancel 1 |
+| `world.entity.monster.Slime` | 4 | 4 | 2 | mid 1, cancel 1, accessor 2 |
+| `world.inventory.AnvilMenu` | 4 | 4 | 2 | cancel 1, accessor 3 |
+| `world.inventory.CraftingMenu` | 3 | 4 | 2 | value 1, accessor 3 |
+| `world.inventory.GrindstoneMenu` | 4 | 4 | 2 | cancel 1, value 1, accessor 2 |
+| `world.inventory.SmithingMenu` | 3 | 4 | 2 | pre 1, mid 1, value 1, accessor 1 |
+| `world.item.crafting.ShapedRecipePattern` | 3 | 4 | 2 | accessor 4 |
+| `world.item.crafting.SmithingTransformRecipe` | 4 | 4 | 2 | cancel 1, accessor 3 |
+| `world.level.StructureManager` | 3 | 4 | 2 | cancel 1, accessor 3 |
+| `world.level.block.FireBlock` | 3 | 4 | 2 | value 2, accessor 2 |
+| `world.level.block.NetherPortalBlock` | 3 | 4 | 2 | cancel 1, value 2, accessor 1 |
+| `world.level.block.entity.AbstractFurnaceBlockEntity` | 4 | 4 | 2 | accessor 4 |
+| `world.level.block.entity.BlockEntityType` | 3 | 4 | 2 | value 1, accessor 3 |
+| `world.level.block.piston.PistonBaseBlock` | 2 | 4 | 2 | mid 1, cancel 1, value 2 |
+| `world.level.levelgen.structure.pools.JigsawPlacement$Placer` | 3 | 4 | 2 | mid 1, value 1, accessor 2 |
+| `world.level.levelgen.structure.templatesystem.StructureTemplate$StructureBlockInfo` | 4 | 4 | 2 | post 1, accessor 3 |
+| `Util` | 3 | 3 | 2 | post 1, value 1, accessor 1 |
+| `commands.CommandSourceStack` | 3 | 3 | 2 | cancel 1, accessor 2 |
+| `network.chat.TextColor` | 3 | 3 | 2 | cancel 1, accessor 2 |
+| `server.level.ChunkMap$TrackedEntity` | 3 | 3 | 2 | value 1, accessor 2 |
+| `tags.TagLoader` | 4 | 3 | 2 | pre 2, value 1, accessor 1 |
+| `util.datafix.schemas.V1460` | 3 | 3 | 2 | pre 1, post 1, value 1 |
+| `world.entity.ExperienceOrb` | 3 | 3 | 2 | cancel 1, value 2 |
+| `world.entity.decoration.Painting` | 2 | 3 | 2 | cancel 2, accessor 1 |
+| `world.inventory.ItemCombinerMenu` | 3 | 3 | 2 | cancel 1, accessor 2 |
+| `world.inventory.MerchantMenu` | 3 | 3 | 2 | post 1, accessor 2 |
+| `world.item.BucketItem` | 3 | 3 | 2 | cancel 2, accessor 1 |
+| `world.item.Items` | 2 | 3 | 2 | cancel 1, value 1, accessor 1 |
+| `world.level.biome.Biome` | 3 | 3 | 2 | cancel 1, overwrite 1, accessor 1 |
+| `world.level.block.FenceBlock` | 2 | 3 | 2 | cancel 3 |
+| `world.level.block.state.BlockBehaviour$Properties` | 2 | 3 | 2 | value 1, accessor 2 |
+| `world.level.block.state.StateDefinition$Builder` | 3 | 3 | 2 | post 1, accessor 2 |
+| `world.level.chunk.status.ChunkStatusTasks` | 3 | 3 | 2 | mid 1, value 2 |
+| `world.level.levelgen.structure.templatesystem.StructureTemplate` | 2 | 3 | 2 | pre 1, post 1, accessor 1 |
+| `world.level.storage.loot.LootDataType` | 2 | 3 | 2 | post 1, cancel 1, accessor 1 |
+| `world.level.storage.loot.entries.LootPoolSingletonContainer` | 3 | 3 | 2 | accessor 3 |
+| `commands.Commands` | 2 | 2 | 2 | post 1, value 1 |
+| `core.component.DataComponents` | 2 | 2 | 2 | value 1, accessor 1 |
+| `util.datafix.DataFixers` | 2 | 2 | 2 | value 2 |
+| `world.entity.decoration.ArmorStand` | 1 | 2 | 2 | cancel 2 |
+| `world.inventory.GrindstoneMenu$4` | 2 | 2 | 2 | pre 1, cancel 1 |
+| `world.item.BrushItem` | 1 | 2 | 2 | cancel 1, value 1 |
+| `world.item.DiggerItem` | 2 | 2 | 2 | post 1, cancel 1 |
+| `world.item.StandingAndWallBlockItem` | 2 | 2 | 2 | value 1, accessor 1 |
+| `world.item.crafting.Ingredient$TagValue` | 2 | 2 | 2 | accessor 2 |
+| `world.level.block.AnvilBlock` | 1 | 2 | 2 | post 2 |
+| `world.level.block.Blocks` | 1 | 2 | 2 | post 1, value 1 |
+| `world.level.block.CampfireBlock` | 1 | 2 | 2 | cancel 2 |
+| `world.level.block.LanternBlock` | 1 | 2 | 2 | value 2 |
+| `world.level.block.LiquidBlock` | 2 | 2 | 2 | value 1, accessor 1 |
+| `world.level.block.StairBlock` | 2 | 2 | 2 | cancel 1, value 1 |
+| `world.level.block.entity.BaseContainerBlockEntity` | 1 | 2 | 2 | accessor 2 |
+| `world.level.entity.PersistentEntitySectionManager` | 3 | 2 | 2 | value 2, accessor 1 |
+| `world.level.levelgen.NoiseBasedChunkGenerator` | 2 | 2 | 2 | post 1, mid 1 |
+| `world.level.levelgen.feature.Feature` | 2 | 2 | 2 | cancel 2 |
+| `world.level.levelgen.structure.pools.SinglePoolElement` | 2 | 2 | 2 | accessor 2 |
+| `world.level.levelgen.structure.templatesystem.StructureProcessor` | 1 | 2 | 2 | accessor 2 |
+| `world.level.pathfinder.WalkNodeEvaluator` | 2 | 2 | 2 | cancel 1, value 1 |
+| `world.level.storage.loot.parameters.LootContextParamSets` | 2 | 2 | 2 | post 1, accessor 1 |
+| `world.level.storage.loot.predicates.LootItemRandomChanceWithEnchantedBonusCondition` | 1 | 2 | 2 | accessor 2 |
+
+The other 366 classes of the long tail have one mod each (735 members). By package (classes, members, mods): `world.level` 133/272/46, `world.entity` 75/131/31, `server` 35/63/15, `world.item` 33/59/23, `com` 4/32/1, `core` 11/29/7, `world.phys` 6/29/1, `network` 9/26/7, `util` 9/14/5, `world.inventory` 8/11/4, `data` 6/8/5, `nbt` 4/8/2, `advancements` 6/7/3, `resources` 4/7/4, `tags` 3/6/3, `gametest` 3/5/2, `world.damagesource` 3/5/2, `stats` 2/4/1, `SystemReport` 1/3/1, `world.food` 1/3/1, `commands` 2/2/2, `world.CompoundContainer` 1/2/1, `world.Containers` 1/2/1, `world.RandomizableContainer` 1/2/1, `world.effect` 2/2/2, `ChatFormatting` 1/1/1, `recipebook` 1/1/1, `world.Container` 1/1/1.
+
+### 9.5 Primitives per target member
+
+For each target member of section 9.4: the members that each primitive satisfies, and the strongest primitive the member needs. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow` (a build-time accessor). **Hook**: pre, post and cancel (a hook point at the start or the end of the method). **Call site**: value modifiers and mid-method injections (a hook point at an identified call site, field access or constant inside the method); **Sites** is the number of distinct `@At` points. **Override**: `@Overwrite` (a whole-method override, a service seam). **Needs** is the strongest primitive in the order accessor, hook, call site, override.
+
+| # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Needs |
+|--:|:--|--:|--:|--:|--:|--:|--:|:--|
+| 1 | `world.item.crafting.RecipeManager.apply` | 11 | 0 | 11 | 6 | 4 | 0 | call site |
+| 2 | `world.entity.LivingEntity.travel` | 9 | 0 | 1 | 9 | 7 | 0 | call site |
+| 3 | `world.entity.LivingEntity.hurt` | 6 | 0 | 6 | 3 | 3 | 0 | call site |
+| 4 | `server.network.ServerGamePacketListenerImpl.player (field)` | 6 | 7 | 0 | 0 | 0 | 0 | accessor |
+| 5 | `world.entity.Entity.isAlliedTo` | 6 | 1 | 5 | 0 | 0 | 0 | hook |
+| 6 | `world.entity.Entity.move` | 6 | 0 | 1 | 5 | 4 | 0 | call site |
+| 7 | `world.entity.LivingEntity.canAttack` | 6 | 0 | 6 | 0 | 0 | 0 | hook |
+| 8 | `world.level.block.state.BlockBehaviour$BlockStateBase.asState` | 6 | 6 | 0 | 0 | 0 | 0 | accessor |
+| 9 | `world.entity.Entity.load` | 5 | 0 | 6 | 1 | 1 | 0 | call site |
+| 10 | `server.MinecraftServer.reloadResources` | 5 | 0 | 5 | 1 | 1 | 0 | call site |
+| 11 | `world.entity.Entity.playStepSound` | 5 | 1 | 3 | 2 | 2 | 0 | call site |
+| 12 | `world.inventory.AbstractContainerMenu.doClick` | 5 | 0 | 5 | 1 | 1 | 0 | call site |
+| 13 | `world.level.levelgen.structure.templatesystem.StructureTemplate.palettes (field)` | 5 | 6 | 0 | 0 | 0 | 0 | accessor |
+| 14 | `world.level.storage.loot.functions.EnchantedCountIncreaseFunction.run` | 5 | 0 | 2 | 4 | 3 | 0 | call site |
+| 15 | `world.entity.player.Player.tick` | 5 | 0 | 4 | 1 | 1 | 0 | call site |
+| 16 | `world.level.levelgen.structure.templatesystem.StructureTemplate.placeInWorld` | 5 | 0 | 4 | 1 | 1 | 0 | call site |
+| 17 | `world.level.Explosion.finalizeExplosion` | 4 | 0 | 2 | 5 | 3 | 0 | call site |
+| 18 | `world.entity.LivingEntity.updateFallFlying` | 4 | 0 | 1 | 5 | 3 | 0 | call site |
+| 19 | `world.entity.player.Player.attack` | 4 | 0 | 1 | 5 | 4 | 0 | call site |
+| 20 | `server.network.ServerGamePacketListenerImpl.handleMovePlayer` | 4 | 0 | 1 | 4 | 4 | 0 | call site |
+| 21 | `world.entity.Entity.level (field)` | 4 | 5 | 0 | 0 | 0 | 0 | accessor |
+| 22 | `world.entity.LivingEntity.die` | 4 | 0 | 5 | 0 | 0 | 0 | hook |
+| 23 | `world.level.block.FireBlock.tick` | 4 | 0 | 0 | 5 | 4 | 0 | call site |
+| 24 | `world.level.levelgen.structure.templatesystem.StructureTemplate.fillFromWorld` | 4 | 0 | 5 | 0 | 0 | 0 | hook |
+| 25 | `world.level.storage.loot.LootPool.entries (field)` | 4 | 5 | 0 | 0 | 0 | 0 | accessor |
+| 26 | `server.MinecraftServer.storageSource (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 27 | `server.ReloadableServerResources.loadResources` | 4 | 0 | 3 | 1 | 1 | 0 | call site |
+| 28 | `server.ReloadableServerResources.recipes (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 29 | `server.ReloadableServerResources.updateRegistryTags` | 4 | 0 | 2 | 2 | 1 | 0 | call site |
+| 30 | `server.players.PlayerList.placeNewPlayer` | 4 | 0 | 0 | 4 | 4 | 0 | call site |
+| 31 | `world.entity.Entity.setLevel` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 32 | `world.entity.LivingEntity.onEffectAdded` | 4 | 0 | 4 | 0 | 0 | 0 | hook |
+| 33 | `world.entity.LivingEntity.onEffectRemoved` | 4 | 0 | 4 | 0 | 0 | 0 | hook |
+| 34 | `world.entity.LivingEntity.onEffectUpdated` | 4 | 1 | 3 | 0 | 0 | 0 | hook |
+| 35 | `world.entity.Mob.goalSelector (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 36 | `world.entity.item.FallingBlockEntity.tick` | 4 | 0 | 0 | 4 | 4 | 0 | call site |
+| 37 | `world.entity.item.ItemEntity.hurt` | 4 | 0 | 2 | 2 | 2 | 0 | call site |
+| 38 | `world.entity.item.ItemEntity.tick` | 4 | 0 | 3 | 1 | 1 | 0 | call site |
+| 39 | `world.entity.player.Inventory.player (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 40 | `world.entity.player.Player.tryToStartFallFlying` | 4 | 0 | 2 | 2 | 1 | 0 | call site |
+| 41 | `world.item.BlockItem.getPlacementState` | 4 | 1 | 2 | 1 | 1 | 0 | call site |
+| 42 | `world.item.crafting.Ingredient.values (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 43 | `world.level.BaseSpawner.serverTick` | 4 | 0 | 1 | 3 | 3 | 0 | call site |
+| 44 | `world.level.biome.BiomeManager.biomeZoomSeed (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 45 | `world.level.block.Blocks.<clinit>` | 4 | 0 | 0 | 4 | 4 | 0 | call site |
+| 46 | `world.level.block.DispenserBlock.getDispenseMethod` | 4 | 3 | 1 | 0 | 0 | 0 | hook |
+| 47 | `world.level.storage.loot.LootTable.pools (field)` | 4 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 48 | `world.item.MapItem.update` | 3 | 0 | 2 | 6 | 6 | 0 | call site |
+| 49 | `server.WorldLoader.load` | 3 | 0 | 2 | 5 | 4 | 0 | call site |
+| 50 | `world.level.saveddata.maps.MapItemSavedData.tickCarriedBy` | 3 | 0 | 1 | 5 | 4 | 0 | call site |
+| 51 | `server.level.ServerLevel.tick` | 3 | 0 | 3 | 2 | 2 | 0 | call site |
+| 52 | `server.level.ServerPlayerGameMode.destroyBlock` | 3 | 0 | 1 | 4 | 3 | 0 | call site |
+| 53 | `world.level.levelgen.structure.pools.StructureTemplatePool.rawTemplates (field)` | 3 | 5 | 0 | 0 | 0 | 0 | accessor |
+| 54 | `server.level.ChunkMap.level (field)` | 3 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 55 | `server.level.ServerPlayer.<init>` | 3 | 0 | 1 | 3 | 2 | 0 | call site |
+| 56 | `server.level.ServerPlayerGameMode.useItemOn` | 3 | 0 | 4 | 0 | 0 | 0 | hook |
+| 57 | `server.network.ServerGamePacketListenerImpl.aboveGroundTickCount (field)` | 3 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 58 | `world.entity.npc.WanderingTrader.updateTrades` | 3 | 0 | 3 | 1 | 1 | 0 | call site |
+| 59 | `world.entity.npc.WanderingTraderSpawner.spawn` | 3 | 0 | 2 | 2 | 2 | 0 | call site |
+| 60 | `world.item.BlockItem.place` | 3 | 0 | 2 | 2 | 2 | 0 | call site |
+| 61 | `world.item.crafting.RecipeManager.byName (field)` | 3 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 62 | `world.item.crafting.RecipeManager.byType (field)` | 3 | 4 | 0 | 0 | 0 | 0 | accessor |
+| 63 | `world.level.block.FireBlock.checkBurnOut` | 3 | 1 | 0 | 3 | 3 | 0 | call site |
+| 64 | `world.level.block.state.BlockBehaviour$BlockStateBase.initCache` | 3 | 1 | 2 | 1 | 1 | 0 | call site |
+| 65 | `core.component.PatchedDataComponentMap.patch (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 66 | `server.PlayerAdvancements.player (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 67 | `server.ReloadableServerResources.<init>` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 68 | `server.level.ServerPlayer.tick` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 69 | `tags.TagLoader.build` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 70 | `util.datafix.fixes.ItemStackComponentizationFix.fixItemStack` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 71 | `util.datafix.schemas.V1460.registerBlockEntities` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 72 | `world.entity.Entity.getXRot` | 3 | 2 | 0 | 1 | 1 | 0 | call site |
+| 73 | `world.entity.Entity.getYRot` | 3 | 2 | 0 | 1 | 1 | 0 | call site |
+| 74 | `world.entity.Entity.isCurrentlyGlowing` | 3 | 2 | 1 | 0 | 0 | 0 | hook |
+| 75 | `world.entity.Entity.isInvulnerableTo` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 76 | `world.entity.Entity.push` | 3 | 1 | 2 | 0 | 0 | 0 | hook |
+| 77 | `world.entity.LightningBolt.tick` | 3 | 0 | 0 | 3 | 3 | 0 | call site |
+| 78 | `world.entity.LivingEntity.actuallyHurt` | 3 | 1 | 1 | 1 | 1 | 0 | call site |
+| 79 | `world.entity.LivingEntity.checkTotemDeathProtection` | 3 | 1 | 2 | 0 | 0 | 0 | hook |
+| 80 | `world.entity.LivingEntity.eat` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 81 | `world.entity.LivingEntity.getJumpBoostPower` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 82 | `world.entity.LivingEntity.getSoundVolume` | 3 | 2 | 1 | 0 | 0 | 0 | hook |
+| 83 | `world.entity.LivingEntity.hasEffect` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 84 | `world.entity.LivingEntity.isCurrentlyGlowing` | 3 | 1 | 2 | 0 | 0 | 0 | hook |
+| 85 | `world.entity.Mob.getAmbientSound` | 3 | 2 | 1 | 0 | 0 | 0 | hook |
+| 86 | `world.entity.item.FallingBlockEntity.blockState (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 87 | `world.entity.item.ItemEntity.getItem` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 88 | `world.entity.npc.Villager.updateSpecialPrices` | 3 | 1 | 1 | 1 | 1 | 0 | call site |
+| 89 | `world.entity.player.Player.aiStep` | 3 | 0 | 1 | 2 | 2 | 0 | call site |
+| 90 | `world.entity.player.Player.canEat` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 91 | `world.inventory.AbstractContainerMenu.slots (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 92 | `world.inventory.AnvilMenu.createResult` | 3 | 0 | 1 | 2 | 2 | 0 | call site |
+| 93 | `world.item.ItemStack.inventoryTick` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 94 | `world.item.crafting.Ingredient.getItems` | 3 | 1 | 0 | 1 | 1 | 1 | override |
+| 95 | `world.item.crafting.ShapedRecipe.pattern (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 96 | `world.item.enchantment.EnchantmentHelper.doPostAttackEffectsWithItemSource` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 97 | `world.level.block.BushBlock.mayPlaceOn` | 3 | 1 | 1 | 1 | 1 | 0 | call site |
+| 98 | `world.level.block.ConcretePowderBlock.concrete (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 99 | `world.level.block.FenceBlock.connectsTo` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 100 | `world.level.block.state.BlockBehaviour$BlockStateBase.getBlock` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 101 | `world.level.block.state.BlockBehaviour$BlockStateBase.getCollisionShape` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 102 | `world.level.block.state.BlockBehaviour$BlockStateBase.onRemove` | 3 | 0 | 2 | 1 | 1 | 0 | call site |
+| 103 | `world.level.levelgen.structure.pools.JigsawPlacement.addPieces` | 3 | 0 | 1 | 2 | 2 | 0 | call site |
+| 104 | `world.level.levelgen.structure.templatesystem.StructureTemplate.load` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 105 | `world.level.levelgen.structure.templatesystem.StructureTemplate.save` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 106 | `world.level.levelgen.structure.templatesystem.StructureTemplate.size (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 107 | `world.level.saveddata.maps.MapItemSavedData.load` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 108 | `world.level.saveddata.maps.MapItemSavedData.save` | 3 | 0 | 3 | 0 | 0 | 0 | hook |
+| 109 | `world.level.storage.loot.LootPool.conditions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 110 | `world.level.storage.loot.LootPool.functions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 111 | `world.level.storage.loot.LootTable.functions (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 112 | `world.level.storage.loot.LootTable.randomSequence (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 113 | `world.level.storage.loot.entries.CompositeEntryBase.children (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 114 | `world.level.storage.loot.entries.LootItem.item (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 115 | `world.level.storage.loot.functions.ApplyBonusCount.enchantment (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 116 | `world.level.storage.loot.functions.ApplyBonusCount.run` | 3 | 0 | 0 | 3 | 2 | 0 | call site |
+| 117 | `world.level.storage.loot.functions.EnchantedCountIncreaseFunction.enchantment (field)` | 3 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 118 | `world.level.storage.loot.predicates.LootItemRandomChanceWithEnchantedBonusCondition.test` | 3 | 0 | 0 | 3 | 2 | 0 | call site |
+| 119 | `world.level.block.piston.PistonStructureResolver.addBlockLine` | 2 | 0 | 0 | 7 | 5 | 0 | call site |
+| 120 | `world.entity.LivingEntity.getDamageAfterMagicAbsorb` | 2 | 0 | 0 | 5 | 5 | 0 | call site |
+| 121 | `world.level.block.piston.PistonBaseBlock.moveBlocks` | 2 | 0 | 1 | 4 | 4 | 0 | call site |
+| 122 | `server.commands.LocateCommand.locateStructure` | 2 | 0 | 3 | 1 | 1 | 0 | call site |
+| 123 | `world.food.FoodData.tick` | 2 | 0 | 2 | 2 | 2 | 0 | call site |
+| 124 | `world.item.ItemStack.forEachModifier` | 2 | 0 | 4 | 0 | 0 | 0 | hook |
+| 125 | `world.level.Explosion.explode` | 2 | 0 | 1 | 3 | 3 | 0 | call site |
+| 126 | `world.level.block.piston.PistonMovingBlockEntity.tick` | 2 | 0 | 1 | 3 | 2 | 0 | call site |
+| 127 | `world.level.levelgen.structure.Structure.generate` | 2 | 0 | 4 | 0 | 0 | 0 | hook |
+| 128 | `server.level.ServerLevel.<init>` | 2 | 0 | 0 | 3 | 3 | 0 | call site |
+| 129 | `server.level.ServerLevel.addEntity` | 2 | 1 | 2 | 0 | 0 | 0 | hook |
+| 130 | `server.level.ServerLevel.tickChunk` | 2 | 0 | 1 | 2 | 1 | 0 | call site |
+| 131 | `server.level.ServerLevel.tickNonPassenger` | 2 | 0 | 1 | 2 | 2 | 0 | call site |
+| 132 | `server.level.ServerPlayer.restoreFrom` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 133 | `world.entity.Entity.saveWithoutId` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 134 | `world.entity.Entity.setDeltaMovement` | 2 | 1 | 2 | 0 | 0 | 0 | hook |
+| 135 | `world.entity.Entity.spawnAtLocation` | 2 | 2 | 1 | 0 | 0 | 0 | hook |
+| 136 | `world.entity.LivingEntity.aiStep` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 137 | `world.entity.Mob.doHurtTarget` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 138 | `world.entity.npc.AbstractVillager.addOffersFromItemListings` | 2 | 0 | 1 | 2 | 2 | 0 | call site |
+| 139 | `world.entity.projectile.ThrownTrident.onHitEntity` | 2 | 0 | 2 | 1 | 1 | 0 | call site |
+| 140 | `world.inventory.AnvilMenu.onTake` | 2 | 0 | 2 | 1 | 1 | 0 | call site |
+| 141 | `world.item.ItemStack.getTooltipLines` | 2 | 0 | 1 | 2 | 2 | 0 | call site |
+| 142 | `world.item.ItemStack.hurtAndBreak` | 2 | 0 | 2 | 1 | 1 | 0 | call site |
+| 143 | `world.item.crafting.Ingredient.<init>` | 2 | 1 | 0 | 2 | 1 | 0 | call site |
+| 144 | `world.level.Explosion.level (field)` | 2 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 145 | `world.level.block.DispenserBlock.dispenseFrom` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 146 | `world.level.block.entity.BlockEntity.setLevel` | 2 | 0 | 3 | 0 | 0 | 0 | hook |
+| 147 | `world.level.chunk.ChunkGenerator.findNearestMapStructure` | 2 | 0 | 2 | 1 | 1 | 0 | call site |
+| 148 | `world.level.chunk.ChunkGeneratorStructureState.generateRingPositions` | 2 | 0 | 1 | 2 | 2 | 0 | call site |
+| 149 | `world.level.levelgen.structure.StructureStart.placeInChunk` | 2 | 0 | 2 | 1 | 1 | 0 | call site |
+| 150 | `world.level.levelgen.structure.pools.StructureTemplatePool.templates (field)` | 2 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 151 | `world.level.levelgen.structure.templatesystem.StructureTemplate.entityInfoList (field)` | 2 | 3 | 0 | 0 | 0 | 0 | accessor |
+| 152 | `world.level.storage.loot.parameters.LootContextParamSets.register` | 2 | 2 | 0 | 1 | 1 | 0 | call site |
+| 153 | `core.MappedRegistry.byValue (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 154 | `core.MappedRegistry.toId (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 155 | `core.component.DataComponents.lambda$static$1` | 2 | 0 | 0 | 2 | 2 | 0 | call site |
+| 156 | `core.component.PatchedDataComponentMap.prototype (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 157 | `data.models.ItemModelGenerators.GENERATED_TRIM_MODELS (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 158 | `server.MinecraftServer.createLevels` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 159 | `server.MinecraftServer.lambda$reloadResources$29` | 2 | 0 | 0 | 2 | 2 | 0 | call site |
+| 160 | `server.MinecraftServer.stopServer` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 161 | `server.PlayerAdvancements.award` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 162 | `server.level.ChunkMap.anyPlayerCloseEnoughForSpawning` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 163 | `server.level.ChunkMap.lambda$scheduleUnload$12` | 2 | 1 | 0 | 1 | 1 | 0 | call site |
+| 164 | `server.level.ChunkMap.pendingUnloads (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 165 | `server.level.ChunkMap.processUnloads` | 2 | 0 | 1 | 1 | 1 | 0 | call site |
+| 166 | `server.level.ServerLevel.findLightningTargetAround` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 167 | `server.level.ServerLevel.getEntity` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 168 | `server.level.ServerLevel.levelEvent` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 169 | `server.level.ServerPlayerGameMode.level (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 170 | `server.level.ServerPlayerGameMode.player (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 171 | `server.network.ServerGamePacketListenerImpl.clientIsFloating (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 172 | `server.network.ServerGamePacketListenerImpl.handleMoveVehicle` | 2 | 0 | 1 | 1 | 1 | 0 | call site |
+| 173 | `server.network.ServerGamePacketListenerImpl.handlePlayerAbilities` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 174 | `server.players.PlayerList.reloadResources` | 2 | 0 | 0 | 2 | 2 | 0 | call site |
+| 175 | `server.players.PlayerList.stats (field)` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 176 | `tags.TagLoader.load` | 2 | 0 | 1 | 1 | 1 | 0 | call site |
+| 177 | `tags.TagManager.createLoader` | 2 | 0 | 1 | 1 | 1 | 0 | call site |
+| 178 | `util.datafix.schemas.V1460.registerInventory` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 179 | `util.datafix.schemas.V3818_3.lambda$registerTypes$0` | 2 | 0 | 0 | 2 | 2 | 0 | call site |
+| 180 | `world.damagesource.DamageSources.source` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 181 | `world.entity.Entity.<init>` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 182 | `world.entity.Entity.canAddPassenger` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 183 | `world.entity.Entity.canRide` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 184 | `world.entity.Entity.extinguishFire` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 185 | `world.entity.Entity.getBlockSpeedFactor` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 186 | `world.entity.Entity.getDeltaMovement` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 187 | `world.entity.Entity.getGravity` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 188 | `world.entity.Entity.getSwimSplashSound` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 189 | `world.entity.Entity.getTeamColor` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 190 | `world.entity.Entity.getType` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 191 | `world.entity.Entity.getX` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 192 | `world.entity.Entity.getY` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 193 | `world.entity.Entity.getZ` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 194 | `world.entity.Entity.hurt` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 195 | `world.entity.Entity.ignoreExplosion` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 196 | `world.entity.Entity.isInWaterOrRain` | 2 | 0 | 1 | 1 | 1 | 0 | call site |
+| 197 | `world.entity.Entity.lavaHurt` | 2 | 0 | 2 | 0 | 0 | 0 | hook |
+| 198 | `world.entity.Entity.level` | 2 | 2 | 0 | 0 | 0 | 0 | accessor |
+| 199 | `world.entity.Entity.playerTouch` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+| 200 | `world.entity.Entity.remove` | 2 | 1 | 1 | 0 | 0 | 0 | hook |
+
+Strongest primitive over the 200 target members: accessor 58, hook 56, call site 85, override 1.
+
+Call-site points over all target members: 554 distinct points (target member, `@At` value and target); 520 of them have one member.
+
+#### Service candidates
+
+A class is a service candidate when mods replace its logic instead of hooking it: the named classes of the native channel decision, and every other class in the scope whose members are mostly `@Overwrite` or `@Redirect` (half or more of its members that are not accessors, with at least 2 mods). Columns: mods (all members), accessor members, members that are not accessors, `@Overwrite`, `@Redirect`, `@WrapOperation`, the share of `@Overwrite` and `@Redirect`, and the most targeted members.
+
+| Class | Mods | Accessors | Members | Overwrite | Redirect | WrapOperation | Share | Top members |
+|:--|--:|--:|--:|--:|--:|--:|--:|:--|
+| `world.item.crafting.RecipeManager` | 15 | 9 | 25 | 0 | 1 | 0 | 4% | `apply` 17, `fromJson` 2, `lambda$apply$0` 2 |
+| `server.ReloadableServerResources` | 9 | 5 | 11 | 0 | 1 | 0 | 9% | `loadResources` 4, `updateRegistryTags` 4, `<init>` 3 |
+| `server.players.PlayerList` | 8 | 4 | 12 | 0 | 0 | 0 | 0% | `placeNewPlayer` 4, `getPlayerAdvancements` 2, `reloadResources` 2 |
+| `world.item.enchantment.EnchantmentHelper` | 6 | 0 | 12 | 0 | 0 | 0 | 0% | `doPostAttackEffectsWithItemSource` 3, `getComponentType` 1, `getDamageProtection` 1 |
+| `world.level.Explosion` | 6 | 14 | 14 | 0 | 1 | 2 | 7% | `finalizeExplosion` 7, `explode` 4, `<init>` 1 |
+| `tags.TagLoader` | 5 | 1 | 6 | 0 | 0 | 1 | 0% | `build` 3, `load` 2, `lambda$build$6` 1 |
+| `world.level.BaseSpawner` | 5 | 3 | 4 | 0 | 0 | 0 | 0% | `serverTick` 4 |
+| `world.level.block.Blocks` | 5 | 0 | 6 | 0 | 4 | 0 | 67% | `<clinit>` 4, `rebuildCache` 2 |
+| `world.level.chunk.ChunkGenerator` | 5 | 1 | 12 | 0 | 1 | 0 | 8% | `findNearestMapStructure` 3, `getNearestGeneratedStructure` 3, `getMobsAt` 2 |
+| `world.level.storage.loot.LootTable` | 5 | 17 | 4 | 0 | 0 | 0 | 0% | `getRandomItemsRaw` 2, `fill` 1, `getRandomItems` 1 |
+| `world.level.storage.loot.LootPool` | 4 | 19 | 1 | 0 | 0 | 0 | 0% | `<clinit>` 1 |
+| `server.level.ServerChunkCache` | 3 | 3 | 10 | 0 | 5 | 0 | 50% | `tickChunks` 8, `getChunkFutureMainThread` 1, `save` 1 |
+| `world.item.alchemy.PotionBrewing` | 3 | 4 | 1 | 0 | 0 | 0 | 0% | `addVanillaMixes` 1 |
+| `world.level.block.state.StateHolder` | 3 | 4 | 3 | 1 | 1 | 0 | 67% | `populateNeighbours` 2, `setValue` 1 |
+| `commands.Commands` | 2 | 0 | 2 | 0 | 1 | 0 | 50% | `<init>` 1, `performCommand` 1 |
+| `world.level.biome.Biome` | 2 | 1 | 2 | 1 | 0 | 0 | 50% | `getTemperature` 1, `shouldSnow` 1 |
+| `world.level.block.LiquidBlock` | 2 | 1 | 1 | 0 | 1 | 0 | 100% | `isRandomlyTicking` 1 |
+| `world.level.block.state.BlockBehaviour$BlockStateBase$Cache` | 2 | 3 | 2 | 0 | 2 | 0 | 100% | `<init>` 2 |
+| `world.level.chunk.PalettedContainer` | 2 | 4 | 4 | 2 | 0 | 0 | 50% | `<init>` 1, `acquire` 1, `read` 1 |
+| `world.level.entity.PersistentEntitySectionManager` | 2 | 1 | 1 | 0 | 1 | 0 | 100% | `lambda$updateChunkStatus$6` 1 |
+| `world.level.levelgen.structure.pools.JigsawPlacement$Placer` | 2 | 2 | 2 | 0 | 1 | 0 | 50% | `tryPlacingChildren` 2 |
+
+### 9.6 Mixins into other mods
+
+Members of common or server mixin classes whose target class is in another jar of the pack: 881 members in 73 mods, into 339 classes of 46 mods. Most targeted mods by members: `create` 284, `ae2` 114, `kubejs` 94, `refinedstorage` 65, `ars_nouveau` 62, `mekanism` 58, `oritech` 32, `iris` 18.
+
+The 25 most targeted classes of other mods, by mods, then by members:
+
+| # | Class | Owner | Mods | Members | Intents | Top members |
+|--:|:--|:--|--:|--:|:--|:--|
+| 1 | `com.hollingsworth.arsnouveau.common.entity.EntityOrbitProjectile` | ars_nouveau | 4 | 5 | pre 2, post 3 | `<init>` 3, `onHit` 1, `tick` 1 |
+| 2 | `com.hollingsworth.arsnouveau.api.spell.SpellSchool` | ars_nouveau | 4 | 4 | accessor 4 | `docIcon` 4 |
+| 3 | `com.hollingsworth.arsnouveau.common.block.tile.BasicSpellTurretTile` | ars_nouveau | 4 | 4 | accessor 4 | `uuid` 4 |
+| 4 | `com.hollingsworth.arsnouveau.setup.registry.Documentation` | ars_nouveau | 4 | 4 | post 4 | `getRecipePages` 4 |
+| 5 | `com.simibubi.create.content.contraptions.Contraption` | create | 3 | 12 | pre 1, post 5, mid 1, value 1, accessor 4 | `addBlocksToWorld` 2, `blocks` 2, `readNBT` 2 |
+| 6 | `dev.latvian.mods.kubejs.server.ServerScriptManager` | kubejs | 3 | 6 | pre 1, mid 3, cancel 1, value 1 | `createPackResources` 3, `loadAdditional` 1, `reload` 1 |
+| 7 | `com.simibubi.create.content.schematics.cannon.SchematicannonBlockEntity` | create | 2 | 14 | pre 3, post 2, cancel 1, value 1, accessor 7 | `finishedPrinting` 2, `inventory` 2, `updateChecklist` 2 |
+| 8 | `com.simibubi.create.content.schematics.ServerSchematicLoader` | create | 2 | 13 | mid 2, cancel 2, value 9 | `handleNewUpload` 5, `handleInstantSchematic` 3, `handleFinishedUpload` 2 |
+| 9 | `com.simibubi.create.content.kinetics.fan.AirCurrent` | create | 2 | 12 | pre 1, value 4, accessor 7 | `rebuild` 3, `segments` 2, `source` 2 |
+| 10 | `appeng.helpers.patternprovider.PatternProviderLogic` | ae2 | 2 | 10 | post 5, cancel 1, accessor 4 | `mainNode` 2, `<init>` 1, `actionSource` 1 |
+| 11 | `com.simibubi.create.foundation.blockEntity.SmartBlockEntity` | create | 2 | 9 | pre 1, accessor 8 | `initialized` 2, `lazyTickCounter` 2, `lazyTickRate` 2 |
+| 12 | `com.simibubi.create.content.kinetics.base.KineticBlockEntity` | create | 2 | 8 | value 2, accessor 6 | `flickerTally` 2, `validateKinetics` 2, `validationCountdown` 2 |
+| 13 | `com.simibubi.create.content.kinetics.RotationPropagator` | create | 2 | 7 | post 1, cancel 2, value 3, accessor 1 | `findConnectedNeighbour` 2, `getAxisModifier` 1, `getPotentialNeighbourLocations` 1 |
+| 14 | `com.refinedmods.refinedstorage.api.network.impl.autocrafting.AutocraftingNetworkComponentImpl` | refinedstorage | 2 | 6 | cancel 1, accessor 5 | `addTask` 1, `ensureTaskForCraftableAmount` 1, `patternRepository` 1 |
+| 15 | `com.simibubi.create.content.kinetics.saw.SawBlockEntity` | create | 2 | 6 | value 1, accessor 5 | `recipeIndex` 2, `cuttingRecipesKey` 1, `filtering` 1 |
+| 16 | `com.hollingsworth.arsnouveau.api.spell.SpellResolver` | ars_nouveau | 2 | 4 | pre 1, cancel 1, accessor 2 | `expendMana` 1, `getCastStats` 1, `onResolveEffect` 1 |
+| 17 | `com.refinedmods.refinedstorage.api.autocrafting.task.TaskImpl` | refinedstorage | 2 | 4 | pre 1, accessor 3 | `completedPatterns` 1, `internalStorage` 1, `patterns` 1 |
+| 18 | `com.simibubi.create.content.contraptions.AbstractContraptionEntity` | create | 2 | 4 | pre 1, cancel 1, accessor 2 | `contraption` 2, `handlePlayerInteraction` 1, `remove` 1 |
+| 19 | `com.simibubi.create.content.fluids.spout.FillingBySpout` | create | 2 | 4 | cancel 4 | `getRequiredAmountForItem` 2, `canItemBeFilled` 1, `fillItem` 1 |
+| 20 | `com.simibubi.create.content.kinetics.crusher.CrushingWheelControllerBlockEntity` | create | 2 | 4 | mid 1, accessor 3 | `entityUUID` 2, `processingEntity` 1, `tick` 1 |
+| 21 | `com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour` | create | 2 | 4 | cancel 1, accessor 3 | `lazyTickCounter` 2, `get` 1, `lazyTickRate` 1 |
+| 22 | `dev.latvian.mods.kubejs.recipe.component.RecipeComponentBuilder` | kubejs | 2 | 4 | value 2, accessor 2 | `buildUniqueId` 2, `keys` 1, `mapCodec` 1 |
+| 23 | `com.simibubi.create.content.kinetics.KineticNetwork` | create | 2 | 3 | value 2, accessor 1 | `calculateCapacity` 1, `calculateStress` 1, `unloadedStress` 1 |
+| 24 | `com.simibubi.create.content.kinetics.mixer.MechanicalMixerBlockEntity` | create | 2 | 3 | post 2, accessor 1 | `getMatchingRecipes` 2, `shapelessOrMixingRecipesKey` 1 |
+| 25 | `dev.latvian.mods.kubejs.recipe.component.RegistryComponent` | kubejs | 2 | 3 | value 2, accessor 1 | `lambda$static$0` 2, `registry` 1 |
+
+### 9.7 Findings
+
+- **Demand is flat.** The most targeted member, `RecipeManager.apply`, has 11 mods. 16 target members have 5 or more mods (section 9.4). 2674 members in 157 mods target 1931 members of 519 vanilla classes. The 200 most targeted members cover 26% of the members and 11% of the mods, and 21% of the mods when build-time accessors are free (section 9.3). A catalogue of hand-written hook points sized by demand does not port the pack: with the best order, half of the mods need 97 hook and seam target members, 80% need 329, and all mods need 1120.
+- **Accessors are the largest primitive.** 1086 of the 2674 members (41%) are `@Shadow`, `@Accessor` or `@Invoker`. Build-time accessors that code generation makes for every field and method of a vanilla class cover them, with no catalogue entry.
+- **Most hooks sit at the start or the end of a method.** Of the 1588 hook and seam members, 1042 (66%) act at the start or the end of the target method: pre 157, post 282, cancel at `HEAD` 331, cancel at `RETURN` or `TAIL` 144, `@WrapMethod` 26, `@ModifyReturnValue` 102. A hook point at entry and exit, with cancel and a replaceable return value, covers them. When code generation makes it for every method, it needs no catalogue entry either.
+- **Call-site hooks are the real catalogue cost.** 525 hook and seam members (33%) act inside the method body: value modifiers other than `@ModifyReturnValue` 343, mid-method injections 123, cancellable injections at an inner point 59. Each needs a hook point at an identified call, field access, constant or local variable in the server source. The points seldom repeat: 520 of the 554 distinct call-site points have one member (section 9.5).
+- **Whole-method overrides are rare.** 21 members (1%) are `@Overwrite`, 13 of them in the performance mods `modernfix` (10) and `ferritecore` (3). The named service candidates have no `@Overwrite` and at most one `@Redirect` each: `RecipeManager` has 25 members that are not accessors, with 0 `@Overwrite` and 1 `@Redirect`; `LootTable`, `LootPool` and `PotionBrewing` are mostly accessors; `BaseSpawner` has 4 hooks at inner points of `serverTick`. Hook points and accessors cover their members, so the mixin data alone does not ask for a replaceable service in these classes. The classes whose members are mostly `@Overwrite` or `@Redirect` (`ServerChunkCache`, `StateHolder`, `PalettedContainer`, `BlockBehaviour$BlockStateBase$Cache`, `Biome`) are engine internals that `servercore`, `ferritecore` and `modernfix` replace for speed. They have no counterpart in a Rust server. `Blocks` is the exception: `amendments`, `apothic_enchanting` and `apothic_spawners` redirect its static initializer to construct their own subclass in place of a vanilla block, and a registry override covers that.
+- **Mods hook other mods.** 881 members in 73 mods target 339 classes of 46 other mods: `create` 284 members, `ae2` 114, `kubejs` 94, `refinedstorage` 65, `ars_nouveau` 62, `mekanism` 58. These are addons of the target mod. The most targeted class of another mod has 4 mods (section 9.6). A ported mod with addons must export its own hook points and accessors, so the hook and accessor mechanism must be open to mod crates, not only to the server.
+- **Mixins add state.** 443 `@Unique` members (293 fields, 150 methods) in 61 mods add state or methods to vanilla classes. Data attachments and extension traits cover them, not hook points.
+- **Conditional mixins.** 33 mods in the scope name a mixin plugin in their config. A plugin can turn mixins on or off at run time, for example when another mod is present. The port of such a mod needs a build-time or start-time condition on its hooks.
+
+## 10. What this means for 26.3
+
+### 10.1 Method
 
 The check follows #35. Manual renames from the primers of #35, used when the simple-name search finds nothing (6): `ResourceLocation` -> `Identifier`, `InteractionResultHolder` -> `InteractionResult`, `ItemInteractionResult` -> `InteractionResult`, `Tier` -> `ToolMaterial`, `UseAnim` -> `ItemUseAnimation`, `MobSpawnType` -> `EntitySpawnReason`.
 
 Class names: a class is `same` when `n263` holds it. `n263` is the union of the NeoForge-patched 26.3 server jar (`minecraft-server-patched-26.3.0.52-beta`), the NeoForge universal jar `26.3.0.52-beta`, FML loader 12.0.8, EventBus 8.0.5, the mergetool API jar (holds `Dist`), and Brigadier 1.3.11, DataFixerUpper 10.0.21, logging 1.7.12 and authlib 10.0.77. The unpatched 26.3 server jar `server-26.3.jar` is indexed too, to tell vanilla members from members that NeoForge adds. Members: owner, name and erased descriptor are looked up in the owner and its super types (JDK supertypes through `javap`), as in #35. Results: `exact` (found in the unpatched jar), `exact-neo` (found only through NeoForge patches or the universal jar), `sig` (name found, other descriptor), `none` (no member of that name), `owner gone` (owner class not in 26.3), `unknown` (inherited from a library class outside the indexes). Client packages (`net.minecraft.client`, `com.mojang.blaze3d`) are not in the server artifacts and are not checked. A changed descriptor can still compile from source. Behaviour changes behind an unchanged signature are not detected, so every number here is a lower bound for breakage.
 
-### 9.2 Totals
+### 10.2 Totals
 
 | Set | Classes | same | moved | GONE |
 |:--|--:|--:|--:|--:|
@@ -2120,7 +2847,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 
 381 of 414 mods reference at least one server-side member that does not resolve in 26.3.
 
-### 9.3 NeoForge classes that are GONE in 26.3 (server side, by mods)
+### 10.3 NeoForge classes that are GONE in 26.3 (server side, by mods)
 
 | # | Class | Mods (srv) | Refs |
 |--:|:--|--:|--:|
@@ -2207,7 +2934,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 
 5 more GONE NeoForge classes with fewer mods are not listed.
 
-### 9.4 Classes that moved (same simple name in another package, or manual rename)
+### 10.4 Classes that moved (same simple name in another package, or manual rename)
 
 | # | Class (21.1) | Mods (srv) | Class in 26.3 |
 |--:|:--|--:|:--|
@@ -2284,7 +3011,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 
 160 more moved classes are not listed.
 
-### 9.5 Minecraft classes that are GONE in 26.3 (server side, top 70 by mods)
+### 10.5 Minecraft classes that are GONE in 26.3 (server side, top 70 by mods)
 
 | # | Class | Mods (srv) | Refs |
 |--:|:--|--:|--:|
@@ -2361,7 +3088,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 
 588 more GONE Minecraft classes are not listed. Many are datagen helpers or old names that a rename note in the primers explains (`ArmorItem`, `SwordItem` and the tool items became item properties in 1.21.5; `BlockEntityType$Builder` is removed in 1.21.2).
 
-### 9.6 Members that do not resolve (top 60 by mods)
+### 10.6 Members that do not resolve (top 60 by mods)
 
 | Member | Result | Mods (srv) | Descriptor in 21.1 |
 |:--|:--|--:|:--|
@@ -2426,7 +3153,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 | `nbt.CompoundTag.getByte` | sig | 52 | (Ljava/lang/String;)B |
 | `server.level.ServerLevel.getDataStorage` | sig | 52 | ()Lnet/minecraft/world/level/storage/DimensionDataStorage; |
 
-## 10. Coverage against the `ironpumpkin:neo` contract
+## 11. Coverage against the `ironpumpkin-neo` contract
 
 The contract is `mapping-table.md`: 1299 rows, 883 from the inventory of design.md (#34) and 416 from the classes of the single-mod scan (#35). Each row is matched against the scan, so the **mods** column says how many of the 414 mods need the row. Rows name 26.3 items, the scan sees 21.1 names, so the matching is by simple class name and member name. The rules:
 
@@ -2437,7 +3164,7 @@ The contract is `mapping-table.md`: 1299 rows, 883 from the inventory of design.
 - Renames between 21.1 and 26.3 handled by an alias: `Capabilities.Energy/Fluid/Item` (21.1: `EnergyStorage`, `FluidHandler`, `ItemHandler`), `ModConfig.Type.LOCAL` (21.1 `COMMON`), `SYNCED` (21.1 `SERVER`). A row without a 21.1 counterpart shows `n/a` and counts 0.
 - The 25 platform payload ids (`neoforge:network`, ...) are internal to NeoForge. A mod never references them, so they have no count.
 
-### 10.1 Coverage by section
+### 11.1 Coverage by section
 
 Status: **covered** = the row has a WIT counterpart (supported or planned), **partial** = calls work through a counterpart but overriding does not, **contract only** = the WIT type exists and the host rejects it until a phase backs it, **gap** = no counterpart (not supported). **Used rows** = rows needed by at least one mod. **Gap mods** = distinct mods that need at least one gap row of the section. Rows that do not exist in 21.1 count as unused.
 
@@ -2489,7 +3216,7 @@ Status: **covered** = the row has a WIT counterpart (supported or planned), **pa
 
 405 of 414 mods need at least one gap row or contract-only row (the `mods.toml` metadata keys are left out; mixin and access transformer rows are in). 
 
-### 10.2 Top 30 gaps by mods affected
+### 11.2 Top 30 gaps by mods affected
 
 A gap is a contract row without a WIT counterpart (gap) or whose registry the host rejects (contract only). Rows that share a cause are grouped, because they have one fix: for the classes of the single-mod scan the group is the reason text of `mapping-table.md`, for inventory rows it is the row, except that all static registries without an API, all `neoforge:` registries without an API, the mixin rows and the access transformer rows each form one group. The `mods.toml` metadata keys `modLoader`, `loaderVersion`, `license` and similar are not API and are left out. **Mods** is the number of distinct mods that need at least one row of the group. **Rows** shows the largest rows of the group and their mods.
 
@@ -2528,7 +3255,7 @@ A gap is a contract row without a WIT counterpart (gap) or whose registry the ho
 
 Ranks 31 to 60, short form (mods, group): 23 SoundAction; 22 SpawnGroupData; 20 inv: SoundActions; 15 IEventBus#start; 15 Villager trade events; 13 mod: gap: flammability registration (`FireBlock#setFlammabl; 12 inv: IEventBus#unregister; 10 mod: gap: custom game rules not supported; 10 inv: RegisterTicketControllersEvent; 10 inv: UsernameCache; 8 inv: SpecialPlantable; 8 inv: network.connection; 7 inv: NetworkRegistry; 7 inv: PercentageAttribute; 7 inv: PlayerInteractEvent.LeftClickEmpty; 7 inv: registries.callback; 6 mod: gap: world generation, not supported; 6 inv: GameData; 6 inv: ModifyDefaultComponentsEvent; 5 inv: IAttributeExtension; 5 inv: IPayloadContext#connection; 5 inv: registries.holdersets; 4 inv: ConfigTracker; 3 inv: BooleanAttribute; 3 inv: ChunkTicketLevelUpdatedEvent; 3 inv: CreativeModeTabRegistry; 3 inv: EntityEvent.Size; 3 inv: IOwnedSpawner; 3 inv: PlayerSpawnPhantomsEvent; 3 inv: TranslatableEnum.
 
-### 10.3 Used classes without a contract row
+### 11.3 Used classes without a contract row
 
 Server-side classes of the pack that no row of `mapping-table.md` names (neither as a class nor as an owner of a member row). 267 NeoForge, 2695 Minecraft and 139 Mojang classes. The contract lists 313 Minecraft and Mojang classes from the single-mod scan, so most of the Minecraft surface of the pack is outside it: that is the long tail of vanilla API, which the `pumpkin:plugin` interfaces cover or not. Top 60 by mods; the 26.3 column says whether the class still exists.
 
@@ -2599,7 +3326,7 @@ Top 30 NeoForge classes without a row: `neoforge.items.IItemHandler`(139)*, `fml
 
 Classes without a row, by mods: >=50: 119, 10-49: 520, 2-9: 1257, 1: 1205.
 
-### 10.4 Order of work: inventory rows by status
+### 11.4 Order of work: inventory rows by status
 
 The inventory rows have the status `supported` (works today), `planned` (WIT counterpart, waits for its phase) or `not supported`; the `mods.toml` key rows are left out. The planned rows are the work items of phases 4 and 6, so the mods count says which ones to build first.
 
@@ -2666,7 +3393,7 @@ Top 50 planned rows by mods (`all` counts client and dev classes too):
 
 364 planned rows are needed by at least one mod, 212 by 10 or more, 98 by 50 or more.
 
-### 10.5 Every contract row with the number of mods
+### 11.5 Every contract row with the number of mods
 
 Rows used by at least one mod, by section; `cls` is cov (covered), par (partial), con (contract only), gap. `mods` is the srv count, `all` includes client and dev classes. Unused rows are counted per section and not listed. Rows with `n/a` do not exist in 21.1.
 
@@ -3933,7 +4660,7 @@ Rows used by at least one mod, by section; `cls` is cov (covered), par (partial)
 | `com.mojang.logging.LogUtils` | cov | 107 | 126 |
 | `com.mojang.authlib.GameProfile` | cov | 89 | 92 |
 
-## 11. Open points and what could not be classified
+## 12. Open points and what could not be classified
 
 - The side of a class is a heuristic (markers and package names). 8436 classes are mixed (7% of all classes): they reference client API without a marker and count as server-side in the srv columns. Method-level `@OnlyIn` is not tracked.
 - 370 `DeferredRegister` call sites and 9 `addListener` calls could not be tied to a registry or an event class (instance fields and dynamic receivers). Loops and helpers hide entries: registry counts are lower bounds.
@@ -3942,6 +4669,6 @@ Rows used by at least one mod, by section; `cls` is cov (covered), par (partial)
 - 4 moved classes have several candidates with the same simple name; the table shows the first. 5 referenced NeoForge classes are not in the 21.1 index (artifacts `coremods`, `earlydisplay` and `JarJar` were not indexed): `coremod.api.ASMAPI`, `fml.earlydisplay.ColourScheme`, `fml.earlydisplay.ColourScheme$Colour`, `fml.earlydisplay.DisplayWindow`, `jarjar.nio.util.Lazy`.
 - 39 referenced members are inherited from a library class that no index holds (guava, netty, gson) and are neither counted as resolved nor as broken. 33 mixin classes are in no mixin config, and 134 mixin targets belong to no jar of the pack and no known library.
 - The 26.3 check has no client jar: `net.minecraft.client.*` and `com.mojang.blaze3d.*` classes and members are not checked.
-- The mapping rows are in 26.3 names. A row whose class was renamed between 21.1 and 26.3 without an alias in section 10 shows 0 mods although the pack may use the old name; section 10.3 lists the old names that have no row.
-- Behaviour changes behind an unchanged name or signature are not detected (see section 9.1).
+- The mapping rows are in 26.3 names. A row whose class was renamed between 21.1 and 26.3 without an alias in section 11 shows 0 mods although the pack may use the old name; section 11.3 lists the old names that have no row.
+- Behaviour changes behind an unchanged name or signature are not detected (see section 10.1).
 
