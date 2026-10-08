@@ -1,10 +1,9 @@
 name: Cargo Build, Test, and Linting
 
 on:
-  push:
-    branches:
-      - master
   pull_request:
+  schedule:
+    - cron: "0 2 * * *"
   workflow_dispatch:
     inputs:
       rust_toolchain_version:
@@ -118,7 +117,7 @@ jobs:
   clippy_release:
     name: Run release lints
     needs: prepare
-    if: needs.prepare.outputs.run_full == 'true' && github.event_name != 'pull_request'
+    if: needs.prepare.outputs.run_full == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -139,8 +138,11 @@ jobs:
         with:
           sparse-checkout: "crates/pumpkin-plugin-wit"
       - uses: bytecodealliance/actions/wit-bindgen/setup@v1
+        with:
+          version: 0.62.0
       - run: wit-bindgen rust crates/pumpkin-plugin-wit/v0.1
       - run: wit-bindgen rust crates/pumpkin-plugin-wit/v0.2
+      - run: wit-bindgen rust crates/pumpkin-plugin-wit/neo --world neo-plugin --generate-all
 
   test:
     name: Test (${{ matrix.name }})
@@ -185,6 +187,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.prepare.outputs.run_full == 'true' &&
+      github.event_name != 'schedule' &&
       needs.format.result == 'success' &&
       needs.machete.result == 'success' &&
       needs.clippy.result == 'success' &&
@@ -301,7 +304,7 @@ jobs:
   build_release:
     name: Build project in release
     needs: [prepare, clippy_release, test, test_android]
-    if: needs.prepare.outputs.run_full == 'true' && github.event_name != 'pull_request'
+    if: needs.prepare.outputs.run_full == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -352,7 +355,7 @@ jobs:
   build_release_musl:
     name: Build project in release with musl
     needs: [prepare, clippy_release, test, test_android]
-    if: needs.prepare.outputs.run_full == 'true' && github.event_name != 'pull_request'
+    if: needs.prepare.outputs.run_full == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -395,7 +398,7 @@ jobs:
   build_android_release:
     name: Build project in release for Android AArch64
     needs: [prepare, clippy_release, test, test_android]
-    if: needs.prepare.outputs.run_full == 'true' && github.event_name != 'pull_request'
+    if: needs.prepare.outputs.run_full == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       CARGO_PROFILE_RELEASE_LTO: ${{ inputs.release_lto || 'off' }}

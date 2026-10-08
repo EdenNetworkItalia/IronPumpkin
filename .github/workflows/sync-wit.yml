@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   sync-wit:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     runs-on: ubuntu-slim
     steps:
       - name: Checkout main repo

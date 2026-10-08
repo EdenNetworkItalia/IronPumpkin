@@ -15,11 +15,12 @@ permissions:
 
 jobs:
   request-reviewers:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     name: Request reviewers
     runs-on: ubuntu-latest
     steps:
       - name: Notify reviewers based on changed files
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const rules = [

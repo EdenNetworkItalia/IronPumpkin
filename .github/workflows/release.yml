@@ -21,6 +21,7 @@ env:
 
 jobs:
   build_release:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     name: Build & Sign Release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -96,6 +97,7 @@ jobs:
           path: dist/pumpkin-*
 
   sign_windows_release:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     name: Sign Windows release
     permissions:
       actions: read
@@ -121,7 +123,7 @@ jobs:
           echo "id=$ARTIFACT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Submit SignPath signing request
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
           organization-id: '${{ secrets.SIGNPATH_ORGANIZATION_ID }}'
@@ -139,6 +141,7 @@ jobs:
           path: dist/pumpkin-*
 
   build_android_release:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     name: Build project in release for Android (AArch64)
     runs-on: ubuntu-latest
     steps:
@@ -171,6 +174,7 @@ jobs:
           path: dist/pumpkin-aarch64-android
 
   publish_release:
+    if: github.repository == 'Pumpkin-MC/Pumpkin'
     name: Publish GitHub Release
     permissions:
       contents: write

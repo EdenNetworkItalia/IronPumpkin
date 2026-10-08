@@ -1,12 +1,44 @@
 <div align="center">
 
-# Pumpkin
+# IronPumpkin
 
-![CI](https://github.com/Pumpkin-MC/Pumpkin/actions/workflows/rust.yml/badge.svg)
-[![Discord](https://img.shields.io/discord/1268592337445978193.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/wT8XjrjKkf)
+[![CI](https://github.com/EdenNetworkItalia/IronPumpkin/actions/workflows/rust.yml/badge.svg)](https://github.com/EdenNetworkItalia/IronPumpkin/actions/workflows/rust.yml)
 [![License: GPL](https://img.shields.io/badge/License-GPLv3-yellow.svg)](https://opensource.org/licenses/gpl-3-0)
 
 </div>
+
+IronPumpkin is a Minecraft server maintained by [EdenNetwork Italia](https://github.com/EdenNetworkItalia).
+It is a derivative of [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin), a Minecraft server written in Rust.
+The goal is NeoForge compatibility on top of Pumpkin: custom content, NeoForge clients, and ported NeoForge mods.
+
+> [!IMPORTANT]
+> IronPumpkin is at an early stage. The roadmap below is planned work. Nothing on it is done yet.
+
+## Relationship with Pumpkin
+
+IronPumpkin builds on the work of the [Pumpkin project](https://pumpkinmc.org/) and its
+[authors and contributors](https://github.com/Pumpkin-MC/Pumpkin/graphs/contributors).
+Pumpkin is licensed under the GPLv3, and so is IronPumpkin.
+
+- IronPumpkin is not a GitHub fork. It is a derivative that merges upstream changes regularly.
+- IronPumpkin tracks the `master` branch of Pumpkin.
+- Gameplay fixes and general improvements go to Pumpkin, not to this repository.
+- Only the NeoForge compatibility layer lives here.
+
+## Roadmap
+
+The four goals are staged. Each goal depends on the ones before it.
+
+- [ ] **Content registration API.** Plugins add custom blocks, items and entities.
+  The server syncs dynamic registries to clients.
+- [ ] **NeoForge network handshake.** NeoForge clients can join the server.
+  This covers channel registration, registry sync and config sync.
+- [ ] **NeoForge-shaped plugin API.** An event bus, deferred registers, capabilities and mod metadata.
+  Custom NeoForge mods can be ported to IronPumpkin without a JVM.
+- [ ] **JVM bridge feasibility study.** A bounded study of running real Java NeoForge server mods
+  through a JVM bridge. It is a study, not a commitment to ship a bridge.
+
+## About Pumpkin
 
 [Pumpkin](https://pumpkinmc.org/) is a Minecraft server built entirely in Rust, offering a fast, efficient,
 and customizable experience. It prioritizes performance and player enjoyment while adhering to the core mechanics of the game.
@@ -16,20 +48,20 @@ and customizable experience. It prioritizes performance and player enjoyment whi
 
 </div>
 
-## Goals
+### Goals
 
-- **Performance**: Leveraging multi-threading for maximum speed and efficiency.
+- **Performance**: Uses multi-threading for speed and efficiency.
 - **Compatibility**: Supports the latest Java & Bedrock Minecraft server version while adhering to Vanilla game mechanics.
 - **Security**: Prioritizes security by preventing known security exploits.
 - **Flexibility**: Highly configurable, with the ability to disable unnecessary features.
 - **Extensibility**: Provides a foundation for plugin development.
 
-> [!IMPORTANT]
-> Pumpkin is currently under heavy development.
+> [!NOTE]
+> Pumpkin is under heavy development.
 >
-> [See what needs to be done before the 1.0.0 Release](https://github.com/Pumpkin-MC/Pumpkin/issues/449)
+> [See what needs to be done before the Pumpkin 1.0.0 Release](https://github.com/Pumpkin-MC/Pumpkin/issues/449)
 
-## Features
+### Features
 
 - [x] Configuration (toml)
 - [Tracking: Protocol](https://github.com/Pumpkin-MC/Pumpkin/issues/1401)
@@ -93,30 +125,32 @@ and customizable experience. It prioritizes performance and player enjoyment whi
   - [x] [BungeeGuard](https://github.com/lucko/BungeeGuard)
   - [x] [Velocity](https://github.com/PaperMC/Velocity)
 
-<!-- Check out our [Github Project](https://github.com/orgs/Pumpkin-MC/projects/3) to see current progress. -->
-
 ## How to run
 
-See our [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide to get Pumpkin running.
+See Pumpkin's [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide to get the server running.
+IronPumpkin has no separate release or documentation yet.
 
 ## Contributions
 
-Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md)
+Contributions are welcome. Open issues and pull requests in this repository. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+CI does not run on every push. It runs on pull requests and every night on `master`.
+To start it on demand, run `gh workflow run rust.yml --ref <branch>`.
+
+A fix that is relevant to Pumpkin goes to [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin) first.
+It reaches IronPumpkin when we merge upstream.
 
 ## Docs
 
-Pumpkin's documentation can be found at <https://pumpkinmc.org/>
+Pumpkin's documentation is at <https://pumpkinmc.org/>.
 
-## Communication
+## Upstream
 
-Consider joining [our Discord server](https://discord.gg/wT8XjrjKkf) to stay up-to-date on events, updates, and connect with other members.
-
-## Funding
-
-If you want to fund me and help the project, check out the [Donation Page](https://pumpkinmc.org/donate/).
+For Pumpkin itself, join the [Pumpkin community](https://discord.gg/wT8XjrjKkf).
 
 ## License & Attribution
 
-* **Pumpkin Server**: Licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE).
-* **Plugin API (`pumpkin-plugin-api` & `pumpkin-plugin-wit`)**: Dual-licensed under [MIT](crates/pumpkin-plugin-api/LICENSE-MIT) OR [Apache-2.0](crates/pumpkin-plugin-api/LICENSE-APACHE) for maximum flexibility when writing plugins.
+* **Server**: Licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE), the same license as Pumpkin.
+* **Plugin API crates (`pumpkin-plugin-api`, `pumpkin-plugin-wit` & `pumpkin-plugin-utils`)**: Dual-licensed under MIT OR Apache-2.0, so plugin authors can choose either license.
+  See [LICENSE-MIT](crates/pumpkin-plugin-api/LICENSE-MIT) and [LICENSE-APACHE](crates/pumpkin-plugin-api/LICENSE-APACHE).
 * **Third-Party Assets & Data**: Bedrock mappings, protocol conversion data, and Minecraft assets are subject to their respective licenses and attribution terms. See [assets/NOTICE.md](assets/NOTICE.md) for full details.
