@@ -14,7 +14,7 @@ An attachment type SHALL be registered in `neoforge:attachment_types` through `r
 - **THEN** the call fails with `attachment-error::unknown-type`
 
 ### Requirement: Default on first access
-`get-data` SHALL return the stored value or create it from `default-value`, or from the `attachment-default` callback when the type has a default constructor, and store it. Status: planned (task 2.14).
+`get-data` SHALL return the stored value or create it from `default-value`, or from the default constructor that the mod registered for the type, and store it. Status: planned (task 2.14).
 
 #### Scenario: First read
 - **WHEN** a mod reads a string attachment with default `""` from a new player
@@ -35,7 +35,7 @@ A type with `serialize` SHALL be saved with its holder under the `neoforge:attac
 - **THEN** `get-existing-data` returns the same value
 
 ### Requirement: Copy on death
-A type with `copy-on-death` SHALL keep its value on the respawned player, through the `attachment-copy` callback when the type has a copy handler. Status: planned (task 2.14).
+A type with `copy-on-death` SHALL keep its value on the respawned player, through the copy handler of the type when it has one. Status: planned (task 2.14).
 
 #### Scenario: Respawn
 - **WHEN** a player with a copy-on-death attachment dies and respawns
@@ -49,8 +49,8 @@ A type with `attachment-sync` other than `none` SHALL be sent to the matching pl
 - **THEN** every NeoForge client tracking that entity receives the new value
 
 ### Requirement: Backing phase
-Until phase 6 adds attachment storage, every call SHALL fail with `not-available`. Status: planned (task 2.14).
+Until M5 (Modded gameplay parity) adds attachment storage, every call SHALL fail with `not-available`. Status: planned (task 2.14).
 
-#### Scenario: Before phase 6
+#### Scenario: Before M5 (Modded gameplay parity)
 - **WHEN** a mod calls `get-data` on a host without attachment storage
 - **THEN** the call fails with `attachment-error::not-available`

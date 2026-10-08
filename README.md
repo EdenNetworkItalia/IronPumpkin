@@ -9,10 +9,30 @@
 
 IronPumpkin is a Minecraft server maintained by [EdenNetwork Italia](https://github.com/EdenNetworkItalia).
 It is a derivative of [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin), a Minecraft server written in Rust.
-The goal is NeoForge compatibility on top of Pumpkin: custom content, NeoForge clients, and ported NeoForge mods.
+The goal is a server that NeoForge clients can join and that runs NeoForge mods ported to Rust.
 
 > [!IMPORTANT]
-> IronPumpkin is at an early stage. The roadmap below is planned work. Nothing on it is done yet.
+> IronPumpkin is at an early stage. The roadmap below is planned work.
+
+## How mods work
+
+A ported mod is a Rust crate. A modpack is a Cargo workspace that depends on IronPumpkin and links one
+crate per mod; the build produces one server binary with the mods baked in. There is no Java, no JVM
+and no mod loading at runtime: a mod runs in-process, like it did on NeoForge, at native speed.
+
+- The planned `ironpumpkin-neo` crate gives mods the NeoForge names and structure: event bus, deferred
+  registers, capabilities, attachments, mod config and `neoforge.mods.toml` metadata. A port keeps the
+  structure of the Java mod and translates it to Rust class by class.
+- Mixins and reflection have no bytecode to patch in a Rust server. They map to three primitives:
+  accessors generated at build time, hook points on server methods with cancel and value modifiers,
+  and replaceable service seams for subsystems such as recipes, loot and spawning.
+- A modpack blueprint repository with a GitHub Action builds the binaries for each pack, so operators
+  and players download a binary and never compile.
+- Wasm plugins stay what Pumpkin offers today: sandboxed, hot-reloadable, for administration and
+  integrations.
+
+A mod linked into the server binary is a derivative work of a GPLv3 program and must use a
+GPLv3-compatible licence. The planned `ironpumpkin-neo` API crate is MIT OR Apache-2.0.
 
 ## Relationship with Pumpkin
 
@@ -27,16 +47,19 @@ Pumpkin is licensed under the GPLv3, and so is IronPumpkin.
 
 ## Roadmap
 
-The four goals are staged. Each goal depends on the ones before it.
+Work is tracked as [milestones](https://github.com/EdenNetworkItalia/IronPumpkin/milestones) and issues.
 
-- [ ] **Content registration API.** Plugins add custom blocks, items and entities.
-  The server syncs dynamic registries to clients.
-- [ ] **NeoForge network handshake.** NeoForge clients can join the server.
-  This covers channel registration, registry sync and config sync.
-- [ ] **NeoForge-shaped plugin API.** An event bus, deferred registers, capabilities and mod metadata.
-  Custom NeoForge mods can be ported to IronPumpkin without a JVM.
-- [ ] **JVM bridge feasibility study.** A bounded study of running real Java NeoForge server mods
-  through a JVM bridge. It is a study, not a commitment to ship a bridge.
+- [x] **NeoForge-aware networking.** The server recognises NeoForge clients, negotiates channels and
+  exposes the configuration phase to plugins.
+- [ ] **M1: Native mod channel.** The server as a library crate, mod registration, the modpack
+  blueprint with its GitHub Action, the hook macro, build-time accessors and service seams.
+- [ ] **M2: Content registry.** Native mods add blocks, items and entity types that survive a world
+  round trip.
+- [ ] **M3: NeoForge handshake and registry sync.** A NeoForge client with a test mod joins and sees
+  its content.
+- [ ] **M4: NeoForge-shaped native API.** The `ironpumpkin-neo` crate, family by family, sized by a scan
+  of a large reference modpack.
+- [ ] **M5: Modded gameplay parity.** Block entities and menus, attachments, data maps, dimensions.
 
 ## About Pumpkin
 
@@ -127,8 +150,9 @@ and customizable experience. It prioritizes performance and player enjoyment whi
 
 ## How to run
 
-See Pumpkin's [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide to get the server running.
-IronPumpkin has no separate release or documentation yet.
+Without mods, IronPumpkin runs like Pumpkin: see the [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide.
+With mods, build the server from a modpack workspace; the blueprint repository and its documentation
+arrive with milestone M1.
 
 ## Contributions
 
@@ -151,6 +175,6 @@ For Pumpkin itself, join the [Pumpkin community](https://discord.gg/wT8XjrjKkf).
 ## License & Attribution
 
 * **Server**: Licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE), the same license as Pumpkin.
-* **Plugin API crates (`pumpkin-plugin-api`, `pumpkin-plugin-wit` & `pumpkin-plugin-utils`)**: Dual-licensed under MIT OR Apache-2.0, so plugin authors can choose either license.
+* **API crates (`ironpumpkin-mods`, `ironpumpkin-neo` (planned), `pumpkin-plugin-api`, `pumpkin-plugin-wit` & `pumpkin-plugin-utils`)**: Dual-licensed under MIT OR Apache-2.0, so mod and plugin authors can choose either license. A mod linked into the server binary is still bound by the GPLv3 of the server.
   See [LICENSE-MIT](crates/pumpkin-plugin-api/LICENSE-MIT) and [LICENSE-APACHE](crates/pumpkin-plugin-api/LICENSE-APACHE).
 * **Third-Party Assets & Data**: Bedrock mappings, protocol conversion data, and Minecraft assets are subject to their respective licenses and attribution terms. See [assets/NOTICE.md](assets/NOTICE.md) for full details.

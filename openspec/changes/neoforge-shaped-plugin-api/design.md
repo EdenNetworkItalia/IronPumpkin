@@ -10,7 +10,7 @@ The generator and its sources live outside the repository, in the session scratc
 
 ## Context
 
-See proposal.md for the motivation. This design holds the inventory of the NeoForge 26.3.x API surface (#34). It is the contract of phase 4: every row says what a mod author gets when a mod is ported to IronPumpkin. The phase 4 mapping table (NeoForge class -> IronPumpkin API) is built from these rows. The sibling document `modpack-usage.md` (#46) lists what the reference modpack (FTB StoneBlock 4) uses.
+See proposal.md for the motivation. This design holds two things. The section "Native channel" fixes how ported mods run: as native Rust crates compiled into the server binary, against the native API `ironpumpkin-neo`, with a Wasm projection generated from that API as future work. The inventory of the NeoForge 26.3.x API surface (#34) is the contract of phase 4: every row says what a mod author gets when a mod is ported to IronPumpkin. The phase 4 mapping table (`mapping-table.md`, NeoForge class -> IronPumpkin API) is built from these rows. The sibling document `modpack-usage.md` (#46) lists what the reference modpack (FTB StoneBlock 4) uses.
 
 ### Sources
 
@@ -43,18 +43,20 @@ The status of each row comes from hand-written mapping tables next to the genera
 - One row for every public NeoForge API element a server-side port touches, with side and status.
 - Counts per family, so the size of each gap is visible.
 - A row status that a later run can recheck against the Pumpkin tree.
+- The build model, the primitives that replace mixins and reflection, and the rules that keep the native API fast, stable across upstream merges and ready for precompiled mods.
 
 **Non-Goals:**
 
 - Hook-by-hook mapping of `IBlockExtension`, `IItemExtension` and the other extension interfaces. Each has one row here; the phase 4 mapping table splits them.
 - What the reference modpack uses. That is `modpack-usage.md` (#46).
-- The shape of the phase 4 crate. The decisions below fix the target, not the API design.
+- The catalogue of hook points, accessors and service seams. The method-level mixin scan (#51) sizes it, and it grows per request.
+- Precompiled drop-in mods. The API shape keeps them possible; this phase does not build them.
 
 ## Decisions
 
-### The target is a NeoForge-shaped Wasm plugin API
+### Ported mods are native crates
 
-Decided on 2026-10-07 and recorded in the pinned "Orchestration status" issue (#29). Ported mods become IronPumpkin plugins that use the same event, registry, capability and metadata names and structure as NeoForge. Loading real Java mod jars is out of scope, because a mod jar needs the whole `net.minecraft` Java API surface and Pumpkin does not have it. Rejected alternative: an embedded JVM or a NeoForge sidecar. It stays as the optional Java feasibility spike, which runs only on the owner's request.
+Decided on 2026-10-08 and recorded in the pinned "Orchestration status" issue (#29). A ported mod is a Rust crate compiled into the server binary of its modpack, against `ironpumpkin-neo`, which uses the same event, registry, capability, attachment and metadata names and structure as NeoForge. A Wasm projection generated from that API is future work. Wasm keeps what it is good at: sandbox, hot reload and coarse services. Loading real Java mod jars is out of scope, because a mod jar needs the whole `net.minecraft` Java API surface and Pumpkin does not have it. The section "Native channel" gives the reasons and the rejected alternatives.
 
 ### The inventory is generated; the statuses are hand-written and checked
 
@@ -66,7 +68,78 @@ A Pumpkin event that exists but fires only for a subset of NeoForge's cases is `
 
 ### Names follow NeoForge 26.3, not older guides
 
-Some NeoForge 26.3 names differ from older porting guides and from the roadmap text in #29. Block breaking is `net.neoforged.neoforge.event.level.block.BreakBlockEvent`, not `BlockEvent.BreakEvent`. Config types are `LOCAL`, `CLIENT`, `SYNCED` and `STARTUP` in FancyModLoader 12.0.8. The facade follows the 26.3 names.
+Some NeoForge 26.3 names differ from older porting guides and from the roadmap text in #29. Block breaking is `net.neoforged.neoforge.event.level.block.BreakBlockEvent`, not `BlockEvent.BreakEvent`. Config types are `LOCAL`, `CLIENT`, `SYNCED` and `STARTUP` in FancyModLoader 12.0.8. `ironpumpkin-neo` follows the 26.3 names.
+
+## Native channel
+
+### Why native
+
+A Wasm hook is too slow for the code that mods put inside vanilla logic. Each call into a Wasm plugin goes through the plugin's `StoreExecutor` (`crates/pumpkin-plugin-runtime/src/executor.rs`, started by `start_legacy_store` in `crates/pumpkin-wasm-host-common/src/concurrent_store.rs`). The caller sends the call to the store driver task and waits for its answer, so a hook costs a cross-task round trip. There is one store per plugin, so every world that calls the same plugin waits on one executor. This rules out per-entity and per-tick hooks, and those are the hooks mods need most: the most mixin-targeted vanilla server classes of the reference modpack are `Entity` (43 mods, 63 mixin classes), `LivingEntity` (42, 66), `Player` (30, 38) and `ItemStack` (23, 26), from the mixins section of `modpack-usage.md`. A native call costs a function call. Java mods ran in the server process with no sandbox, so native mods keep the trust model a modpack already has.
+
+### Build model
+
+- `crates/pumpkin` is a library with a small entry point (`pumpkin::run()`, #52), and `src/main.rs` calls it. The server binary of upstream Pumpkin is the same program with no mods linked.
+- A modpack is a Cargo workspace. Its bin crate depends on the `pumpkin` library crate and on one crate per mod, and references each mod crate so that the linker keeps it.
+- A mod registers itself at link time through `inventory` (`linkme` where `inventory` fails on a CI target), with the `register_mod!` macro of `ironpumpkin-mods` (#52). The server collects the mods and calls each mod's `init` once, in mod id order, in the startup content phase before the first world loads. `ironpumpkin-neo` builds on that registration and adds the NeoForge-named API.
+- A mod embeds its `neoforge.mods.toml` in its registration entry, and the host reads its id, version, dependencies and ordering from it, as for a Java mod.
+- The workspace pins IronPumpkin by git revision and each mod crate by version or revision; its `Cargo.lock` makes the pack build reproducible.
+- A blueprint repository holds the workspace template (a mod list in the style of `modpack.toml`, the bin crate) and a GitHub Action that builds Linux and Windows binaries per pack on a tag, with a cached `target/`. It starts under `blueprint/` in this repository (#54) and moves to its own template repository when the owner says. `examples/modpack` is the minimal example pack.
+
+### Three primitives replace mixins and reflection
+
+Mixin member counts are the annotation counts of the mixins section of `modpack-usage.md` (3508 mixin classes in 259 mods). The method-level scan (#51) sizes each primitive by target method.
+
+| Primitive | Covers (count in the reference modpack) | Mechanism |
+|:--|:--|:--|
+| Build-time accessors | `@Accessor` 818, `@Shadow` 529, `@Invoker` 242, `@Mutable` 57; `ObfuscationReflectionHelper` (19 mods, 35 class files); access transformers (174 mods ship one, 4718 lines; 183 ship or declare one) | A shared accessor catalogue names the Pumpkin type and the field or method a mod needs. Codegen writes a getter, a setter or an invoker for each entry into one generated module of the crate that owns the type, because only code inside that crate can reach a private field. `ironpumpkin-neo` re-exports each accessor under the vanilla name. Accessors are safe Rust: no field offsets and no `unsafe`. |
+| Hook points (`#[hook]`) | `@Inject` 3102; the value modifiers `@WrapOperation` 288, `@Redirect` 273 at a call site, `@ModifyReturnValue` 134, `@ModifyVariable` 122, `@ModifyArg` 108, `@ModifyConstant` 34; also `@ModifyExpressionValue` 163, `@WrapWithCondition` 69, `@WrapMethod` 55 | `#[hook]` on a Pumpkin function makes a named hook point with a typed context. A pre hook runs at entry and can cancel or return a value when the hook point allows it; a post hook runs at return and can change the return value. A value point inside the function body (a call site, an argument, a local or a constant) is one macro call around the expression, and a listener can change the value there. Each hook point has a stable id (for example `living_entity.hurt`) and names the vanilla 26.3 method it mirrors. |
+| Service seams | `@Overwrite` 102 and `@Redirect` at service level. Service classes and the mods that target them: `RecipeManager` 15, `ReloadableServerResources` 9, `Explosion` 6, `EnchantmentHelper` 6, `LootTable` 5, `BaseSpawner` 5, `ChunkGenerator` 5, `TagLoader` 5, `LootPool` 4, `PotionBrewing` 4 | A service is a trait that the server holds as a trait object, the way `BlockRegistry` holds an `Arc<dyn BlockBehaviour>` per block and `ItemRegistry` an `Arc<dyn ItemBehaviour>` per item in `crates/pumpkin-core`. Pumpkin's code is the default implementation. A mod decorates a service (wraps the current implementation; decorators chain in mod id order) or replaces it (one owner per service; a second replacement stops the startup with an error that names both mods). The seams are recipes, loot, spawner, world generation, explosion, enchantment, brewing, tags and reload. |
+
+Attachments cover `@Unique` (711 members): the state a mixin adds to a vanilla class becomes an attachment of the entity, block entity, chunk or level (spec `neoforge-attachments`).
+
+A hook point is lower level than an event. A NeoForge event maps to a Pumpkin event where one exists; a hook point covers what no event covers. A hook listener that changes the world through the API goes through the one event pipeline like any other caller.
+
+What has no equivalent:
+
+- Client mixins (1539 mixin classes in the `client` array of their config; 1137 vanilla client targets). A dedicated server never runs that code.
+- Mixins that change data structures or data formats: new fields in a packet, a chunk or save format change, a registry type or a DataFixerUpper schema (`util.datafix.schemas.V1460`, 4 mods). They need a change to Pumpkin itself, decided per case.
+- Mixin plugins that apply mixins conditionally (108 mixin configs name one). A native mod uses Cargo features or its config instead.
+- Mixins into other mods (631 targets). A native mod can export its own hook points with `#[hook]`; whether mods need that is answered by the other-mod table of #51.
+
+The long tail goes through a request per case. A mod author opens an issue with the mixin (target class, method, injection point, intent), the mod that needs it and why no event covers it. The maintainers pick the primitive (a NeoForge event, an accessor, a hook point or a service seam), add it to the catalogue with a test, and name the vanilla 26.3 source it mirrors. The catalogue grows only through these requests and the demand that #51 measures.
+
+### Performance rules
+
+These are constraints on every hook point, event and service seam:
+
+- A hook point with no listener costs one atomic check and no call. `#[hook]` expands to a relaxed load of the listener count of the hook point before any context is built.
+- Hot hooks (entity tick, item tick and the other per-object, per-tick points) are delivered in batches per tick, not per object: the host collects the objects of one tick phase and calls each listener once with the batch. A pre listener marks the entries it cancels in the batch.
+- Listener filters (entity type, block id, damage type) are evaluated by the host at registration: the dispatch indexes listeners by the filter key, and a listener never runs for an object outside its filter.
+- A service seam implemented in Wasm is allowed only for coarse services, which run per reload, per command or per world load, not per tick or per object. Data formats (loot tables, recipes as JSON, tags) are preferred to any hook: a mod that can ship data ships data.
+- The `#[hook]` task carries a bench that measures one hook point with no listener, with a native listener and with a call into a Wasm plugin through the v0.2 `StoreExecutor`.
+
+### API shape
+
+- Public types of `ironpumpkin-neo` on the mod boundary avoid generics and shapes that cannot be `repr(C)`: no generic types or methods, no `impl Trait` in signatures, no stored closure types. Typed registers follow NeoForge's own non-generic forms (`DeferredRegister.Blocks`, `DeferredRegister.Items`), handles are opaque types over ids, and data crosses as plain structs and enums. This keeps it possible to put the API behind `abi_stable` later, for precompiled drop-in mods. Generic helpers may exist in a helper crate that compiles into the mod.
+- Async stays on the host side or is wrapped. Listener, hook and service traits are synchronous, like `BlockBehaviour` and `ItemBehaviour` today. Where Pumpkin needs async work, the host runs it and the API offers a synchronous call or a completion callback.
+- `ironpumpkin-neo` is versioned with semver on its own. Mods depend on `ironpumpkin-mods` and `ironpumpkin-neo`, which re-export the server types a mod needs; the direct `pumpkin-core` dependency of the example mod is interim until `ironpumpkin-neo` exists. The host side maps the API to Pumpkin internals, so an upstream merge that changes internals changes the host side and not the mods. A breaking API change is a new major version.
+
+### Licence
+
+The server crates are GPL-3.0. A mod linked into a pack binary is a derivative work of the server, so its licence must be GPL-3.0-compatible, and a distributed pack binary comes with the source of every linked mod. A port is also a derivative of the original Java mod, so that licence must allow the port. `ironpumpkin-neo`, its macro crate and `ironpumpkin-mods` stay MIT OR Apache-2.0, like `pumpkin-plugin-api`, and contain no server or NeoForge (LGPL-2.1) source. The Wasm channel has no such constraint: a Wasm plugin talks to the server only through the WIT boundary, as v0.2 plugins do.
+
+### Names and the Wasm projection
+
+- The delta specs and `mapping-table.md` name API items in interface notation, kebab-case (`level-access.destroy-block`, `event-bus.event::break-block-event`). The `ironpumpkin-neo` item is the Rust form of the same name (`level_access::destroy_block`). A callback that NeoForge takes as a Java interface or lambda is a method of a trait object or a closure that the mod registers.
+- The Wasm projection is future work with no issue yet. A generator derives a WIT package and its host adapter from `ironpumpkin-neo`, so the projection never drifts from the native API. It reuses the v0.2 WIT resources for players, entities, levels and item stacks.
+- The projection keeps registration, lifecycle, config, network, capability lookups, menus, shapes, attachments, loot modifiers, data maps and the events. Per-object, per-tick events reach Wasm plugins only in batches. Hook points, accessors and fine-grained service seams are native only.
+- The host adapter registers each Wasm listener on the native bus. Native and Wasm listeners share one dispatch in one priority order, so a native listener and a Wasm listener see and can cancel each other's actions. A Wasm mod and a native mod are mods of one mod list: they share mod ids, dependencies, the lifecycle order and inter-mod messages.
+
+### Rejected alternatives
+
+- Wasm-only mods: every hook is a cross-task round trip through the per-plugin `StoreExecutor`, and one executor serializes every world that calls the plugin.
+- A server rewrite in Go: Go's `plugin` package needs the identical toolchain and dependency sources for host and plugin, the internal ABI is not stable across releases, and Go reflection covers only the accessor primitive.
+- An embedded JVM or a NeoForge sidecar: a mod jar needs the whole `net.minecraft` Java API surface, which Pumpkin does not have. The owner dropped the Java feasibility work on 2026-10-08.
 
 ## Inventory
 
@@ -443,7 +516,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | ModifyRegistriesEvent (`registries`) | mod | both | no | - | not supported | - | registry callbacks need mutable registries; Pumpkin registries are generated |
 | NewDatapackRegistryEvent (`registries`) | mod | both | no | - | not supported | - | the datapack registry list in `dynamic_registry_loader.rs` is fixed; no custom registry types |
 | NewRegistryEvent (`registries`) | mod | both | no | - | not supported | - | new static registries need registry sync for arbitrary types; phase 2 covers block, item and entity type |
-| RegisterEvent (`registries`) | mod | both | no | - | planned | phase 2 content registry (#17, #21, #22) | block, item and entity type only |
+| RegisterEvent (`registries`) | mod | both | no | - | planned | phase 2 content registry (#17, #21; the Wasm projection, no issue) | block, item and entity type only |
 | DataMapsUpdatedEvent (`registries.datamaps`) | game | both | no | - | planned | data maps (phase 6, datapack loader) | no data map support yet |
 | RegisterDataMapTypesEvent (`registries.datamaps`) | mod | both | no | - | planned | data maps (phase 6, datapack loader) | no data map support yet |
 | PermissionGatherEvent (abstract) (`server.permission.events`) | game | server | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 not supported |
@@ -1433,7 +1506,13 @@ The root `common` package mixes families, so its types have one row each in the 
 - [NeoForge 26.3.x moves on: classes, payloads and registries change per release.] -> Rerun against the new commit and diff the tables.
 - [Method rows group overloads. A port can need one overload that the facade lacks.] -> The phase 4 mapping table lists overloads where a ported mod uses them.
 - [Most rows are `planned` or `not supported`.] -> That is the gap phase 4 and phase 6 close. Pick the order from `modpack-usage.md` (#46), not from this list.
+- [Hook points, accessors and service seams touch upstream functions, so `git merge upstream/master` can conflict there.] -> One attribute per hook point, one generated module per crate for the accessors, and a catalogue that grows only on request. A merge conflict on a hook point is resolved by moving the attribute to the new function.
+- [An upstream merge moves or renames the code behind a hook point or an accessor.] -> Each catalogue entry names the vanilla 26.3 method it mirrors and has a test; the test fails on the merge, and the host side moves the entry. The API version of mods does not change.
+- [A native mod can crash or corrupt the server: no sandbox.] -> The same trust model as Java mods. A pack lists its mods in source form, and untrusted code goes to the Wasm channel.
+- [The GPL-3.0 constraint excludes ports of mods whose licence forbids it.] -> Such a mod can go to the Wasm channel where its hooks are coarse enough, or stays unported.
+- [A pack needs its own binary, so a mod change means a rebuild.] -> The blueprint GitHub Action builds per tag with a cached `target/`; plugins that need hot reload stay Wasm.
 
 ## Open Questions
 
 - Which planned rows phase 4 implements first. `modpack-usage.md` (#46) answers it; the answer changes the task order, not this inventory.
+- Which hook points, accessors and service seams the catalogue starts with. The method-level mixin scan (#51) answers it; the answer fills the catalogue, not the primitives.

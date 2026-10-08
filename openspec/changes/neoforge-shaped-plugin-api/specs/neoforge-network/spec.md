@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets a ported mod register typed custom payload channels, handle them, send them to players and add configuration tasks, on top of the phase 3 NeoForge channel negotiation.
+Lets a ported mod register typed custom payload channels, handle them, send them to players and add configuration tasks, on top of the M3 (NeoForge handshake and registry sync) NeoForge channel negotiation.
 
 ## ADDED Requirements
 
@@ -21,7 +21,7 @@ The host SHALL offer every registered channel in the `neoforge:network` negotiat
 - **THEN** the server sends `neoforge:modded_network_setup_failed` and disconnects it
 
 ### Requirement: Receiving payloads
-A payload on a registered serverbound channel SHALL reach `callbacks.handle-payload` with its handler id, the raw bytes and a `payload-context`, on the tick thread unless the channel uses `handler-thread::network`. Status: planned (task 2.11).
+A payload on a registered serverbound channel SHALL reach the handler that the mod registered for the channel, with the raw bytes and a `payload-context`, on the tick thread unless the channel uses `handler-thread::network`. Status: planned (task 2.11).
 
 #### Scenario: Handler runs
 - **WHEN** a client sends a payload on `examplemod:set_level`
@@ -42,7 +42,7 @@ The `send-to-*` functions SHALL send a payload to the players they name and SHAL
 - **THEN** the sender's client receives that payload
 
 ### Requirement: Configuration tasks
-Tasks registered through `RegisterConfigurationTasksEvent` SHALL run in order during configuration through `callbacks.run-configuration-task`, and configuration SHALL continue only after each task finishes through `finish-current-task`. Status: planned (task 2.11).
+Tasks registered through `RegisterConfigurationTasksEvent` SHALL run in order during configuration through the run method of each task, and configuration SHALL continue only after each task finishes through `finish-current-task`. Status: planned (task 2.11).
 
 #### Scenario: Licence handshake
 - **WHEN** a mod registers a task that sends a challenge and finishes on the client's answer

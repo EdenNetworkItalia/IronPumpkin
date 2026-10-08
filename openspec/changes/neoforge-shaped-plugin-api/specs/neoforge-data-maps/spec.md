@@ -21,7 +21,7 @@ The host SHALL load `data/<namespace>/data_maps/<registry>/<map>.json` from ever
 - **THEN** `get-data` for that map and entry returns that JSON value
 
 ### Requirement: Merging and removal
-Values for one entry from several packs SHALL combine with the map's `value-merger`, and a removal entry SHALL apply the map's remover, through the `merge-data-map-value` and `remove-data-map-value` callbacks for custom ones. Status: planned (task 2.17).
+Values for one entry from several packs SHALL combine with the map's `value-merger`, and a removal entry SHALL apply the map's remover, through the merger and the remover that the mod registered for custom ones. Status: planned (task 2.17).
 
 #### Scenario: List merger
 - **WHEN** two packs set `[1]` and `[2]` for an entry of a map with the `list` merger
@@ -42,8 +42,8 @@ After each load the host SHALL post `DataMapsUpdatedEvent` with cause `server-re
 - **THEN** listeners of `data-maps-updated-event` run with cause `server-reload`
 
 ### Requirement: Backing phase
-Until phase 6 adds the loader, registration SHALL succeed and lookups SHALL return none. Status: planned (task 2.17).
+Until M5 (Modded gameplay parity) adds the loader, registration SHALL succeed and lookups SHALL return none. Status: planned (task 2.17).
 
-#### Scenario: Before phase 6
+#### Scenario: Before M5 (Modded gameplay parity)
 - **WHEN** a mod calls `get-data` on a host without the data map loader
 - **THEN** the call returns none

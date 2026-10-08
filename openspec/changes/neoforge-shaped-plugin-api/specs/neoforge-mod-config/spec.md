@@ -42,7 +42,7 @@ When the file of a loaded config changes on disk, the host SHALL reload it and p
 - **THEN** `get` returns the new value and listeners of `mod-config-event-reloading` run
 
 ### Requirement: Synced configs reach clients
-A `synced` config SHALL be sent to each NeoForge client during configuration with the `neoforge:config_file` payload of the phase 3 `SyncConfig` task. Status: planned (task 2.8).
+A `synced` config SHALL be sent to each NeoForge client during configuration with the `neoforge:config_file` payload of the M3 (NeoForge handshake and registry sync) `SyncConfig` task. Status: planned (task 2.8).
 
 #### Scenario: NeoForge client joins
 - **WHEN** a NeoForge client configures with a server that has a synced config

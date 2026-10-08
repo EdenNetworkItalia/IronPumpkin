@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets mods expose and look up item, fluid and energy handlers on blocks, entities and items through NeoForge capabilities, across plugins and over Pumpkin inventories.
+Lets mods expose and look up item, fluid and energy handlers on blocks, entities and items through NeoForge capabilities, across mods and over Pumpkin inventories.
 
 ## ADDED Requirements
 
@@ -18,10 +18,10 @@ Lets mods expose and look up item, fluid and energy handlers on blocks, entities
 - **THEN** the call fails with `capability-error::type-mismatch`
 
 ### Requirement: Providers from mods
-A provider registered through `register-capabilities-event` SHALL answer lookups through the matching `callbacks.get-*-capability` function, and a returned handler id SHALL become a `capability-handle` whose calls the host forwards to that mod. Status: planned (task 2.7).
+A provider registered through `register-capabilities-event` SHALL answer lookups through the provider that the mod registered, and the handler it returns SHALL become a `capability-handle` whose calls reach that mod's handler. Status: planned (task 2.7).
 
 #### Scenario: Mod block exposes items
-- **WHEN** another plugin calls `get-capability` on a block whose mod registered an item provider
+- **WHEN** another mod calls `get-capability` on a block whose mod registered an item provider
 - **THEN** it gets a handle and `insert` on it reaches the providing mod's `handler-insert`
 
 ### Requirement: Pumpkin inventories as providers

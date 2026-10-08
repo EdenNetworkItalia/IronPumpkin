@@ -7,10 +7,10 @@ Lets a ported mod register blocks, items, entity types and the other content Neo
 ## ADDED Requirements
 
 ### Requirement: Deferred registers
-A mod SHALL create a `deferred-register` for a registry id and namespace, or the typed `deferred-register-blocks`, `deferred-register-items`, `deferred-register-entities` and `deferred-register-data-components`, and SHALL register entries on it from `on-load`. Status: planned (task 2.5).
+A mod SHALL create a `deferred-register` for a registry id and namespace, or the typed `deferred-register-blocks`, `deferred-register-items`, `deferred-register-entities` and `deferred-register-data-components`, and SHALL register entries on it from its `init`. Status: planned (task 2.5).
 
 #### Scenario: Register a block
-- **WHEN** a mod calls `register-simple-block("mithril_block", properties)` on its blocks register in `on-load`
+- **WHEN** a mod calls `register-simple-block("mithril_block", properties)` on its blocks register in `init`
 - **THEN** it gets a `deferred-block` for `examplemod:mithril_block` that is not bound yet
 
 ### Requirement: Entries apply at RegisterEvent
@@ -32,11 +32,15 @@ The host SHALL apply the entries of every register when it posts `RegisterEvent`
 - **THEN** the registration fails with `invalid-definition`
 
 ### Requirement: Behaviour by type
-A custom block SHALL run the Pumpkin behaviour of the `minecraft:block_type` id in its definition, and a custom item the Pumpkin item behaviour it names, backed by the phase 2 content registry. Status: planned (task 2.5).
+A custom block SHALL run the `BlockBehaviour` implementation that the mod registers or else the Pumpkin behaviour of the `minecraft:block_type` id in its definition, and a custom item the `ItemBehaviour` implementation that the mod registers or else the Pumpkin item behaviour it names, backed by the M2 (Content registry) content registry. Status: planned (task 2.5).
 
 #### Scenario: Stair block
 - **WHEN** a mod registers a block with `block-type` `minecraft:stair`
 - **THEN** the block places and connects like a vanilla stair
+
+#### Scenario: Own behaviour
+- **WHEN** a native mod registers a block with its own `BlockBehaviour` implementation
+- **THEN** the server calls that implementation for the block, as for a vanilla block with a Pumpkin behaviour
 
 ### Requirement: Registries without backing fail clearly
 A registration into a registry that no phase backs yet SHALL fail with `unsupported-registry` naming the registry, except `minecraft:creative_mode_tab`, which the host SHALL accept and ignore. Status: planned (task 2.5).

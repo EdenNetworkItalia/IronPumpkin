@@ -7,21 +7,21 @@ Defines how a ported mod is described by its `neoforge.mods.toml`, which lifecyc
 ## ADDED Requirements
 
 ### Requirement: Metadata from neoforge.mods.toml
-The host SHALL call `callbacks.get-mods-toml` before `on-load` and SHALL use the `[[mods]]` entry whose `mod-id` matches the plugin for its id, version, description, authors and dependencies. Status: planned (task 2.2).
+The host SHALL read the `neoforge.mods.toml` that a mod embeds in its registration before it calls the mod's `init`, and SHALL use the `[[mods]]` entry whose `mod-id` matches the mod for its id, version, description, authors and dependencies. Status: planned (task 2.2).
 
 #### Scenario: Mod id
-- **WHEN** a mod's `get-mods-toml` returns one entry with mod id `examplemod`
-- **THEN** the plugin is known as `examplemod` and `get-mod-container().get-mod-id()` returns it
+- **WHEN** a mod embeds a `neoforge.mods.toml` with one entry with mod id `examplemod`
+- **THEN** the mod is known as `examplemod` and `get-mod-container().get-mod-id()` returns it
 
 ### Requirement: Dependencies
 A `required` dependency that is missing or outside its version range SHALL stop the mod from loading with an error naming the dependency; an `incompatible` one that is present SHALL do the same; `ordering` SHALL order loading; client-side dependencies SHALL be ignored. Status: planned (task 2.2).
 
 #### Scenario: Missing required mod
-- **WHEN** a mod requires `geckolib` in `[4.0,5.0)` and no such plugin is loaded
+- **WHEN** a mod requires `geckolib` in `[4.0,5.0)` and no such mod is loaded
 - **THEN** the mod does not load and the log names `geckolib`
 
 ### Requirement: Lifecycle order
-After `on-load` returns, the host SHALL post the mod bus events in the order the `lifecycle` doc lists, for every mod in dependency order, before the server starts its first tick. Status: planned (task 2.2).
+After the `init` of every mod returns, the host SHALL post the mod bus events in the order of the NeoForge mod lifecycle (the lifecycle inventory in design.md), for every mod in dependency order, before the server starts its first tick. Status: planned (task 2.2).
 
 #### Scenario: Setup after registration
 - **WHEN** a mod listens to `RegisterEvent` and `FMLCommonSetupEvent`
@@ -35,10 +35,10 @@ After `on-load` returns, the host SHALL post the mod bus events in the order the
 - **THEN** it gets `dedicated-server`
 
 ### Requirement: Mod list
-`is-loaded`, `get-mods`, `get-sorted-mods`, `size` and `get-mod-container-by-id` SHALL describe the loaded mods of the `neo-plugin` world. Status: planned (task 2.2).
+`is-loaded`, `get-mods`, `get-sorted-mods`, `size` and `get-mod-container-by-id` SHALL describe every loaded mod, native or Wasm. Status: planned (task 2.2).
 
 #### Scenario: Optional integration
-- **WHEN** a mod calls `is-loaded("jei")` and JEI is not a loaded plugin
+- **WHEN** a mod calls `is-loaded("jei")` and JEI is not a loaded mod
 - **THEN** it gets false
 
 ### Requirement: Inter-mod messages
@@ -49,7 +49,7 @@ After `on-load` returns, the host SHALL post the mod bus events in the order the
 - **THEN** mod B's `InterModProcessEvent` lists that message
 
 ### Requirement: Built-in data packs
-A pack added through `add-pack-finders-event` SHALL load from the plugin data folder with the given type, source and position. Status: planned (task 2.2).
+A pack added through `add-pack-finders-event` SHALL load from the mod's data folder with the given type, source and position. Status: planned (task 2.2).
 
 #### Scenario: Vanilla overrides pack
 - **WHEN** a mod adds an always-active server data pack at `data/vanilla_overrides`

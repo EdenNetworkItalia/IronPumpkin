@@ -33,8 +33,8 @@ The host SHALL call `menu-clicked` before handling a click, `menu-quick-move-sta
 - **THEN** the item stays on the cursor
 
 ### Requirement: Slots view their source
-A slot SHALL read and write the item of its `slot-source`: the player inventory, the menu's own container, a container block entity, or a mod resource handler through the `handler-*` callbacks. Data slots SHALL reach the client after `broadcast-changes`, 16 bits per slot as in vanilla. Status: planned (task 2.9).
+A slot SHALL read and write the item of its `slot-source`: the player inventory, the menu's own container, a container block entity, or a resource handler of a mod through its handler methods. Data slots SHALL reach the client after `broadcast-changes`, 16 bits per slot as in vanilla. Status: planned (task 2.9).
 
 #### Scenario: A handler slot
-- **WHEN** a slot has the source `handler` with a mod handler id and index, and the player takes the item
-- **THEN** the host calls `handler-extract` on that handler inside a transaction and commits it
+- **WHEN** a slot has the source `handler` with a resource handler of a mod and an index, and the player takes the item
+- **THEN** the host calls `extract` on that handler inside a transaction and commits it

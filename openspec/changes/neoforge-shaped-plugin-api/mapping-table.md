@@ -1,21 +1,23 @@
 # Mapping table
 
-This table maps the NeoForge 26.3 API to the `ironpumpkin:neo` WIT package in `crates/pumpkin-plugin-wit/neo` and to the `pumpkin:plugin@0.2.0` interfaces it reuses. It has two parts: every server-side row of the inventory in design.md (#34), and the modpack coverage section, which ranks the gaps of the reference modpack scan (`modpack-usage.md`, #46) with a verdict each and maps the Minecraft, NeoForge and Mojang classes outside the inventory that mods use.
+This table maps the NeoForge 26.3 API to the native API `ironpumpkin-neo` and to the `pumpkin:plugin@0.2.0` interfaces it reuses. It is the contract source of the API; the future Wasm projection is generated from the same API (design.md, section "Native channel"). It has two parts: every server-side row of the inventory in design.md (#34), and the modpack coverage section, which ranks the gaps of the reference modpack scan (`modpack-usage.md`, #46) with a verdict each and maps the Minecraft, NeoForge and Mojang classes outside the inventory that mods use.
 
 How to read it:
 
-- WIT targets are written `interface.item` (for example `registration.deferred-register.register`) or `interface.variant::case`. `pumpkin:plugin/x` is an interface of the v0.2 package.
-- Status is the inventory status: `supported` works today, `planned` has a WIT counterpart and waits for its backing phase, `not supported` has no counterpart and the reason is in the doc comment of the named interface.
-- "gap" marks a used class or a planned row without a WIT counterpart; the named interface doc says why. "partial" marks an extension interface whose methods a mod can call through the named counterpart but cannot override yet.
-- **Mods** is the number of the 414 mods of the reference modpack (FTB StoneBlock 4) that have a server-side or mixed class that needs the row, from section 10.5 of `modpack-usage.md`. The scan read NeoForge 21.1 jars and matches rows by simple name, so a row whose 26.3 class has no 21.1 counterpart shows 0. Where section 9.3 or 10.3 of the scan lists the 21.1 name of such a class, the row shows the count of the old name and names it, for example 52 (21.1 `BlockEvent$BreakEvent`). Rows are ordered by Mods, highest first; rows with the same count keep the inventory order.
+- Counterparts are written in interface notation, kebab-case: `interface.item` (for example `registration.deferred-register.register`) or `interface.variant::case`. The `ironpumpkin-neo` item has the same name in Rust case (`registration::DeferredRegister::register`). `pumpkin:plugin/x` is an interface of the v0.2 package.
+- `callbacks.x` names code that NeoForge calls through a Java interface or lambda: a method of the trait object (or a closure) that the mod registers, the handler the mod registered. `callbacks.handle-payload` is the payload handler the mod registered for the channel.
+- Status is the inventory status: `supported` works today, `planned` has a counterpart and waits for its backing phase, `not supported` has no counterpart and the reason is in the reason column of its inventory row in design.md.
+- "gap" marks a used class or a planned row without a counterpart; the reason follows in the row, and "`x` doc" names the interface of the API that owns the gap. "partial" marks an extension interface whose methods a mod can call through the named counterpart but cannot override yet.
+- **Mods** is the number of the 414 mods of the reference modpack (FTB StoneBlock 4) that have a server-side or mixed class that needs the row, from section 11.5 of `modpack-usage.md`. The scan read NeoForge 21.1 jars and matches rows by simple name, so a row whose 26.3 class has no 21.1 counterpart shows 0. Where section 10.3 or 11.3 of the scan lists the 21.1 name of such a class, the row shows the count of the old name and names it, for example 52 (21.1 `BlockEvent$BreakEvent`). Rows are ordered by Mods, highest first; rows with the same count keep the inventory order.
 - Client-only rows (210 in the inventory) and dev-only classes (data generation and game tests) never run on a dedicated server and are not listed.
-- A `not supported` row with a "contract only" counterpart: the WIT defines it so a port compiles against the final shape, and the host rejects the registration until a phase backs it.
-- Task numbers (task 2.x) are the items of `tasks.md` in this change.
-- The phase 4 implementation tasks check each supported row with a test, as design.md requires.
+- A `not supported` row with a "contract only" counterpart: the API defines it so a port compiles against the final shape, and the host rejects the registration until a phase backs it.
+- M2 to M5 are the milestones: M2 Content registry, M3 NeoForge handshake and registry sync, M4 NeoForge-shaped native API, M5 Modded gameplay parity.
+- Task numbers (task 2.x) are the native items of `tasks.md` in this change; task 3.x projects task 2.x to Wasm.
+- The M4 implementation tasks check each supported row with a test, as design.md requires.
 
 ## Coverage
 
-| Part | Rows | WIT counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
+| Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
 | Inventory, supported | 108 | 108 | 0 | 0 | 0 | 89 | 13 |
 | Inventory, planned | 487 | 444 | 43 | 0 | 0 | 386 | 108 |
@@ -27,7 +29,7 @@ How to read it:
 
 ### Events
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `RegisterPayloadHandlersEvent` | 170 | event class | `event-bus.event::register-payload-handlers-event` (resource `network.register-payload-handlers-event`) | planned |
 | `FMLCommonSetupEvent` | 148 | event class | `event-bus.event::fml-common-setup-event` | planned |
@@ -314,7 +316,7 @@ How to read it:
 
 ### Registries
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `DeferredHolder` | 224 | Registration API | `registration.deferred-holder` | planned |
 | `DeferredRegister#register` | 203 | Registration API | `registration.deferred-register.register` | planned |
@@ -390,7 +392,7 @@ How to read it:
 | `DeferredRegister#getRegistryKey` | 1 | Registration API | `registration.deferred-register.get-registry-name` | planned |
 | `DeferredRegister.Items#registerSimpleItem` | 1 | Registration API | `registration.deferred-register-items.register-simple-item` | planned |
 | `RegistryManager` | 1 | Registration API | `registration` doc, not supported | not supported |
-| `RegistrySnapshot` | 1 | Registration API | host-side phase 3 `frozen_registry` sync; no mod API | planned |
+| `RegistrySnapshot` | 1 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
 | `neoforge:structure_modifier_serializers` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
 | `neoforge:holder_set_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
 | `neoforge:fluid_ingredient_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
@@ -411,7 +413,7 @@ How to read it:
 | `DeferredRegister#getRegistryName` | 0 | Registration API | `registration.deferred-register.get-registry-name` | planned |
 | `DeferredRegister.Entities#registerEntityType` | 0 | Registration API | `registration.deferred-register-entities.register-entity-type` | planned |
 | `NeoForgeRegistriesSetup` | 0 | Registration API | `registration` doc, not supported | not supported |
-| `RegistryManager.SnapshotType` | 0 | Registration API | host-side phase 3 `frozen_registry` sync; no mod API | planned |
+| `RegistryManager.SnapshotType` | 0 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
 | `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
 | `neoforge:biome_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
 | `neoforge:structure_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
@@ -469,7 +471,7 @@ How to read it:
 
 ### Capabilities
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `BlockCapability` | 153 | Capability API | `capabilities.block-capability` | planned |
 | `Capabilities` | 138 | Capability API | `capabilities` doc (built-in capability names) | planned |
@@ -509,7 +511,7 @@ How to read it:
 
 ### Attachments
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `Level` | 310 | Attachment holders | `attachments.attachment-holder` | planned |
 | `Entity` | 249 | Attachment holders | `attachments.attachment-holder` | planned |
@@ -540,7 +542,7 @@ How to read it:
 
 ### Data maps
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `DataMapType` | 27 | Data map API | `data-maps.data-map-type` | planned |
 | `DataMapType.Builder` | 18 | Data map API | `data-maps.data-map-type` | planned |
@@ -569,7 +571,7 @@ How to read it:
 
 ### Config
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `ModConfigSpec` | 182 | Config API | `mod-config.mod-config-spec` | planned |
 | `ModConfig` | 165 | Config API | `mod-config.mod-config` | planned |
@@ -610,7 +612,7 @@ How to read it:
 
 ### Networking
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `IPayloadHandler` | 166 | Configuration tasks and other network types | `callbacks.handle-payload` | planned |
 | `IPayloadContext#player` | 154 | Payload registration and sending | `network.payload-context.player` | planned |
@@ -651,40 +653,40 @@ How to read it:
 | `PayloadRegistrar#configurationBidirectional` | 0 | Payload registration and sending | `network.payload-registrar.configuration-bidirectional` | planned |
 | `IPayloadContext#handle` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
 | `IPayloadContext#channelHandlerContext` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
-| `neoforge:advanced_add_entity` | 0 | Payloads | `registration.entity-type-builder` (host payload, phase 3) | planned |
-| `neoforge:advanced_container_set_data` | 0 | Payloads | `registration.menu-type-definition` (host payload, phase 6) | planned |
-| `neoforge:advanced_open_screen` | 0 | Payloads | `registration.menu-type-definition` (host payload, phase 6) | planned |
+| `neoforge:advanced_add_entity` | 0 | Payloads | `registration.entity-type-builder` (host payload, M3) | planned |
+| `neoforge:advanced_container_set_data` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
+| `neoforge:advanced_open_screen` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
 | `neoforge:auxiliary_light_data` | 0 | Payloads | `network` doc, not supported | not supported |
-| `c:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `c:version` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
+| `c:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `c:version` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:config_file` | 0 | Payloads | `mod-config.config-type::synced` (host payload) | planned |
-| `neoforge:extensible_enum_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:extensible_enum_data` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:feature_flags_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:feature_flags` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:frozen_registry` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:frozen_registry_sync_completed` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:frozen_registry_sync_start` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
+| `neoforge:extensible_enum_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:extensible_enum_data` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:feature_flags_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:feature_flags` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:frozen_registry` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:frozen_registry_sync_completed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:frozen_registry_sync_start` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:known_registry_data_maps` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
 | `neoforge:known_registry_data_maps_reply` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
 | `minecraft:register` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
 | `minecraft:unregister` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
-| `neoforge:network` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
-| `neoforge:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | supported |
-| `neoforge:modded_network_setup_failed` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
+| `neoforge:network` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | supported |
+| `neoforge:modded_network_setup_failed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:recipe_content` | 0 | Payloads | `network` doc, not supported | not supported |
 | `neoforge:registry_data_map_sync` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
-| `neoforge:split` | 0 | Payloads | host-side wire protocol (phase 1 codec, phase 3); no mod API | planned |
+| `neoforge:split` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:sync_attachments` | 0 | Payloads | `attachments.attachment-sync` (host payload) | planned |
-| `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | host-side phase 3 configuration task; no mod API | planned |
-| `CheckExtensibleEnums.EnumEntry` | 0 | Configuration tasks and other network types | host-side phase 3; no mod API | planned |
-| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | host-side phase 3; no mod API | planned |
-| `CheckFeatureFlags` | 0 | Configuration tasks and other network types | host-side phase 3 configuration task; no mod API | planned |
-| `CommonRegisterTask` | 0 | Configuration tasks and other network types | host-side phase 3 configuration task; no mod API | planned |
-| `CommonVersionTask` | 0 | Configuration tasks and other network types | host-side phase 3 configuration task; no mod API | planned |
-| `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host-side phase 3 configuration task; no mod API | planned |
-| `SyncConfig` | 0 | Configuration tasks and other network types | host-side phase 3 task for `mod-config.config-type::synced` | planned |
-| `SyncRegistries` | 0 | Configuration tasks and other network types | host-side phase 3 task; no mod API | planned |
+| `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `CheckExtensibleEnums.EnumEntry` | 0 | Configuration tasks and other network types | host-side M3; no mod API | planned |
+| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | host-side M3; no mod API | planned |
+| `CheckFeatureFlags` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `CommonRegisterTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `CommonVersionTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `SyncConfig` | 0 | Configuration tasks and other network types | host-side M3 task for `mod-config.config-type::synced` | planned |
+| `SyncRegistries` | 0 | Configuration tasks and other network types | host-side M3 task; no mod API | planned |
 | `QueuedPacket` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
 | `QueuedPacket.CustomPayload` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
 | `ServerPayloadContext` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
@@ -703,7 +705,7 @@ How to read it:
 
 ### Lifecycle, entry points and metadata
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `file modLoader` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file loaderVersion` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
@@ -713,7 +715,7 @@ How to read it:
 | `[[mods]] version` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.version` | supported |
 | `[[mods]] displayName` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.display-name` | planned |
 | `[[mods]] description` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.description` | supported |
-| `@Mod(value)` | 411 | Entry point annotations | `neo-plugin` world: `on-load` and `callbacks.get-mods-toml` | planned |
+| `@Mod(value)` | 411 | Entry point annotations | mod registration (`register_mod!`), the mod's `init` and its embedded `neoforge.mods.toml` | planned |
 | `[[dependencies.<modid>]] modId` | 404 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-id` / `mod-dependency.mod-id` | supported |
 | `[[dependencies.<modid>]] versionRange` | 404 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.version-range` | planned |
 | `[[dependencies.<modid>]] side` | 398 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.side` | planned |
@@ -780,7 +782,7 @@ How to read it:
 
 ### Loot modifiers, loot conditions and data conditions
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `ICondition` | 42 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
 | `ICondition.IContext` | 32 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
@@ -810,7 +812,7 @@ How to read it:
 
 ### Extension interfaces NeoForge adds to `net.minecraft`
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `IBlockStateExtension` | 274 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `types.block-state`; `pumpkin:plugin/world`; overriding hooks is a gap (documented in `types`) | planned |
 | `ILevelExtension` | 127 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world`; overriding hooks is a gap (documented in `types`) | planned |
@@ -873,7 +875,7 @@ How to read it:
 
 ### Other packages
 
-| NeoForge item | Mods | Section | WIT counterpart | Status |
+| NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `NeoForge` | 219 | Types in the root `common` package | `event-bus.bus::game` | planned |
 | `transfer` | 189 | Packages outside the families above | `capabilities.capability-handle` | planned |
@@ -895,7 +897,7 @@ How to read it:
 | `fluids.crafting` | 28 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `entity` | 20 | Packages outside the families above | gap: `IEntityWithComplexSpawn` spawn data needs the phase 3 `advanced_add_entity` payload; `PartEntity` has no target (documented in `types`) | planned |
+| `entity` | 20 | Packages outside the families above | gap: `IEntityWithComplexSpawn` spawn data needs the M3 `advanced_add_entity` payload; `PartEntity` has no target (documented in `types`) | planned |
 | `MutableDataComponentHolder` | 20 | Types in the root `common` package | `pumpkin:plugin/item-stack` component methods; `types.component-value` | planned |
 | `SoundActions` | 20 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `Tags.EntityTypes` | 20 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
@@ -949,7 +951,7 @@ How to read it:
 | `transfer.access` | 0 | Packages outside the families above | `capabilities.item-access` | planned |
 | `transfer.resource` | 0 | Packages outside the families above | `types.item-resource`, `fluid-resource`, `capabilities.transfer-resource` | planned |
 | `transfer.transaction` | 0 | Packages outside the families above | `capabilities.transaction`, `callbacks.transaction-closed` | planned |
-| `world.inventory` | 0 | Packages outside the families above | gap: custom menu slots are phase 6 (`registration.menu-type-definition`) | planned |
+| `world.inventory` | 0 | Packages outside the families above | gap: custom menu slots are M5 (`registration.menu-type-definition`) | planned |
 | `CommonHooks.BiomeCallbackFunction` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `DataMapHooks` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `IMinecartCollisionHandler` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
@@ -965,52 +967,52 @@ How to read it:
 
 ## Modpack coverage
 
-The reference modpack has 414 mods. 405 of them need at least one gap or contract-only row of the contract as the scan found it (section 10.1 of `modpack-usage.md`). This section gives the verdict for each of the 30 largest gaps, the gaps that are out of scope by nature, and the classes outside the inventory with their counterpart.
+The reference modpack has 414 mods. 405 of them need at least one gap or contract-only row of the contract as the scan found it (section 11.1 of `modpack-usage.md`). This section gives the verdict for each of the 30 largest gaps, the gaps that are out of scope by nature, and the classes outside the inventory with their counterpart.
 
 ### Top 30 gaps and verdicts
 
-Gaps as section 10.2 of the scan groups them, by the number of mods that need at least one row of the group. A verdict is one of: add now (the WIT change of this change), plan (the task and phase), or out of scope (the reason).
+Gaps as section 11.2 of the scan groups them, by the number of mods that need at least one row of the group. A verdict is one of: add now (the API addition of this change), plan (the task and phase), or out of scope (the reason).
 
 | # | Gap | Mods | Largest rows (mods) | Verdict |
 |--:|:--|--:|:--|:--|
-| 1 | Java helpers | 312 | ChatFormatting(248), RandomSource(200), Mth(191), StringRepresentable(127) | out of scope: guest code; Rust std and the guest SDK replace `Mth`, `RandomSource` and `StringRepresentable`, and `ChatFormatting` is the style of the v0.2 `text-component` (`types` doc) |
-| 2 | Mixins | 291 | [[mixins]] config(291), file mixins(278), [[mixins]] requiredMods(2), [[mixins]] behaviorVersion(0) | out of scope by nature (below) |
+| 1 | Java helpers | 312 | ChatFormatting(248), RandomSource(200), Mth(191), StringRepresentable(127) | out of scope: mod code; Rust std and `ironpumpkin-neo` replace `Mth`, `RandomSource` and `StringRepresentable`, and `ChatFormatting` is the style of the v0.2 `text-component` (`types` doc) |
+| 2 | Mixins | 291 | [[mixins]] config(291), file mixins(278), [[mixins]] requiredMods(2), [[mixins]] behaviorVersion(0) | plan, native channel: server mixins map to build-time accessors (task 2.1.3), `#[hook]` hook points (task 2.1.2) and service seams (task 2.1.4), and `@Unique` state to attachments (task 2.14); #51 sizes the catalogue, and it grows per request. Client mixins and mixins that change data structures or data formats: out of scope by nature (below) |
 | 3 | DFU codecs | 278 | Codec(244), MapCodec(220), PrimitiveCodec(196), Products(195) | out of scope by nature (below) |
-| 4 | Stream codecs and byte buffers | 263 | StreamCodec(252), RegistryFriendlyByteBuf(226), ByteBufCodecs(204) | out of scope by nature (below): a payload is the bytes the guest encodes |
-| 5 | Registries the host rejects | 247 | DataComponentType(232), data_component_type(113), creative_mode_tab(112), sound_event(55) | add now: `data_component_type`, `sound_event`, `mob_effect` and `attribute` become planned definitions with the new interfaces `data-components`, `mob-effects` and `entity-attributes` (task 2.6, phase 4); `creative_mode_tab` stays accepted and ignored (client UI); `fluid` and `neoforge:fluid_type`: plan, phase 6, no task yet (custom fluids) |
-| 6 | Access transformers | 183 | file accessTransformers(55), [[accessTransformers]] file(55) | out of scope by nature (below) |
-| 7 | Container menus | 176 | AbstractContainerMenu(172), MenuProvider(121), MenuConstructor(51), SimpleMenuProvider(45) | add now: interface `menus` (resource `menu`, `open-menu`, `get-open-menu`) and the callbacks `menu-clicked`, `menu-quick-move-stack`, `menu-still-valid`, `menu-click-button`, `menu-slots-changed`, `menu-removed`, `menu-slot-may-place`, `menu-slot-on-take` (task 2.9; vanilla menu types in phase 4, mod menu types in phase 6) |
-| 8 | Block shapes | 170 | VoxelShape(167), CollisionContext(134) | add now: interface `shapes` (`get-block-shape`, `get-state-shape`, `is-face-sturdy`, `no-collision`) and the `block-properties` methods `shape` and `collision-shape` (task 2.10, phase 4 over the phase 2 content registry) |
+| 4 | Stream codecs and byte buffers | 263 | StreamCodec(252), RegistryFriendlyByteBuf(226), ByteBufCodecs(204) | out of scope by nature (below): a payload is the bytes the mod encodes |
+| 5 | Registries the host rejects | 247 | DataComponentType(232), data_component_type(113), creative_mode_tab(112), sound_event(55) | add now: `data_component_type`, `sound_event`, `mob_effect` and `attribute` become planned definitions with the new interfaces `data-components`, `mob-effects` and `entity-attributes` (task 2.6, M4); `creative_mode_tab` stays accepted and ignored (client UI); `fluid` and `neoforge:fluid_type`: plan, M5, no task yet (custom fluids) |
+| 6 | Access transformers | 183 | file accessTransformers(55), [[accessTransformers]] file(55) | plan, native channel: build-time accessors (task 2.1.3) give a mod each member that its access transformer widens, one catalogue entry per member |
+| 7 | Container menus | 176 | AbstractContainerMenu(172), MenuProvider(121), MenuConstructor(51), SimpleMenuProvider(45) | add now: interface `menus` (resource `menu`, `open-menu`, `get-open-menu`) and the callbacks `menu-clicked`, `menu-quick-move-stack`, `menu-still-valid`, `menu-click-button`, `menu-slots-changed`, `menu-removed`, `menu-slot-may-place`, `menu-slot-on-take` (task 2.9; vanilla menu types in M4, mod menu types in M5) |
+| 8 | Block shapes | 170 | VoxelShape(167), CollisionContext(134) | add now: interface `shapes` (`get-block-shape`, `get-state-shape`, `is-face-sturdy`, `no-collision`) and the `block-properties` methods `shape` and `collision-shape` (task 2.10, M4 over the M2 content registry) |
 | 9 | Ingredients and trades | 146 | Ingredient(141), ItemCost(17), Merchant(6) | add now as a mapping (`types` doc): `Ingredient` is the v0.2 `recipe.ingredient` of `recipe-manager`. Trades: out of scope as code: 26.3 removed the trade events and keeps trades as `minecraft:villager_trade` datapack entries that a port ships as JSON; `trade-with-villager-event` (task 2.12) is the code hook |
 | 10 | Package common.util | 133 | common.util(133), common.util.flag(0), common.util.strategy(0) | out of scope: Java helpers (`Lazy`, `INBTSerializable`, which is `nbt-tree` data); `TriState` and `BlockSnapshot` already map to `types.tri-state` and `types.block-snapshot`; `FakePlayer` below |
-| 11 | Packages fluids | 123 | fluids(122), fluids.crafting(28), fluids.crafting.display(0) | plan: `FluidStack` and fluid handlers through the transfer handlers of task 2.7 (`fluid-resource` and an amount); custom fluids and `FluidUtil` interactions in phase 6, no task yet |
-| 12 | Static registries without API | 118 | recipe_serializer(74), recipe_type(49), particle_type(41), command_argument_type(21) | plan, phase 6, no task yet: `recipe_type` and `recipe_serializer` (mod machine recipes as datapack JSON). Out of scope: worldgen types (Rust world generation), `particle_type` and `command_argument_type` (client-synced registries without a Pumpkin registry type), loot and trigger types |
+| 11 | Packages fluids | 123 | fluids(122), fluids.crafting(28), fluids.crafting.display(0) | plan: `FluidStack` and fluid handlers through the transfer handlers of task 2.7 (`fluid-resource` and an amount); custom fluids and `FluidUtil` interactions in M5, no task yet |
+| 12 | Static registries without API | 118 | recipe_serializer(74), recipe_type(49), particle_type(41), command_argument_type(21) | plan, M5, no task yet: `recipe_type` and `recipe_serializer` (mod machine recipes as datapack JSON). Worldgen types: plan with the world generation service seam (task 2.1.4), as for the world generation gap. Out of scope: `particle_type` and `command_argument_type` (client-synced registries without a Pumpkin registry type), loot and trigger types |
 | 13 | Creative tab contents | 84 | BuildCreativeModeTabContentsEvent(75), CreativeModeTab.TabVisibility(26) | out of scope: client UI; the host accepts the tab entry and ignores it |
 | 14 | RenderShape | 81 | RenderShape(81) | out of scope by nature (client rendering) |
-| 15 | World generation | 72 | Heightmap(58), Heightmap.Types(58), Feature(24), GenerationStep(21) | out of scope: Pumpkin world generation is Rust code (`handle-generate-phase`); `Heightmap` reads map to the v0.2 `get-top-block-y` and `get-motion-blocking-height`; biome modifiers wait for the owner decision on ores (status issue) |
+| 15 | World generation | 72 | Heightmap(58), Heightmap.Types(58), Feature(24), GenerationStep(21) | plan, native channel: a native mod adds features, placements and structures in Rust through the world generation service seam (task 2.1.4); `Heightmap` reads map to the v0.2 `get-top-block-y` and `get-motion-blocking-height`; which NeoForge world generation rows the seam backs, biome modifiers among them, waits for the owner decision on ores (status issue) |
 | 16 | FakePlayer | 63 | FakePlayer(63) | out of scope: Pumpkin has no fake players; a mod acts through `level-access` with a `cause` entity, and the one event pipeline (tasks 2.4 and 2.18) fires the events a fake player would trigger |
 | 17 | Package server | 63 | server(59), server.command(9), server.command.generation(0), server.console(0) | add now as a mapping (`types` doc): `ServerLifecycleHooks#getCurrentServer` is the v0.2 `context.get-server`; the console, timings and command generation packages: out of scope (internal) |
-| 18 | Custom game rules | 53 | GameRules(53) | plan, phase 6, no task yet: needs a `game_rule` registry, and Pumpkin game rules are a generated enum; reading vanilla rules works through the v0.2 `game-rules` |
-| 19 | Data conditions | 52 | ICondition(42), ICondition.IContext(32), ConditionalOps(12), WithConditions(8) | plan, phase 6, no task yet: the datapack loader evaluates the built-in `neoforge:conditions` (mod loaded, item exists, tag empty, and, or, not); custom condition types stay out (`neoforge:condition_codecs`) |
-| 20 | Custom registries | 48 | RegistryBuilder(47), NewRegistryEvent(31), DeferredRegister#makeRegistry(12), ModifyRegistriesEvent(2) | out of scope: new registries need mutable registry types, and Pumpkin registries are generated; a mod keeps its own lookup tables in guest code |
+| 18 | Custom game rules | 53 | GameRules(53) | plan, M5, no task yet: needs a `game_rule` registry, and Pumpkin game rules are a generated enum; reading vanilla rules works through the v0.2 `game-rules` |
+| 19 | Data conditions | 52 | ICondition(42), ICondition.IContext(32), ConditionalOps(12), WithConditions(8) | plan, M5, no task yet: the datapack loader evaluates the built-in `neoforge:conditions` (mod loaded, item exists, tag empty, and, or, not); custom condition types stay out (`neoforge:condition_codecs`) |
+| 20 | Custom registries | 48 | RegistryBuilder(47), NewRegistryEvent(31), DeferredRegister#makeRegistry(12), ModifyRegistriesEvent(2) | out of scope: new registries need mutable registry types, and Pumpkin registries are generated; a mod keeps its own lookup tables in its own code |
 | 21 | Item abilities | 45 | ItemAbility(45), ItemAbilities(41) | out of scope: Pumpkin item behaviours hard-code tool actions; the ability name reaches mods on `block-event-block-tool-modification-event` |
-| 22 | Package common.crafting | 43 | common.crafting(43) | out of scope: custom ingredient types need the `neoforge:ingredient_serializer` registry; plain ingredients are the v0.2 `recipe.ingredient`, and `SizedIngredient` is an ingredient and a count in guest code |
+| 22 | Package common.crafting | 43 | common.crafting(43) | out of scope: custom ingredient types need the `neoforge:ingredient_serializer` registry; plain ingredients are the v0.2 `recipe.ingredient`, and `SizedIngredient` is an ingredient and a count in mod code |
 | 23 | CommonHooks | 42 | CommonHooks(42) | out of scope: helpers that fire events by hand; under the one event pipeline (tasks 2.4 and 2.18) the host fires them for every mutation that a player or an entity causes, and `event-bus.post` covers the rest |
 | 24 | Packages common.world | 34 | common.world(22), common.world.chunk(13) | out of scope: biome modifiers (world generation, owner decision) and forced chunk tickets (`RegisterTicketControllersEvent`; pumpkin-world does not expose tickets) |
 | 25 | Package network.codec | 34 | network.codec(34) | out of scope by nature (stream codec helpers; payloads are bytes) |
 | 26 | NeoForge registries without API | 32 | neoforge:condition_codecs(16), neoforge:biome_modifier_serializers(10), neoforge:entity_data_serializers(9), neoforge:structure_modifier_serializers(1) | out of scope: codec and serializer registries for Java types (`condition_codecs`, `biome_modifier_serializers`, `entity_data_serializers`, `structure_modifier_serializers`, `holder_set_type`, `ingredient_serializer`) |
-| 27 | ModList file data | 30 | ModList#getModFileById(16), ModList#getAllScanData(16), ModList#getModFiles(3), ModList#forEachModFile(2) | out of scope: mod files and scan data describe Java jars, and a Wasm mod has none; the `lifecycle` mod list gives the mod metadata |
-| 28 | NeoForgeMod constants | 30 | NeoForgeMod(30) | plan, task 2.6: the ids are constants of the guest SDK, and the host registers `neoforge:swim_speed` and `neoforge:creative_flight` in its attribute storage; the milk fluid follows custom fluids (phase 6, no task yet) |
+| 27 | ModList file data | 30 | ModList#getModFileById(16), ModList#getAllScanData(16), ModList#getModFiles(3), ModList#forEachModFile(2) | out of scope: mod files and scan data describe Java jars, and a Rust mod has none; the `lifecycle` mod list gives the mod metadata |
+| 28 | NeoForgeMod constants | 30 | NeoForgeMod(30) | plan, task 2.6: the ids are constants of `ironpumpkin-neo`, and the host registers `neoforge:swim_speed` and `neoforge:creative_flight` in its attribute storage; the milk fluid follows custom fluids (M5, no task yet) |
 | 29 | Tooltip events | 28 | ItemTooltipEvent(28), AddAttributeTooltipsEvent(0), GatherSkippedAttributeTooltipsEvent(0) | out of scope by nature (client rendering: the client builds tooltips) |
 | 30 | ArmorMaterial.Layer | 24 | ArmorMaterial.Layer(24) | out of scope by nature (client rendering: equipment layers are a client asset; armor is the `minecraft:equippable` component) |
 
-Gaps ranked 31 to 60 in section 10.2 of the scan need 3 to 23 mods each. They keep the reason of their row in the tables of this file; the trade events among them (`VillagerTradesEvent`, `WandererTradesEvent`, 15 mods) follow the trade verdict of the ingredients and trades gap.
+Gaps ranked 31 to 60 in section 11.2 of the scan need 3 to 23 mods each. They keep the reason of their row in the tables of this file; the trade events among them (`VillagerTradesEvent`, `WandererTradesEvent`, 15 mods) follow the trade verdict of the ingredients and trades gap.
 
 ### Out of scope by nature
 
-- Mixins: they patch the bytecode of the Java server, and a Rust server has no Java bytecode to patch. A mod that needs one needs an event or a callback for that hook, requested per case.
-- Access transformers: they widen access to members of Java classes. The contract has no Java classes; a member a mod needs becomes a WIT function.
-- DataFixerUpper codecs, stream codecs and byte buffers: a Java serialization framework. Guests serialize with their own code, and data crosses the boundary as JSON, NBT or bytes.
+- Client mixins: a dedicated server never runs client code.
+- Mixins that change data structures or data formats (packet fields, the chunk or save format, registry types, DataFixerUpper schemas): they need a change to Pumpkin itself, decided per case. Server mixins that hook, read or replace behaviour map to the native primitives (the mixins gap above).
+- DataFixerUpper codecs, stream codecs and byte buffers: a Java serialization framework. Mods serialize with Rust code, and data crosses the API as JSON, NBT or bytes.
 - Client rendering (render shapes, tooltips, creative tab contents, equipment layers, screens): the client draws it, and a dedicated server never runs that code.
 
 ### Classes outside the inventory
@@ -1019,7 +1021,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge registries
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.registries.DeferredHolder` | 224 | same | `registration.deferred-holder` |
 | `net.neoforged.neoforge.registries.DeferredRegister` | 207 | same | `registration.deferred-register` |
@@ -1033,7 +1035,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge events and event bus
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.bus.api.IEventBus` | 342 | same | `event-bus.add-listener`, `event-bus.post` |
 | `net.neoforged.bus.api.SubscribeEvent` | 207 | same | `event-bus.add-listener` |
@@ -1088,9 +1090,9 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge mod loading and config
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.neoforged.fml.common.Mod` | 340 | same | `neo-plugin` world (`on-load`, `callbacks.get-mods-toml`) |
+| `net.neoforged.fml.common.Mod` | 340 | same | mod registration (`register_mod!`), the mod's `init` and its embedded `neoforge.mods.toml` |
 | `net.neoforged.fml.ModContainer` | 246 | same | `lifecycle.mod-container`, `mod-config.register-config` |
 | `net.neoforged.api.distmarker.Dist` | 199 | same | `types.dist` |
 | `net.neoforged.neoforge.common.ModConfigSpec` | 182 | same | `mod-config.mod-config-spec` |
@@ -1103,14 +1105,14 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge attachments
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.attachment.AttachmentType` | 68 | same | `attachments.attachment-type-definition`, `registration.entry-definition::attachment-type` |
 | `net.neoforged.neoforge.attachment.AttachmentType$Builder` | 57 | same | `attachments.attachment-type-definition` |
 
 #### NeoForge networking
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.network.handling.IPayloadContext` | 183 | same | `network.payload-context` |
 | `net.neoforged.neoforge.network.registration.PayloadRegistrar` | 167 | same | `network.payload-registrar` |
@@ -1121,7 +1123,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge fluids
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.fluids.FluidType` | 75 | same | `registration.fluid-type-definition` (no phase yet) |
 | `net.neoforged.neoforge.fluids.FluidType$Properties` | 32 | same | `registration.fluid-type-definition` (no phase yet) |
@@ -1132,7 +1134,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge common utilities
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.common.Tags` | 77 | same | `registration.tag-entries`, `is-in-tag` |
 | `net.neoforged.neoforge.common.extensions.IMenuTypeExtension` | 70 | same | `registration.menu-type-definition.extra-data`, `menus.menu-definition.extra-data` |
@@ -1151,7 +1153,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### NeoForge loot and world modifiers
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.common.loot.IGlobalLootModifier` | 29 | same | `callbacks.decode-loot-modifier`, `apply-loot-modifier` |
 | `net.neoforged.neoforge.common.loot.LootModifier` | 25 | same | `loot.loot-modifier-entry` |
@@ -1162,7 +1164,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft core, registries and tags
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.resources.ResourceLocation` | 367 | CHANGED | `types.identifier` (`Identifier` in 26.3) |
 | `net.minecraft.resources.ResourceKey` | 306 | same | `types.resource-key` |
@@ -1178,7 +1180,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.minecraft.tags.TagKey` | 232 | same | `types.tag-key` |
 | `net.minecraft.core.RegistryAccess` | 198 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
 | `net.minecraft.core.Holder$Reference` | 177 | same | `registration.deferred-holder` |
-| `net.minecraft.core.NonNullList` | 172 | same | WIT `list<item-stack>` |
+| `net.minecraft.core.NonNullList` | 172 | same | a list of `item-stack` (`list<item-stack>`) |
 | `net.minecraft.core.particles.ParticleOptions` | 133 | same | `pumpkin:plugin/particles` |
 | `net.minecraft.core.particles.SimpleParticleType` | 114 | same | `pumpkin:plugin/particles` |
 | `net.minecraft.core.particles.ParticleTypes` | 113 | same | `pumpkin:plugin/particles` |
@@ -1196,7 +1198,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft data components
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.core.component.DataComponentType` | 232 | same | `registration.data-component-type-definition` (planned, task 2.6); values through `data-components` |
 | `net.minecraft.core.component.DataComponents` | 153 | same | `types.component-value`; `data-components` by id; `pumpkin:plugin/item-stack` components |
@@ -1206,7 +1208,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft utilities
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.ChatFormatting` | 248 | same | gap: Java helper; the style of the v0.2 `text-component` covers it (documented in `types`) |
 | `net.minecraft.util.RandomSource` | 200 | same | gap: Java helper; Rust std covers it (documented in `types`) |
@@ -1221,7 +1223,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft sounds
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.sounds.SoundEvent` | 190 | same | `registration.entry-definition::sound-event` (planned, task 2.6); played by id with the v0.2 `play-custom-sound` |
 | `net.minecraft.sounds.SoundSource` | 165 | same | `types.sound-source` |
@@ -1229,7 +1231,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft items
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.item.ItemStack` | 327 | same | `pumpkin:plugin/item-stack`; `registration.item-definition` |
 | `net.minecraft.world.item.Item` | 312 | same | `pumpkin:plugin/item-stack`; `registration.item-definition` |
@@ -1270,7 +1272,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft enchantments
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.item.enchantment.Enchantment` | 68 | same | `pumpkin:plugin/enchantments`; `types.enchantment-instance` |
 | `net.minecraft.world.item.enchantment.EnchantmentHelper` | 65 | same | `pumpkin:plugin/enchantments`; `types.enchantment-instance` |
@@ -1281,7 +1283,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft recipes and trading
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.item.crafting.Ingredient` | 141 | same | `pumpkin:plugin/recipe` `ingredient`; tests with the item id and `registration.is-in-tag` (documented in `types`) |
 | `net.minecraft.world.item.trading.MerchantOffer` | 19 | same | `event-bus.merchant-offer` |
@@ -1291,13 +1293,13 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft blocks and block entities
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.level.block.state.BlockState` | 280 | same | `types.block-state` |
 | `net.minecraft.world.level.block.Block` | 275 | same | `registration.block-definition`; `pumpkin:plugin/world` |
 | `net.minecraft.world.level.block.entity.BlockEntity` | 235 | same | `pumpkin:plugin/block-entity` |
 | `net.minecraft.world.level.block.state.properties.Property` | 197 | same | `types.block-property` |
-| `net.minecraft.world.level.block.entity.BlockEntityType` | 191 | same | `registration.block-entity-type-definition` (phase 6) |
+| `net.minecraft.world.level.block.entity.BlockEntityType` | 191 | same | `registration.block-entity-type-definition` (M5) |
 | `net.minecraft.world.level.block.state.BlockBehaviour` | 186 | same | `registration.block-definition`; `pumpkin:plugin/world` |
 | `net.minecraft.world.level.block.Blocks` | 183 | same | `types.identifier` (block ids) |
 | `net.minecraft.world.level.block.state.BlockBehaviour$Properties` | 178 | same | `registration.block-properties` |
@@ -1323,7 +1325,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft entities
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.entity.player.Player` | 302 | same | `pumpkin:plugin/player` |
 | `net.minecraft.world.entity.Entity` | 249 | same | `pumpkin:plugin/world` (`entity`, `living-entity`, `mob`) |
@@ -1372,7 +1374,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft attributes
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.entity.ai.attributes.Attributes` | 79 | same | `pumpkin:plugin/attributes`; `types.attribute-modifier`, `attribute-value` |
 | `net.minecraft.world.entity.ai.attributes.AttributeModifier` | 73 | same | `types.attribute-modifier` |
@@ -1386,7 +1388,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft effects and damage
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.damagesource.DamageSource` | 113 | same | `types.damage-source` |
 | `net.minecraft.world.effect.MobEffectInstance` | 94 | same | `types.mob-effect-instance`; applied through `mob-effects` |
@@ -1400,7 +1402,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft menus and containers
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.inventory.AbstractContainerMenu` | 172 | same | `menus.menu`, `menus.menu-definition`, `menus.open-menu` and the `callbacks.menu-*` functions (task 2.9) |
 | `net.minecraft.world.inventory.MenuType` | 157 | same | `registration.menu-type-definition`; `menus.menu-definition.menu-type` |
@@ -1417,7 +1419,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft level and world
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.level.Level` | 310 | same | `pumpkin:plugin/world` |
 | `net.minecraft.world.level.ItemLike` | 262 | same | `types.identifier` (item ids) |
@@ -1451,7 +1453,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft fluids and materials
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.level.material.Fluid` | 155 | same | `registration.fluid-definition` (no phase yet); `types.fluid-state` |
 | `net.minecraft.world.level.material.MapColor` | 107 | same | `registration.block-properties.map-color` |
@@ -1460,7 +1462,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft world generation
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.level.levelgen.Heightmap` | 58 | same | `pumpkin:plugin/world` `get-top-block-y` and `get-motion-blocking-height` (reads); world generation use: gap |
 | `net.minecraft.world.level.levelgen.Heightmap$Types` | 58 | same | `pumpkin:plugin/world` `get-top-block-y` and `get-motion-blocking-height` (reads); world generation use: gap |
@@ -1493,7 +1495,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft loot
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.level.storage.loot.LootContext` | 59 | same | `loot.loot-context` |
 | `net.minecraft.world.level.storage.loot.LootTable` | 58 | same | `loot.roll-loot-table` |
@@ -1502,7 +1504,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft server and commands
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.server.level.ServerPlayer` | 263 | same | `pumpkin:plugin/player` |
 | `net.minecraft.server.level.ServerLevel` | 252 | same | `pumpkin:plugin/world` |
@@ -1524,7 +1526,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft network and chat
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.network.chat.Component` | 335 | same | `pumpkin:plugin/text` |
 | `net.minecraft.network.chat.MutableComponent` | 325 | same | `pumpkin:plugin/text` |
@@ -1537,21 +1539,21 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Minecraft NBT and codecs
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.nbt.CompoundTag` | 257 | same | `pumpkin:plugin/common` (`nbt-tree`) |
 | `net.minecraft.nbt.Tag` | 210 | same | `pumpkin:plugin/common` (`nbt-tree`) |
 
 #### Minecraft data generation
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.data.worldgen.BootstrapContext` | 0 | same | gap: not supported (world generation data; mods ship generated files) |
 | `net.minecraft.data.worldgen.placement.OrePlacements` | 0 | same | gap: not supported (world generation data; mods ship generated files) |
 
 #### Mojang Brigadier
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `com.mojang.brigadier.exceptions.CommandSyntaxException` | 124 | same | `pumpkin:plugin/command` (command tree builder) |
 | `com.mojang.brigadier.context.CommandContext` | 122 | same | `pumpkin:plugin/command` (command tree builder) |
@@ -1566,26 +1568,26 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 #### Mojang DataFixerUpper codecs
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `com.mojang.serialization.Codec` | 244 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.serialization.MapCodec` | 220 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.serialization.codecs.PrimitiveCodec` | 196 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.Products` | 195 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.kinds.App` | 195 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.kinds.Applicative` | 195 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.serialization.codecs.RecordCodecBuilder` | 191 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.serialization.codecs.RecordCodecBuilder$Instance` | 191 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.util.Function3` | 156 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.Products$P2` | 132 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.util.Pair` | 129 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.Products$P3` | 125 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.types.Type` | 125 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
-| `com.mojang.datafixers.Products$P1` | 102 | same | gap: no codecs at the Wasm boundary; data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.serialization.Codec` | 244 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.serialization.MapCodec` | 220 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.serialization.codecs.PrimitiveCodec` | 196 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.Products` | 195 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.kinds.App` | 195 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.kinds.Applicative` | 195 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.serialization.codecs.RecordCodecBuilder` | 191 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.serialization.codecs.RecordCodecBuilder$Instance` | 191 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.util.Function3` | 156 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.Products$P2` | 132 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.util.Pair` | 129 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.Products$P3` | 125 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.types.Type` | 125 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
+| `com.mojang.datafixers.Products$P1` | 102 | same | gap: no DataFixerUpper codecs in the API (a Java framework); mods serialize with Rust code, and data crosses as JSON, NBT or bytes (documented in `types`) |
 
 #### Mojang logging and auth
 
-| Class | Mods | 26.3 | WIT counterpart or gap |
+| Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `com.mojang.logging.LogUtils` | 107 | same | `pumpkin:plugin/logging` |
 | `com.mojang.authlib.GameProfile` | 89 | same | `pumpkin:plugin/player` (name and UUID); `network.payload-context.profile` |
