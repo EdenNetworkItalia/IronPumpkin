@@ -567,7 +567,7 @@ pub struct BlockStateId(pub u16);
 impl ToTokens for BlockStateId {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let inner = self.0;
-        tokens.extend(quote! { BlockStateId::new(#inner).unwrap() });
+        tokens.extend(quote! { BlockStateId::new_vanilla(#inner).unwrap() });
     }
 }
 
@@ -748,7 +748,7 @@ pub struct BlockId(pub u16);
 impl ToTokens for BlockId {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let inner = self.0;
-        tokens.extend(quote! { BlockId::new(#inner).unwrap() });
+        tokens.extend(quote! { BlockId::new_vanilla(#inner).unwrap() });
     }
 }
 
@@ -1354,10 +1354,11 @@ pub fn build() -> TokenStream {
             /// If you need access to the block use `BlockState::from_id_with_block` instead.
             #[inline]
             #[must_use]
-            pub const fn from_id(id: BlockStateId) -> &'static Self {
-                // Safety: We always check this condition when creating a BlockStateId.
-                // the u16 field is private and immutable. BlockStateId::STATE_COUNT is a const u16.
-                // If the condition held once, it will always hold.
+            pub fn from_id(id: BlockStateId) -> &'static Self {
+                if id.as_u16() >= BlockStateId::STATE_COUNT {
+                    return crate::dynamic::state(id);
+                }
+                // Safety: Custom ids returned above, so the id is below STATE_COUNT.
                 unsafe { std::hint::assert_unchecked(id.as_u16() < BlockStateId::STATE_COUNT) }
                 // This hint guarantees that bound checks can be optimized away in release builds.
                 // Due to debug_assertions forcing -Zub_checks=yes (rust-lang/rust#123499)
@@ -1370,17 +1371,20 @@ pub fn build() -> TokenStream {
             #[doc = r" Get a block state from a state id and the corresponding block."]
             #[inline]
             #[must_use]
-            pub const fn from_id_with_block(id: BlockStateId) -> (&'static Block, &'static Self) {
+            pub fn from_id_with_block(id: BlockStateId) -> (&'static Block, &'static Self) {
                 let block = Block::from_state_id(id);
                 let state = Self::from_id(id);
                 (block, state)
             }
 
             #[must_use]
-            pub const fn to_be_network_id(id: BlockStateId) -> u32 {
-                // Safety: We always check this condition when creating a BlockStateId.
-                // the u16 field is private and immutable. BlockStateId::STATE_COUNT is a const u16.
-                // If the condition held once, it will always hold.
+            pub fn to_be_network_id(id: BlockStateId) -> u32 {
+                let id = if id.as_u16() >= BlockStateId::STATE_COUNT {
+                    crate::dynamic::display_state(id)
+                } else {
+                    id
+                };
+                // Safety: Custom ids were replaced by their vanilla display state above.
                 unsafe { std::hint::assert_unchecked(id.as_u16() < BlockStateId::STATE_COUNT) }
                 // This hint guarantees that bound checks can be optimized away in release builds.
                 // Due to debug_assertions forcing -Zub_checks=yes (rust-lang/rust#123499)
@@ -1441,23 +1445,28 @@ pub fn build() -> TokenStream {
             #[inline]
             #[must_use]
             pub fn from_registry_key(name: &str) -> Option<&'static Self> {
-                mappings::BLOCK_FROM_NAME_MAP.get(name)
+                mappings::BLOCK_FROM_NAME_MAP
+                    .get(name)
+                    .or_else(|| crate::dynamic::block_by_name(name))
             }
 
             #[doc = r" Try to get a block from a namespace prefixed name."]
             #[must_use]
             pub fn from_name(name: &str) -> Option<&'static Self> {
                 let key = name.strip_prefix("minecraft:").unwrap_or(name);
-                mappings::BLOCK_FROM_NAME_MAP.get(key)
+                mappings::BLOCK_FROM_NAME_MAP
+                    .get(key)
+                    .or_else(|| crate::dynamic::block_by_name(key))
             }
 
             /// Get a [`Block`] from a [`BlockId`]
             #[inline]
             #[must_use]
-            pub const fn from_id(id: BlockId) -> &'static Self {
-                // Safety: We always check this condition when creating a BlockId.
-                // the u16 field is private and immutable. BlockId::BLOCK_COUNT is a const u16.
-                // If the condition held once, it will always hold.
+            pub fn from_id(id: BlockId) -> &'static Self {
+                if id.as_u16() >= BlockId::BLOCK_COUNT {
+                    return crate::dynamic::block(id);
+                }
+                // Safety: Custom ids returned above, so the id is below BLOCK_COUNT.
                 unsafe { std::hint::assert_unchecked(id.as_u16() < BlockId::BLOCK_COUNT) }
                 // This hint guarantees that bound checks can be optimized away in release builds.
                 // Due to debug_assertions forcing -Zub_checks=yes (rust-lang/rust#123499)
@@ -1470,17 +1479,18 @@ pub fn build() -> TokenStream {
             /// Get a [`Block`] from a state id
             #[inline]
             #[must_use]
-            pub const fn from_state_id(id: BlockStateId) -> &'static Self {
+            pub fn from_state_id(id: BlockStateId) -> &'static Self {
                 Self::from_id(BlockId::from_state_id(id))
             }
 
             #[doc = r" Try to parse a block from an item id."]
             #[must_use]
-            pub const fn from_item_id(id: u16) -> Option<&'static Self> {
+            pub fn from_item_id(id: u16) -> Option<&'static Self> {
                 #[allow(unreachable_patterns)]
                 match id {
                     #(#block_from_item_id_arms)*
-                    _ => None
+                    _ if id < crate::dynamic::ITEM_COUNT => None,
+                    _ => crate::dynamic::block_from_item_id(id)
                 }
             }
 
@@ -1511,10 +1521,11 @@ pub fn build() -> TokenStream {
             /// Get a [`BlockId`] from a [`BlockStateId`]
             #[inline]
             #[must_use]
-            pub const fn from_state_id(id: BlockStateId) -> BlockId {
-                // Safety: We always check this condition when creating a BlockStateId.
-                // the u16 field is private and immutable. BlockStateId::STATE_COUNT is a const u16.
-                // If the condition held once, it will always hold.
+            pub fn from_state_id(id: BlockStateId) -> BlockId {
+                if id.as_u16() >= BlockStateId::STATE_COUNT {
+                    return crate::dynamic::block_id_of_state(id);
+                }
+                // Safety: Custom ids returned above, so the id is below STATE_COUNT.
                 unsafe { std::hint::assert_unchecked(id.as_u16() < BlockStateId::STATE_COUNT) }
                 // This hint guarantees that bound checks can be optimized away in release builds.
                 // Due to debug_assertions forcing -Zub_checks=yes (rust-lang/rust#123499)

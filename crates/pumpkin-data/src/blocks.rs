@@ -116,7 +116,7 @@ impl Taggable for Block {
 
 impl ToResourceLocation for &'static Block {
     fn to_resource_location(&self) -> ResourceLocation {
-        format!("minecraft:{}", self.name)
+        crate::dynamic::namespaced_name(self.name).into_owned()
     }
 }
 
@@ -322,15 +322,17 @@ impl BlockId {
     // depends on generated impl:
     // pub(crate) const BLOCK_COUNT: u16;
 
-    /// The total count of all registered blocks.
+    /// The count of generated (vanilla) blocks. Custom blocks follow this range.
     pub const COUNT: u16 = Self::BLOCK_COUNT;
 
-    // SAFETY: There must never be a BlockId where self.0 >= BlockId::BLOCK_COUNT
+    // SAFETY: There must never be a BlockId where self.0 >= BlockId::BLOCK_COUNT plus the
+    // installed custom block count. The custom tables never change once installed.
 
+    /// Returns the id if it names a generated or an installed custom block.
     #[inline]
     #[must_use]
-    pub const fn new(inner: u16) -> Option<Self> {
-        if inner < Self::BLOCK_COUNT {
+    pub fn new(inner: u16) -> Option<Self> {
+        if inner < Self::BLOCK_COUNT || crate::dynamic::is_custom_block(inner) {
             return Some(Self(inner));
         }
         None
@@ -338,16 +340,28 @@ impl BlockId {
 
     #[inline]
     #[must_use]
-    pub const fn new_or_air(inner: u16) -> Self {
+    pub fn new_or_air(inner: u16) -> Self {
+        Self::new(inner).unwrap_or(Self::AIR)
+    }
+
+    /// Returns the id if it names a generated block. Usable in const contexts.
+    #[inline]
+    #[must_use]
+    pub const fn new_vanilla(inner: u16) -> Option<Self> {
         if inner < Self::BLOCK_COUNT {
-            return Self(inner);
+            return Some(Self(inner));
         }
-        Self::AIR
+        None
+    }
+
+    /// The registry calls this while it builds the custom tables, before they are installed.
+    pub(crate) const fn new_unchecked(inner: u16) -> Self {
+        Self(inner)
     }
 
     #[inline]
     #[must_use]
-    pub const fn to_block(self) -> &'static Block {
+    pub fn to_block(self) -> &'static Block {
         Block::from_id(self)
     }
 

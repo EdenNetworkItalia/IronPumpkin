@@ -246,15 +246,17 @@ impl BlockStateId {
     // depends on generated impl:
     // pub(crate) const STATE_COUNT: u16;
 
-    /// The total count of all registered block states.
+    /// The count of generated (vanilla) block states. Custom states follow this range.
     pub const COUNT: u16 = Self::STATE_COUNT;
 
-    // SAFETY: There must never be a BlockStateId where self.0 >= BlockStateId::STATE_COUNT
+    // SAFETY: There must never be a BlockStateId where self.0 >= BlockStateId::STATE_COUNT plus
+    // the installed custom state count. The custom tables never change once installed.
 
+    /// Returns the id if it names a generated or an installed custom block state.
     #[inline]
     #[must_use]
-    pub const fn new(inner: u16) -> Option<Self> {
-        if inner < Self::STATE_COUNT {
+    pub fn new(inner: u16) -> Option<Self> {
+        if inner < Self::STATE_COUNT || crate::dynamic::is_custom_state(inner) {
             return Some(Self(inner));
         }
         None
@@ -262,11 +264,23 @@ impl BlockStateId {
 
     #[inline]
     #[must_use]
-    pub const fn new_or_air(inner: u16) -> Self {
+    pub fn new_or_air(inner: u16) -> Self {
+        Self::new(inner).unwrap_or(Self::AIR)
+    }
+
+    /// Returns the id if it names a generated block state. Usable in const contexts.
+    #[inline]
+    #[must_use]
+    pub const fn new_vanilla(inner: u16) -> Option<Self> {
         if inner < Self::STATE_COUNT {
-            return Self(inner);
+            return Some(Self(inner));
         }
-        Self::AIR
+        None
+    }
+
+    /// The registry calls this while it builds the custom tables, before they are installed.
+    pub(crate) const fn new_unchecked(inner: u16) -> Self {
+        Self(inner)
     }
 
     #[inline(always)]
@@ -277,37 +291,37 @@ impl BlockStateId {
 
     #[inline]
     #[must_use]
-    pub const fn to_state(self) -> &'static BlockState {
+    pub fn to_state(self) -> &'static BlockState {
         BlockState::from_id(self)
     }
 
     #[inline]
     #[must_use]
-    pub const fn to_block_id(self) -> BlockId {
+    pub fn to_block_id(self) -> BlockId {
         BlockId::from_state_id(self)
     }
 
     #[inline]
     #[must_use]
-    pub const fn to_block(self) -> &'static Block {
+    pub fn to_block(self) -> &'static Block {
         Block::from_state_id(self)
     }
 
     #[inline]
     #[must_use]
-    pub const fn is_solid_render(self) -> bool {
+    pub fn is_solid_render(self) -> bool {
         self.to_state().is_solid_render()
     }
 
     #[inline]
     #[must_use]
-    pub const fn can_occlude(self) -> bool {
+    pub fn can_occlude(self) -> bool {
         self.to_state().can_occlude()
     }
 
     #[inline]
     #[must_use]
-    pub const fn has_analog_output_signal(self) -> bool {
+    pub fn has_analog_output_signal(self) -> bool {
         self.to_state().has_analog_output_signal()
     }
 

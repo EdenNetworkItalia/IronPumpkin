@@ -27,7 +27,10 @@ pub fn build() -> TokenStream {
                 #(#match_arms)*
                 _ => 0,
             };
-            BlockId::new_or_air(raw_id)
+            match BlockId::new_vanilla(raw_id) {
+                Some(id) => id,
+                None => BlockId::AIR,
+            }
         }
     }
 }

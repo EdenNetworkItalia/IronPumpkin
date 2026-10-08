@@ -1,3 +1,5 @@
+pub mod state_nbt;
+
 use std::collections::HashMap;
 
 use pumpkin_data::{Block, BlockState, BlockStateId};

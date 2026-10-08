@@ -1722,6 +1722,18 @@ pub fn build() -> TokenStream {
     let mut type_from_raw_id_arms = TokenStream::new();
     let mut type_from_name = TokenStream::new();
 
+    // Custom item ids start at the count, so the generated ids must be dense.
+    let mut item_ids: Vec<u16> = items.values().map(|item| item.id).collect();
+    item_ids.sort_unstable();
+    assert!(
+        item_ids
+            .iter()
+            .enumerate()
+            .all(|(index, &id)| usize::from(id) == index),
+        "item ids in items.json are not dense"
+    );
+    let item_count = LitInt::new(&item_ids.len().to_string(), Span::call_site());
+
     let mut constants = TokenStream::new();
     let mut bedrock_constants = TokenStream::new();
     let mut mapping_constants = TokenStream::new();
@@ -1968,6 +1980,9 @@ pub fn build() -> TokenStream {
         impl Item {
             #constants
 
+            /// The count of generated (vanilla) items. Custom items follow this range.
+            pub const COUNT: u16 = #item_count;
+
             #[must_use]
             #[allow(deprecated)]
             pub fn translated_name(&self) -> TextComponent {
@@ -1993,16 +2008,16 @@ pub fn build() -> TokenStream {
                 let name = name.strip_prefix("minecraft:").unwrap_or(name);
                 match name {
                     #type_from_name
-                    _ => None
+                    _ => crate::dynamic::item_by_name(name)
                 }
             }
 
             #[doc = "Try to parse an item from a raw id."]
             #[must_use]
-            pub const fn from_id(id: u16) -> Option<&'static Self> {
+            pub fn from_id(id: u16) -> Option<&'static Self> {
                 match id {
                     #type_from_raw_id_arms
-                    _ => None
+                    _ => crate::dynamic::item(id)
                 }
             }
         }

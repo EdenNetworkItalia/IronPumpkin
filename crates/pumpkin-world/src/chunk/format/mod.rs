@@ -14,6 +14,7 @@ use pumpkin_util::resource_location::{FromResourceLocation, ResourceLocation, To
 use rustc_hash::FxHashMap;
 
 use crate::{
+    block::state_nbt::block_state_to_nbt,
     chunk::{
         ChunkEntityData, ChunkReadingError, ChunkSerializingError,
         format::anvil::{SingleChunkDataSerializer, WORLD_DATA_VERSION},
@@ -538,27 +539,7 @@ impl ChunkData {
             let palette_tags: Vec<NbtTag> = block_states_nbt
                 .palette
                 .iter()
-                .map(|&id| {
-                    let block = Block::from_state_id(id);
-                    let mut comp = NbtCompound::new();
-                    let name = if block.name.starts_with("minecraft:") {
-                        block.name.to_string()
-                    } else {
-                        format!("minecraft:{}", block.name)
-                    };
-                    comp.put_string("Name", name);
-                    if let Some(props) = block.properties(id) {
-                        let prop_vec = props.to_props();
-                        if !prop_vec.is_empty() {
-                            let mut props_comp = NbtCompound::new();
-                            for (k, v) in prop_vec {
-                                props_comp.put_string(k, v.to_string());
-                            }
-                            comp.put_compound("Properties", props_comp);
-                        }
-                    }
-                    NbtTag::Compound(comp)
-                })
+                .map(|&id| NbtTag::Compound(block_state_to_nbt(id)))
                 .collect();
             bs_comp.put_list("palette", palette_tags);
             section_comp.put_compound("block_states", bs_comp);
@@ -1169,6 +1150,64 @@ mod tests {
             ])
             .to_state_id(&Block::REPEATER);
         assert_eq!(result[1], repeater_state);
+    }
+
+    #[test]
+    fn palette_entries_equal_the_vanilla_26_2_compounds() {
+        use crate::block::state_nbt::{block_state_from_nbt, fixtures};
+        use pumpkin_util::math::vector2::Vector2;
+
+        let vanilla: Vec<NbtCompound> = [
+            (fixtures::ENDER_STONE_26_2, "carriedBlockState"),
+            (fixtures::ENDER_GRASS_26_2, "carriedBlockState"),
+            (fixtures::ENDER_GRASS_SNOWY_26_2, "carriedBlockState"),
+            (fixtures::DISPLAY_STAIRS_26_2, "block_state"),
+            (fixtures::DISPLAY_REPEATER_26_2, "block_state"),
+            (fixtures::DISPLAY_AIR_26_2, "block_state"),
+        ]
+        .iter()
+        .map(|(hex_bytes, key)| fixtures::read(hex_bytes).get_compound(key).unwrap().clone())
+        .collect();
+
+        let chunk = ChunkData::empty(0, 0);
+        let mut states = Vec::new();
+        for (x, entry) in vanilla.iter().enumerate() {
+            let state = block_state_from_nbt(&NbtTag::Compound(entry.clone())).unwrap();
+            chunk.set_block_absolute_y(x, 64, 0, state);
+            states.push(state);
+        }
+
+        let bytes = chunk.to_bytes().unwrap();
+        let mut cursor = std::io::Cursor::new(&bytes[..]);
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(
+            pumpkin_nbt::deserializer::NbtStreamReader(&mut cursor),
+        );
+        let root = pumpkin_nbt::Nbt::read(&mut reader).unwrap().root_tag;
+        let section = root
+            .get_list("sections")
+            .unwrap()
+            .iter()
+            .filter_map(NbtTag::extract_compound)
+            .find(|section| section.get_byte("Y") == Some(4))
+            .unwrap();
+        let palette = section
+            .get_compound("block_states")
+            .unwrap()
+            .get_list("palette")
+            .unwrap();
+        for entry in &vanilla {
+            assert!(
+                palette
+                    .iter()
+                    .any(|tag| tag.extract_compound() == Some(entry)),
+                "the palette has no entry equal to {entry:?}"
+            );
+        }
+
+        let loaded = ChunkData::from_bytes(&bytes, Vector2::new(0, 0)).unwrap();
+        for (x, state) in states.iter().enumerate() {
+            assert_eq!(loaded.section.get_block_absolute_y(x, 64, 0), Some(*state));
+        }
     }
 
     #[test]

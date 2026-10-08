@@ -3,7 +3,7 @@ use std::sync::{
     atomic::{AtomicI8, AtomicI32, AtomicU8, Ordering},
 };
 
-use pumpkin_data::{damage::DamageType, item_stack::ItemStack};
+use pumpkin_data::{BlockStateId, damage::DamageType, item_stack::ItemStack};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::ItemStackSerializer, var_int::VarInt},
@@ -11,11 +11,14 @@ use pumpkin_protocol::{
     ser::{NetworkWriteExt, WritingError},
 };
 use pumpkin_util::{math::vector3::Vector3, text::TextComponent};
+use pumpkin_world::block::state_nbt::{block_state_from_nbt, block_state_to_nbt};
 
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity},
     server::Server,
 };
+
+const BLOCK_STATE: &str = "block_state";
 
 #[derive(Clone, Copy, Debug)]
 pub struct Vector3fSerializer(pub f32, pub f32, pub f32);
@@ -662,6 +665,22 @@ impl DisplayEntity {
     }
 }
 
+fn write_block_state(nbt: &mut NbtCompound, block_state: i32) {
+    let id = u16::try_from(block_state)
+        .ok()
+        .and_then(BlockStateId::new)
+        .unwrap_or(BlockStateId::AIR);
+    nbt.put_compound(BLOCK_STATE, block_state_to_nbt(id));
+}
+
+/// Vanilla `Display.BlockDisplay.readAdditionalSaveData` falls back to air for a state it cannot
+/// read.
+fn read_block_state(nbt: &NbtCompound) -> Option<i32> {
+    let tag = nbt.get(BLOCK_STATE)?;
+    let id = block_state_from_nbt(tag).unwrap_or(BlockStateId::AIR);
+    Some(i32::from(id.as_u16()))
+}
+
 pub struct BlockDisplayEntity {
     pub display: DisplayEntity,
     pub block_state: AtomicI32,
@@ -691,13 +710,13 @@ impl BlockDisplayEntity {
 impl EntityBase for BlockDisplayEntity {
     fn write_custom_nbt(&self, nbt: &mut NbtCompound) {
         self.display.write_display_nbt(nbt);
-        nbt.put_int("block_state", self.block_state.load(Ordering::Relaxed));
+        write_block_state(nbt, self.block_state.load(Ordering::Relaxed));
     }
 
     fn read_custom_nbt(&self, nbt: &NbtCompound) {
         self.display.read_display_nbt(nbt);
-        if let Some(state) = nbt.get_int("block_state") {
-            self.block_state.store(state, Ordering::Relaxed);
+        if let Some(state) = read_block_state(nbt) {
+            self.set_block_state(state);
         }
     }
 
@@ -1184,5 +1203,36 @@ impl EntityBase for TextDisplayEntity {
         _cause: Option<&dyn EntityBase>,
     ) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BLOCK_STATE, read_block_state, write_block_state};
+    use pumpkin_data::BlockStateId;
+    use pumpkin_nbt::compound::NbtCompound;
+    use pumpkin_world::block::state_nbt::block_state_to_nbt;
+
+    #[test]
+    fn an_unreadable_state_becomes_air() {
+        let air = Some(i32::from(BlockStateId::AIR.as_u16()));
+        let mut nbt = NbtCompound::new();
+        nbt.put_int(BLOCK_STATE, i32::MAX);
+        assert_eq!(read_block_state(&nbt), air);
+
+        let mut nbt = NbtCompound::new();
+        nbt.put_string(BLOCK_STATE, "minecraft:not_a_block".to_string());
+        assert_eq!(read_block_state(&nbt), air);
+
+        assert_eq!(read_block_state(&NbtCompound::new()), None);
+    }
+
+    #[test]
+    fn an_invalid_state_id_is_written_as_air() {
+        let mut nbt = NbtCompound::new();
+        write_block_state(&mut nbt, -5);
+        let mut air = NbtCompound::new();
+        air.put_compound(BLOCK_STATE, block_state_to_nbt(BlockStateId::AIR));
+        assert_eq!(nbt, air);
     }
 }

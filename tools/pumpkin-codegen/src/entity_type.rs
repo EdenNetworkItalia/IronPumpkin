@@ -232,6 +232,21 @@ pub fn build() -> TokenStream {
     let mut type_from_name = TokenStream::new();
     let mut all_variants = TokenStream::new();
 
+    // Custom entity type ids start at the count, so the generated ids must be dense.
+    let mut entity_ids: Vec<u16> = json.values().map(|entity| entity.id).collect();
+    entity_ids.sort_unstable();
+    assert!(
+        entity_ids
+            .iter()
+            .enumerate()
+            .all(|(index, &id)| usize::from(id) == index),
+        "entity type ids in entities.json are not dense"
+    );
+    let entity_count = LitInt::new(
+        &entity_ids.len().to_string(),
+        proc_macro2::Span::call_site(),
+    );
+
     for (name, entity) in &json {
         let id = entity.id as u8;
         let id_lit = LitInt::new(&id.to_string(), proc_macro2::Span::call_site());
@@ -427,10 +442,13 @@ pub fn build() -> TokenStream {
 
             pub const ALL: &'static [&'static Self] = &[#all_variants];
 
-            pub const fn from_raw(id: u16) -> Option<&'static Self> {
+            /// The count of generated (vanilla) entity types. Custom types follow this range.
+            pub const COUNT: u16 = #entity_count;
+
+            pub fn from_raw(id: u16) -> Option<&'static Self> {
                 match id {
                     #type_from_raw_id_arms
-                    _ => None
+                    _ => crate::dynamic::entity_type(id)
                 }
             }
 
@@ -438,7 +456,7 @@ pub fn build() -> TokenStream {
                 let name = name.strip_prefix("minecraft:").unwrap_or(name);
                 match name {
                     #type_from_name
-                    _ => None
+                    _ => crate::dynamic::entity_type_by_name(name)
                 }
             }
 

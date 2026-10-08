@@ -19,8 +19,10 @@ use pumpkin_data::{
     tag::Taggable,
 };
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
+use pumpkin_world::block::state_nbt::{block_state_from_nbt, block_state_to_nbt};
 use rand::RngExt;
 
 use crate::entity::{
@@ -45,10 +47,16 @@ use crate::entity::{
 
 const SPEED_BOOST: f64 = 0.15;
 const ENDERMAN_SPEED_BOOST_ID: &str = "minecraft:attacking";
+const CARRIED_BLOCK_STATE: &str = "carriedBlockState";
 
 pub const ENDERMAN_EYE_HEIGHT: f64 = 2.55;
 pub const ENDERMAN_BODY_Y_OFFSET: f64 = 1.45;
 pub const PLAYER_EYE_HEIGHT: f64 = 1.62;
+
+/// Vanilla `Enderman.readAdditionalSaveData` keeps the carried block only when it is not air.
+fn carried_block_from_nbt(tag: &NbtTag) -> Option<BlockStateId> {
+    block_state_from_nbt(tag).filter(|id| !id.to_state().is_air())
+}
 
 fn is_projectile_damage(dt: DamageType) -> bool {
     let (names, _) = pumpkin_data::tag::DamageType::MINECRAFT_IS_PROJECTILE;
@@ -401,13 +409,13 @@ impl Mob for EndermanEntity {
 
     fn mob_write_nbt(&self, nbt: &mut NbtCompound) {
         if let Some(block_state) = self.carried_block.load() {
-            nbt.put_int("carriedBlockState", block_state.as_u16() as i32);
+            nbt.put_compound(CARRIED_BLOCK_STATE, block_state_to_nbt(block_state));
         }
     }
 
     fn mob_read_nbt(&self, nbt: &NbtCompound) {
-        if let Some(block_state) = nbt.get_int("carriedBlockState") {
-            self.set_carried_block(BlockStateId::new(block_state as u16));
+        if let Some(tag) = nbt.get(CARRIED_BLOCK_STATE) {
+            self.set_carried_block(carried_block_from_nbt(tag));
         }
     }
 
@@ -454,5 +462,20 @@ impl Mob for EndermanEntity {
         if should_teleport {
             self.teleport_randomly();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::carried_block_from_nbt;
+    use pumpkin_data::BlockStateId;
+    use pumpkin_nbt::tag::NbtTag;
+
+    #[test]
+    fn air_is_not_a_carried_block() {
+        let air = NbtTag::String("minecraft:air".into());
+        assert_eq!(carried_block_from_nbt(&air), None);
+        let tag = NbtTag::Int(i32::from(BlockStateId::AIR.as_u16()));
+        assert_eq!(carried_block_from_nbt(&tag), None);
     }
 }

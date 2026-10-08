@@ -44,5 +44,8 @@ pub const fn get_potted_item(item_id: u16) -> BlockId {
         413 => 492,
         _ => 0,
     };
-    BlockId::new_or_air(raw_id)
+    match BlockId::new_vanilla(raw_id) {
+        Some(id) => id,
+        None => BlockId::AIR,
+    }
 }
