@@ -9,8 +9,17 @@ fo = "fo"
 undescore = "undescore"
 replaceables = "replaceables"
 convertable = "convertable"
+# NeoForge package name (`common.advancements.critereon`)
+critereon = "critereon"
 
 [default.extend-identifiers]
 # Vanilla method names
 areMergable = "areMergable"
 isMergable = "isMergable"
+noCollission = "noCollission"
+# Mod ids and jar names of the FTB StoneBlock 4 pack (modpack-usage.md)
+aci = "aci"
+compatability = "compatability"
+projecte = "projecte"
+Registrate = "Registrate"
+d1308ded19 = "d1308ded19"
