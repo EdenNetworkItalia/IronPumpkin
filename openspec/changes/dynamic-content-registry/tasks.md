@@ -30,7 +30,7 @@ Order after the id-space decision: 2.1 and 2.3 in parallel, then 3.1, 4.1 and 6.
 ## 5. Plugin API
 
 - [x] 5.1 Native plugin Context API for content registration (#21, depends on #17, #20 and the startup content phase): registration runs in the content phase; verify: a sample native plugin registers a block and an item and the server boots
-- [ ] 5.2 Behaviour hooks for custom blocks and items (#23, depends on #21); verify: boot test where placing, breaking and using run the attached behaviour
+- [x] 5.2 Behaviour hooks for custom blocks and items (#23, depends on #21); verify: boot test where placing, breaking and using run the attached behaviour
 
 ## 6. Entities
 
