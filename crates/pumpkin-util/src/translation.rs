@@ -114,7 +114,8 @@ pub fn add_translation_file<P: Into<String>>(namespace: P, file_path: P, locale:
 /// * `locale`: The requested locale.
 ///
 /// # Returns
-/// The localized translation. Falls back to `en_us` or the key itself if not found.
+/// The localized translation. Falls back to `en_us`, then to the lowercased key without a
+/// leading `minecraft:`, as vanilla `Language.getOrDefault` returns the bare key.
 pub fn get_translation(key: &str, locale: Locale) -> String {
     let translations = TRANSLATIONS
         .lock()
@@ -122,9 +123,10 @@ pub fn get_translation(key: &str, locale: Locale) -> String {
     let key = key.to_lowercase();
     translations[locale as usize].get(&key).map_or_else(
         || {
-            translations[Locale::EnUs as usize]
-                .get(&key)
-                .map_or(key, Clone::clone)
+            translations[Locale::EnUs as usize].get(&key).map_or_else(
+                || key.strip_prefix("minecraft:").unwrap_or(&key).to_owned(),
+                Clone::clone,
+            )
         },
         Clone::clone,
     )

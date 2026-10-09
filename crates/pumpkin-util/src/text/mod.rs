@@ -2090,6 +2090,7 @@ mod test {
         color::{Color, NamedColor},
         hover::HoverEvent,
     };
+    use crate::translation::{Locale, get_translation};
     use crate::version::JavaMinecraftVersion;
     use std::borrow::Cow;
 
@@ -2111,6 +2112,40 @@ mod test {
         );
         let decoded = pumpkin_nbt::Nbt::read_unnamed(&mut reader).unwrap();
         assert_eq!(decoded, expected_compound.into());
+    }
+
+    /// A vanilla key resolves through the `minecraft:` table. A key with no entry
+    /// prints as the bare key, like vanilla `Language.getOrDefault`.
+    #[test]
+    fn missing_translation_key_prints_bare() {
+        #[allow(deprecated)]
+        let translate =
+            |key: &'static str, with: Vec<TextComponent>| TextComponent::translate(key, with);
+
+        let joined = translate(
+            "multiplayer.player.joined",
+            vec![TextComponent::text("NAME".to_string())],
+        );
+        assert_eq!(joined.clone().to_pretty_console(), "NAME joined the game");
+        assert_eq!(joined.get_text(), "NAME joined the game");
+
+        let pig = translate("entity.minecraft.pig", vec![]);
+        assert_eq!(pig.clone().to_pretty_console(), "Pig");
+        assert_eq!(pig.to_legacy_string(Locale::EnUs), "Pig");
+        assert_eq!(pig.get_text(), "Pig");
+
+        // The miss branch is shared with the legacy serializer and the wasm hosts.
+        let missing = translate("entity.acc-mod.golem", vec![]);
+        assert_eq!(missing.clone().to_pretty_console(), "entity.acc-mod.golem");
+        assert_eq!(
+            missing.to_legacy_string(Locale::EnUs),
+            "entity.acc-mod.golem"
+        );
+        assert_eq!(missing.get_text(), "entity.acc-mod.golem");
+        assert_eq!(
+            get_translation("minecraft:entity.acc-mod.golem", Locale::EnUs),
+            "entity.acc-mod.golem"
+        );
     }
 
     /// The client expects the hover event payload to be inlined next to `action`.
