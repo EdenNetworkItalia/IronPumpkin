@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use pumpkin_data::tag::{RegistryKey, get_tag_ids};
+use pumpkin_data::dynamic::tag_ids;
+use pumpkin_data::tag::RegistryKey;
 use pumpkin_data::{Block, translation};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::text::TextComponent;
@@ -147,13 +148,9 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockPredicateArgument
             } else {
                 format!("minecraft:{tag_str}")
             };
-            let stripped = normalized.strip_prefix("minecraft:").unwrap_or(&normalized);
 
-            let tag_ids = get_tag_ids(RegistryKey::Block, &normalized)
-                .or_else(|| get_tag_ids(RegistryKey::Block, stripped));
-
-            let block_ids = match tag_ids {
-                Some(ids) => ids.to_vec(),
+            let block_ids = match tag_ids(RegistryKey::Block, &normalized) {
+                Some((generated, custom)) => generated.iter().chain(custom).copied().collect(),
                 None => {
                     return Err(ERROR_UNKNOWN_TAG.create(reader, TextComponent::text(normalized)));
                 }

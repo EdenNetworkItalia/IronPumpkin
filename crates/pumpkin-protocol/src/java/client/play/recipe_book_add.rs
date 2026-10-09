@@ -130,6 +130,15 @@ fn resolve_item_tag(tag: &str, version: JavaMinecraftVersion) -> Option<Vec<&'st
             items.push(item);
         }
     }
+    // The client sees a custom item as its display item, which can already be in the set.
+    let custom = pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &full_tag)
+        .map_or(&[][..], |(_, custom)| custom);
+    for item in custom.iter().filter_map(|&id| Item::from_id(id)) {
+        let id = item.to_java_network_id();
+        if !items.iter().any(|known| known.to_java_network_id() == id) {
+            items.push(item);
+        }
+    }
     if items.is_empty() { None } else { Some(items) }
 }
 

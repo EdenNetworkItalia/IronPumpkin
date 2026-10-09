@@ -29,12 +29,14 @@ fn ruby() -> &'static Item {
             name: RUBY.to_string(),
             display: &Item::DIAMOND,
             block: None,
+            tags: Vec::new(),
         })
         .expect("register test item");
         dynamic::register_placeholder_item(ItemDefinition {
             name: GHOST.to_string(),
             display: &Item::EMERALD,
             block: None,
+            tags: Vec::new(),
         })
         .expect("register placeholder item");
         dynamic::freeze().expect("freeze registry");

@@ -14,6 +14,7 @@ fn register(name: &str, properties: Vec<BlockPropertyDefinition>) {
         name: name.to_string(),
         display: Block::STONE.default_state.id,
         properties,
+        tags: Vec::new(),
     })
     .unwrap();
 }

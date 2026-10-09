@@ -189,6 +189,7 @@ fn register_placeholders(
                 name: name.clone(),
                 display,
                 block: None,
+                tags: Vec::new(),
             })
         })?;
     }
@@ -201,6 +202,7 @@ fn register_placeholders(
                 display,
                 dimensions: None,
                 eye_height: None,
+                tags: Vec::new(),
             })
         })?;
     }
@@ -231,6 +233,7 @@ fn block_definition(name: &str, entry: &BlockEntry) -> Result<BlockDefinition, R
         name: name.to_string(),
         display,
         properties,
+        tags: Vec::new(),
     })
 }
 

@@ -1,6 +1,7 @@
+use pumpkin_data::dynamic::tag_ids;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::tag::{RegistryKey, get_tag_ids};
+use pumpkin_data::tag::RegistryKey;
 use pumpkin_data::translation;
 use pumpkin_util::text::TextComponent;
 
@@ -61,13 +62,9 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for ItemPredicateArgumentT
             } else {
                 format!("minecraft:{tag_str}")
             };
-            let stripped = normalized.strip_prefix("minecraft:").unwrap_or(&normalized);
 
-            let tag_ids = get_tag_ids(RegistryKey::Item, &normalized)
-                .or_else(|| get_tag_ids(RegistryKey::Item, stripped));
-
-            let items = match tag_ids {
-                Some(ids) => ids.to_vec(),
+            let items = match tag_ids(RegistryKey::Item, &normalized) {
+                Some((generated, custom)) => generated.iter().chain(custom).copied().collect(),
                 None => {
                     return Err(ERROR_UNKNOWN_TAG.create(reader, TextComponent::text(normalized)));
                 }

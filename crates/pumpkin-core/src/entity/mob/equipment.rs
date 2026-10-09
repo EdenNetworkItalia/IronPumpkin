@@ -26,6 +26,7 @@ use pumpkin_data::data_component_impl::{
     AttributeModifiersImpl, CustomNameImpl, EnchantmentsImpl, EquipmentSlot, EquipmentType,
     EquippableImpl, IDSet, Operation,
 };
+use pumpkin_data::dynamic::DynamicTaggable;
 use pumpkin_data::enchantment_provider::EnchantmentProvider;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
@@ -871,7 +872,7 @@ pub fn is_equippable_in_slot(
                     .allowed_entities
                     .as_ref()
                     .is_none_or(|allowed| match allowed {
-                        IDSet::Tag(tag) => entity_type.is_tagged_with(tag).unwrap_or(false),
+                        IDSet::Tag(tag) => entity_type.has_tag_dynamic(tag),
                         IDSet::IDs(ids) => ids.iter().any(|id| id.id == entity_type.id),
                     })
         },

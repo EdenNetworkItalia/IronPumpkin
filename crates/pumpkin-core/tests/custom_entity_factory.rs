@@ -22,6 +22,7 @@ fn definition(name: &str) -> EntityTypeDefinition {
         display: &EntityType::ZOMBIE,
         dimensions: Some([1.0, 2.0]),
         eye_height: Some(1.5),
+        tags: Vec::new(),
     }
 }
 

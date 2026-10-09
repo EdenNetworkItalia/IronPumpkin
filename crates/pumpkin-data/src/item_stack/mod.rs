@@ -6,10 +6,9 @@ use crate::data_component_impl::{
     SwingAnimationImpl, ToolImpl, UnbreakableImpl, UseCooldownImpl, get, get_mut, read_data,
 };
 
-use crate::dynamic::namespaced_name;
+use crate::dynamic::{DynamicTaggable, namespaced_name};
 use crate::item::Item;
 use crate::recipes::RecipeResultStruct;
-use crate::tag::Taggable;
 use crate::{Block, Enchantment};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -774,7 +773,7 @@ impl ItemStack {
                 };
                 match &rule.blocks {
                     IDSet::Tag(tag) => {
-                        if block.is_tagged_with(tag).unwrap_or(false) {
+                        if block.has_tag_dynamic(tag) {
                             return speed;
                         }
                     }
@@ -803,7 +802,7 @@ impl ItemStack {
                 };
                 match &rule.blocks {
                     IDSet::Tag(tag) => {
-                        if block.is_tagged_with(tag).unwrap_or(false) {
+                        if block.has_tag_dynamic(tag) {
                             return correct;
                         }
                     }

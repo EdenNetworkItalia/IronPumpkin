@@ -52,6 +52,7 @@ use pumpkin_data::block_properties::{
 };
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{EquippableImpl, IDSet, PotionContentsImpl};
+use pumpkin_data::dynamic::DynamicTaggable;
 use pumpkin_data::entity::{EntityType, entity_from_egg};
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::game_event::GameEvent;
@@ -154,7 +155,7 @@ fn is_allowed_entity(
 ) -> bool {
     match allowed {
         None => true,
-        Some(IDSet::Tag(tag)) => entity_type.is_tagged_with(tag).unwrap_or(false),
+        Some(IDSet::Tag(tag)) => entity_type.has_tag_dynamic(tag),
         Some(IDSet::IDs(types)) => types.contains(&entity_type),
     }
 }

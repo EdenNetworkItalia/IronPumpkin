@@ -24,6 +24,7 @@ fn type_option_resolves_custom_entity_types() {
         display: &EntityType::ZOMBIE,
         dimensions: None,
         eye_height: None,
+        tags: Vec::new(),
     })
     .unwrap();
     dynamic::freeze().unwrap();

@@ -9,6 +9,12 @@
 //! Each custom entry copies the data of its display entry, the vanilla entry that vanilla clients
 //! see. The states of a custom block use the generated layout: properties in name order, the last
 //! property varies fastest.
+//!
+//! Tag membership lives in two tables. The generated tag lists hold generated ids only, so
+//! `BlockId::has_tag` and the generated [`Taggable`] methods stay branch-free on the worldgen hot
+//! path. The custom tag table holds the custom ids of each generated tag: an entry joins the tags
+//! of its display entry and the tags its definition lists. [`DynamicTaggable`] and [`tag_ids`]
+//! read both tables.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry};
@@ -24,6 +30,7 @@ use crate::block_properties::{BlockProperties, BlockProperty};
 use crate::entity_type::EntityType;
 #[cfg(feature = "item")]
 use crate::item::Item;
+use crate::tag::{RegistryKey, Taggable, get_latest_map};
 use crate::{Block, BlockId, BlockState, BlockStateId};
 
 /// The highest id the registry allocates. `u16::MAX` is the "none" value of u16 ids.
@@ -38,6 +45,9 @@ pub struct BlockDefinition {
     pub display: BlockStateId,
     /// Block state properties, in any order. The registry sorts them by name.
     pub properties: Vec<BlockPropertyDefinition>,
+    /// Block tags the block joins besides the tags of its display block, for example
+    /// `minecraft:mineable/pickaxe`. Each must name a generated block tag.
+    pub tags: Vec<String>,
 }
 
 /// A block state property of a custom block.
@@ -93,6 +103,9 @@ pub struct ItemDefinition {
     pub display: &'static Item,
     /// Namespaced name of the custom block this item places.
     pub block: Option<String>,
+    /// Item tags the item joins besides the tags of its display item. Each must name a
+    /// generated item tag.
+    pub tags: Vec<String>,
 }
 
 /// A custom entity type.
@@ -121,6 +134,9 @@ pub struct EntityTypeDefinition {
     /// `None`, and else uses 0.85 of the height, the default of vanilla's
     /// `EntityType.Builder.sized`.
     pub eye_height: Option<f32>,
+    /// Entity type tags the type joins besides the tags of its display type. Each must name a
+    /// generated entity type tag.
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -128,6 +144,16 @@ pub enum ContentKind {
     Block,
     Item,
     EntityType,
+}
+
+impl ContentKind {
+    const fn tag_key(self) -> RegistryKey {
+        match self {
+            Self::Block => RegistryKey::Block,
+            Self::Item => RegistryKey::Item,
+            Self::EntityType => RegistryKey::EntityType,
+        }
+    }
 }
 
 impl fmt::Display for ContentKind {
@@ -169,6 +195,12 @@ pub enum RegistryError {
     },
     /// The entity type's width, height or eye height is not a positive finite number.
     InvalidDimensions { name: String },
+    /// The definition lists a tag that the generated tags of its registry do not have.
+    UnknownTag {
+        kind: ContentKind,
+        name: String,
+        tag: String,
+    },
 }
 
 impl fmt::Display for RegistryError {
@@ -210,6 +242,9 @@ impl fmt::Display for RegistryError {
                 f,
                 "entity type \"{name}\" needs a positive finite width, height and eye height"
             ),
+            Self::UnknownTag { kind, name, tag } => {
+                write!(f, "{kind} \"{name}\" lists unknown {kind} tag \"{tag}\"")
+            }
         }
     }
 }
@@ -241,7 +276,16 @@ pub struct ContentTables {
     #[cfg(feature = "entity_type")]
     entity_type_displays: Vec<&'static EntityType>,
     placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
+    block_tags: CustomTags,
+    #[cfg(feature = "item")]
+    item_tags: CustomTags,
+    #[cfg(feature = "entity_type")]
+    entity_type_tags: CustomTags,
 }
+
+/// The custom ids of each generated tag that has custom members, sorted, keyed by the generated
+/// tag name.
+type CustomTags = HashMap<&'static str, Box<[u16]>>;
 
 impl ContentTables {
     /// Custom blocks in id order.
@@ -352,6 +396,8 @@ struct ContentBuilder {
     #[cfg(feature = "entity_type")]
     entity_types: BTreeMap<String, (&'static EntityType, Option<[f32; 2]>, Option<f32>)>,
     placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
+    /// The explicit tags of each entry, as generated tag names.
+    tags: BTreeMap<ContentKind, BTreeMap<String, Vec<&'static str>>>,
 }
 
 impl ContentBuilder {
@@ -363,6 +409,7 @@ impl ContentBuilder {
             #[cfg(feature = "entity_type")]
             entity_types: BTreeMap::new(),
             placeholders: BTreeMap::new(),
+            tags: BTreeMap::new(),
         }
     }
 
@@ -384,6 +431,12 @@ impl ContentBuilder {
         self.placeholders.entry(kind).or_default().insert(name);
     }
 
+    fn set_tags(&mut self, kind: ContentKind, name: String, tags: Vec<&'static str>) {
+        if !tags.is_empty() {
+            self.tags.entry(kind).or_default().insert(name, tags);
+        }
+    }
+
     fn register_block(&mut self, definition: BlockDefinition) -> Result<(), RegistryError> {
         let kind = ContentKind::Block;
         validate_name(kind, &definition.name)?;
@@ -396,7 +449,11 @@ impl ContentBuilder {
             });
         }
         let block = PendingBlock::new(&definition.name, definition.display, definition.properties)?;
-        insert_new(&mut self.blocks, kind, definition.name, block)
+        let tags = resolve_tags(kind, &definition.name, &definition.tags)?;
+        let name = definition.name.clone();
+        insert_new(&mut self.blocks, kind, definition.name, block)?;
+        self.set_tags(kind, name, tags);
+        Ok(())
     }
 
     #[cfg(feature = "item")]
@@ -411,12 +468,16 @@ impl ContentBuilder {
                 name: definition.name,
             });
         };
+        let tags = resolve_tags(kind, &definition.name, &definition.tags)?;
+        let name = definition.name.clone();
         insert_new(
             &mut self.items,
             kind,
             definition.name,
             (display, definition.block),
-        )
+        )?;
+        self.set_tags(kind, name, tags);
+        Ok(())
     }
 
     #[cfg(feature = "entity_type")]
@@ -445,12 +506,16 @@ impl ContentBuilder {
                 name: definition.name,
             });
         }
+        let tags = resolve_tags(kind, &definition.name, &definition.tags)?;
+        let name = definition.name.clone();
         insert_new(
             &mut self.entity_types,
             kind,
             definition.name,
             (display, definition.dimensions, definition.eye_height),
-        )
+        )?;
+        self.set_tags(kind, name, tags);
+        Ok(())
     }
 
     /// Allocates ids in name order and builds the tables. The maps iterate in name order.
@@ -546,10 +611,25 @@ impl ContentBuilder {
                 }
             })
             .collect();
-        let block_displays = blocks
+        let block_displays: Vec<u16> = blocks
             .iter()
             .map(|(_, block)| block.display.to_block().id.as_u16())
             .collect();
+        let mut explicit_tags = self.tags;
+        let mut take_tags = |kind: ContentKind, name: &str| {
+            explicit_tags
+                .get_mut(&kind)
+                .and_then(|tags| tags.remove(name))
+                .unwrap_or_default()
+        };
+        let block_tags = custom_tags(
+            RegistryKey::Block,
+            BlockId::COUNT,
+            blocks
+                .iter()
+                .zip(&block_displays)
+                .map(|((name, _), &display)| (display, take_tags(ContentKind::Block, name))),
+        );
         let block_properties = blocks
             .into_iter()
             .map(|(_, block)| leak_properties(block.properties))
@@ -592,6 +672,30 @@ impl ContentBuilder {
             })
             .collect();
 
+        #[cfg(feature = "item")]
+        let item_tags = custom_tags(
+            RegistryKey::Item,
+            Item::COUNT,
+            items
+                .iter()
+                .zip(&item_displays)
+                .map(|(item, &display)| (display, take_tags(ContentKind::Item, item.registry_key))),
+        );
+        #[cfg(feature = "entity_type")]
+        let entity_type_tags = custom_tags(
+            RegistryKey::EntityType,
+            EntityType::COUNT,
+            entity_types
+                .iter()
+                .zip(&entity_type_displays)
+                .map(|(ty, display)| {
+                    (
+                        display.id,
+                        take_tags(ContentKind::EntityType, ty.resource_name),
+                    )
+                }),
+        );
+
         Ok(ContentTables {
             blocks: custom_blocks,
             block_names,
@@ -615,6 +719,11 @@ impl ContentBuilder {
             #[cfg(feature = "entity_type")]
             entity_type_displays,
             placeholders: self.placeholders,
+            block_tags,
+            #[cfg(feature = "item")]
+            item_tags,
+            #[cfg(feature = "entity_type")]
+            entity_type_tags,
         })
     }
 
@@ -728,6 +837,74 @@ fn check_range(registry: &'static str, generated: u16, count: usize) -> Result<(
         return Err(RegistryError::RangeExceeded { registry, count });
     }
     Ok(())
+}
+
+/// Finds a generated tag as `Taggable::is_tagged_with` does: a leading `#` is optional and a name
+/// without a namespace uses `minecraft`. Returns the generated tag name and its generated ids.
+fn resolve_tag(key: RegistryKey, tag: &str) -> Option<(&'static str, &'static [u16])> {
+    let map = get_latest_map(key);
+    let tag = tag.strip_prefix('#').unwrap_or(tag);
+    let (name, members) = map.get_entry(tag).or_else(|| {
+        if tag.contains(':') {
+            map.get_entry(tag.strip_prefix("minecraft:")?)
+        } else {
+            map.get_entry(format!("{VANILLA_NAMESPACE}:{tag}").as_str())
+        }
+    })?;
+    Some((name, members.1))
+}
+
+fn resolve_tags(
+    kind: ContentKind,
+    name: &str,
+    tags: &[String],
+) -> Result<Vec<&'static str>, RegistryError> {
+    tags.iter()
+        .map(|tag| {
+            resolve_tag(kind.tag_key(), tag)
+                .map(|(tag, _)| tag)
+                .ok_or_else(|| RegistryError::UnknownTag {
+                    kind,
+                    name: name.to_string(),
+                    tag: tag.clone(),
+                })
+        })
+        .collect()
+}
+
+/// Builds the custom tag table of one registry. `entries` yields the display id and the explicit
+/// tags of each custom entry, in id order from `first_id`.
+fn custom_tags(
+    key: RegistryKey,
+    first_id: u16,
+    entries: impl Iterator<Item = (u16, Vec<&'static str>)>,
+) -> CustomTags {
+    let mut members: HashMap<&'static str, Vec<u16>> = HashMap::new();
+    let mut by_display: HashMap<u16, Vec<u16>> = HashMap::new();
+    for (index, (display, tags)) in entries.enumerate() {
+        let id = first_id + index as u16;
+        by_display.entry(display).or_default().push(id);
+        for tag in tags {
+            members.entry(tag).or_default().push(id);
+        }
+    }
+    if !by_display.is_empty() {
+        for (name, tag) in get_latest_map(key).entries() {
+            for display in tag.1 {
+                if let Some(ids) = by_display.get(display) {
+                    members.entry(name).or_default().extend(ids);
+                }
+            }
+        }
+    }
+    members
+        .into_iter()
+        .map(|(name, mut ids)| {
+            ids.sort_unstable();
+            ids.dedup();
+            (name, ids.into_boxed_slice())
+        })
+        .collect()
 }
 
 static PENDING: Mutex<Option<ContentBuilder>> = Mutex::new(Some(ContentBuilder::new()));
@@ -1276,6 +1453,71 @@ impl EntityType {
     }
 }
 
+/// The custom ids in a generated tag, by generated tag name.
+fn custom_tag_ids(key: RegistryKey, tag: &str) -> &'static [u16] {
+    let Some(tables) = TABLES.get() else {
+        return &[];
+    };
+    let table = match key {
+        RegistryKey::Block => &tables.block_tags,
+        #[cfg(feature = "item")]
+        RegistryKey::Item => &tables.item_tags,
+        #[cfg(feature = "entity_type")]
+        RegistryKey::EntityType => &tables.entity_type_tags,
+        _ => return &[],
+    };
+    table.get(tag).map_or(&[], |ids| ids)
+}
+
+/// The members of a generated tag: its generated ids, then its custom ids sorted by id. `None`
+/// when the registry has no such tag. The name follows `Taggable::is_tagged_with`: a leading `#`
+/// is optional and a name without a namespace uses `minecraft`.
+#[must_use]
+pub fn tag_ids(key: RegistryKey, tag: &str) -> Option<(&'static [u16], &'static [u16])> {
+    let (name, generated) = resolve_tag(key, tag)?;
+    Some((generated, custom_tag_ids(key, name)))
+}
+
+/// Tag membership that includes custom content. It reads both tag tables, so it is for paths off
+/// the worldgen hot path; `BlockId::has_tag` and the generated [`Taggable`] methods answer for
+/// generated ids only.
+pub trait DynamicTaggable: Taggable {
+    /// The first custom id of the registry.
+    const FIRST_CUSTOM_ID: u16;
+
+    /// Whether the entry is in the tag: from the generated list for a generated entry, from the
+    /// custom tag table for a custom one. `false` for a tag the registry does not have. The name
+    /// follows [`Taggable::is_tagged_with`].
+    #[must_use]
+    fn has_tag_dynamic(&self, tag: &str) -> bool {
+        let Some((name, generated)) = resolve_tag(Self::tag_key(), tag) else {
+            return false;
+        };
+        let id = self.registry_id();
+        if id < Self::FIRST_CUSTOM_ID {
+            generated.contains(&id)
+        } else {
+            custom_tag_ids(Self::tag_key(), name)
+                .binary_search(&id)
+                .is_ok()
+        }
+    }
+}
+
+impl DynamicTaggable for Block {
+    const FIRST_CUSTOM_ID: u16 = BlockId::COUNT;
+}
+
+#[cfg(feature = "item")]
+impl DynamicTaggable for Item {
+    const FIRST_CUSTOM_ID: u16 = Item::COUNT;
+}
+
+#[cfg(feature = "entity_type")]
+impl DynamicTaggable for EntityType {
+    const FIRST_CUSTOM_ID: u16 = EntityType::COUNT;
+}
+
 #[cfg(all(test, feature = "item", feature = "entity_type"))]
 mod tests {
     use super::*;
@@ -1286,6 +1528,7 @@ mod tests {
             name: name.to_string(),
             display: display.default_state.id,
             properties: Vec::new(),
+            tags: Vec::new(),
         }
     }
 
@@ -1294,6 +1537,7 @@ mod tests {
             name: name.to_string(),
             display: &Item::DIAMOND_SWORD,
             block: block.map(str::to_string),
+            tags: Vec::new(),
         }
     }
 
@@ -1303,6 +1547,7 @@ mod tests {
             display: &EntityType::ZOMBIE,
             dimensions: None,
             eye_height: None,
+            tags: Vec::new(),
         }
     }
 
@@ -1796,13 +2041,121 @@ mod tests {
         );
     }
 
+    fn tags(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    #[test]
+    fn custom_tag_table_joins_display_and_explicit_tags() {
+        let mut builder = ContentBuilder::new();
+        builder
+            .register_block(BlockDefinition {
+                tags: tags(&["mineable/pickaxe"]),
+                ..block("test:mud_lamp", &Block::DIRT)
+            })
+            .unwrap();
+        builder
+            .register_block(block("test:stone_lamp", &Block::STONE))
+            .unwrap();
+        builder
+            .register_item(ItemDefinition {
+                tags: tags(&["#minecraft:piglin_loved"]),
+                ..item("test:blade", None)
+            })
+            .unwrap();
+        builder
+            .register_entity_type(EntityTypeDefinition {
+                tags: tags(&["minecraft:skeletons"]),
+                ..entity_type("test:golem")
+            })
+            .unwrap();
+        let tables = builder.build().unwrap();
+
+        let (mud, stone) = (BlockId::COUNT, BlockId::COUNT + 1);
+        let block_tag = |tag: &str| tables.block_tags.get(tag).map(|ids| ids.to_vec());
+        assert_eq!(block_tag("minecraft:dirt"), Some(vec![mud]));
+        assert_eq!(
+            block_tag("minecraft:base_stone_overworld"),
+            Some(vec![stone])
+        );
+        assert_eq!(
+            block_tag("minecraft:mineable/pickaxe"),
+            Some(vec![mud, stone])
+        );
+        assert_eq!(block_tag("minecraft:logs"), None);
+
+        let item_tag = |tag: &str| tables.item_tags.get(tag).map(|ids| ids.to_vec());
+        assert_eq!(item_tag("minecraft:swords"), Some(vec![Item::COUNT]));
+        assert_eq!(item_tag("minecraft:piglin_loved"), Some(vec![Item::COUNT]));
+
+        let entity_tag = |tag: &str| tables.entity_type_tags.get(tag).map(|ids| ids.to_vec());
+        assert_eq!(
+            entity_tag("minecraft:zombies"),
+            Some(vec![EntityType::COUNT])
+        );
+        assert_eq!(
+            entity_tag("minecraft:skeletons"),
+            Some(vec![EntityType::COUNT])
+        );
+        assert_eq!(entity_tag("minecraft:raiders"), None);
+    }
+
+    #[test]
+    fn rejects_unknown_tags() {
+        let mut builder = ContentBuilder::new();
+        // A block tag is not an item tag.
+        assert_eq!(
+            builder.register_item(ItemDefinition {
+                tags: tags(&["minecraft:base_stone_overworld"]),
+                ..item("test:blade", None)
+            }),
+            Err(RegistryError::UnknownTag {
+                kind: ContentKind::Item,
+                name: "test:blade".to_string(),
+                tag: "minecraft:base_stone_overworld".to_string(),
+            })
+        );
+        assert!(!builder.contains(ContentKind::Item, "test:blade"));
+        assert!(matches!(
+            builder.register_block(BlockDefinition {
+                tags: tags(&["mineable/pickaxe", "test:missing"]),
+                ..block("test:lamp", &Block::STONE)
+            }),
+            Err(RegistryError::UnknownTag { .. })
+        ));
+        assert!(!builder.contains(ContentKind::Block, "test:lamp"));
+        assert!(matches!(
+            builder.register_entity_type(EntityTypeDefinition {
+                tags: tags(&["minecraft:swords"]),
+                ..entity_type("test:golem")
+            }),
+            Err(RegistryError::UnknownTag { .. })
+        ));
+        assert!(builder.tags.is_empty());
+        builder
+            .register_item(item("test:blade", None))
+            .expect("the name stays free after a failed registration");
+    }
+
     /// The only test that installs the global tables: they are process-wide and install once.
     #[test]
     fn frozen_registry_falls_through_and_rejects_registration() {
-        register_block(block("test:zeta", &Block::DIRT)).unwrap();
+        register_block(BlockDefinition {
+            tags: tags(&["minecraft:mineable/pickaxe"]),
+            ..block("test:zeta", &Block::DIRT)
+        })
+        .unwrap();
         register_block(block("test:alpha", &Block::STONE)).unwrap();
-        register_item(item("test:alpha", Some("test:alpha"))).unwrap();
-        register_entity_type(entity_type("test:golem")).unwrap();
+        register_item(ItemDefinition {
+            tags: tags(&["minecraft:piglin_loved"]),
+            ..item("test:alpha", Some("test:alpha"))
+        })
+        .unwrap();
+        register_entity_type(EntityTypeDefinition {
+            tags: tags(&["minecraft:skeletons"]),
+            ..entity_type("test:golem")
+        })
+        .unwrap();
 
         let tables = freeze().unwrap();
         assert_eq!(tables.blocks().len(), 2);
@@ -1881,6 +2234,31 @@ mod tests {
 
         // Generated tag lists hold generated ids only.
         assert!(!alpha.has_tag(&crate::tag::Block::MINECRAFT_BASE_STONE_OVERWORLD));
+        assert_eq!(
+            alpha.is_tagged_with("minecraft:base_stone_overworld"),
+            Some(false)
+        );
+        // The custom tag table answers for custom ids: tags of the display entry plus explicit tags.
+        assert!(alpha.has_tag_dynamic("minecraft:base_stone_overworld"));
+        let zeta = Block::from_name("test:zeta").unwrap();
+        assert!(zeta.has_tag_dynamic("#mineable/pickaxe"));
+        assert!(zeta.has_tag_dynamic("dirt"));
+        assert!(!zeta.has_tag_dynamic("minecraft:base_stone_overworld"));
+        assert!(!zeta.has_tag_dynamic("test:missing"));
+        assert!(Block::STONE.has_tag_dynamic("base_stone_overworld"));
+        assert!(!Block::DIRT.has_tag_dynamic("base_stone_overworld"));
+        let (generated, custom) =
+            tag_ids(RegistryKey::Block, "minecraft:mineable/pickaxe").unwrap();
+        assert!(generated.contains(&Block::STONE.id.as_u16()));
+        assert_eq!(custom, [alpha.id.as_u16(), zeta.id.as_u16()]);
+        assert_eq!(tag_ids(RegistryKey::Block, "test:missing"), None);
+        assert!(alpha_item.has_tag_dynamic("minecraft:swords"));
+        assert!(alpha_item.has_tag_dynamic("piglin_loved"));
+        assert!(!Item::DIAMOND.has_tag_dynamic("minecraft:swords"));
+        assert_eq!(alpha_item.is_tagged_with("minecraft:swords"), Some(false));
+        assert!(golem.has_tag_dynamic("minecraft:zombies"));
+        assert!(golem.has_tag_dynamic("minecraft:skeletons"));
+        assert!(!golem.has_tag_dynamic("minecraft:raiders"));
 
         // Frozen.
         assert_eq!(

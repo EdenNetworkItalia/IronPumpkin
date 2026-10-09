@@ -1,8 +1,7 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
-use pumpkin_data::dynamic::namespaced_name;
+use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name};
 use pumpkin_data::item::Item;
-use pumpkin_data::tag::Taggable;
 
 #[derive(Clone, Debug)]
 pub enum OwnedRecipeIngredient {
@@ -19,7 +18,7 @@ impl OwnedRecipeIngredient {
                 let name = namespaced_name(item.registry_key);
                 name == *id
             }
-            Self::Tagged(tag) => item.is_tagged_with(tag).unwrap_or(false),
+            Self::Tagged(tag) => item.has_tag_dynamic(tag),
             Self::OneOf(ids) => {
                 let name = namespaced_name(item.registry_key);
                 ids.iter().any(|id| *id == name)

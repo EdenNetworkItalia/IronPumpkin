@@ -39,6 +39,7 @@ fn golem() -> EntityTypeDefinition {
         display: &EntityType::IRON_GOLEM,
         dimensions: None,
         eye_height: None,
+        tags: Vec::new(),
     }
 }
 
@@ -125,12 +126,14 @@ fn start_with_mod(world: &Path) {
             ),
             BlockPropertyDefinition::bool("lit", false),
         ],
+        tags: Vec::new(),
     })
     .unwrap();
     dynamic::register_item(ItemDefinition {
         name: "test:lamp".to_string(),
         display: &Item::REDSTONE_LAMP,
         block: Some("test:lamp".to_string()),
+        tags: Vec::new(),
     })
     .unwrap();
     register_entity_type(golem(), spawn).unwrap();
@@ -222,12 +225,14 @@ fn start_with_changed_mod(world: &Path) {
         name: "test:lamp".to_string(),
         display: Block::REDSTONE_LAMP.default_state.id,
         properties: vec![BlockPropertyDefinition::bool("lit", false)],
+        tags: Vec::new(),
     })
     .unwrap();
     dynamic::register_item(ItemDefinition {
         name: "test:lamp".to_string(),
         display: &Item::REDSTONE_LAMP,
         block: Some("test:lamp".to_string()),
+        tags: Vec::new(),
     })
     .unwrap();
     register_entity_type(golem(), spawn).unwrap();

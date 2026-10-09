@@ -8,6 +8,7 @@ use crate::data_component_impl::{
     DataComponentImpl, EquipmentSlot, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor,
     get_idor_hash, get_idset_hash, get_str_hash, put_idor,
 };
+use crate::dynamic::DynamicTaggable;
 use crate::entity_type::EntityType;
 use crate::item::Item;
 use crate::item_stack::ItemStack;
@@ -704,7 +705,7 @@ impl RepairableImpl {
             return false;
         }
         match &self.items {
-            IDSet::Tag(tag) => repair_item.item.is_tagged_with(tag).unwrap_or(false),
+            IDSet::Tag(tag) => repair_item.item.has_tag_dynamic(tag),
             IDSet::IDs(items) => items.iter().any(|item| item.id == repair_item.item.id),
         }
     }

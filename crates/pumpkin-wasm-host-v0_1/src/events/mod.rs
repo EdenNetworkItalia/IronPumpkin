@@ -349,6 +349,7 @@ mod tests {
             name: "test:lamp".to_string(),
             display: Block::STONE.default_state.id,
             properties: Vec::new(),
+            tags: Vec::new(),
         })
         .expect("register test block");
         dynamic::register_entity_type(EntityTypeDefinition {
@@ -356,6 +357,7 @@ mod tests {
             display: &EntityType::ZOMBIE,
             dimensions: None,
             eye_height: None,
+            tags: Vec::new(),
         })
         .expect("register test entity type");
         dynamic::freeze().expect("freeze registry");

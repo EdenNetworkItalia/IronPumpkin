@@ -96,9 +96,31 @@ Until the block state space lands, `Block::properties` SHALL return `None` for a
 - **WHEN** a custom block has the stone default state as display
 - **THEN** `BlockState::to_be_network_id` of its state equals that of stone
 
-### Requirement: Tags hold generated ids only
-Custom blocks, items and entity types SHALL NOT belong to any generated tag. `Taggable::has_tag`, `Taggable::is_tagged_with` and `BlockId::has_tag` SHALL keep their generated code, because the generated tag lists hold generated ids only. Tag membership of custom content is a separate capability. Status: implemented (#17); a display-tag fallthrough in `BlockId::has_tag` measured +5% on the `noise_generation` bench and was not kept.
+### Requirement: Generated tag lists hold generated ids only
+`BlockId::has_tag`, `Taggable::has_tag` and `Taggable::is_tagged_with` SHALL keep their generated code and SHALL return false for a custom id. These are the worldgen hot path: a custom-id branch in `BlockId::has_tag` measured +5% on the `noise_generation` bench. Status: implemented (#17).
 
-#### Scenario: Custom block and a vanilla tag
+#### Scenario: Custom block on the hot path
 - **WHEN** a custom block has the stone default state as display
 - **THEN** `has_tag` for `minecraft:base_stone_overworld` returns false for it
+
+### Requirement: Custom tag table
+At the freeze the registry SHALL build a second table with the custom ids of each generated block, item and entity type tag. A custom entry SHALL join every tag of its display entry and every tag in the `tags` field of its definition. A listed tag that the registry does not have SHALL fail the registration with `RegistryError::UnknownTag`. Status: implemented (#45).
+
+#### Scenario: Tag inherited from the display entry
+- **WHEN** a custom block has the stone default state as display
+- **THEN** `has_tag_dynamic` for `minecraft:base_stone_overworld` returns true for it
+
+#### Scenario: Explicit tag
+- **WHEN** a custom block with the dirt default state as display lists `minecraft:mineable/pickaxe` in its tags
+- **THEN** `has_tag_dynamic` for `minecraft:mineable/pickaxe` and for `minecraft:dirt` returns true for it, and `dynamic::tag_ids` for `minecraft:mineable/pickaxe` lists its id among the custom ids
+
+#### Scenario: Unknown tag
+- **WHEN** a custom item lists a tag name that no generated item tag has
+- **THEN** the registration fails with `RegistryError::UnknownTag` and the item is not registered
+
+### Requirement: Tag queries off the hot path
+`DynamicTaggable::has_tag_dynamic` and `dynamic::tag_ids` SHALL read both tables. Recipe ingredients, recipe book ingredient sets, command tag predicates, tool rules, repair items and equippable entity tags SHALL use them. Worldgen SHALL NOT use them. Status: implemented (#45).
+
+#### Scenario: Generated entry
+- **WHEN** `has_tag_dynamic` runs for stone and `minecraft:base_stone_overworld`
+- **THEN** it returns true, as `is_tagged_with` does
