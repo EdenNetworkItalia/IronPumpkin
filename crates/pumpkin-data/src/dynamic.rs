@@ -584,7 +584,7 @@ impl ContentBuilder {
                     collision_shapes: display.collision_shapes,
                     outline_shapes: display.outline_shapes,
                     opacity: display.opacity,
-                    // Block entities are behaviour, which custom blocks do not have yet.
+                    // Custom blocks have no block entity type.
                     block_entity_type: u16::MAX,
                 });
                 state_blocks.push(block_id);
@@ -1013,6 +1013,18 @@ impl BlockStateId {
             self
         } else {
             display_state(self)
+        }
+    }
+
+    /// The id a vanilla client knows: the state's own id, or the display state's id for a custom
+    /// state. Packet code writes block state ids only through this function.
+    #[inline]
+    #[must_use]
+    pub fn to_java_network_id(self) -> u16 {
+        if self.as_u16() < Self::STATE_COUNT {
+            self.as_u16()
+        } else {
+            display_state(self).as_u16()
         }
     }
 }

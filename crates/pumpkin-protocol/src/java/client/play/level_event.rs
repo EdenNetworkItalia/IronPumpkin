@@ -56,7 +56,7 @@ impl ClientPacket for CLevelEvent {
         let mut write = write;
         write.write_i32_be(self.event)?;
         write.write_block_pos(&self.location, version)?;
-        write.write_i32_be(self.data)?;
+        write.write_i32_be(super::java_level_event_data(self.event, self.data))?;
         write.write_bool(self.disable_relative_volume)?;
 
         Ok(())

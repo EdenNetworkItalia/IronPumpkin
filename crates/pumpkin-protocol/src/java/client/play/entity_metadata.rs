@@ -140,17 +140,20 @@ impl<T> Metadata<T> {
         if self.r#type == MetaDataType::BLOCK_STATE
             || self.r#type == MetaDataType::OPTIONAL_BLOCK_STATE
         {
-            if *version >= JavaMinecraftVersion::V_1_9 {
-                self.value.write_metadata(&mut writer, version)?;
-            } else {
-                let mut serialized_value = Vec::new();
-                self.value.write_metadata(&mut serialized_value, version)?;
+            let mut serialized_value = Vec::new();
+            self.value.write_metadata(&mut serialized_value, version)?;
 
-                let mut cursor = Cursor::new(serialized_value);
-                let decoded_state = VarInt::decode(&mut cursor).map_err(|e| {
-                    WritingError::Message(format!("Failed to decode block state metadata: {e}"))
-                })?;
-                writer.write_i32(decoded_state.0)?;
+            let mut cursor = Cursor::new(serialized_value);
+            let decoded_state = VarInt::decode(&mut cursor).map_err(|e| {
+                WritingError::Message(format!("Failed to decode block state metadata: {e}"))
+            })?;
+            let state = super::java_block_state_id(decoded_state.0);
+            if *version >= JavaMinecraftVersion::V_1_9 {
+                writer.write_var_int(&VarInt(state))?;
+                let remainder_start = cursor.position() as usize;
+                writer.write_slice(&cursor.into_inner()[remainder_start..])?;
+            } else {
+                writer.write_i32(state)?;
             }
             return Ok(());
         }
@@ -172,7 +175,7 @@ impl<T> Metadata<T> {
 
             let remainder_start = cursor.position() as usize;
             let inner = cursor.into_inner();
-            writer.write_slice(&inner[remainder_start..])?;
+            super::write_particle_data(&mut writer, particle_id.0, &inner[remainder_start..])?;
             return Ok(());
         }
 

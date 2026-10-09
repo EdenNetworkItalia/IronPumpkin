@@ -323,3 +323,71 @@ pub use test_instance_block_status::*;
 
 mod post_effects;
 pub use post_effects::*;
+
+/// The block state id a vanilla client knows, for a raw id in a packet field. A value that names
+/// no block state passes through.
+pub(crate) fn java_block_state_id(raw: i32) -> i32 {
+    u16::try_from(raw)
+        .ok()
+        .and_then(pumpkin_data::BlockStateId::new)
+        .map_or(raw, |id| i32::from(id.to_java_network_id()))
+}
+
+/// The block id a vanilla client knows, for a raw id in a packet field. A value that names no
+/// block passes through.
+pub(crate) fn java_block_id(raw: i32) -> i32 {
+    u16::try_from(raw)
+        .ok()
+        .and_then(pumpkin_data::BlockId::new)
+        .map_or(raw, |id| {
+            i32::from(pumpkin_data::Block::from_id(id).to_java_network_id())
+        })
+}
+
+/// The data of a level event as a vanilla client knows it. Of the events with a block state in
+/// their data, only that state changes.
+pub(crate) fn java_level_event_data(event: i32, data: i32) -> i32 {
+    use pumpkin_data::world::WorldEvent;
+    const BLOCK_STATE_EVENTS: [i32; 3] = [
+        WorldEvent::ParticlesAndSoundDestroyBlock as i32,
+        WorldEvent::ParticlesDestroyBlock as i32,
+        WorldEvent::ParticlesAndSoundBrushBlockComplete as i32,
+    ];
+    if BLOCK_STATE_EVENTS.contains(&event) {
+        java_block_state_id(data)
+    } else {
+        data
+    }
+}
+
+/// Writes the options of a particle. The options of a block particle start with a block state
+/// id, which goes through the block state egress.
+pub(crate) fn write_particle_data(
+    write: &mut impl std::io::Write,
+    particle_id: i32,
+    data: &[u8],
+) -> Result<(), crate::ser::WritingError> {
+    use crate::VarInt;
+    use crate::ser::{NetworkReadExt, NetworkWriteExt};
+    use pumpkin_data::particle::Particle;
+
+    let is_block_particle = u16::try_from(particle_id)
+        .ok()
+        .and_then(Particle::from_id)
+        .is_some_and(|particle| {
+            matches!(
+                particle,
+                Particle::Block
+                    | Particle::BlockMarker
+                    | Particle::FallingDust
+                    | Particle::DustPillar
+                    | Particle::BlockCrumble
+            )
+        });
+    let mut rest = data;
+    if is_block_particle && let Ok(state) = rest.get_var_int() {
+        write.write_var_int(&VarInt(java_block_state_id(state.0)))?;
+        return write.write_slice(rest);
+    }
+    write.write_slice(data)
+}

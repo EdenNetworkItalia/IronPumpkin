@@ -217,6 +217,10 @@ impl ClientPacket for CSpawnEntity {
 
         let mut data = self.data;
 
+        if self.r#type.0 == i32::from(EntityType::FALLING_BLOCK.id) {
+            data = VarInt(super::java_block_state_id(data.0));
+        }
+
         if !v1_14 && data.0 == 0 {
             if self.r#type.0 == i32::from(EntityType::CHEST_MINECART.id) {
                 data = VarInt(1);

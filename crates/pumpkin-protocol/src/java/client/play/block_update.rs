@@ -37,7 +37,7 @@ impl ClientPacket for CBlockUpdate {
     ) -> Result<(), WritingError> {
         let mut write = write;
         write.write_block_pos(&self.location, version)?;
-        write.write_var_int(&self.state_id)?;
+        write.write_var_int(&VarInt(super::java_block_state_id(self.state_id.0)))?;
 
         Ok(())
     }

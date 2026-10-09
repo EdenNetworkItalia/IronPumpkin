@@ -178,7 +178,7 @@ impl ClientPacket for CParticle<'_> {
         } else if *version >= JavaMinecraftVersion::V_26_3 {
             // The particle moved back to the front of the packet in 26.3
             write.write_var_int(&self.particle_id)?;
-            write.write_slice(self.data)?;
+            super::write_particle_data(&mut write, self.particle_id.0, self.data)?;
         }
 
         if *version >= JavaMinecraftVersion::V_1_8 {
@@ -217,7 +217,7 @@ impl ClientPacket for CParticle<'_> {
         if *version >= JavaMinecraftVersion::V_1_20_5 {
             write.write_var_int(&self.particle_id)?;
         }
-        write.write_slice(self.data)?;
+        super::write_particle_data(&mut write, self.particle_id.0, self.data)?;
 
         Ok(())
     }

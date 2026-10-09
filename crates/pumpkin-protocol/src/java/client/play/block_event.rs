@@ -50,7 +50,7 @@ impl ClientPacket for CBlockEvent {
         write.write_block_pos(&self.location, version)?;
         write.write_u8(self.action_id)?;
         write.write_u8(self.action_parameter)?;
-        write.write_var_int(&self.block_type)?;
+        write.write_var_int(&VarInt(super::java_block_id(self.block_type.0)))?;
         Ok(())
     }
 }
