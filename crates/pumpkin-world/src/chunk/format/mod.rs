@@ -1,15 +1,16 @@
 use std::{
+    collections::BTreeSet,
     path::PathBuf,
     str::FromStr,
     sync::{
-        RwLock,
+        Mutex, RwLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 
 use bytes::Bytes;
 use pumpkin_data::{
-    Block, BlockStateId, chunk::ChunkStatus, fluid::Fluid, structures::StructureKeys,
+    Block, BlockStateId, biome::Biome, chunk::ChunkStatus, fluid::Fluid, structures::StructureKeys,
 };
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::resource_location::{FromResourceLocation, ResourceLocation, ToResourceLocation};
@@ -17,7 +18,9 @@ use rustc_hash::FxHashMap;
 use tracing::{error, warn};
 
 use crate::{
-    block::state_nbt::{block_state_to_nbt, palette_entry_to_state},
+    block::state_nbt::{
+        block_state_to_nbt, first_report, palette_entry_to_state, palette_name_to_state,
+    },
     chunk::{
         ChunkEntityData, ChunkReadingError, ChunkSerializingError,
         format::anvil::{SingleChunkDataSerializer, WORLD_DATA_VERSION},
@@ -138,6 +141,7 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
                     pumpkin_nbt::tag::NbtTag::Compound(compound) => {
                         palette_entry_to_state(compound)
                     }
+                    pumpkin_nbt::tag::NbtTag::String(name) => palette_name_to_state(name),
                     _ => BlockStateId::AIR,
                 })
                 .collect();
@@ -145,6 +149,27 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
         }
         _ => None,
     }
+}
+
+/// The biome of a section whose palette names none, or one the registry does not know. Vanilla
+/// and the chunk writer use plains too.
+const DEFAULT_BIOME: u8 = Biome::PLAINS.id;
+
+/// Biome names the chunk palette reader has warned about, once each for the whole process.
+static UNKNOWN_PALETTE_BIOMES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+fn palette_biome_id(name: &str) -> u8 {
+    Biome::from_name(name.strip_prefix("minecraft:").unwrap_or(name)).map_or_else(
+        || {
+            if first_report(&UNKNOWN_PALETTE_BIOMES, name) {
+                warn!(
+                    "Biome {name} in a chunk palette is not registered: it loads as plains. Other references to it are not logged"
+                );
+            }
+            DEFAULT_BIOME
+        },
+        |biome| biome.id,
+    )
 }
 
 fn extract_u8_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[u8]>> {
@@ -158,11 +183,8 @@ fn extract_u8_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[u8]>> {
                     pumpkin_nbt::tag::NbtTag::Byte(x) => *x as u8,
                     pumpkin_nbt::tag::NbtTag::Int(x) => *x as u8,
                     pumpkin_nbt::tag::NbtTag::Short(x) => *x as u8,
-                    pumpkin_nbt::tag::NbtTag::String(s) => {
-                        let name = s.strip_prefix("minecraft:").unwrap_or(s);
-                        pumpkin_data::biome::Biome::from_name(name).map_or(0, |b| b.id)
-                    }
-                    _ => 0,
+                    pumpkin_nbt::tag::NbtTag::String(s) => palette_biome_id(s),
+                    _ => DEFAULT_BIOME,
                 })
                 .collect();
             Some(bytes)
@@ -253,7 +275,7 @@ impl ChunkData {
         let mut block_lights = vec![LightContainer::Empty(0); section_count];
         let mut sky_lights = vec![LightContainer::Empty(0); section_count];
         let mut block_palettes = vec![BlockPalette::default(); section_count];
-        let mut biome_palettes = vec![BiomePalette::default(); section_count];
+        let mut biome_palettes = vec![BiomePalette::Homogeneous(DEFAULT_BIOME); section_count];
 
         if let Some(sections_list) = root_tag.get_list("sections") {
             for section_tag in sections_list {
@@ -317,12 +339,12 @@ impl ChunkData {
                         let palette = b_compound
                             .get("palette")
                             .and_then(extract_u8_array)
-                            .unwrap_or_else(|| vec![0].into_boxed_slice());
+                            .unwrap_or_else(|| vec![DEFAULT_BIOME].into_boxed_slice());
 
                         biome_palettes[index] =
                             BiomePalette::from_disk_nbt(ChunkSectionBiomes { data, palette });
                     } else {
-                        biome_palettes[index] = BiomePalette::default();
+                        biome_palettes[index] = BiomePalette::Homogeneous(DEFAULT_BIOME);
                     }
                 }
             }
@@ -1205,6 +1227,79 @@ mod tests {
     }
 
     #[test]
+    fn chunk_with_a_missing_section_loads_plains() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        // Sections -4 and -2 are saved, section -3 is not.
+        let bytes = test_chunk(vec![
+            test_section(-4, "minecraft:stone", true),
+            test_section(-2, "minecraft:stone", true),
+        ])
+        .write();
+
+        let chunk = ChunkData::from_bytes(&bytes, Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(
+            chunk.section.get_rough_biome_absolute_y(0, -48, 0),
+            Some(Biome::PLAINS.id)
+        );
+    }
+
+    #[test]
+    fn extract_u16_array_reads_the_26_3_bare_names() {
+        use crate::block::state_nbt::fixtures;
+
+        // `BlockState.CODEC` of 26.3 writes the default state of a block as its name alone.
+        let vanilla_grass = fixtures::read(fixtures::ENDER_GRASS_26_3)
+            .get("carriedBlockState")
+            .unwrap()
+            .clone();
+        assert!(matches!(vanilla_grass, NbtTag::String(_)));
+        let list_tag = NbtTag::List(vec![
+            NbtTag::String("minecraft:air".into()),
+            NbtTag::String("minecraft:stone".into()),
+            vanilla_grass,
+            NbtTag::String("test:missing_bare_block".into()),
+        ]);
+        let result = extract_u16_array(&list_tag).expect("should extract palette");
+
+        assert_eq!(
+            result.as_ref(),
+            [
+                BlockStateId::AIR,
+                Block::STONE.default_state.id,
+                Block::GRASS_BLOCK.default_state.id,
+                BlockStateId::AIR,
+            ]
+        );
+    }
+
+    #[test]
+    fn chunk_with_a_26_3_bare_name_palette_keeps_its_blocks() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let mut block_states = NbtCompound::new();
+        block_states.put(
+            "palette",
+            NbtTag::List(vec![
+                NbtTag::String("minecraft:air".into()),
+                NbtTag::String("minecraft:stone".into()),
+            ]),
+        );
+        block_states.put("data", NbtTag::LongArray(vec![1; 256]));
+        let mut section = test_section(-4, "minecraft:dirt", true);
+        section.put("block_states", NbtTag::Compound(block_states));
+        let bytes = test_chunk(vec![section]).write();
+
+        let chunk = ChunkData::from_bytes(&bytes, Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(
+            chunk.section.get_block_absolute_y(0, -64, 0),
+            Some(Block::STONE.default_state.id)
+        );
+    }
+
+    #[test]
     fn palette_entries_equal_the_vanilla_26_2_compounds() {
         use crate::block::state_nbt::{block_state_from_nbt, fixtures};
         use pumpkin_util::math::vector2::Vector2;
@@ -1280,6 +1375,53 @@ mod tests {
             pumpkin_data::biome::Biome::from_name("the_void")
                 .unwrap()
                 .id
+        );
+    }
+
+    #[test]
+    fn extract_u8_array_maps_an_unknown_biome_to_plains_and_warns_once() {
+        let name = "test:missing_biome";
+        let list_tag = NbtTag::List(vec![
+            NbtTag::String(name.to_string().into()),
+            NbtTag::String("minecraft:not_a_biome".to_string().into()),
+            NbtTag::String("minecraft:the_void".to_string().into()),
+            NbtTag::Compound(NbtCompound::new()),
+        ]);
+        // Id 0 is badlands.
+        assert_ne!(Biome::PLAINS.id, 0);
+        for _ in 0..3 {
+            let result = extract_u8_array(&list_tag).expect("should extract biome palette");
+            assert_eq!(
+                result.as_ref(),
+                [
+                    Biome::PLAINS.id,
+                    Biome::PLAINS.id,
+                    Biome::THE_VOID.id,
+                    Biome::PLAINS.id
+                ]
+            );
+        }
+        assert!(!first_report(&UNKNOWN_PALETTE_BIOMES, name));
+    }
+
+    #[test]
+    fn chunk_with_an_unknown_biome_loads_plains() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let mut section = test_section(-4, "minecraft:stone", false);
+        let mut biomes = NbtCompound::new();
+        biomes.put(
+            "palette",
+            NbtTag::List(vec![NbtTag::String("test:unknown_chunk_biome".into())]),
+        );
+        section.put("biomes", NbtTag::Compound(biomes));
+        let bytes = test_chunk(vec![section]).write();
+
+        let chunk = ChunkData::from_bytes(&bytes, Vector2::new(0, 0)).expect("chunk parses");
+        assert_eq!(
+            chunk.section.get_rough_biome_absolute_y(0, -64, 0),
+            Some(Biome::PLAINS.id)
         );
     }
 

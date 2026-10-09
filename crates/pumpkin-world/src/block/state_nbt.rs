@@ -88,7 +88,7 @@ static UNKNOWN_PALETTE_BLOCKS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::ne
 static UNKNOWN_PALETTE_PROPERTIES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 #[cold]
-fn first_report(reported: &Mutex<BTreeSet<String>>, name: &str) -> bool {
+pub(crate) fn first_report(reported: &Mutex<BTreeSet<String>>, name: &str) -> bool {
     let mut reported = reported.lock().unwrap_or_else(PoisonError::into_inner);
     !reported.contains(name) && reported.insert(name.to_owned())
 }
@@ -147,6 +147,15 @@ pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
         );
     }
     id
+}
+
+/// Reads a bare-name entry of a chunk section's block palette. 26.3 writes the default state of a
+/// block as its name alone (`BlockState.CODEC` is `Codec.either(block, full state)`), so a section
+/// full of stone has the entry `minecraft:stone`.
+pub(crate) fn palette_name_to_state(name: &str) -> BlockStateId {
+    let mut compound = NbtCompound::new();
+    compound.put_string(NAME_TAG_26_3, name.to_string());
+    palette_entry_to_state(&compound)
 }
 
 fn known_block(name: &str) -> Option<&'static Block> {
