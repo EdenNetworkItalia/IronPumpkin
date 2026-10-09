@@ -119,7 +119,7 @@ Where ids cross a boundary:
 | Entity NBT | `crates/pumpkin-core/src/world/mod.rs` lines 4281-4290 | `"id"` string; unknown type -> warning, compound dropped | keep the compound for placeholder types |
 | Chunk data packet | `crates/pumpkin-core/src/net/java/chunk_data/v1_18.rs` line 96 -> `BlockPalette::convert_network` | raw state ids, direct palette 16 bits (`BLOCK_NETWORK_MAX_BITS`) | map custom ids to the display state |
 | Block update packets | `CBlockUpdate::new` (9 sites, 5 files), `CMultiBlockUpdate::new` (1) | raw state id | map to the display state |
-| Block-break event 2001 | `ParticlesDestroyBlock` (6 sites, 6 files) | raw state id as event data | map to the display state |
+| Block-break event 2001 | `ParticlesAndSoundDestroyBlock` (6 sites, 6 files) | raw state id as event data | map to the display state |
 | Bedrock ids | `BlockState::to_be_network_id` (14 sites: core 9, world 5) | generated table, `assert_unchecked` | custom ids use the display state's Bedrock id |
 | Item stack on the wire | `crates/pumpkin-protocol/src/codec/item_stack_seralizer.rs` (4 writes of `item.id`), `codec/data_component.rs` line 1321 | raw item id | map custom items to the display item |
 | Entity type on the wire | spawn packets, `entity_type.id` | raw id | display type (custom entity types task) |
@@ -269,7 +269,7 @@ A name that is in neither the generated data, the registry nor the manifest (a w
 | `crates/pumpkin-wasm-host-v0_1/src/world.rs`, `crates/pumpkin-wasm-host-v0_2/src/world.rs` lines 468-492 | `BlockId::COUNT` / `BlockStateId::COUNT` -> total counts | 4 + 4 |
 | `crates/pumpkin-core/src/entity/type.rs` `from_type` | factory arm for custom types | 1 |
 | `crates/pumpkin/src/main.rs`, `crates/pumpkin-core/src/server/mod.rs`, `crates/pumpkin-core/src/lib.rs`, `crates/pumpkin-core/src/plugin/mod.rs` | registration phase and freeze before the world loop | startup |
-| Network egress, through `to_java_network_id()` only | `palette.rs` `convert_network` and `convert_be_network` 2, `CBlockUpdate::new` 9, `CMultiBlockUpdate::new` 1, `CBlockEvent::new` 1, `ParticlesDestroyBlock` 6, `to_be_network_id` 14, entity metadata block states 4 (tnt, block display, enderman, falling block), `CAwardStats` 2, item stack codec 5, `recipe_book_add.rs` 5, block particle data (not counted) | 49 + particles |
+| Network egress, through `to_java_network_id()` only | `palette.rs` `convert_network` and `convert_be_network` 2, `CBlockUpdate::new` 9, `CMultiBlockUpdate::new` 1, `CBlockEvent::new` 1, `ParticlesAndSoundDestroyBlock` 6, `to_be_network_id` 14, entity metadata block states 4 (tnt, block display, enderman, falling block), `CAwardStats` 2, item stack codec 5, `recipe_book_add.rs` 5, block particle data (not counted) | 49 + particles |
 
 The wasm hosts map entity types to the WIT enum by index in `EntityType::ALL` (`crates/pumpkin-wasm-host-v0_2/src/entity.rs` lines 898-915). Unknown names already return an error there, so custom entity types need an additive WIT representation in the Wasm API task, not a change here.
 
