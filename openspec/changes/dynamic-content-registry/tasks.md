@@ -17,15 +17,15 @@ Order after the id-space decision: 2.1 and 2.3 in parallel, then 3.1, 4.1 and 6.
 
 ## 3. Blocks
 
-- [ ] 3.1 Block state space for custom blocks (#18, depends on #17): the state layout rule of the decision (properties in name order, last property fastest) and `DynamicProperties`; verify: unit tests for a block with no properties, one boolean, and two mixed properties, with state ids checked against the layout rule
+- [x] 3.1 Block state space for custom blocks (#18, depends on #17): the state layout rule of the decision (properties in name order, last property fastest) and `DynamicProperties`; verify: unit tests for a block with no properties, one boolean, and two mixed properties, with state ids checked against the layout rule
 - [ ] 3.2 Chunk palette and Anvil persistence for custom blocks (#19, depends on #18, the startup content phase and the numeric save sites task): namespaced `Name` on save, one warning per unknown name on load, placeholder blocks round-trip; verify: gametest save and reload of a custom block, save and reload with the plugin missing keeps the palette entry, byte comparison of a vanilla chunk before and after
 - [ ] 3.3 Display mapping of custom block states for vanilla clients (issue to create, depends on #18): one `to_java_network_id()` per id type as the only egress for block states and block ids (chunk data palette, block update and block event packets, block-break event 2001, entity metadata, block particles, statistics, Bedrock ids); verify: a grep finds no raw block id written to a packet outside those functions, and a bot or client loads a chunk with a custom block and sees the display block without a decode error. It touches `crates/pumpkin-core/src/net` and `crates/pumpkin-protocol`: schedule it after the network work in progress there lands
 
-- [ ] 3.4 Chunk palette writer keeps the namespace of non-`minecraft:` names (#40, bug, before 3.2): the writer in `crates/pumpkin-world/src/chunk/format/mod.rs` checks for any namespace separator, as `crates/pumpkin-core/src/block/state_nbt.rs` does, in every format that reuses the serializer and on the reader side; verify: a palette entry with a `mymod:` namespace is written and read back unchanged
+- [x] 3.4 Chunk palette writer keeps the namespace of non-`minecraft:` names (#40, bug, before 3.2): the writer in `crates/pumpkin-world/src/chunk/format/mod.rs` checks for any namespace separator, as `crates/pumpkin-core/src/block/state_nbt.rs` does, in every format that reuses the serializer and on the reader side; verify: a palette entry with a `mymod:` namespace is written and read back unchanged
 
 ## 4. Items
 
-- [ ] 4.1 Item stacks with custom items (#20, depends on #17): namespaced `"id"` in NBT, display item through the item `to_java_network_id()` in the item stack codec and `recipe_book_add.rs`; verify: NBT round-trip unit test and a relog with a custom item in the inventory
+- [x] 4.1 Item stacks with custom items (#20, depends on #17): namespaced `"id"` in NBT, display item through the item `to_java_network_id()` in the item stack codec and `recipe_book_add.rs`; verify: NBT round-trip unit test and a relog with a custom item in the inventory
 
 ## 5. Plugin API
 
@@ -34,7 +34,7 @@ Order after the id-space decision: 2.1 and 2.3 in parallel, then 3.1, 4.1 and 6.
 
 ## 6. Entities
 
-- [ ] 6.1 Custom entity types (#24, depends on #17): factory arm in `from_type`, display type on the wire; verify: a custom entity spawns, ticks, saves and reloads in a boot or gametest check
+- [x] 6.1 Custom entity types (#24, depends on #17): factory arm in `from_type`, display type on the wire; verify: a custom entity spawns, ticks, saves and reloads in a boot or gametest check
 
 ## Workflow follow-up
 
