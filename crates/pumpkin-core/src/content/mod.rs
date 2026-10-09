@@ -252,8 +252,8 @@ fn block_display(display: &str) -> Option<BlockStateId> {
     if props.is_empty() {
         return Some(block.default_state.id);
     }
-    // `Block::from_properties` panics on a value the block does not have, and the file is edited
-    // by hand: search the states instead.
+    // `Block::from_properties` keeps the default for a value the block does not have, and the file
+    // is edited by hand: search the states, so a display that names no state is rejected.
     block.states.iter().map(|state| state.id).find(|&id| {
         block.properties(id).is_some_and(|properties| {
             let values = properties.to_props();

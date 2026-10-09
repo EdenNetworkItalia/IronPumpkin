@@ -1198,7 +1198,8 @@ pub(crate) fn properties(
     Some(Box::new(DynamicProperties::from_state_id(state_id, block)))
 }
 
-/// The fallthrough of `Block::from_properties`.
+/// The fallthrough of `Block::from_properties`: a registered block, or a vanilla block without
+/// properties (one state, the default).
 #[cold]
 #[inline(never)]
 pub(crate) fn properties_from_props(

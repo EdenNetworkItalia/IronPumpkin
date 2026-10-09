@@ -97,8 +97,8 @@ pub(crate) fn first_report(reported: &Mutex<BTreeSet<String>>, name: &str) -> bo
 ///
 /// A block name the registry does not know (in neither the generated data, the registered
 /// content nor the content manifest) loads as air. A property the block does not have is ignored,
-/// and a value a custom block does not allow keeps the default of that property. Each case warns
-/// once per block name for the whole process.
+/// and a value the block does not allow keeps the default of that property. Each case warns once
+/// per block name for the whole process.
 pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
     let (Some(name), properties) = state_compound_parts(compound) else {
         return BlockStateId::AIR;
@@ -123,12 +123,7 @@ pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
     if properties.is_empty() {
         return block.default_state.id;
     }
-    // The generated `from_properties` panics for a vanilla block without properties.
-    let id = if block.properties(block.default_state.id).is_some() {
-        block.from_properties(&properties).to_state_id(block)
-    } else {
-        block.default_state.id
-    };
+    let id = block.from_properties(&properties).to_state_id(block);
     let state_properties = block
         .properties(id)
         .map(|state| state.to_props())
@@ -457,6 +452,40 @@ mod tests {
             }
         }
         assert_eq!(properties_of(id), expected);
+    }
+
+    #[test]
+    fn palette_entries_keep_the_default_for_an_unknown_value() {
+        use super::palette_entry_to_state;
+
+        let entry = |name: &str, pairs: &[(&str, &str)]| {
+            let mut properties = NbtCompound::new();
+            for (key, value) in pairs {
+                properties.put_string(key, (*value).to_string());
+            }
+            let mut compound = NbtCompound::new();
+            compound.put_string("Name", name.to_string());
+            compound.put_compound("Properties", properties);
+            compound
+        };
+
+        // The default level of a light block is 15.
+        let light = palette_entry_to_state(&entry(
+            "minecraft:light",
+            &[("level", "99"), ("waterlogged", "true")],
+        ));
+        assert_eq!(Block::from_state_id(light), &Block::LIGHT);
+        assert_eq!(
+            properties_of(light),
+            pairs(&[("level", "15"), ("waterlogged", "true")])
+        );
+
+        // The default of a hopper's `enabled` is true, and an unknown facing keeps its default.
+        let hopper = palette_entry_to_state(&entry(
+            "minecraft:hopper",
+            &[("enabled", "maybe"), ("facing", "sideways")],
+        ));
+        assert_eq!(hopper, Block::HOPPER.default_state.id);
     }
 
     #[test]

@@ -217,10 +217,10 @@ impl ToTokens for PropertyStruct {
                     }
                 }
 
-                fn from_value(value: &str) -> Self {
+                fn from_value(value: &str) -> Option<Self> {
                     match value {
-                        #(#literals => Self::#variants),*,
-                        _ => panic!("Invalid value: {value}"),
+                        #(#literals => Some(Self::#variants)),*,
+                        _ => None,
                     }
                 }
             }
@@ -357,25 +357,31 @@ impl ToTokens for BlockPropertyStruct {
             let field_name = Ident::new_raw(&entry.original_name, Span::call_site());
             match &entry.property_type {
                 PropertyType::Bool => quote! {
-                    block_props.#field_name = matches!(*value, "true")
+                    match *value {
+                        "true" => block_props.#field_name = true,
+                        "false" => block_props.#field_name = false,
+                        _ => {}
+                    }
                 },
                 PropertyType::Int { min, max } => {
                     let mut arms = Vec::new();
                     for i in *min..=*max {
                         let i_str = i.to_string();
-                        arms.push(quote! { #i_str => #i });
+                        arms.push(quote! { #i_str => block_props.#field_name = #i });
                     }
                     quote! {
-                        block_props.#field_name = match *value {
+                        match *value {
                             #(#arms,)*
-                            _ => #min,
+                            _ => {}
                         }
                     }
                 }
                 PropertyType::Enum { name } => {
                     let enum_ident = Ident::new(name, Span::call_site());
                     quote! {
-                        block_props.#field_name = #enum_ident::from_value(value)
+                        if let Some(parsed) = #enum_ident::from_value(value) {
+                            block_props.#field_name = parsed;
+                        }
                     }
                 }
             }
@@ -384,7 +390,7 @@ impl ToTokens for BlockPropertyStruct {
         let from_props_loop_body = if self.data.variant_mappings.len() > 1 {
             quote! {
                 match *key {
-                    #(#from_props_keys => #from_props_values),*,
+                    #(#from_props_keys => { #from_props_values }),*,
                     _ => {}, //
                 }
             }
@@ -1311,7 +1317,7 @@ pub fn build() -> TokenStream {
             fn to_index(&self) -> u16;
             fn from_index(index: u16) -> Self;
             fn to_value(&self) -> &'static str;
-            fn from_value(value: &str) -> Self;
+            fn from_value(value: &str) -> Option<Self> where Self: Sized;
         }
 
         pub const COLLISION_SHAPES: &[BoundingBox] = &[
@@ -1511,10 +1517,9 @@ pub fn build() -> TokenStream {
             pub fn from_properties(&self, props: &[(&str, &str)]) -> Box<dyn BlockProperties> {
                 match self.id {
                     #(#block_properties_from_props_and_name_arms)*
-                    _ if self.id.as_u16() >= BlockId::BLOCK_COUNT => {
-                        crate::dynamic::properties_from_props(self, props)
-                    }
-                    _ => panic!("Invalid props")
+                    // No generated property group: a registered block, or a vanilla block without
+                    // properties, which has one state.
+                    _ => crate::dynamic::properties_from_props(self, props),
                 }
             }
         }

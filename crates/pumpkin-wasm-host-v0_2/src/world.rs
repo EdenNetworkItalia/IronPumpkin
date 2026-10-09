@@ -424,8 +424,8 @@ impl pumpkin::plugin::world::Host for PluginHostState {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_str()))
             .collect();
-        // from_properties/from_value panics on unknown property values,
-        // so catch panics to avoid crashing on schematics from other MC versions.
+        // An unknown property value keeps the default, but a panic must not cross the host
+        // boundary when a schematic comes from another MC version.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let block_props = block.from_properties(&props);
             block_props.to_state_id(block).as_u16()
