@@ -1,5 +1,9 @@
+use crate::command::argument_types::block_predicate::BlockPredicate;
 use crate::command::node::dispatcher::CommandDispatcher;
+use crate::world::World;
 use pumpkin_config::CommandsConfig;
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::{
     PermissionLvl,
     permission::{Permission, PermissionDefault, PermissionManager, PermissionRegistry},
@@ -314,6 +318,23 @@ fn register_permissions(registry: &PermissionRegistry) {
             PermissionDefault::Op(PermissionLvl::One),
         ))
         .unwrap_or_else(|e| tracing::warn!("{e}"));
+}
+
+/// The data of the block entity at `pos`, as vanilla `BlockEntity.saveWithFullMetadata` writes it
+/// without the data components.
+fn block_entity_nbt(world: &World, pos: &BlockPos) -> Option<NbtCompound> {
+    world.get_block_entity(pos).map(|block_entity| {
+        let mut nbt = NbtCompound::new();
+        block_entity.write_internal(&mut nbt);
+        nbt
+    })
+}
+
+/// Tests the block at `pos` as vanilla `BlockPredicate.test(new BlockInWorld(level, pos, true))`.
+fn test_block_predicate(world: &World, predicate: &BlockPredicate, pos: &BlockPos) -> bool {
+    predicate.test(world.get_block_state_id(pos), || {
+        block_entity_nbt(world, pos)
+    })
 }
 
 #[cfg(test)]

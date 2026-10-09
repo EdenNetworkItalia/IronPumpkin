@@ -1,11 +1,12 @@
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
-use crate::command::argument_types::block::BlockArgumentType;
+use crate::command::argument_types::block_predicate::BlockPredicateArgumentType;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
+use crate::command::commands::block_entity_nbt;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
-use pumpkin_data::{Block, BlockStateId, translation};
+use pumpkin_data::{BlockStateId, translation};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::math::position::BlockPos;
@@ -81,8 +82,8 @@ impl CommandExecutor for CloneExecutor {
         let end = BlockPosArgumentType::get_block_pos(context, ARG_END)?;
         let dest = BlockPosArgumentType::get_block_pos(context, ARG_DEST)?;
 
-        let filter_block = if self.has_filter {
-            Some(BlockArgumentType::get(context, ARG_FILTER)?)
+        let filter = if self.has_filter {
+            Some(BlockPredicateArgumentType::get(context, ARG_FILTER)?)
         } else {
             None
         };
@@ -172,25 +173,26 @@ impl CommandExecutor for CloneExecutor {
                         MaskMode::Replace => true,
                         MaskMode::Masked => !pumpkin_data::block_properties::is_air(state_id),
                         MaskMode::Filtered => {
-                            let block = Block::from_state_id(state_id);
-                            filter_block.is_some_and(|f| block.id == f.id)
+                            filter.as_ref().is_some_and(|f| f.test_state(state_id))
                         }
                     };
-
-                    if should_clone {
-                        let block_entity_nbt = world.get_block_entity(&src_pos).map(|be| {
-                            let mut nbt = NbtCompound::new();
-                            be.write_internal(&mut nbt);
-                            nbt
-                        });
-
-                        blocks_to_clone.push(ClonedBlock {
-                            src_pos,
-                            dest_pos,
-                            state_id,
-                            block_entity_nbt,
-                        });
+                    if !should_clone {
+                        continue;
                     }
+
+                    let block_entity_nbt = block_entity_nbt(world, &src_pos);
+                    if let Some(f) = &filter
+                        && !f.test_nbt(block_entity_nbt.as_ref())
+                    {
+                        continue;
+                    }
+
+                    blocks_to_clone.push(ClonedBlock {
+                        src_pos,
+                        dest_pos,
+                        state_id,
+                        block_entity_nbt,
+                    });
                 }
             }
         }
@@ -318,7 +320,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                         )
                         .then(
                             literal("filtered").then(
-                                argument(ARG_FILTER, BlockArgumentType)
+                                argument(ARG_FILTER, BlockPredicateArgumentType)
                                     .executes(CloneExecutor {
                                         mask_mode: MaskMode::Filtered,
                                         clone_mode: CloneMode::Normal,

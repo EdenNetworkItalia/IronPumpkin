@@ -67,41 +67,14 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockArgumentType {
         if reader.peek() == Some('#') {
             return Err(TAG_DISALLOWED_ERROR_TYPE.create(reader));
         }
-        let start = reader.cursor();
-        while let Some(c) = reader.peek() {
-            if c.is_alphanumeric() || c == '_' || c == ':' || c == '/' || c == '.' || c == '-' {
-                reader.skip();
-            } else {
-                break;
-            }
-        }
-        let block_name = &reader.string()[start..reader.cursor()];
-        let normalized = if block_name.contains(':') {
-            block_name.to_string()
-        } else {
-            format!("minecraft:{block_name}")
-        };
-
-        let Some(block) = Block::from_name(&normalized) else {
-            reader.set_cursor(start);
-            return Err(INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized)));
-        };
-
+        let (block, id) = read_block(reader)?;
         let state = if reader.peek() == Some('[') {
-            read_properties(reader, block, &normalized)?
+            let properties = read_properties(reader, block, &id)?;
+            block.from_properties(&properties).to_state_id(block)
         } else {
             block.default_state.id
         };
-
-        let nbt = if reader.peek() == Some('{') {
-            Some(ArgumentType::<crate::source::DummySource>::parse(
-                &NbtCompoundArgumentType,
-                reader,
-            )?)
-        } else {
-            None
-        };
-
+        let nbt = read_nbt(reader)?;
         Ok(BlockStateArgument { block, state, nbt })
     }
 
@@ -122,9 +95,50 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockArgumentType {
     }
 }
 
+/// Reads a block id as vanilla `BlockStateParser.readBlock` does, and returns the block with its
+/// namespaced id.
+pub(crate) fn read_block(
+    reader: &mut StringReader,
+) -> Result<(&'static Block, String), CommandSyntaxError> {
+    let start = reader.cursor();
+    while let Some(c) = reader.peek() {
+        if c.is_alphanumeric() || c == '_' || c == ':' || c == '/' || c == '.' || c == '-' {
+            reader.skip();
+        } else {
+            break;
+        }
+    }
+    let block_name = &reader.string()[start..reader.cursor()];
+    let normalized = if block_name.contains(':') {
+        block_name.to_string()
+    } else {
+        format!("minecraft:{block_name}")
+    };
+
+    let Some(block) = Block::from_name(&normalized) else {
+        reader.set_cursor(start);
+        return Err(INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized)));
+    };
+    Ok((block, normalized))
+}
+
+/// Reads the block entity data `{...}` after a block, if any.
+pub(crate) fn read_nbt(
+    reader: &mut StringReader,
+) -> Result<Option<NbtCompound>, CommandSyntaxError> {
+    if reader.peek() == Some('{') {
+        Ok(Some(ArgumentType::<crate::source::DummySource>::parse(
+            &NbtCompoundArgumentType,
+            reader,
+        )?))
+    } else {
+        Ok(None)
+    }
+}
+
 /// The properties of `block` with their values, in the order of its states.
 // IronPumpkin: a content-registry block answers through the same lookup as a generated one.
-fn property_schema(block: &Block) -> Vec<(&'static str, Vec<&'static str>)> {
+pub(crate) fn property_schema(block: &Block) -> Vec<(&'static str, Vec<&'static str>)> {
     let mut schema: Vec<(&'static str, Vec<&'static str>)> = Vec::new();
     for state in block.states {
         let Some(properties) = block.properties(state.id) else {
@@ -146,7 +160,7 @@ fn property_schema(block: &Block) -> Vec<(&'static str, Vec<&'static str>)> {
 
 /// The value of `values` that `input` names. Vanilla reads an integer property with
 /// `Integer.parseInt`, so `01` and `+1` name `1`.
-fn find_value(values: &[&'static str], input: &str) -> Option<&'static str> {
+pub(crate) fn find_value(values: &[&'static str], input: &str) -> Option<&'static str> {
     if let Some(value) = values.iter().find(|value| **value == input) {
         return Some(value);
     }
@@ -161,12 +175,12 @@ fn find_value(values: &[&'static str], input: &str) -> Option<&'static str> {
 }
 
 /// Reads `[property=value,...]` as vanilla `BlockStateParser.readProperties` does, and returns
-/// the state with those values.
-fn read_properties(
+/// the given properties with their values.
+pub(crate) fn read_properties(
     reader: &mut StringReader,
     block: &'static Block,
     id: &str,
-) -> Result<BlockStateId, CommandSyntaxError> {
+) -> Result<Vec<(&'static str, &'static str)>, CommandSyntaxError> {
     reader.skip();
     reader.skip_whitespace();
     let schema = property_schema(block);
@@ -225,18 +239,10 @@ fn read_properties(
         return Err(UNCLOSED_PROPERTIES_ERROR_TYPE.create(reader));
     }
     reader.skip();
-    Ok(block.from_properties(&set).to_state_id(block))
+    Ok(set)
 }
 
 impl BlockArgumentType {
-    /// Returns the parsed block, without its state.
-    pub fn get<S: crate::source::CommandSource>(
-        context: &CommandContext<S>,
-        name: &str,
-    ) -> Result<&'static Block, CommandSyntaxError> {
-        Ok(context.get_argument::<BlockStateArgument>(name)?.block)
-    }
-
     /// Returns the parsed block state and its block entity data.
     pub fn get_state<S: crate::source::CommandSource>(
         context: &CommandContext<S>,
