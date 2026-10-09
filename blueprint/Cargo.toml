@@ -3,3 +3,5 @@
 [workspace]
 resolver = "3"
 members = ["xtask"]
+# Stops a mod named before `pumpkin` from making cargo use this root for `.ironpumpkin/crates/*`.
+exclude = [".ironpumpkin"]

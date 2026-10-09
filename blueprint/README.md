@@ -127,6 +127,11 @@ The tool generates `bin/Cargo.toml` and `bin/src/mods.rs`; git ignores them and 
 `bin/src/mods.rs` has one `use <mod> as _;` per mod: a mod crate that the binary does not reference
 is not linked, and its mod does not load.
 
+The root `Cargo.toml` is the workspace of the build tool and has `exclude = [".ironpumpkin"]`. If you
+edit the root `Cargo.toml`, keep that line. Without it, a path mod whose package name sorts before
+`pumpkin` makes cargo use the root as the workspace of the IronPumpkin crates. Then
+`cargo xtask check` fails with `workspace.package.edition was not defined`.
+
 `bin/Cargo.lock` makes the build reproducible, so it is committed. The tool seeds it from the
 IronPumpkin lock file when it is missing or when `bin/Cargo.lock.commit` names another commit, so
 the server dependencies have the versions of the pinned commit. `check` and `build --debug` then
