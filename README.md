@@ -11,6 +11,10 @@ IronPumpkin is a Minecraft server maintained by [EdenNetwork Italia](https://git
 It is a derivative of [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin), a Minecraft server written in Rust.
 The goal is a server that NeoForge clients can join and that runs NeoForge mods ported to Rust.
 
+Bedrock clients are not a target. IronPumpkin targets NeoForge clients. The Bedrock code from
+Pumpkin stays in the tree to keep upstream merges cheap, but IronPumpkin does not test it and does
+not keep it working with custom content. This may change later.
+
 > [!IMPORTANT]
 > IronPumpkin is at an early stage. The roadmap below is planned work.
 
@@ -42,8 +46,8 @@ does, why a NeoForge event or API is not enough, and that the patch is bound to 
 commit it names. Every accepted patch is a candidate NeoForge-shaped event for a later version, so
 the API grows from real patches.
 
-A modpack blueprint repository with a GitHub Action applies the patches and builds the binaries
-for each pack, so operators and players download a binary and never compile. Wasm plugins stay
+The modpack blueprint in `blueprint/` has a GitHub Action that applies the patches and builds the
+binaries for each pack, so operators and players download a binary and never compile. Wasm plugins stay
 what Pumpkin offers today: sandboxed, hot-reloadable, for administration and integrations.
 
 A mod linked into the server binary and a source patch are derivative works of a GPLv3 program, and
@@ -167,8 +171,9 @@ and customizable experience. It prioritizes performance and player enjoyment whi
 ## How to run
 
 Without mods, IronPumpkin runs like Pumpkin: see the [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide.
-With mods, build the server from a modpack workspace; the blueprint repository and its documentation
-arrive with milestone M1.
+With mods, create a modpack repository from the
+[ironpumpkin-pack-template](https://github.com/EdenNetworkItalia/ironpumpkin-pack-template) template
+repository and build the server there: see [blueprint/README.md](blueprint/README.md).
 
 ## Contributions
 

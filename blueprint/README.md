@@ -4,6 +4,10 @@ This repository builds one IronPumpkin server binary for one modpack. The native
 are compiled into the binary. GitHub Actions builds the binaries, so a pack maintainer does not
 build on their own machine.
 
+To start a pack, create a repository from the
+[ironpumpkin-pack-template](https://github.com/EdenNetworkItalia/ironpumpkin-pack-template) template
+repository. It holds this blueprint with an empty mod list.
+
 ## Make a pack
 
 1. Create a repository from this blueprint (fork it, or use it as a template).
