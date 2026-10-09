@@ -1,26 +1,55 @@
 //! Builders for custom blocks, items and entity types.
 //!
-//! A builder wraps the definition struct of the content registry and converts into it. A mod
-//! never writes a struct literal, so a new field of the registry does not break mod code. Pass a
-//! builder to [`ModInit::register_block`](crate::ModInit::register_block),
+//! A builder wraps the definition struct of the content registry. A mod never writes a struct
+//! literal, so a new field of the registry does not break mod code. Pass a builder to
+//! [`ModInit::register_block`](crate::ModInit::register_block),
 //! [`ModInit::register_item`](crate::ModInit::register_item) or
 //! [`ModInit::register_entity_type`](crate::ModInit::register_entity_type).
 //!
 //! A builder does not validate. The registry validates when the mod registers the content and
 //! returns a [`RegistryError`].
 //!
+//! A registration error stops the server. `ModInit` keeps the first one, and the server logs it
+//! with the mod id and exits after `init` returns, before the first world loads. A mod only has to
+//! stop registering at the first error, for example with `?`. It must not panic or unwrap the
+//! `Result`.
+//!
 //! Tags: `.tag(..)` takes the name of a generated (vanilla) tag of the same registry. A tag name
 //! of the mod is rejected with [`RegistryError::UnknownTag`], because the registry has no way to
 //! create a new tag yet. [`DynamicTaggable::has_tag_dynamic`] answers tag membership for generated
 //! and custom content.
 //!
+//! Behaviour: `.behaviour(..)` gives a block a [`BlockBehaviour`] and an item an [`ItemBehaviour`],
+//! the traits of the vanilla blocks and items. The server calls it through the same hooks as for
+//! vanilla content: placing, breaking, using, scheduled ticks, neighbour updates and redstone for
+//! every state of the block, and every use of the item. Random ticks run only if the display
+//! state has random ticks, because a custom state copies the flags of its display state. The
+//! argument types are in [`pumpkin_core::block`] and [`pumpkin_core::item`].
+//!
+//! Attach only a behaviour of the mod, or a server behaviour that reads no block properties. A
+//! server behaviour that reads the properties of its own block (for example `AnvilBlock::on_place`
+//! through `WallTorchLikeProperties`) panics on a custom block, and the panic stops the server.
+//! For the same reason, content does not inherit the behaviour of its display entry: without
+//! `.behaviour(..)` the server uses the trait defaults.
+//!
 //! ```
+//! use std::sync::Arc;
+//!
 //! use ironpumpkin_mods::{
 //!     ModInit, NativeMod,
-//!     content::{BlockBuilder, ItemBuilder, RegistryError},
+//!     content::{BlockBehaviour, BlockBuilder, ItemBuilder, RegistryError},
+//!     pumpkin_core::block::PlacedArgs,
 //!     pumpkin_data::{Block, item::Item},
-//!     tracing::error,
+//!     tracing::info,
 //! };
+//!
+//! struct CopperLamp;
+//!
+//! impl BlockBehaviour for CopperLamp {
+//!     fn placed(&self, args: PlacedArgs<'_>) {
+//!         info!("[lamps] copper lamp placed at {:?}", args.position);
+//!     }
+//! }
 //!
 //! struct LampMod;
 //!
@@ -35,16 +64,16 @@
 //!         "1.0.0"
 //!     }
 //!     fn init(&self, cx: &mut ModInit) {
-//!         if let Err(err) = register_lamp(cx) {
-//!             error!("[lamps] cannot register the lamp: {err}");
-//!         }
+//!         // On an error the server logs it with the mod id and stops after `init` returns.
+//!         let _ = register_lamp(cx);
 //!     }
 //! }
 //!
 //! fn register_lamp(cx: &mut ModInit) -> Result<(), RegistryError> {
 //!     let lamp = BlockBuilder::new("lamps:copper_lamp", Block::REDSTONE_LAMP.default_state.id)
 //!         .bool_property("lit", false)
-//!         .tag("minecraft:mineable/pickaxe");
+//!         .tag("minecraft:mineable/pickaxe")
+//!         .behaviour(Arc::new(CopperLamp));
 //!     cx.register_block(lamp)?;
 //!     let item = ItemBuilder::new("lamps:copper_lamp", &Item::REDSTONE_LAMP)
 //!         .places("lamps:copper_lamp");
@@ -52,6 +81,9 @@
 //! }
 //! ```
 
+use std::{fmt, sync::Arc};
+
+use pumpkin_core::content::behaviour;
 use pumpkin_data::{
     BlockStateId,
     dynamic::{BlockDefinition, BlockPropertyDefinition, EntityTypeDefinition, ItemDefinition},
@@ -59,25 +91,33 @@ use pumpkin_data::{
     item::Item,
 };
 
+pub use pumpkin_core::block::BlockBehaviour;
 pub use pumpkin_core::entity::custom::EntityFactory;
+pub use pumpkin_core::item::ItemBehaviour;
 pub use pumpkin_data::dynamic::{ContentKind, DynamicTaggable, RegistryError};
 
 /// A custom block. It has one state per combination of its property values.
 ///
 /// `name` is `namespace:path` with a namespace other than `minecraft`. `display` is the vanilla
 /// state that vanilla clients see: every state of the block copies its physical data.
-#[derive(Debug, Clone)]
-pub struct BlockBuilder(BlockDefinition);
+#[derive(Clone)]
+pub struct BlockBuilder {
+    definition: BlockDefinition,
+    behaviour: Option<Arc<dyn BlockBehaviour>>,
+}
 
 impl BlockBuilder {
     #[must_use]
     pub fn new(name: impl Into<String>, display: BlockStateId) -> Self {
-        Self(BlockDefinition {
-            name: name.into(),
-            display,
-            properties: Vec::new(),
-            tags: Vec::new(),
-        })
+        Self {
+            definition: BlockDefinition {
+                name: name.into(),
+                display,
+                properties: Vec::new(),
+                tags: Vec::new(),
+            },
+            behaviour: None,
+        }
     }
 
     /// Adds a boolean property. The registry rejects a name used twice.
@@ -105,19 +145,38 @@ impl BlockBuilder {
     /// other with [`RegistryError::UnknownTag`].
     #[must_use]
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        self.0.tags.push(tag.into());
+        self.definition.tags.push(tag.into());
+        self
+    }
+
+    /// Sets the behaviour that the server runs for every state of the block. A second call
+    /// replaces the first. See the [module docs](self).
+    #[must_use]
+    pub fn behaviour(mut self, behaviour: Arc<dyn BlockBehaviour>) -> Self {
+        self.behaviour = Some(behaviour);
         self
     }
 
     fn property(mut self, property: BlockPropertyDefinition) -> Self {
-        self.0.properties.push(property);
+        self.definition.properties.push(property);
         self
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.definition.name
+    }
+
+    pub(crate) fn register(self) -> Result<(), RegistryError> {
+        behaviour::register_block(self.definition, self.behaviour)
     }
 }
 
-impl From<BlockBuilder> for BlockDefinition {
-    fn from(builder: BlockBuilder) -> Self {
-        builder.0
+impl fmt::Debug for BlockBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BlockBuilder")
+            .field("definition", &self.definition)
+            .field("behaviour", &self.behaviour.is_some())
+            .finish()
     }
 }
 
@@ -125,18 +184,24 @@ impl From<BlockBuilder> for BlockDefinition {
 ///
 /// `name` is `namespace:path` with a namespace other than `minecraft`. `display` is the vanilla
 /// item that vanilla clients see: the item copies its components.
-#[derive(Debug, Clone)]
-pub struct ItemBuilder(ItemDefinition);
+#[derive(Clone)]
+pub struct ItemBuilder {
+    definition: ItemDefinition,
+    behaviour: Option<Arc<dyn ItemBehaviour>>,
+}
 
 impl ItemBuilder {
     #[must_use]
     pub fn new(name: impl Into<String>, display: &'static Item) -> Self {
-        Self(ItemDefinition {
-            name: name.into(),
-            display,
-            block: None,
-            tags: Vec::new(),
-        })
+        Self {
+            definition: ItemDefinition {
+                name: name.into(),
+                display,
+                block: None,
+                tags: Vec::new(),
+            },
+            behaviour: None,
+        }
     }
 
     /// Makes the item place the custom block `block`.
@@ -146,7 +211,7 @@ impl ItemBuilder {
     /// the block is not registered or another item already places it.
     #[must_use]
     pub fn places(mut self, block: impl Into<String>) -> Self {
-        self.0.block = Some(block.into());
+        self.definition.block = Some(block.into());
         self
     }
 
@@ -155,14 +220,35 @@ impl ItemBuilder {
     /// [`RegistryError::UnknownTag`].
     #[must_use]
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        self.0.tags.push(tag.into());
+        self.definition.tags.push(tag.into());
         self
+    }
+
+    /// Sets the behaviour that the server runs when a player uses the item. A second call
+    /// replaces the first. An item that places a block keeps placing it when
+    /// [`ItemBehaviour::use_on_block`] returns `BlockActionResult::Pass`, the default. See the
+    /// [module docs](self).
+    #[must_use]
+    pub fn behaviour(mut self, behaviour: Arc<dyn ItemBehaviour>) -> Self {
+        self.behaviour = Some(behaviour);
+        self
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.definition.name
+    }
+
+    pub(crate) fn register(self) -> Result<(), RegistryError> {
+        behaviour::register_item(self.definition, self.behaviour)
     }
 }
 
-impl From<ItemBuilder> for ItemDefinition {
-    fn from(builder: ItemBuilder) -> Self {
-        builder.0
+impl fmt::Debug for ItemBuilder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ItemBuilder")
+            .field("definition", &self.definition)
+            .field("behaviour", &self.behaviour.is_some())
+            .finish()
     }
 }
 
@@ -228,13 +314,12 @@ mod tests {
 
     #[test]
     fn block_builder_collects_the_properties_in_call_order() {
-        let definition: BlockDefinition =
-            BlockBuilder::new("test:lamp", Block::REDSTONE_LAMP.default_state.id)
-                .bool_property("lit", true)
-                .int_property("level", 1, 3, 2)
-                .enum_property("mode", &["a", "b"], "b")
-                .tag("minecraft:mineable/pickaxe")
-                .into();
+        let definition = BlockBuilder::new("test:lamp", Block::REDSTONE_LAMP.default_state.id)
+            .bool_property("lit", true)
+            .int_property("level", 1, 3, 2)
+            .enum_property("mode", &["a", "b"], "b")
+            .tag("minecraft:mineable/pickaxe")
+            .definition;
         assert_eq!(definition.name, "test:lamp");
         assert_eq!(definition.display, Block::REDSTONE_LAMP.default_state.id);
         assert_eq!(
@@ -250,16 +335,16 @@ mod tests {
 
     #[test]
     fn item_builder_links_the_block_only_when_asked() {
-        let plain: ItemDefinition = ItemBuilder::new("test:wand", &Item::STICK).into();
+        let plain = ItemBuilder::new("test:wand", &Item::STICK).definition;
         assert_eq!(plain.display.id, Item::STICK.id);
         assert_eq!(plain.block, None);
 
         assert!(plain.tags.is_empty());
 
-        let placing: ItemDefinition = ItemBuilder::new("test:lamp", &Item::REDSTONE_LAMP)
+        let placing = ItemBuilder::new("test:lamp", &Item::REDSTONE_LAMP)
             .places("test:lamp")
             .tag("minecraft:swords")
-            .into();
+            .definition;
         assert_eq!(placing.block.as_deref(), Some("test:lamp"));
         assert_eq!(placing.tags, ["minecraft:swords"]);
     }

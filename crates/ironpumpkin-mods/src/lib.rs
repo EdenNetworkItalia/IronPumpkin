@@ -26,6 +26,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 use std::{
+    fmt,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -35,7 +36,7 @@ use pumpkin_core::{
     entity::custom,
     plugin::{Context, PluginMetadata, startup},
 };
-use pumpkin_data::dynamic::{self, BlockDefinition, EntityTypeDefinition, ItemDefinition};
+use pumpkin_data::dynamic::EntityTypeDefinition;
 use tracing::{error, info};
 
 #[doc(hidden)]
@@ -76,7 +77,7 @@ macro_rules! __translate_cross {
     }};
 }
 
-use content::{EntityFactory, RegistryError};
+use content::{ContentKind, EntityFactory, RegistryError};
 use event::{EventHandler, EventPriority, Payload};
 use permission::Permission;
 use server::Server;
@@ -88,6 +89,10 @@ pub trait NativeMod: Sync {
     fn display_name(&self) -> &'static str;
     fn version(&self) -> &'static str;
     /// Called once at startup, before the first world loads.
+    ///
+    /// If a content registration fails, the server logs the first error with the mod id and
+    /// stops after `init` returns, before the content phase. Do not panic or unwrap the `Result`
+    /// of a content registration: the server panic hook writes a crash report and exits at once.
     fn init(&self, cx: &mut ModInit);
 }
 
@@ -114,13 +119,44 @@ type Registration = Box<dyn FnOnce(&Context)>;
 /// registrations ([`ModInit::register_block`], [`ModInit::register_item`] and
 /// [`ModInit::register_entity_type`]), which apply at once and return a `Result`.
 ///
+/// `ModInit` keeps the first content registration error, even if the mod ignores the `Result`.
+/// After `init` returns, the server logs that error with the mod id and stops before the content
+/// phase, as it does for a mod id conflict. A mod can still read the `Result` to log more detail
+/// or to skip the rest of its content, but it cannot make the server start without that content.
+///
 /// It passes `pumpkin-core` types through until the native API lands: the stable boundary for
 /// mods is `ironpumpkin-neo`, not this crate.
 pub struct ModInit {
     id: &'static str,
     data_root: PathBuf,
     registrations: Vec<Registration>,
+    content_error: Option<ContentRegistrationError>,
 }
+
+/// The first content registration that failed in a mod's [`NativeMod::init`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentRegistrationError {
+    /// The mod whose `init` made the registration.
+    pub mod_id: &'static str,
+    /// The registry of the content: block, item or entity type.
+    pub kind: ContentKind,
+    /// The name passed to the registration.
+    pub name: String,
+    /// What the registry returned.
+    pub error: RegistryError,
+}
+
+impl fmt::Display for ContentRegistrationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "native mod \"{}\" cannot register the {} \"{}\": {}",
+            self.mod_id, self.kind, self.name, self.error
+        )
+    }
+}
+
+impl std::error::Error for ContentRegistrationError {}
 
 impl ModInit {
     /// Creates the registration handle of the mod `id`. The server does this for each mod; the
@@ -134,6 +170,7 @@ impl ModInit {
             // Must agree with `Context::get_data_folder`, which is not reachable without a server.
             data_root: Path::new("plugins").join("data"),
             registrations: Vec::new(),
+            content_error: None,
         }
     }
 
@@ -203,7 +240,8 @@ impl ModInit {
         }));
     }
 
-    /// Registers a custom block. Pass a [`BlockBuilder`](content::BlockBuilder).
+    /// Registers a custom block and its behaviour, if the [`BlockBuilder`](content::BlockBuilder)
+    /// has one.
     ///
     /// Content registers at once, not when `init` returns: the server freezes the content
     /// registry after the last mod's `init` and before the first world loads. The registry
@@ -214,15 +252,13 @@ impl ModInit {
     /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
     /// namespace or is already registered as a block, the display state is not a vanilla state, a
     /// property is invalid, a tag is unknown, or the registry is frozen.
-    pub fn register_block(
-        &mut self,
-        block: impl Into<BlockDefinition>,
-    ) -> Result<(), RegistryError> {
-        dynamic::register_block(block.into())
+    pub fn register_block(&mut self, block: content::BlockBuilder) -> Result<(), RegistryError> {
+        let name = block.name().to_owned();
+        self.keep_content_error(ContentKind::Block, name, block.register())
     }
 
-    /// Registers a custom item. Pass an [`ItemBuilder`](content::ItemBuilder). It applies at
-    /// once, like [`ModInit::register_block`].
+    /// Registers a custom item and its behaviour, if the [`ItemBuilder`](content::ItemBuilder) has
+    /// one. It applies at once, like [`ModInit::register_block`].
     ///
     /// # Errors
     ///
@@ -230,8 +266,9 @@ impl ModInit {
     /// namespace or is already registered as an item, the display item is not a vanilla item, a tag
     /// is unknown, or the registry is frozen. The block that the item places is not checked here:
     /// the freeze checks it.
-    pub fn register_item(&mut self, item: impl Into<ItemDefinition>) -> Result<(), RegistryError> {
-        dynamic::register_item(item.into())
+    pub fn register_item(&mut self, item: content::ItemBuilder) -> Result<(), RegistryError> {
+        let name = item.name().to_owned();
+        self.keep_content_error(ContentKind::Item, name, item.register())
     }
 
     /// Registers a custom entity type and the factory that spawns it. Pass an
@@ -249,7 +286,32 @@ impl ModInit {
         definition: impl Into<EntityTypeDefinition>,
         factory: EntityFactory,
     ) -> Result<(), RegistryError> {
-        custom::register_entity_type(definition.into(), factory)
+        let definition = definition.into();
+        let name = definition.name.clone();
+        self.keep_content_error(
+            ContentKind::EntityType,
+            name,
+            custom::register_entity_type(definition, factory),
+        )
+    }
+
+    /// Passes `result` through and keeps its error if it is the first one of this mod.
+    fn keep_content_error(
+        &mut self,
+        kind: ContentKind,
+        name: String,
+        result: Result<(), RegistryError>,
+    ) -> Result<(), RegistryError> {
+        if let Err(error) = &result {
+            self.content_error
+                .get_or_insert_with(|| ContentRegistrationError {
+                    mod_id: self.id,
+                    kind,
+                    name,
+                    error: error.clone(),
+                });
+        }
+        result
     }
 
     /// See [`Context::get_data_folder`]: `plugins/data/<mod id>`, created on first use.
@@ -321,21 +383,31 @@ fn is_valid_id(id: &str) -> bool {
             .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-'))
 }
 
-/// Initializes every linked mod against `server`, or stops the process if the mods conflict.
-/// Set as the startup hook of `pumpkin-core`.
+/// Runs [`NativeMod::init`] of `native_mod` and returns what it registered, or the first content
+/// registration error. [`init_mods`] stops the server on that error.
+#[doc(hidden)]
+pub fn init_mod(native_mod: &dyn NativeMod) -> Result<ModInit, ContentRegistrationError> {
+    let mut init = ModInit::new(native_mod.id());
+    native_mod.init(&mut init);
+    init.content_error.take().map_or(Ok(init), Err)
+}
+
+fn refuse_to_start(reason: &dyn fmt::Display) -> ! {
+    error!("[ironpumpkin] {reason}; refusing to start");
+    std::process::exit(1);
+}
+
+/// Initializes every linked mod against `server`, or stops the process if the mods conflict or a
+/// mod fails to register its content. Set as the startup hook of `pumpkin-core`.
 pub fn init_mods(server: &Arc<Server>) {
-    let mods = mods().unwrap_or_else(|err| {
-        error!("[ironpumpkin] {err}; refusing to start");
-        std::process::exit(1);
-    });
+    let mods = mods().unwrap_or_else(|err| refuse_to_start(&err));
     startup::set_native_mod_ids(
         mods.iter()
             .map(|native_mod| native_mod.id().to_owned())
             .collect(),
     );
     for native_mod in &mods {
-        let mut init = ModInit::new(native_mod.id());
-        native_mod.init(&mut init);
+        let init = init_mod(*native_mod).unwrap_or_else(|err| refuse_to_start(&err));
         let metadata = PluginMetadata {
             name: native_mod.id().to_owned(),
             version: native_mod.version().to_owned(),

@@ -161,6 +161,9 @@ impl ItemRegistry {
 
     #[must_use]
     pub fn get_pumpkin_item(&self, item: u16) -> Option<&Arc<dyn ItemBehaviour>> {
+        if item >= Item::COUNT {
+            return crate::content::behaviour::item_behaviour(item);
+        }
         self.items.get(&item)
     }
 }

@@ -5,6 +5,8 @@
 //! that no mod registered, freezes the registry and writes the manifest back. The manifest holds
 //! names only: ids are allocated again at every start.
 
+pub mod behaviour;
+
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

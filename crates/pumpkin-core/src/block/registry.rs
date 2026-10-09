@@ -1373,7 +1373,9 @@ impl BlockRegistry {
     #[inline]
     #[must_use]
     pub fn get_pumpkin_block(&self, block: BlockId) -> Option<&Arc<dyn BlockBehaviour>> {
-        let idx = self.block_indices[block.as_u16() as usize];
+        let Some(&idx) = self.block_indices.get(block.as_u16() as usize) else {
+            return crate::content::behaviour::block_behaviour(block);
+        };
         if idx == NO_BEHAVIOUR {
             None
         } else {
