@@ -3712,21 +3712,12 @@ impl World {
         true
     }
 
-    /// `Level::get_or_fetch_chunk` that gives up when `client` closes first. The fetch runs in its
-    /// own task: dropping it mid-wait would leak its chunk ticket.
+    /// `Level::get_or_fetch_chunk` that gives up when `client` closes first.
     async fn fetch_spawn_chunk(&self, client: &JavaClient, pos: Vector2<i32>) -> Option<SyncChunk> {
-        let level = self.level.clone();
-        let fetch = tokio::spawn(async move { level.get_or_fetch_chunk(pos, Clone::clone).await });
         tokio::select! {
             biased;
             () = client.await_close_interrupt() => None,
-            chunk = fetch => match chunk {
-                Ok(chunk) => Some(chunk),
-                Err(error) => {
-                    error!("Failed to fetch spawn chunk {pos:?}: {error}");
-                    None
-                }
-            },
+            chunk = self.level.get_or_fetch_chunk(pos, Clone::clone) => Some(chunk),
         }
     }
 

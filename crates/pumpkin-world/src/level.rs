@@ -138,6 +138,37 @@ pub struct RandomTickSample {
     pub tick_fluid: bool,
 }
 
+/// The Full chunk ticket of a fetch, removed on drop so that a fetch dropped mid-wait releases
+/// it. Vanilla bounds the same `TicketType.UNKNOWN` ticket with a one-tick timeout instead.
+struct FetchTicket<'a> {
+    level: &'a Level,
+    pos: Vector2<i32>,
+}
+
+impl<'a> FetchTicket<'a> {
+    fn add(level: &'a Level, pos: Vector2<i32>) -> Self {
+        let mut loading = level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loading.add_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
+        loading.send_change();
+        Self { level, pos }
+    }
+}
+
+impl Drop for FetchTicket<'_> {
+    fn drop(&mut self) {
+        let mut loading = self
+            .level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        loading.remove_ticket(self.pos, ChunkLoading::FULL_CHUNK_LEVEL);
+        loading.send_change();
+    }
+}
+
 pub struct LevelFolder {
     pub root_folder: PathBuf,
     pub dim_folder: PathBuf,
@@ -643,6 +674,12 @@ impl Level {
         entity_chunks_to_remove
     }
 
+    /// Calls `f` on the chunk at `pos`, loading or generating it to Full first if needed.
+    ///
+    /// A fetched chunk is not inserted into `loaded_chunks` here: the scheduler publishes it
+    /// there before it wakes the fetch, and the unload pass owns it from then on. Once the fetch
+    /// ticket is gone the chunk stays loaded until the next unload pass, much like the vanilla
+    /// `TicketType.UNKNOWN` ticket of `ServerChunkCache.getChunk` that expires after one tick.
     pub async fn get_or_fetch_chunk<R, F: Fn(&SyncChunk) -> R>(
         self: &Arc<Self>,
         pos: Vector2<i32>,
@@ -652,22 +689,7 @@ impl Level {
         if let Some(res) = self.read_chunk_sync(&pos, &f) {
             return res;
         }
-        let chunk = self.fetch_chunk(pos).await;
-        if self.loaded_chunks.insert(pos, chunk.clone()).is_none() {
-            self.loaded_chunk_changes
-                .push(LoadedChunkChange::Loaded(pos));
-        }
-        f(&chunk)
-    }
-
-    /// [`Self::get_or_fetch_chunk`] in its own task: a caller that drops the future mid-wait
-    /// would otherwise leak the chunk ticket of `fetch_chunk`.
-    async fn get_or_fetch_chunk_detached(self: &Arc<Self>, pos: Vector2<i32>) -> Option<SyncChunk> {
-        let level = self.clone();
-        tokio::spawn(async move { level.get_or_fetch_chunk(pos, Clone::clone).await })
-            .await
-            .inspect_err(|error| error!("Failed to fetch chunk {pos:?}: {error}"))
-            .ok()
+        f(&self.fetch_chunk(pos).await)
     }
 
     /// The structure starts whose bounding box contains `pos`: vanilla
@@ -685,15 +707,15 @@ impl Level {
         let Some(cache) = world_gen.global_structure_cache() else {
             return Vec::new();
         };
-        let Some(chunk) = self.get_or_fetch_chunk_detached(pos.chunk_position()).await else {
-            return Vec::new();
-        };
+        let chunk = self
+            .get_or_fetch_chunk(pos.chunk_position(), Clone::clone)
+            .await;
         let mut starts = Vec::new();
         for (structure, chunk_pos) in chunk.structure_references() {
             let mut start = cache.get_start_for_structure(structure, chunk_pos);
             if start.is_none() {
                 // Loading the start chunk records its saved starts in the cache.
-                self.get_or_fetch_chunk_detached(chunk_pos).await;
+                self.get_or_fetch_chunk(chunk_pos, |_| ()).await;
                 start = cache.get_start_for_structure(structure, chunk_pos);
             }
             starts.extend(start.filter(|start| start.is_inside(pos)));
@@ -707,30 +729,9 @@ impl Level {
 
     async fn fetch_chunk(self: &Arc<Self>, pos: Vector2<i32>) -> SyncChunk {
         let recv = self.chunk_listener.add_single_chunk_listener(pos);
-
-        {
-            let mut lock = self
-                .chunk_loading
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            lock.add_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
-            lock.send_change();
-        };
-
-        let chunk = recv
-            .await
-            .unwrap_or_else(|_| ChunkData::empty_sync(pos.x, pos.y));
-
-        {
-            let mut lock = self
-                .chunk_loading
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            lock.remove_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
-            lock.send_change();
-        };
-
-        chunk
+        let _ticket = FetchTicket::add(self, pos);
+        recv.await
+            .unwrap_or_else(|_| ChunkData::empty_sync(pos.x, pos.y))
     }
 
     async fn load_single_entity_chunk(
@@ -1066,6 +1067,7 @@ mod tests {
     use crate::chunk_system::chunk_state::StagedChunkEnum;
     use pumpkin_config::world::LevelConfig;
     use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
+    use std::task::Poll;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -1231,6 +1233,101 @@ mod tests {
             cache
                 .get_start_for_structure(StructureKeys::Mineshaft, start_chunk)
                 .is_some()
+        );
+        level.shutdown().await;
+    }
+
+    /// A level where every chunk within `FULL_RADIUS` of `center` is saved as Full, so a fetch
+    /// of `center` loads from disk and generates nothing.
+    async fn level_with_saved_area(center: Vector2<i32>) -> (TempDir, Arc<Level>) {
+        let radius = StagedChunkEnum::FULL_RADIUS;
+        let saved = (center.x - radius..=center.x + radius)
+            .flat_map(|x| (center.y - radius..=center.y + radius).map(move |z| (x, z)))
+            .map(|(x, z)| saved_chunk(Vector2::new(x, z), None))
+            .collect();
+        let temp_dir = TempDir::new().unwrap();
+        let level = Level::from_root_folder(
+            &LevelConfig::default(),
+            temp_dir.path().to_path_buf(),
+            0,
+            Dimension::OVERWORLD,
+        );
+        level.write_chunks(saved).await;
+        (temp_dir, level)
+    }
+
+    fn has_ticket(level: &Level, pos: Vector2<i32>) -> bool {
+        level
+            .chunk_loading
+            .lock()
+            .unwrap()
+            .ticket
+            .contains_key(&pos)
+    }
+
+    async fn wait_until(what: &str, mut condition: impl FnMut() -> bool) {
+        let wait = async {
+            while !condition() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        assert!(
+            timeout(Duration::from_secs(10), wait).await.is_ok(),
+            "timed out waiting until {what}"
+        );
+    }
+
+    /// The fetch completes, its ticket goes and an unload pass drops the chunk before the waiter
+    /// resumes. The waiter must not put the chunk back into `loaded_chunks` with no holder.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_resumed_after_unload_pass_keeps_chunk_unloaded() {
+        let pos = Vector2::new(0, 0);
+        let (_temp_dir, level) = level_with_saved_area(pos).await;
+
+        let mut fetch = Box::pin(level.get_or_fetch_chunk(pos, |_| ()));
+        let first_poll = std::future::poll_fn(|cx| Poll::Ready(fetch.as_mut().poll(cx))).await;
+        assert!(first_poll.is_pending());
+        wait_until("the scheduler publishes the chunk", || {
+            level.is_chunk_loaded(&pos)
+        })
+        .await;
+
+        // The waiter does not yield between its ticket removal and its next step, so releasing
+        // the ticket from outside is the only way to run an unload pass in that gap.
+        {
+            let mut loading = level.chunk_loading.lock().unwrap();
+            loading.remove_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
+            loading.send_change();
+        };
+        wait_until("an unload pass drops the chunk", || {
+            level.should_unload.store(true, Ordering::Relaxed);
+            level.level_channel.notify();
+            !level.is_chunk_loaded(&pos)
+        })
+        .await;
+
+        fetch.await;
+        assert!(
+            !level.is_chunk_loaded(&pos) || has_ticket(&level, pos),
+            "chunk {pos:?} is loaded with no ticket"
+        );
+        level.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dropped_fetch_releases_its_ticket() {
+        let pos = Vector2::new(0, 0);
+        let (_temp_dir, level) = level_with_saved_area(pos).await;
+
+        let mut fetch = Box::pin(level.fetch_chunk(pos));
+        let first_poll = std::future::poll_fn(|cx| Poll::Ready(fetch.as_mut().poll(cx))).await;
+        assert!(first_poll.is_pending());
+        assert!(has_ticket(&level, pos));
+
+        drop(fetch);
+        assert!(
+            !has_ticket(&level, pos),
+            "the dropped fetch kept its ticket"
         );
         level.shutdown().await;
     }
