@@ -1,10 +1,11 @@
-//! Builders for custom blocks, items and entity types.
+//! Builders for custom blocks, items, entity types and tags.
 //!
 //! A builder wraps the definition struct of the content registry. A mod never writes a struct
 //! literal, so a new field of the registry does not break mod code. Pass a builder to
 //! [`ModInit::register_block`](crate::ModInit::register_block),
-//! [`ModInit::register_item`](crate::ModInit::register_item) or
-//! [`ModInit::register_entity_type`](crate::ModInit::register_entity_type).
+//! [`ModInit::register_item`](crate::ModInit::register_item),
+//! [`ModInit::register_entity_type`](crate::ModInit::register_entity_type) or
+//! [`ModInit::register_tag`](crate::ModInit::register_tag).
 //!
 //! A builder does not validate. The registry validates when the mod registers the content and
 //! returns a [`RegistryError`].
@@ -14,10 +15,14 @@
 //! stop registering at the first error, for example with `?`. It must not panic or unwrap the
 //! `Result`.
 //!
-//! Tags: `.tag(..)` takes the name of a generated (vanilla) tag of the same registry. A tag name
-//! of the mod is rejected with [`RegistryError::UnknownTag`], because the registry has no way to
-//! create a new tag yet. [`DynamicTaggable::has_tag_dynamic`] answers tag membership for generated
-//! and custom content.
+//! Tags: `.tag(..)` takes the name of a generated (vanilla) tag of the same registry, or of a mod
+//! tag. A [`TagBuilder`] defines a mod tag, such as `mymod:ores`, with vanilla and custom members.
+//! Mod tags and the entries that list them resolve when the registry freezes, so the order of the
+//! registrations does not matter, and a mod can list the tag of another mod. The freeze fails with
+//! [`RegistryError::UnknownTag`] for a mod tag that no mod registers. Custom content joins the
+//! generated tags of its display entry, but not its mod tags.
+//! [`DynamicTaggable::has_tag_dynamic`] and [`pumpkin_data::dynamic::tag_ids`] answer for
+//! generated and mod tags. Clients and data packs do not see mod tags.
 //!
 //! Behaviour: `.behaviour(..)` gives a block a [`BlockBehaviour`] and an item an [`ItemBehaviour`],
 //! the traits of the vanilla blocks and items. The server calls it through the same hooks as for
@@ -37,7 +42,9 @@
 //!
 //! use ironpumpkin_mods::{
 //!     ModInit, NativeMod,
-//!     content::{BlockBehaviour, BlockBuilder, ItemBuilder, RegistryError},
+//!     content::{
+//!         BlockBehaviour, BlockBuilder, ContentKind, ItemBuilder, RegistryError, TagBuilder,
+//!     },
 //!     pumpkin_core::block::PlacedArgs,
 //!     pumpkin_data::{Block, item::Item},
 //!     tracing::info,
@@ -73,8 +80,13 @@
 //!     let lamp = BlockBuilder::new("lamps:copper_lamp", Block::REDSTONE_LAMP.default_state.id)
 //!         .bool_property("lit", false)
 //!         .tag("minecraft:mineable/pickaxe")
+//!         .tag("lamps:lamps")
 //!         .behaviour(Arc::new(CopperLamp));
 //!     cx.register_block(lamp)?;
+//!     // A tag of the mod, with a vanilla member. The copper lamp joins it through `.tag(..)`.
+//!     let lamps = TagBuilder::new(ContentKind::Block, "lamps:lamps")
+//!         .value("minecraft:redstone_lamp");
+//!     cx.register_tag(lamps)?;
 //!     let item = ItemBuilder::new("lamps:copper_lamp", &Item::REDSTONE_LAMP)
 //!         .places("lamps:copper_lamp");
 //!     cx.register_item(item)
@@ -86,7 +98,10 @@ use std::{fmt, sync::Arc};
 use pumpkin_core::content::behaviour;
 use pumpkin_data::{
     BlockStateId,
-    dynamic::{BlockDefinition, BlockPropertyDefinition, EntityTypeDefinition, ItemDefinition},
+    dynamic::{
+        BlockDefinition, BlockPropertyDefinition, EntityTypeDefinition, ItemDefinition,
+        TagDefinition,
+    },
     entity::EntityType,
     item::Item,
 };
@@ -140,9 +155,8 @@ impl BlockBuilder {
         self.property(BlockPropertyDefinition::enumeration(name, values, default))
     }
 
-    /// Adds the block to a generated block tag, for example `minecraft:mineable/pickaxe`, besides
-    /// the tags of the display block. Only generated tag names work: the registry rejects any
-    /// other with [`RegistryError::UnknownTag`].
+    /// Adds the block to a block tag, besides the tags of the display block: a generated tag such
+    /// as `minecraft:mineable/pickaxe`, or a mod tag. See the [module docs](self).
     #[must_use]
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
         self.definition.tags.push(tag.into());
@@ -215,9 +229,8 @@ impl ItemBuilder {
         self
     }
 
-    /// Adds the item to a generated item tag, for example `minecraft:swords`, besides the tags of
-    /// the display item. Only generated tag names work: the registry rejects any other with
-    /// [`RegistryError::UnknownTag`].
+    /// Adds the item to an item tag, besides the tags of the display item: a generated tag such
+    /// as `minecraft:swords`, or a mod tag. See the [module docs](self).
     #[must_use]
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
         self.definition.tags.push(tag.into());
@@ -290,9 +303,8 @@ impl EntityTypeBuilder {
         self
     }
 
-    /// Adds the type to a generated entity type tag, for example `minecraft:skeletons`, besides
-    /// the tags of the display type. Only generated tag names work: the registry rejects any
-    /// other with [`RegistryError::UnknownTag`].
+    /// Adds the type to an entity type tag, besides the tags of the display type: a generated tag
+    /// such as `minecraft:skeletons`, or a mod tag. See the [module docs](self).
     #[must_use]
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
         self.0.tags.push(tag.into());
@@ -302,6 +314,40 @@ impl EntityTypeBuilder {
 
 impl From<EntityTypeBuilder> for EntityTypeDefinition {
     fn from(builder: EntityTypeBuilder) -> Self {
+        builder.0
+    }
+}
+
+/// A tag that the mod defines in the block, item or entity type registry.
+///
+/// `name` is `namespace:path` with a namespace other than `minecraft`, without the `#` prefix that
+/// `.tag(..)` accepts. It must be unique in its registry, where a generated tag such as `c:ores`
+/// counts as registered.
+#[derive(Debug, Clone)]
+pub struct TagBuilder(TagDefinition);
+
+impl TagBuilder {
+    #[must_use]
+    pub fn new(kind: ContentKind, name: impl Into<String>) -> Self {
+        Self(TagDefinition {
+            kind,
+            name: name.into(),
+            values: Vec::new(),
+        })
+    }
+
+    /// Adds an entry of the tag's registry: a vanilla entry such as `minecraft:iron_ore`, or a
+    /// custom entry of any mod such as `mymod:tin_ore`. The registry rejects an unknown vanilla
+    /// entry at once, and the freeze fails for an unknown custom entry.
+    #[must_use]
+    pub fn value(mut self, value: impl Into<String>) -> Self {
+        self.0.values.push(value.into());
+        self
+    }
+}
+
+impl From<TagBuilder> for TagDefinition {
+    fn from(builder: TagBuilder) -> Self {
         builder.0
     }
 }
@@ -364,5 +410,16 @@ mod tests {
         assert_eq!(sized.dimensions, Some([1.5, 2.5]));
         assert_eq!(sized.eye_height, Some(2.0));
         assert_eq!(sized.tags, ["minecraft:skeletons"]);
+    }
+
+    #[test]
+    fn tag_builder_collects_the_values_in_call_order() {
+        let tag: TagDefinition = TagBuilder::new(ContentKind::Block, "test:ores")
+            .value("minecraft:iron_ore")
+            .value("test:tin_ore")
+            .into();
+        assert_eq!(tag.kind, ContentKind::Block);
+        assert_eq!(tag.name, "test:ores");
+        assert_eq!(tag.values, ["minecraft:iron_ore", "test:tin_ore"]);
     }
 }

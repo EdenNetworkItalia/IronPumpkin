@@ -10,7 +10,9 @@ use std::sync::Arc;
 
 use ironpumpkin_mods::{
     ModInit,
-    content::{BlockBuilder, ContentKind, EntityTypeBuilder, ItemBuilder, RegistryError},
+    content::{
+        BlockBuilder, ContentKind, EntityTypeBuilder, ItemBuilder, RegistryError, TagBuilder,
+    },
     entity::{Entity, EntityBase},
     pumpkin_data::{Block, entity::EntityType, item::Item},
 };
@@ -193,10 +195,13 @@ fn a_tag_that_the_registry_does_not_have_is_rejected() {
             "minecraft:swords"
         )
     );
+    // A mod tag name resolves at the freeze; a name that no mod can register fails at once.
     assert_eq!(
-        cx.register_item(item("error-mod:untagged").tag("mymod:own_tag")),
-        unknown(ContentKind::Item, "error-mod:untagged", "mymod:own_tag")
+        cx.register_item(item("error-mod:untagged").tag("MyMod:own_tag")),
+        unknown(ContentKind::Item, "error-mod:untagged", "MyMod:own_tag")
     );
+    cx.register_item(item("error-mod:mod_tagged").tag("mymod:own_tag"))
+        .unwrap();
     assert_eq!(
         cx.register_entity_type(
             entity_type("error-mod:untagged").tag("minecraft:swords"),
@@ -207,5 +212,36 @@ fn a_tag_that_the_registry_does_not_have_is_rejected() {
             "error-mod:untagged",
             "minecraft:swords"
         )
+    );
+}
+
+#[test]
+fn a_mod_tag_that_the_registry_cannot_hold_is_rejected() {
+    let mut cx = init();
+    assert_eq!(
+        cx.register_tag(TagBuilder::new(ContentKind::Block, "minecraft:ores")),
+        Err(RegistryError::InvalidTagName {
+            kind: ContentKind::Block,
+            tag: "minecraft:ores".to_string(),
+        })
+    );
+    assert_eq!(
+        cx.register_tag(
+            TagBuilder::new(ContentKind::Item, "error-mod:gems").value("minecraft:no_such_item")
+        ),
+        Err(RegistryError::UnknownTagMember {
+            kind: ContentKind::Item,
+            tag: "error-mod:gems".to_string(),
+            member: "minecraft:no_such_item".to_string(),
+        })
+    );
+    cx.register_tag(TagBuilder::new(ContentKind::Item, "error-mod:gems").value("diamond"))
+        .unwrap();
+    assert_eq!(
+        cx.register_tag(TagBuilder::new(ContentKind::Item, "error-mod:gems")),
+        Err(RegistryError::DuplicateTag {
+            kind: ContentKind::Item,
+            tag: "error-mod:gems".to_string(),
+        })
     );
 }

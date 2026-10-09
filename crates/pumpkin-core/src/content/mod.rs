@@ -1,19 +1,22 @@
 //! The startup content phase.
 //!
-//! Native mods register their blocks, items and entity types before the first world loads.
+//! Native mods register their blocks, items, entity types and tags before the first world loads.
 //! [`run`] then reads the world's content manifest, registers a placeholder for each listed name
 //! that no mod registered, freezes the registry and writes the manifest back. The manifest holds
 //! names only: ids are allocated again at every start.
+//!
+//! The manifest also keeps the explicit tags of each entry and the mod tags with their declared
+//! values, so a placeholder keeps its tags when the mod that defined them is missing.
 
 pub mod behaviour;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use pumpkin_data::dynamic::{
     self, BlockDefinition, BlockPropertyDefinition, ContentKind, ContentTables,
-    EntityTypeDefinition, ItemDefinition, RegistryError,
+    EntityTypeDefinition, ItemDefinition, RegistryError, TagDefinition,
 };
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
@@ -65,6 +68,25 @@ struct Manifest {
     items: BTreeMap<String, DisplayEntry>,
     #[serde(default)]
     entity_types: BTreeMap<String, DisplayEntry>,
+    /// The mod tags of each registry with their declared values, generated entries with their
+    /// namespace. Members that join through an entry's `tags` are not repeated here.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    block_tags: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    item_tags: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    entity_type_tags: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl Manifest {
+    fn is_empty(&self) -> bool {
+        self.blocks.is_empty()
+            && self.items.is_empty()
+            && self.entity_types.is_empty()
+            && self.block_tags.is_empty()
+            && self.item_tags.is_empty()
+            && self.entity_type_tags.is_empty()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,17 +98,23 @@ struct BlockEntry {
     default: BTreeMap<String, String>,
     /// A vanilla block state, for example `minecraft:redstone_lamp[lit=false]`.
     display: String,
+    /// The explicit tags of the entry, without the tags of its display entry.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    tags: BTreeSet<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct DisplayEntry {
     display: String,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    tags: BTreeSet<String>,
 }
 
 /// Runs the content phase for the world in `world_path` and returns the names that got a
 /// placeholder. Runs once, before the first world loads.
 ///
-/// With no custom content it writes nothing, so a vanilla server leaves the world unchanged. An
+/// With no custom content and no mod tag it writes nothing, so a vanilla server leaves the world
+/// unchanged. An
 /// entry that cannot be restored stops the run before the freeze and leaves the manifest as it
 /// is, because rewriting it would lose that content.
 pub fn run(world_path: &Path) -> Result<Vec<(ContentKind, String)>, ContentError> {
@@ -94,11 +122,8 @@ pub fn run(world_path: &Path) -> Result<Vec<(ContentKind, String)>, ContentError
     let manifest = read_manifest(&path)?;
     let placeholders = register_placeholders(&path, &manifest)?;
     let tables = dynamic::freeze().map_err(ContentError::Freeze)?;
-    if !(tables.blocks().is_empty()
-        && tables.items().is_empty()
-        && tables.entity_types().is_empty())
-    {
-        let current = manifest_of(tables);
+    let current = manifest_of(tables);
+    if !current.is_empty() {
         warn_changed(ContentKind::Block, &manifest.blocks, &current.blocks);
         warn_changed(ContentKind::Item, &manifest.items, &current.items);
         warn_changed(
@@ -158,6 +183,33 @@ fn register_placeholders(
     path: &Path,
     manifest: &Manifest,
 ) -> Result<Vec<(ContentKind, String)>, ContentError> {
+    let tags = [
+        (ContentKind::Block, &manifest.block_tags),
+        (ContentKind::Item, &manifest.item_tags),
+        (ContentKind::EntityType, &manifest.entity_type_tags),
+    ];
+    for (kind, tags) in tags {
+        for (name, values) in tags {
+            if dynamic::is_tag_registered(kind, name) {
+                continue;
+            }
+            dynamic::register_tag(TagDefinition {
+                kind,
+                name: name.clone(),
+                values: values.iter().cloned().collect(),
+            })
+            .map_err(|source| ContentError::Entry {
+                path: path.to_path_buf(),
+                kind,
+                name: format!("#{name}"),
+                source,
+            })?;
+            warn!(
+                "[ironpumpkin] {kind} tag \"{name}\" is in the content manifest but no mod registers it: it keeps its saved members"
+            );
+        }
+    }
+
     let mut placeholders = Vec::new();
     let mut restore = |kind: ContentKind,
                        name: &String,
@@ -191,7 +243,7 @@ fn register_placeholders(
                 name: name.clone(),
                 display,
                 block: None,
-                tags: Vec::new(),
+                tags: entry.tags.iter().cloned().collect(),
             })
         })?;
     }
@@ -204,7 +256,7 @@ fn register_placeholders(
                 display,
                 dimensions: None,
                 eye_height: None,
-                tags: Vec::new(),
+                tags: entry.tags.iter().cloned().collect(),
             })
         })?;
     }
@@ -235,7 +287,7 @@ fn block_definition(name: &str, entry: &BlockEntry) -> Result<BlockDefinition, R
         name: name.to_string(),
         display,
         properties,
-        tags: Vec::new(),
+        tags: entry.tags.iter().cloned().collect(),
     })
 }
 
@@ -317,6 +369,7 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
                     .collect(),
                 default,
                 display: state_string(block.default_state.id.display_state()),
+                tags: tables.explicit_tags(ContentKind::Block, block.name).clone(),
             };
             (block.name.to_string(), entry)
         })
@@ -327,7 +380,13 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
         .map(|item| {
             let display = Item::from_id(item.to_java_network_id()).unwrap_or(&Item::AIR);
             let display = dynamic::namespaced_name(display.registry_key).into_owned();
-            (item.registry_key.to_string(), DisplayEntry { display })
+            let tags = tables
+                .explicit_tags(ContentKind::Item, item.registry_key)
+                .clone();
+            (
+                item.registry_key.to_string(),
+                DisplayEntry { display, tags },
+            )
         })
         .collect();
     let entity_types = tables
@@ -336,9 +395,12 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
         .map(|entity_type| {
             let display = dynamic::namespaced_name(entity_type.display_type().resource_name);
             let display = display.into_owned();
+            let tags = tables
+                .explicit_tags(ContentKind::EntityType, entity_type.resource_name)
+                .clone();
             (
                 entity_type.resource_name.to_string(),
-                DisplayEntry { display },
+                DisplayEntry { display, tags },
             )
         })
         .collect();
@@ -347,6 +409,9 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
         blocks,
         items,
         entity_types,
+        block_tags: tables.mod_tags(ContentKind::Block).clone(),
+        item_tags: tables.mod_tags(ContentKind::Item).clone(),
+        entity_type_tags: tables.mod_tags(ContentKind::EntityType).clone(),
     }
 }
 

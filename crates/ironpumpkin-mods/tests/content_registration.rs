@@ -10,7 +10,10 @@ use std::sync::{Arc, OnceLock};
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
-    content::{BlockBuilder, DynamicTaggable, EntityTypeBuilder, ItemBuilder, RegistryError},
+    content::{
+        BlockBuilder, ContentKind, DynamicTaggable, EntityTypeBuilder, ItemBuilder, RegistryError,
+        TagBuilder,
+    },
     entity::{Entity, EntityBase, custom},
     mods,
     pumpkin_data::{
@@ -18,6 +21,7 @@ use ironpumpkin_mods::{
         dynamic::{self, ContentTables},
         entity::EntityType,
         item::Item,
+        tag::RegistryKey,
     },
     register_mod,
 };
@@ -49,7 +53,20 @@ impl NativeMod for SampleMod {
             )
             .bool_property("lit", false)
             .int_property("level", 1, 3, 2)
-            .tag("minecraft:mineable/pickaxe"),
+            .tag("minecraft:mineable/pickaxe")
+            .tag("sample-mod:lamps"),
+        )
+        .unwrap();
+        cx.register_tag(
+            TagBuilder::new(ContentKind::Block, "sample-mod:lamps")
+                .value("minecraft:redstone_lamp"),
+        )
+        .unwrap();
+        // The tag lists the wand before the wand is registered.
+        cx.register_tag(
+            TagBuilder::new(ContentKind::Item, "sample-mod:tools")
+                .value("stick")
+                .value("sample-mod:wand"),
         )
         .unwrap();
         cx.register_item(
@@ -116,6 +133,25 @@ fn a_mod_registers_a_block_and_an_item_that_the_registry_holds() {
 }
 
 #[test]
+fn a_mod_tag_holds_vanilla_and_custom_members() {
+    boot();
+    let lamp = Block::from_name("sample-mod:copper_lamp").unwrap();
+    assert!(lamp.has_tag_dynamic("sample-mod:lamps"));
+    assert!(Block::REDSTONE_LAMP.has_tag_dynamic("#sample-mod:lamps"));
+    assert!(!Block::STONE.has_tag_dynamic("sample-mod:lamps"));
+
+    let wand = Item::from_registry_key("sample-mod:wand").unwrap();
+    assert_eq!(
+        dynamic::tag_ids(RegistryKey::Item, "sample-mod:tools"),
+        Some((&[Item::STICK.id][..], &[wand.id][..]))
+    );
+    assert_eq!(
+        dynamic::tag_ids(RegistryKey::Block, "sample-mod:tools"),
+        None
+    );
+}
+
+#[test]
 fn a_mod_registers_an_entity_type_with_its_factory() {
     boot();
     let golem = EntityType::from_name("sample-mod:golem").unwrap();
@@ -146,6 +182,10 @@ fn registration_after_the_freeze_is_rejected() {
             EntityTypeBuilder::new("sample-mod:late", &EntityType::ZOMBIE),
             spawn
         ),
+        Err(RegistryError::RegistryFrozen)
+    );
+    assert_eq!(
+        init.register_tag(TagBuilder::new(ContentKind::Block, "sample-mod:late")),
         Err(RegistryError::RegistryFrozen)
     );
     assert!(Block::from_name("sample-mod:late").is_none());

@@ -11,7 +11,9 @@ use std::sync::Arc;
 
 use ironpumpkin_mods::{
     ContentRegistrationError, ModInit, NativeMod,
-    content::{BlockBuilder, ContentKind, EntityTypeBuilder, ItemBuilder, RegistryError},
+    content::{
+        BlockBuilder, ContentKind, EntityTypeBuilder, ItemBuilder, RegistryError, TagBuilder,
+    },
     entity::{Entity, EntityBase},
     init_mod,
     pumpkin_data::{Block, entity::EntityType, item::Item},
@@ -186,5 +188,27 @@ fn the_error_reads_as_one_line_with_the_mod_id_kind_and_name() {
     assert_eq!(
         init_mod(&broken).err().unwrap().to_string(),
         "native mod \"line-mod\" cannot register the entity type \"line-mod:golem\": entity type \"line-mod:golem\" is already registered"
+    );
+}
+
+#[test]
+fn a_kept_tag_error_names_the_tag_with_a_hash() {
+    let tagging = TestMod {
+        id: "tag-mod",
+        init: |cx| {
+            let _ = cx.register_tag(TagBuilder::new(ContentKind::Block, "minecraft:ores"));
+        },
+    };
+    assert_eq!(
+        init_mod(&tagging).err(),
+        Some(ContentRegistrationError {
+            mod_id: "tag-mod",
+            kind: ContentKind::Block,
+            name: "#minecraft:ores".to_string(),
+            error: RegistryError::InvalidTagName {
+                kind: ContentKind::Block,
+                tag: "minecraft:ores".to_string()
+            },
+        })
     );
 }

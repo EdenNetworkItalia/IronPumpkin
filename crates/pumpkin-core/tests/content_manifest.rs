@@ -1,6 +1,7 @@
 //! The startup content phase writes the content manifest and restores missing content as
-//! placeholders. The content registry is process-wide and freezes once, so each server start is a
-//! child process that reruns this test binary with `CONTENT_PHASE` set.
+//! placeholders, with their explicit tags and the mod tags they list. The content registry is
+//! process-wide and freezes once, so each server start is a child process that reruns this test
+//! binary with `CONTENT_PHASE` set.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -15,11 +16,12 @@ use pumpkin_core::content::{self, ContentError, manifest_path};
 use pumpkin_core::entity::custom::{factory, register_entity_type};
 use pumpkin_core::entity::{Entity, EntityBase};
 use pumpkin_data::dynamic::{
-    self, BlockDefinition, BlockPropertyDefinition, ContentKind, EntityTypeDefinition,
-    ItemDefinition, RegistryError,
+    self, BlockDefinition, BlockPropertyDefinition, ContentKind, DynamicTaggable,
+    EntityTypeDefinition, ItemDefinition, RegistryError, TagDefinition,
 };
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
+use pumpkin_data::tag::RegistryKey;
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use serde_json::{Value, json};
@@ -39,9 +41,40 @@ fn golem() -> EntityTypeDefinition {
         display: &EntityType::IRON_GOLEM,
         dimensions: None,
         eye_height: None,
-        tags: Vec::new(),
+        tags: vec!["skeletons".to_string()],
     }
 }
+
+fn strings(values: &[&str]) -> Vec<String> {
+    values.iter().map(|value| (*value).to_string()).collect()
+}
+
+/// The block lamp lists the block tag, and the item tag lists the item lamp.
+fn register_tags() {
+    dynamic::register_tag(TagDefinition {
+        kind: ContentKind::Block,
+        name: "test:lamps".to_string(),
+        values: strings(&["redstone_lamp"]),
+    })
+    .unwrap();
+    dynamic::register_tag(TagDefinition {
+        kind: ContentKind::Item,
+        name: "test:lamps".to_string(),
+        values: strings(&["test:lamp", "minecraft:glowstone"]),
+    })
+    .unwrap();
+}
+
+fn lamp_item() -> ItemDefinition {
+    ItemDefinition {
+        name: "test:lamp".to_string(),
+        display: &Item::REDSTONE_LAMP,
+        block: Some("test:lamp".to_string()),
+        tags: strings(&["minecraft:piglin_loved"]),
+    }
+}
+
+const LAMP_TAGS: [&str; 2] = ["#test:lamps", "mineable/pickaxe"];
 
 /// Reruns this test in a child process for one server start and returns its log.
 fn start(phase: &str, world: &Path) -> String {
@@ -86,6 +119,8 @@ fn content_phase_writes_the_manifest_and_restores_placeholders() {
         "block \"test:lamp\"",
         "item \"test:lamp\"",
         "entity type \"test:golem\"",
+        "block tag \"test:lamps\"",
+        "item tag \"test:lamps\"",
     ] {
         let warning = format!("{name} is in the content manifest but no mod registers it");
         assert_eq!(log.matches(&warning).count(), 1, "{warning}\n{log}");
@@ -126,17 +161,12 @@ fn start_with_mod(world: &Path) {
             ),
             BlockPropertyDefinition::bool("lit", false),
         ],
-        tags: Vec::new(),
+        tags: strings(&LAMP_TAGS),
     })
     .unwrap();
-    dynamic::register_item(ItemDefinition {
-        name: "test:lamp".to_string(),
-        display: &Item::REDSTONE_LAMP,
-        block: Some("test:lamp".to_string()),
-        tags: Vec::new(),
-    })
-    .unwrap();
+    dynamic::register_item(lamp_item()).unwrap();
     register_entity_type(golem(), spawn).unwrap();
+    register_tags();
 
     assert_eq!(content::run(world).unwrap(), []);
     assert_eq!(
@@ -157,13 +187,51 @@ fn start_with_mod(world: &Path) {
                         "lit": ["true", "false"]
                     },
                     "default": { "facing": "west", "lit": "false" },
-                    "display": "minecraft:redstone_lamp[lit=false]"
+                    "display": "minecraft:redstone_lamp[lit=false]",
+                    "tags": ["minecraft:mineable/pickaxe", "test:lamps"]
                 }
             },
-            "items": { "test:lamp": { "display": "minecraft:redstone_lamp" } },
-            "entity_types": { "test:golem": { "display": "minecraft:iron_golem" } }
+            "items": { "test:lamp": {
+                "display": "minecraft:redstone_lamp",
+                "tags": ["minecraft:piglin_loved"]
+            } },
+            "entity_types": { "test:golem": {
+                "display": "minecraft:iron_golem",
+                "tags": ["minecraft:skeletons"]
+            } },
+            "block_tags": { "test:lamps": ["minecraft:redstone_lamp"] },
+            "item_tags": { "test:lamps": ["minecraft:glowstone", "test:lamp"] }
         })
     );
+    assert_tags();
+}
+
+/// The tags of the content of `start_with_mod`, with the mod or with its placeholders.
+fn assert_tags() {
+    let lamp = Block::from_name("test:lamp").unwrap();
+    // Explicit, not inherited from the display block.
+    assert!(!Block::REDSTONE_LAMP.has_tag_dynamic("minecraft:mineable/pickaxe"));
+    assert!(lamp.has_tag_dynamic("minecraft:mineable/pickaxe"));
+    assert!(lamp.has_tag_dynamic("test:lamps"));
+    assert_eq!(
+        dynamic::tag_ids(RegistryKey::Block, "test:lamps"),
+        Some((
+            &[Block::REDSTONE_LAMP.id.as_u16()][..],
+            &[lamp.id.as_u16()][..]
+        ))
+    );
+
+    let item = Item::from_registry_key("test:lamp").unwrap();
+    assert!(!Item::REDSTONE_LAMP.has_tag_dynamic("minecraft:piglin_loved"));
+    assert!(item.has_tag_dynamic("minecraft:piglin_loved"));
+    assert_eq!(
+        dynamic::tag_ids(RegistryKey::Item, "test:lamps"),
+        Some((&[Item::GLOWSTONE.id][..], &[item.id][..]))
+    );
+
+    let golem = EntityType::from_name("test:golem").unwrap();
+    assert!(!EntityType::IRON_GOLEM.has_tag_dynamic("minecraft:skeletons"));
+    assert!(golem.has_tag_dynamic("minecraft:skeletons"));
 }
 
 fn start_without_mod(world: &Path) {
@@ -192,6 +260,8 @@ fn start_without_mod(world: &Path) {
     let item = Item::from_registry_key("test:lamp").unwrap();
     assert!(dynamic::is_placeholder(ContentKind::Item, "test:lamp"));
     assert_eq!(item.to_java_network_id(), Item::REDSTONE_LAMP.id);
+
+    assert_tags();
 
     let golem = EntityType::from_name("test:golem").unwrap();
     assert!(golem.is_placeholder());
@@ -225,17 +295,12 @@ fn start_with_changed_mod(world: &Path) {
         name: "test:lamp".to_string(),
         display: Block::REDSTONE_LAMP.default_state.id,
         properties: vec![BlockPropertyDefinition::bool("lit", false)],
-        tags: Vec::new(),
+        tags: strings(&LAMP_TAGS),
     })
     .unwrap();
-    dynamic::register_item(ItemDefinition {
-        name: "test:lamp".to_string(),
-        display: &Item::REDSTONE_LAMP,
-        block: Some("test:lamp".to_string()),
-        tags: Vec::new(),
-    })
-    .unwrap();
+    dynamic::register_item(lamp_item()).unwrap();
     register_entity_type(golem(), spawn).unwrap();
+    register_tags();
 
     assert_eq!(content::run(world).unwrap(), []);
     let manifest: Value =
@@ -257,6 +322,8 @@ fn start_with_invalid_manifests(root: &Path) {
             "display": "minecraft:stone"
         } } }),
         json!({ "items": { "test:gone": { "display": "minecraft:no_such_item" } } }),
+        json!({ "block_tags": { "minecraft:ores": [] } }),
+        json!({ "item_tags": { "test:gems": ["minecraft:no_such_item"] } }),
     ];
     for (index, mut manifest) in entries.into_iter().enumerate() {
         manifest["format"] = json!(1);
@@ -270,6 +337,27 @@ fn start_with_invalid_manifests(root: &Path) {
         assert!(matches!(error, ContentError::Entry { .. }), "{error}");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
     }
+
+    // A mod tag resolves at the freeze, which fails and also leaves the manifest as it is. The
+    // failed freeze is terminal, so this case comes last.
+    let world = root.join("unknown_tag");
+    let path = manifest_path(&world);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let text = json!({
+        "format": 1,
+        "blocks": { "test:tagged": { "display": "minecraft:stone", "tags": ["test:no_such_tag"] } }
+    })
+    .to_string();
+    std::fs::write(&path, &text).unwrap();
+    let error = content::run(&world).unwrap_err();
+    assert!(
+        matches!(
+            error,
+            ContentError::Freeze(RegistryError::UnknownTag { .. })
+        ),
+        "{error}"
+    );
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
 }
 
 fn start_vanilla(world: &Path) {

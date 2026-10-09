@@ -17,7 +17,7 @@
 //! | [`world`]       | `World` and its parts                                                     |
 //! | [`server`]      | `Server`                                                                  |
 //! | [`entity`]      | `Player` and the other entities                                           |
-//! | [`content`]     | builders for custom blocks, items and entity types, and `RegistryError`   |
+//! | [`content`]     | builders for custom blocks, items, entity types, tags, `RegistryError`    |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -36,7 +36,7 @@ use pumpkin_core::{
     entity::custom,
     plugin::{Context, PluginMetadata, startup},
 };
-use pumpkin_data::dynamic::EntityTypeDefinition;
+use pumpkin_data::dynamic::{self, EntityTypeDefinition};
 use tracing::{error, info};
 
 #[doc(hidden)]
@@ -116,8 +116,9 @@ type Registration = Box<dyn FnOnce(&Context)>;
 /// What a mod registers during [`NativeMod::init`].
 ///
 /// The server applies the registrations in the mod's name when `init` returns, except the content
-/// registrations ([`ModInit::register_block`], [`ModInit::register_item`] and
-/// [`ModInit::register_entity_type`]), which apply at once and return a `Result`.
+/// registrations ([`ModInit::register_block`], [`ModInit::register_item`],
+/// [`ModInit::register_entity_type`] and [`ModInit::register_tag`]), which apply at once and
+/// return a `Result`.
 ///
 /// `ModInit` keeps the first content registration error, even if the mod ignores the `Result`.
 /// After `init` returns, the server logs that error with the mod id and stops before the content
@@ -140,7 +141,8 @@ pub struct ContentRegistrationError {
     pub mod_id: &'static str,
     /// The registry of the content: block, item or entity type.
     pub kind: ContentKind,
-    /// The name passed to the registration.
+    /// The name passed to the registration. A tag name starts with `#`, for example
+    /// `#mymod:ores`.
     pub name: String,
     /// What the registry returned.
     pub error: RegistryError,
@@ -251,7 +253,9 @@ impl ModInit {
     ///
     /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
     /// namespace or is already registered as a block, the display state is not a vanilla state, a
-    /// property is invalid, a tag is unknown, or the registry is frozen.
+    /// property is invalid, a tag in the `minecraft` namespace or without one is unknown, a tag
+    /// name is malformed, or the registry is frozen. A mod tag is not checked here: the freeze
+    /// fails for a mod tag that no mod registers, and its error names the block but not the mod.
     pub fn register_block(&mut self, block: content::BlockBuilder) -> Result<(), RegistryError> {
         let name = block.name().to_owned();
         self.keep_content_error(ContentKind::Block, name, block.register())
@@ -264,8 +268,9 @@ impl ModInit {
     ///
     /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
     /// namespace or is already registered as an item, the display item is not a vanilla item, a tag
-    /// is unknown, or the registry is frozen. The block that the item places is not checked here:
-    /// the freeze checks it.
+    /// in the `minecraft` namespace or without one is unknown, a tag name is malformed, or the
+    /// registry is frozen. The block that the item places and a mod tag are not checked here: the
+    /// freeze checks them, and its error names the item but not the mod.
     pub fn register_item(&mut self, item: content::ItemBuilder) -> Result<(), RegistryError> {
         let name = item.name().to_owned();
         self.keep_content_error(ContentKind::Item, name, item.register())
@@ -279,8 +284,10 @@ impl ModInit {
     ///
     /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
     /// namespace or is already registered as an entity type, the display type is not a vanilla
-    /// type, a dimension is not positive and finite, a tag is unknown, or the registry is
-    /// frozen.
+    /// type, a dimension is not positive and finite, a tag in the `minecraft` namespace or without
+    /// one is unknown, a tag name is malformed, or the registry is frozen. A mod tag is not checked
+    /// here: the freeze fails for a mod tag that no mod registers, and its error names the type
+    /// but not the mod.
     pub fn register_entity_type(
         &mut self,
         definition: impl Into<EntityTypeDefinition>,
@@ -293,6 +300,22 @@ impl ModInit {
             name,
             custom::register_entity_type(definition, factory),
         )
+    }
+
+    /// Registers a tag of the mod, with the members that the [`TagBuilder`](content::TagBuilder)
+    /// lists. It applies at once, like [`ModInit::register_block`]. A block, item or entity type
+    /// joins the tag with `.tag(..)` on its builder, before or after this call.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
+    /// namespace or is already registered as a tag of this registry, a vanilla member does not
+    /// exist, or the registry is frozen. A generated tag of the registry, such as `c:ores`, counts
+    /// as registered. Custom members are not checked here: the freeze checks them.
+    pub fn register_tag(&mut self, tag: content::TagBuilder) -> Result<(), RegistryError> {
+        let definition: dynamic::TagDefinition = tag.into();
+        let (kind, name) = (definition.kind, format!("#{}", definition.name));
+        self.keep_content_error(kind, name, dynamic::register_tag(definition))
     }
 
     /// Passes `result` through and keeps its error if it is the first one of this mod.

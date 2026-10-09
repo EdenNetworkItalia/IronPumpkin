@@ -15,6 +15,11 @@
 //! path. The custom tag table holds the custom ids of each generated tag: an entry joins the tags
 //! of its display entry and the tags its definition lists. [`DynamicTaggable`] and [`tag_ids`]
 //! read both tables.
+//!
+//! A mod can define a tag of its own with [`register_tag`]. A mod tag is a key of the custom tag
+//! table too, and its generated members live in a third map. It holds the members its definition
+//! lists and the entries that list it, never the entries of a display entry. Clients and the
+//! datapack tag loader do not know mod tags.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry};
@@ -46,8 +51,21 @@ pub struct BlockDefinition {
     /// Block state properties, in any order. The registry sorts them by name.
     pub properties: Vec<BlockPropertyDefinition>,
     /// Block tags the block joins besides the tags of its display block, for example
-    /// `minecraft:mineable/pickaxe`. Each must name a generated block tag.
+    /// `minecraft:mineable/pickaxe`. Each must name a generated block tag or a block tag that a mod
+    /// registers with [`register_tag`].
     pub tags: Vec<String>,
+}
+
+/// A tag that a mod defines, in the block, item or entity type registry.
+#[derive(Debug, Clone)]
+pub struct TagDefinition {
+    /// The registry of the tag and of its members.
+    pub kind: ContentKind,
+    /// Namespaced name, for example `mymod:ores`.
+    pub name: String,
+    /// Entry names: a generated entry such as `minecraft:iron_ore` or `iron_ore`, or a custom
+    /// entry of any mod such as `mymod:tin_ore`. Custom entries are resolved at the freeze.
+    pub values: Vec<String>,
 }
 
 /// A block state property of a custom block.
@@ -104,7 +122,7 @@ pub struct ItemDefinition {
     /// Namespaced name of the custom block this item places.
     pub block: Option<String>,
     /// Item tags the item joins besides the tags of its display item. Each must name a
-    /// generated item tag.
+    /// generated item tag or an item tag that a mod registers with [`register_tag`].
     pub tags: Vec<String>,
 }
 
@@ -135,7 +153,8 @@ pub struct EntityTypeDefinition {
     /// `EntityType.Builder.sized`.
     pub eye_height: Option<f32>,
     /// Entity type tags the type joins besides the tags of its display type. Each must name a
-    /// generated entity type tag.
+    /// generated entity type tag or an entity type tag that a mod registers with
+    /// [`register_tag`].
     pub tags: Vec<String>,
 }
 
@@ -195,11 +214,22 @@ pub enum RegistryError {
     },
     /// The entity type's width, height or eye height is not a positive finite number.
     InvalidDimensions { name: String },
-    /// The definition lists a tag that the generated tags of its registry do not have.
+    /// The definition lists a tag that its registry does not have: no generated tag, and no mod
+    /// tag at the freeze.
     UnknownTag {
         kind: ContentKind,
         name: String,
         tag: String,
+    },
+    /// The mod tag name is not a `namespace:path` outside the `minecraft` namespace.
+    InvalidTagName { kind: ContentKind, tag: String },
+    /// The mod tag is already registered in this registry.
+    DuplicateTag { kind: ContentKind, tag: String },
+    /// The mod tag lists an entry that its registry does not have.
+    UnknownTagMember {
+        kind: ContentKind,
+        tag: String,
+        member: String,
     },
 }
 
@@ -245,6 +275,16 @@ impl fmt::Display for RegistryError {
             Self::UnknownTag { kind, name, tag } => {
                 write!(f, "{kind} \"{name}\" lists unknown {kind} tag \"{tag}\"")
             }
+            Self::InvalidTagName { kind, tag } => write!(
+                f,
+                "invalid {kind} tag name \"{tag}\": expected namespace:path outside the minecraft namespace"
+            ),
+            Self::DuplicateTag { kind, tag } => {
+                write!(f, "{kind} tag \"{tag}\" is already registered")
+            }
+            Self::UnknownTagMember { kind, tag, member } => {
+                write!(f, "{kind} tag \"{tag}\" lists unknown {kind} \"{member}\"")
+            }
         }
     }
 }
@@ -276,18 +316,50 @@ pub struct ContentTables {
     #[cfg(feature = "entity_type")]
     entity_type_displays: Vec<&'static EntityType>,
     placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
-    block_tags: CustomTags,
+    block_tags: TagTables,
     #[cfg(feature = "item")]
-    item_tags: CustomTags,
+    item_tags: TagTables,
     #[cfg(feature = "entity_type")]
-    entity_type_tags: CustomTags,
+    entity_type_tags: TagTables,
+    explicit_tags: NamedSets,
+    mod_tags: NamedSets,
 }
 
-/// The custom ids of each generated tag that has custom members, sorted, keyed by the generated
-/// tag name.
-type CustomTags = HashMap<&'static str, Box<[u16]>>;
+/// The tag tables of one registry.
+#[derive(Debug, Default)]
+struct TagTables {
+    /// The custom ids of each tag that has custom members, sorted, keyed by the generated or mod
+    /// tag name.
+    custom: HashMap<&'static str, Box<[u16]>>,
+    /// The generated members of each mod tag, sorted. Every mod tag of the registry has a key.
+    mod_tags: HashMap<&'static str, Box<[u16]>>,
+}
+
+/// Name sets per registry and per name: the explicit tags of each entry, or the declared values
+/// of each mod tag.
+type NamedSets = BTreeMap<ContentKind, BTreeMap<String, BTreeSet<String>>>;
+
+static NO_NAMES: BTreeSet<String> = BTreeSet::new();
+static NO_SETS: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
 impl ContentTables {
+    /// The tags that the definition of a custom entry lists, in name order: generated tag names
+    /// with their namespace, and mod tag names. The tags of the display entry are not included.
+    #[must_use]
+    pub fn explicit_tags(&self, kind: ContentKind, name: &str) -> &BTreeSet<String> {
+        self.explicit_tags
+            .get(&kind)
+            .and_then(|entries| entries.get(name))
+            .unwrap_or(&NO_NAMES)
+    }
+
+    /// The mod tags of a registry in name order, each with the entry names its definition lists,
+    /// in name order. Generated entry names carry the `minecraft` namespace.
+    #[must_use]
+    pub fn mod_tags(&self, kind: ContentKind) -> &BTreeMap<String, BTreeSet<String>> {
+        self.mod_tags.get(&kind).unwrap_or(&NO_SETS)
+    }
+
     /// Custom blocks in id order.
     #[must_use]
     pub fn blocks(&self) -> &[Block] {
@@ -396,8 +468,11 @@ struct ContentBuilder {
     #[cfg(feature = "entity_type")]
     entity_types: BTreeMap<String, (&'static EntityType, Option<[f32; 2]>, Option<f32>)>,
     placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
-    /// The explicit tags of each entry, as generated tag names.
-    tags: BTreeMap<ContentKind, BTreeMap<String, Vec<&'static str>>>,
+    /// The explicit tags of each entry: generated tag names as the generated map spells them, and
+    /// mod tag names, which resolve at the freeze.
+    tags: NamedSets,
+    /// The mod tags of each registry, with their values as canonical entry names.
+    mod_tags: NamedSets,
 }
 
 impl ContentBuilder {
@@ -410,6 +485,7 @@ impl ContentBuilder {
             entity_types: BTreeMap::new(),
             placeholders: BTreeMap::new(),
             tags: BTreeMap::new(),
+            mod_tags: BTreeMap::new(),
         }
     }
 
@@ -431,10 +507,77 @@ impl ContentBuilder {
         self.placeholders.entry(kind).or_default().insert(name);
     }
 
-    fn set_tags(&mut self, kind: ContentKind, name: String, tags: Vec<&'static str>) {
+    fn set_tags(&mut self, kind: ContentKind, name: String, tags: BTreeSet<String>) {
         if !tags.is_empty() {
             self.tags.entry(kind).or_default().insert(name, tags);
         }
+    }
+
+    fn register_tag(&mut self, definition: TagDefinition) -> Result<(), RegistryError> {
+        let TagDefinition { kind, name, values } = definition;
+        if !is_custom_name(&name) {
+            return Err(RegistryError::InvalidTagName { kind, tag: name });
+        }
+        // A generated tag outside `minecraft`, such as `c:ores`, would shadow the mod tag.
+        if resolve_tag(kind.tag_key(), &name).is_some() {
+            return Err(RegistryError::DuplicateTag { kind, tag: name });
+        }
+        let values = values
+            .into_iter()
+            .map(|value| {
+                canonical_member(kind, &value).ok_or_else(|| RegistryError::UnknownTagMember {
+                    kind,
+                    tag: name.clone(),
+                    member: value,
+                })
+            })
+            .collect::<Result<BTreeSet<String>, _>>()?;
+        match self.mod_tags.entry(kind).or_default().entry(name) {
+            Entry::Occupied(entry) => Err(RegistryError::DuplicateTag {
+                kind,
+                tag: entry.key().clone(),
+            }),
+            Entry::Vacant(entry) => {
+                entry.insert(values);
+                Ok(())
+            }
+        }
+    }
+
+    /// Checks the tag references that resolve at the freeze: the mod tags that entries list and
+    /// the custom members of each mod tag.
+    fn check_tags(&self) -> Result<(), RegistryError> {
+        for (&kind, entries) in &self.tags {
+            let mod_tags = self.mod_tags.get(&kind);
+            for (name, tags) in entries {
+                let unknown = tags.iter().find(|tag| {
+                    resolve_tag(kind.tag_key(), tag).is_none()
+                        && !mod_tags.is_some_and(|mod_tags| mod_tags.contains_key(*tag))
+                });
+                if let Some(tag) = unknown {
+                    return Err(RegistryError::UnknownTag {
+                        kind,
+                        name: name.clone(),
+                        tag: tag.clone(),
+                    });
+                }
+            }
+        }
+        for (&kind, mod_tags) in &self.mod_tags {
+            for (tag, values) in mod_tags {
+                let unknown = values
+                    .iter()
+                    .find(|value| is_custom_name(value) && !self.contains(kind, value));
+                if let Some(member) = unknown {
+                    return Err(RegistryError::UnknownTagMember {
+                        kind,
+                        tag: tag.clone(),
+                        member: member.clone(),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     fn register_block(&mut self, definition: BlockDefinition) -> Result<(), RegistryError> {
@@ -530,6 +673,7 @@ impl ContentBuilder {
         check_range("item", Item::COUNT, self.items.len())?;
         #[cfg(feature = "entity_type")]
         check_range("entity type", EntityType::COUNT, self.entity_types.len())?;
+        self.check_tags()?;
 
         #[cfg(feature = "item")]
         let (block_items, item_blocks) = self.link_items()?;
@@ -615,20 +759,15 @@ impl ContentBuilder {
             .iter()
             .map(|(_, block)| block.display.to_block().id.as_u16())
             .collect();
-        let mut explicit_tags = self.tags;
-        let mut take_tags = |kind: ContentKind, name: &str| {
-            explicit_tags
-                .get_mut(&kind)
-                .and_then(|tags| tags.remove(name))
-                .unwrap_or_default()
-        };
-        let block_tags = custom_tags(
-            RegistryKey::Block,
+        let block_tags = tag_tables(
+            ContentKind::Block,
             BlockId::COUNT,
             blocks
                 .iter()
                 .zip(&block_displays)
-                .map(|((name, _), &display)| (display, take_tags(ContentKind::Block, name))),
+                .map(|((name, _), &display)| (*name, display)),
+            &self.tags,
+            &self.mod_tags,
         );
         let block_properties = blocks
             .into_iter()
@@ -673,27 +812,26 @@ impl ContentBuilder {
             .collect();
 
         #[cfg(feature = "item")]
-        let item_tags = custom_tags(
-            RegistryKey::Item,
+        let item_tags = tag_tables(
+            ContentKind::Item,
             Item::COUNT,
             items
                 .iter()
                 .zip(&item_displays)
-                .map(|(item, &display)| (display, take_tags(ContentKind::Item, item.registry_key))),
+                .map(|(item, &display)| (item.registry_key, display)),
+            &self.tags,
+            &self.mod_tags,
         );
         #[cfg(feature = "entity_type")]
-        let entity_type_tags = custom_tags(
-            RegistryKey::EntityType,
+        let entity_type_tags = tag_tables(
+            ContentKind::EntityType,
             EntityType::COUNT,
             entity_types
                 .iter()
                 .zip(&entity_type_displays)
-                .map(|(ty, display)| {
-                    (
-                        display.id,
-                        take_tags(ContentKind::EntityType, ty.resource_name),
-                    )
-                }),
+                .map(|(ty, display)| (ty.resource_name, display.id)),
+            &self.tags,
+            &self.mod_tags,
         );
 
         Ok(ContentTables {
@@ -724,6 +862,8 @@ impl ContentBuilder {
             item_tags,
             #[cfg(feature = "entity_type")]
             entity_type_tags,
+            explicit_tags: self.tags,
+            mod_tags: self.mod_tags,
         })
     }
 
@@ -832,6 +972,41 @@ fn validate_name(kind: ContentKind, name: &str) -> Result<(), RegistryError> {
     }
 }
 
+/// Whether `name` is a valid name for custom content or a mod tag.
+fn is_custom_name(name: &str) -> bool {
+    validate_name(ContentKind::Block, name).is_ok()
+}
+
+/// The id and the bare name of a generated entry. A leading `minecraft:` is optional.
+fn generated_entry(kind: ContentKind, name: &str) -> Option<(u16, &'static str)> {
+    match kind {
+        ContentKind::Block => Block::from_name(name)
+            .filter(|block| block.id.as_u16() < BlockId::COUNT)
+            .map(|block| (block.id.as_u16(), block.name)),
+        #[cfg(feature = "item")]
+        ContentKind::Item => Item::from_registry_key(name)
+            .filter(|item| item.id < Item::COUNT)
+            .map(|item| (item.id, item.registry_key)),
+        #[cfg(not(feature = "item"))]
+        ContentKind::Item => None,
+        #[cfg(feature = "entity_type")]
+        ContentKind::EntityType => EntityType::from_name(name)
+            .filter(|ty| ty.id < EntityType::COUNT)
+            .map(|ty| (ty.id, ty.resource_name)),
+        #[cfg(not(feature = "entity_type"))]
+        ContentKind::EntityType => None,
+    }
+}
+
+/// The canonical name of a mod tag value: a custom entry name as it is, checked at the freeze, or
+/// the namespaced name of a generated entry. `None` for a generated entry that does not exist.
+fn canonical_member(kind: ContentKind, value: &str) -> Option<String> {
+    if is_custom_name(value) {
+        return Some(value.to_string());
+    }
+    generated_entry(kind, value).map(|(_, name)| namespaced_name(name).into_owned())
+}
+
 fn check_range(registry: &'static str, generated: u16, count: usize) -> Result<(), RegistryError> {
     if count > usize::from(MAX_ID - generated) + 1 {
         return Err(RegistryError::RangeExceeded { registry, count });
@@ -854,38 +1029,66 @@ fn resolve_tag(key: RegistryKey, tag: &str) -> Option<(&'static str, &'static [u
     Some((name, members.1))
 }
 
+/// Resolves the tags of a definition: a generated tag to its generated name, any other
+/// `namespace:path` outside `minecraft` to a mod tag name that [`ContentBuilder::check_tags`]
+/// checks at the freeze.
 fn resolve_tags(
     kind: ContentKind,
     name: &str,
     tags: &[String],
-) -> Result<Vec<&'static str>, RegistryError> {
+) -> Result<BTreeSet<String>, RegistryError> {
     tags.iter()
         .map(|tag| {
-            resolve_tag(kind.tag_key(), tag)
-                .map(|(tag, _)| tag)
-                .ok_or_else(|| RegistryError::UnknownTag {
+            if let Some((generated, _)) = resolve_tag(kind.tag_key(), tag) {
+                return Ok(generated.to_string());
+            }
+            let mod_tag = tag.strip_prefix('#').unwrap_or(tag);
+            if is_custom_name(mod_tag) {
+                Ok(mod_tag.to_string())
+            } else {
+                Err(RegistryError::UnknownTag {
                     kind,
                     name: name.to_string(),
                     tag: tag.clone(),
                 })
+            }
         })
         .collect()
 }
 
-/// Builds the custom tag table of one registry. `entries` yields the display id and the explicit
-/// tags of each custom entry, in id order from `first_id`.
-fn custom_tags(
-    key: RegistryKey,
+/// Builds the tag tables of one registry. `entries` yields the name and the display id of each
+/// custom entry, in id order from `first_id`. Runs after [`ContentBuilder::check_tags`].
+fn tag_tables<'a>(
+    kind: ContentKind,
     first_id: u16,
-    entries: impl Iterator<Item = (u16, Vec<&'static str>)>,
-) -> CustomTags {
+    entries: impl Iterator<Item = (&'a str, u16)>,
+    explicit: &NamedSets,
+    mod_tags: &NamedSets,
+) -> TagTables {
+    let key = kind.tag_key();
+    let explicit = explicit.get(&kind).unwrap_or(&NO_SETS);
+    let mod_tags = mod_tags.get(&kind).unwrap_or(&NO_SETS);
+    let mod_names: HashMap<&str, (&'static str, &BTreeSet<String>)> = mod_tags
+        .iter()
+        .map(|(name, values)| (name.as_str(), (leak(name.clone()), values)))
+        .collect();
+    let tag_name = |tag: &str| {
+        resolve_tag(key, tag)
+            .map(|(name, _)| name)
+            .or_else(|| mod_names.get(tag).map(|&(name, _)| name))
+    };
+
     let mut members: HashMap<&'static str, Vec<u16>> = HashMap::new();
     let mut by_display: HashMap<u16, Vec<u16>> = HashMap::new();
-    for (index, (display, tags)) in entries.enumerate() {
+    let mut ids: HashMap<&str, u16> = HashMap::new();
+    for (index, (name, display)) in entries.enumerate() {
         let id = first_id + index as u16;
         by_display.entry(display).or_default().push(id);
-        for tag in tags {
-            members.entry(tag).or_default().push(id);
+        ids.insert(name, id);
+        for tag in explicit.get(name).into_iter().flatten() {
+            if let Some(tag) = tag_name(tag) {
+                members.entry(tag).or_default().push(id);
+            }
         }
     }
     if !by_display.is_empty() {
@@ -897,14 +1100,32 @@ fn custom_tags(
             }
         }
     }
-    members
-        .into_iter()
-        .map(|(name, mut ids)| {
-            ids.sort_unstable();
-            ids.dedup();
-            (name, ids.into_boxed_slice())
-        })
-        .collect()
+
+    let mut generated_members = HashMap::new();
+    for &(tag, values) in mod_names.values() {
+        let mut generated = Vec::new();
+        for value in values {
+            if let Some(&id) = ids.get(value.as_str()) {
+                members.entry(tag).or_default().push(id);
+            } else if let Some((id, _)) = generated_entry(kind, value) {
+                generated.push(id);
+            }
+        }
+        generated_members.insert(tag, sorted_ids(generated));
+    }
+    TagTables {
+        custom: members
+            .into_iter()
+            .map(|(name, ids)| (name, sorted_ids(ids)))
+            .collect(),
+        mod_tags: generated_members,
+    }
+}
+
+fn sorted_ids(mut ids: Vec<u16>) -> Box<[u16]> {
+    ids.sort_unstable();
+    ids.dedup();
+    ids.into_boxed_slice()
 }
 
 static PENDING: Mutex<Option<ContentBuilder>> = Mutex::new(Some(ContentBuilder::new()));
@@ -934,6 +1155,24 @@ pub fn register_item(definition: ItemDefinition) -> Result<(), RegistryError> {
 #[cfg(feature = "entity_type")]
 pub fn register_entity_type(definition: EntityTypeDefinition) -> Result<(), RegistryError> {
     with_builder(|builder| builder.register_entity_type(definition))
+}
+
+/// Registers a mod tag. Its custom members and the entries that list it resolve at [`freeze`],
+/// so the order of tag and entry registrations does not matter.
+pub fn register_tag(definition: TagDefinition) -> Result<(), RegistryError> {
+    with_builder(|builder| builder.register_tag(definition))
+}
+
+/// Returns whether `name` is registered as a mod tag of this registry and waits for the freeze.
+/// Always `false` after the freeze.
+#[must_use]
+pub fn is_tag_registered(kind: ContentKind, name: &str) -> bool {
+    PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(|builder| builder.mod_tags.get(&kind))
+        .is_some_and(|tags| tags.contains_key(name))
 }
 
 /// Registers a placeholder block: content that the world's content manifest lists and no mod
@@ -1466,28 +1705,41 @@ impl EntityType {
     }
 }
 
-/// The custom ids in a generated tag, by generated tag name.
-fn custom_tag_ids(key: RegistryKey, tag: &str) -> &'static [u16] {
-    let Some(tables) = TABLES.get() else {
-        return &[];
-    };
-    let table = match key {
-        RegistryKey::Block => &tables.block_tags,
+fn tag_tables_of(key: RegistryKey) -> Option<&'static TagTables> {
+    let tables = TABLES.get()?;
+    match key {
+        RegistryKey::Block => Some(&tables.block_tags),
         #[cfg(feature = "item")]
-        RegistryKey::Item => &tables.item_tags,
+        RegistryKey::Item => Some(&tables.item_tags),
         #[cfg(feature = "entity_type")]
-        RegistryKey::EntityType => &tables.entity_type_tags,
-        _ => return &[],
-    };
-    table.get(tag).map_or(&[], |ids| ids)
+        RegistryKey::EntityType => Some(&tables.entity_type_tags),
+        _ => None,
+    }
 }
 
-/// The members of a generated tag: its generated ids, then its custom ids sorted by id. `None`
-/// when the registry has no such tag. The name follows `Taggable::is_tagged_with`: a leading `#`
-/// is optional and a name without a namespace uses `minecraft`.
+/// The custom ids in a generated or mod tag, by tag name.
+fn custom_tag_ids(key: RegistryKey, tag: &str) -> &'static [u16] {
+    tag_tables_of(key)
+        .and_then(|tables| tables.custom.get(tag))
+        .map_or(&[], |ids| ids)
+}
+
+/// Finds a generated tag as [`resolve_tag`] does, or else a mod tag of the installed tables.
+/// Returns the tag name and its generated ids.
+fn resolve_any_tag(key: RegistryKey, tag: &str) -> Option<(&'static str, &'static [u16])> {
+    resolve_tag(key, tag).or_else(|| {
+        let tag = tag.strip_prefix('#').unwrap_or(tag);
+        let (name, members) = tag_tables_of(key)?.mod_tags.get_key_value(tag)?;
+        Some((*name, &**members))
+    })
+}
+
+/// The members of a generated or mod tag: its generated ids, then its custom ids sorted by id.
+/// `None` when the registry has no such tag. The name follows `Taggable::is_tagged_with`: a
+/// leading `#` is optional and a name without a namespace uses `minecraft`.
 #[must_use]
 pub fn tag_ids(key: RegistryKey, tag: &str) -> Option<(&'static [u16], &'static [u16])> {
-    let (name, generated) = resolve_tag(key, tag)?;
+    let (name, generated) = resolve_any_tag(key, tag)?;
     Some((generated, custom_tag_ids(key, name)))
 }
 
@@ -1498,12 +1750,12 @@ pub trait DynamicTaggable: Taggable {
     /// The first custom id of the registry.
     const FIRST_CUSTOM_ID: u16;
 
-    /// Whether the entry is in the tag: from the generated list for a generated entry, from the
-    /// custom tag table for a custom one. `false` for a tag the registry does not have. The name
-    /// follows [`Taggable::is_tagged_with`].
+    /// Whether the entry is in the generated or mod tag: from the generated members for a
+    /// generated entry, from the custom tag table for a custom one. `false` for a tag the registry
+    /// does not have. The name follows [`Taggable::is_tagged_with`].
     #[must_use]
     fn has_tag_dynamic(&self, tag: &str) -> bool {
-        let Some((name, generated)) = resolve_tag(Self::tag_key(), tag) else {
+        let Some((name, generated)) = resolve_any_tag(Self::tag_key(), tag) else {
             return false;
         };
         let id = self.registry_id();
@@ -2085,7 +2337,7 @@ mod tests {
         let tables = builder.build().unwrap();
 
         let (mud, stone) = (BlockId::COUNT, BlockId::COUNT + 1);
-        let block_tag = |tag: &str| tables.block_tags.get(tag).map(|ids| ids.to_vec());
+        let block_tag = |tag: &str| tables.block_tags.custom.get(tag).map(|ids| ids.to_vec());
         assert_eq!(block_tag("minecraft:dirt"), Some(vec![mud]));
         assert_eq!(
             block_tag("minecraft:base_stone_overworld"),
@@ -2097,11 +2349,17 @@ mod tests {
         );
         assert_eq!(block_tag("minecraft:logs"), None);
 
-        let item_tag = |tag: &str| tables.item_tags.get(tag).map(|ids| ids.to_vec());
+        let item_tag = |tag: &str| tables.item_tags.custom.get(tag).map(|ids| ids.to_vec());
         assert_eq!(item_tag("minecraft:swords"), Some(vec![Item::COUNT]));
         assert_eq!(item_tag("minecraft:piglin_loved"), Some(vec![Item::COUNT]));
 
-        let entity_tag = |tag: &str| tables.entity_type_tags.get(tag).map(|ids| ids.to_vec());
+        let entity_tag = |tag: &str| {
+            tables
+                .entity_type_tags
+                .custom
+                .get(tag)
+                .map(|ids| ids.to_vec())
+        };
         assert_eq!(
             entity_tag("minecraft:zombies"),
             Some(vec![EntityType::COUNT])
@@ -2131,7 +2389,7 @@ mod tests {
         assert!(!builder.contains(ContentKind::Item, "test:blade"));
         assert!(matches!(
             builder.register_block(BlockDefinition {
-                tags: tags(&["mineable/pickaxe", "test:missing"]),
+                tags: tags(&["mineable/pickaxe", "minecraft:missing"]),
                 ..block("test:lamp", &Block::STONE)
             }),
             Err(RegistryError::UnknownTag { .. })
@@ -2150,14 +2408,216 @@ mod tests {
             .expect("the name stays free after a failed registration");
     }
 
+    fn tag(kind: ContentKind, name: &str, values: &[&str]) -> TagDefinition {
+        TagDefinition {
+            kind,
+            name: name.to_string(),
+            values: tags(values),
+        }
+    }
+
+    fn ids(ids: Option<&Box<[u16]>>) -> Option<Vec<u16>> {
+        ids.map(|ids| ids.to_vec())
+    }
+
+    #[test]
+    fn mod_tags_hold_their_members_and_the_entries_that_list_them() {
+        let mut builder = ContentBuilder::new();
+        // The block lists the tag before the tag is registered.
+        builder
+            .register_block(BlockDefinition {
+                tags: tags(&["#test:lamps", "mineable/pickaxe"]),
+                ..block("test:lamp_a", &Block::REDSTONE_LAMP)
+            })
+            .unwrap();
+        builder
+            .register_tag(tag(
+                ContentKind::Block,
+                "test:lamps",
+                &["redstone_lamp", "minecraft:stone", "test:lamp_b"],
+            ))
+            .unwrap();
+        builder
+            .register_block(block("test:lamp_b", &Block::STONE))
+            .unwrap();
+        // A display entry in a mod tag does not put the custom entry in it.
+        builder
+            .register_block(block("test:lamp_c", &Block::REDSTONE_LAMP))
+            .unwrap();
+        builder
+            .register_tag(tag(ContentKind::Item, "test:lamps", &["test:wand"]))
+            .unwrap();
+        builder.register_item(item("test:wand", None)).unwrap();
+        builder
+            .register_tag(tag(ContentKind::EntityType, "test:empty", &[]))
+            .unwrap();
+        let tables = builder.build().unwrap();
+
+        let (a, b) = (BlockId::COUNT, BlockId::COUNT + 1);
+        assert_eq!(
+            ids(tables.block_tags.custom.get("test:lamps")),
+            Some(vec![a, b])
+        );
+        let mut generated = vec![Block::REDSTONE_LAMP.id.as_u16(), Block::STONE.id.as_u16()];
+        generated.sort_unstable();
+        assert_eq!(
+            ids(tables.block_tags.mod_tags.get("test:lamps")),
+            Some(generated)
+        );
+        assert_eq!(
+            ids(tables.block_tags.custom.get("minecraft:mineable/pickaxe")),
+            Some(vec![a, b])
+        );
+        assert_eq!(
+            ids(tables.item_tags.custom.get("test:lamps")),
+            Some(vec![Item::COUNT])
+        );
+        assert_eq!(
+            ids(tables.item_tags.mod_tags.get("test:lamps")),
+            Some(vec![])
+        );
+        assert_eq!(
+            ids(tables.entity_type_tags.mod_tags.get("test:empty")),
+            Some(vec![])
+        );
+        assert!(!tables.entity_type_tags.custom.contains_key("test:empty"));
+
+        fn names(set: &BTreeSet<String>) -> Vec<&str> {
+            set.iter().map(String::as_str).collect()
+        }
+        assert_eq!(
+            names(tables.explicit_tags(ContentKind::Block, "test:lamp_a")),
+            ["minecraft:mineable/pickaxe", "test:lamps"]
+        );
+        assert!(
+            tables
+                .explicit_tags(ContentKind::Block, "test:lamp_b")
+                .is_empty()
+        );
+        assert_eq!(
+            tables
+                .mod_tags(ContentKind::Block)
+                .get("test:lamps")
+                .map(names),
+            Some(vec![
+                "minecraft:redstone_lamp",
+                "minecraft:stone",
+                "test:lamp_b"
+            ])
+        );
+        assert!(
+            tables
+                .mod_tags(ContentKind::EntityType)
+                .contains_key("test:empty")
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_duplicate_and_unknown_mod_tags() {
+        let mut builder = ContentBuilder::new();
+        for name in ["minecraft:ores", "ores", ":ores", "Test:Ores", "test:"] {
+            assert_eq!(
+                builder.register_tag(tag(ContentKind::Block, name, &[])),
+                Err(RegistryError::InvalidTagName {
+                    kind: ContentKind::Block,
+                    tag: name.to_string(),
+                })
+            );
+        }
+        assert_eq!(
+            builder.register_tag(tag(
+                ContentKind::Block,
+                "test:ores",
+                &["minecraft:no_such_block"]
+            )),
+            Err(RegistryError::UnknownTagMember {
+                kind: ContentKind::Block,
+                tag: "test:ores".to_string(),
+                member: "minecraft:no_such_block".to_string(),
+            })
+        );
+        // A value names an entry, not a tag, and an item is not a block.
+        for value in ["#minecraft:logs", "minecraft:diamond_sword"] {
+            assert!(matches!(
+                builder.register_tag(tag(ContentKind::Block, "test:ores", &[value])),
+                Err(RegistryError::UnknownTagMember { .. })
+            ));
+        }
+        builder
+            .register_tag(tag(ContentKind::Block, "test:ores", &["iron_ore"]))
+            .expect("the name stays free after a failed registration");
+        assert_eq!(
+            builder.register_tag(tag(ContentKind::Block, "test:ores", &[])),
+            Err(RegistryError::DuplicateTag {
+                kind: ContentKind::Block,
+                tag: "test:ores".to_string(),
+            })
+        );
+        // A generated tag counts as registered.
+        assert_eq!(
+            builder.register_tag(tag(ContentKind::Block, "c:ores", &["stone"])),
+            Err(RegistryError::DuplicateTag {
+                kind: ContentKind::Block,
+                tag: "c:ores".to_string(),
+            })
+        );
+        builder
+            .register_tag(tag(ContentKind::Item, "test:ores", &["iron_ingot"]))
+            .expect("each registry has its own tag names");
+    }
+
+    #[test]
+    fn unknown_mod_tags_and_members_fail_the_freeze() {
+        let mut builder = ContentBuilder::new();
+        builder
+            .register_block(BlockDefinition {
+                tags: tags(&["test:missing"]),
+                ..block("test:lamp", &Block::STONE)
+            })
+            .unwrap();
+        assert_eq!(
+            builder.build().unwrap_err(),
+            RegistryError::UnknownTag {
+                kind: ContentKind::Block,
+                name: "test:lamp".to_string(),
+                tag: "test:missing".to_string(),
+            }
+        );
+
+        let mut builder = ContentBuilder::new();
+        builder
+            .register_tag(tag(ContentKind::Item, "test:tools", &["test:gone"]))
+            .unwrap();
+        // A block of that name is not an item.
+        builder
+            .register_block(block("test:gone", &Block::STONE))
+            .unwrap();
+        assert_eq!(
+            builder.build().unwrap_err(),
+            RegistryError::UnknownTagMember {
+                kind: ContentKind::Item,
+                tag: "test:tools".to_string(),
+                member: "test:gone".to_string(),
+            }
+        );
+    }
+
     /// The only test that installs the global tables: they are process-wide and install once.
     #[test]
     fn frozen_registry_falls_through_and_rejects_registration() {
         register_block(BlockDefinition {
-            tags: tags(&["minecraft:mineable/pickaxe"]),
+            tags: tags(&["minecraft:mineable/pickaxe", "test:lamps"]),
             ..block("test:zeta", &Block::DIRT)
         })
         .unwrap();
+        register_tag(tag(
+            ContentKind::Block,
+            "test:lamps",
+            &["minecraft:redstone_lamp", "test:alpha"],
+        ))
+        .unwrap();
+        assert!(is_tag_registered(ContentKind::Block, "test:lamps"));
+        assert!(!is_tag_registered(ContentKind::Item, "test:lamps"));
         register_block(block("test:alpha", &Block::STONE)).unwrap();
         register_item(ItemDefinition {
             tags: tags(&["minecraft:piglin_loved"]),
@@ -2273,6 +2733,22 @@ mod tests {
         assert!(golem.has_tag_dynamic("minecraft:skeletons"));
         assert!(!golem.has_tag_dynamic("minecraft:raiders"));
 
+        // A mod tag answers for its generated and custom members, off the generated lists.
+        assert!(alpha.has_tag_dynamic("test:lamps"));
+        assert!(zeta.has_tag_dynamic("#test:lamps"));
+        assert!(Block::REDSTONE_LAMP.has_tag_dynamic("test:lamps"));
+        assert!(!Block::STONE.has_tag_dynamic("test:lamps"));
+        assert_eq!(Block::REDSTONE_LAMP.is_tagged_with("test:lamps"), None);
+        assert_eq!(
+            tag_ids(RegistryKey::Block, "#test:lamps"),
+            Some((
+                &[Block::REDSTONE_LAMP.id.as_u16()][..],
+                &[alpha.id.as_u16(), zeta.id.as_u16()][..]
+            ))
+        );
+        assert!(!alpha_item.has_tag_dynamic("test:lamps"));
+        assert_eq!(tag_ids(RegistryKey::Item, "test:lamps"), None);
+
         // Frozen.
         assert_eq!(
             register_block(block("test:late", &Block::STONE)),
@@ -2286,6 +2762,11 @@ mod tests {
             register_entity_type(entity_type("test:late")),
             Err(RegistryError::RegistryFrozen)
         );
+        assert_eq!(
+            register_tag(tag(ContentKind::Block, "test:late", &[])),
+            Err(RegistryError::RegistryFrozen)
+        );
+        assert!(!is_tag_registered(ContentKind::Block, "test:lamps"));
         assert_eq!(freeze().unwrap_err(), RegistryError::RegistryFrozen);
         assert_eq!(Block::from_name("test:late"), None);
     }
