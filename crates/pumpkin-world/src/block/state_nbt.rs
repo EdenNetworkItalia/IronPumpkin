@@ -3,6 +3,9 @@
 //! The chunk palette writer and the entities that save a block state use these functions, so this
 //! file is the only place that writes the keys.
 
+use std::collections::BTreeSet;
+use std::sync::{Mutex, PoisonError};
+
 use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use tracing::warn;
@@ -77,6 +80,73 @@ pub fn block_state_from_nbt(tag: &NbtTag) -> Option<BlockStateId> {
         NbtTag::Int(id) => u16::try_from(*id).ok().and_then(BlockStateId::new),
         _ => None,
     }
+}
+
+/// Block names the chunk palette reader has warned about. A world copied from another server
+/// references the same missing block in many sections and chunks; one warning per name is enough.
+static UNKNOWN_PALETTE_BLOCKS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+static UNKNOWN_PALETTE_PROPERTIES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+
+#[cold]
+fn first_report(reported: &Mutex<BTreeSet<String>>, name: &str) -> bool {
+    let mut reported = reported.lock().unwrap_or_else(PoisonError::into_inner);
+    !reported.contains(name) && reported.insert(name.to_owned())
+}
+
+/// Reads one entry of a chunk section's block palette.
+///
+/// A block name the registry does not know (in neither the generated data, the registered
+/// content nor the content manifest) loads as air. A property the block does not have is ignored,
+/// and a value a custom block does not allow keeps the default of that property. Each case warns
+/// once per block name for the whole process.
+pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
+    let (Some(name), properties) = state_compound_parts(compound) else {
+        return BlockStateId::AIR;
+    };
+    let Some(block) = Block::from_name(name) else {
+        if first_report(&UNKNOWN_PALETTE_BLOCKS, name) {
+            warn!(
+                "Block {name} in a chunk palette is not registered: it loads as air. Other references to it are not logged"
+            );
+        }
+        return BlockStateId::AIR;
+    };
+    let properties: Vec<(&str, &str)> = properties
+        .map(|properties| {
+            properties
+                .child_tags
+                .iter()
+                .filter_map(|(name, value)| Some((name.as_ref(), value.extract_string()?)))
+                .collect()
+        })
+        .unwrap_or_default();
+    if properties.is_empty() {
+        return block.default_state.id;
+    }
+    // The generated `from_properties` panics for a vanilla block without properties.
+    let id = if block.properties(block.default_state.id).is_some() {
+        block.from_properties(&properties).to_state_id(block)
+    } else {
+        block.default_state.id
+    };
+    let state_properties = block
+        .properties(id)
+        .map(|state| state.to_props())
+        .unwrap_or_default();
+    let mut unknown = properties
+        .iter()
+        .filter(|(name, value)| !state_properties.contains(&(*name, *value)))
+        .peekable();
+    if unknown.peek().is_some() && first_report(&UNKNOWN_PALETTE_PROPERTIES, name) {
+        let unknown: Vec<String> = unknown
+            .map(|(name, value)| format!("{name}={value}"))
+            .collect();
+        warn!(
+            "Block {name} in a chunk palette has properties its schema does not know ({}): they load as their default values. Other references to it are not logged",
+            unknown.join(", ")
+        );
+    }
+    id
 }
 
 fn known_block(name: &str) -> Option<&'static Block> {
@@ -308,6 +378,70 @@ mod tests {
         let id = block_state_from_nbt(&NbtTag::Compound(compound)).unwrap();
         let defaults = properties_of(Block::REPEATER.default_state.id);
         let mut expected = defaults;
+        for (name, value) in &mut expected {
+            if name == "facing" {
+                *value = "west".to_string();
+            }
+        }
+        assert_eq!(properties_of(id), expected);
+    }
+
+    #[test]
+    fn palette_entries_decode_like_the_template_resolver_for_every_vanilla_state() {
+        use super::palette_entry_to_state;
+        use crate::generation::structure::template::{BlockStateResolver, PaletteEntry};
+
+        for raw in 0..BlockStateId::COUNT {
+            let id = BlockStateId::new(raw).unwrap();
+            let compound = block_state_to_nbt(id);
+            let resolver = BlockStateResolver::resolve_simple(
+                &PaletteEntry::from_nbt_compound(&compound).unwrap(),
+            )
+            .unwrap()
+            .id;
+            assert_eq!(palette_entry_to_state(&compound), id);
+            assert_eq!(resolver, id);
+        }
+    }
+
+    #[test]
+    fn unknown_palette_blocks_load_as_air_and_warn_once() {
+        use super::{UNKNOWN_PALETTE_BLOCKS, first_report, palette_entry_to_state};
+
+        let name = "test:missing";
+        let mut compound = NbtCompound::new();
+        compound.put_string("Name", name.to_string());
+        for _ in 0..3 {
+            assert_eq!(palette_entry_to_state(&compound), BlockStateId::AIR);
+        }
+        assert!(!first_report(&UNKNOWN_PALETTE_BLOCKS, name));
+        assert_eq!(
+            palette_entry_to_state(&NbtCompound::new()),
+            BlockStateId::AIR
+        );
+    }
+
+    #[test]
+    fn palette_entries_ignore_properties_the_block_does_not_have() {
+        use super::palette_entry_to_state;
+
+        let mut properties = NbtCompound::new();
+        properties.put_string("lit", "true".to_string());
+        let mut stone = NbtCompound::new();
+        stone.put_string("Name", "minecraft:stone".to_string());
+        stone.put_compound("Properties", properties.clone());
+        assert_eq!(
+            palette_entry_to_state(&stone),
+            Block::STONE.default_state.id
+        );
+
+        properties.put_string("facing", "west".to_string());
+        let mut repeater = NbtCompound::new();
+        repeater.put_string("Name", "minecraft:repeater".to_string());
+        repeater.put_compound("Properties", properties);
+        let id = palette_entry_to_state(&repeater);
+        assert_eq!(Block::from_state_id(id), &Block::REPEATER);
+        let mut expected = properties_of(Block::REPEATER.default_state.id);
         for (name, value) in &mut expected {
             if name == "facing" {
                 *value = "west".to_string();

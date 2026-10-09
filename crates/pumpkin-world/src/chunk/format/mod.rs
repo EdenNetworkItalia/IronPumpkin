@@ -17,7 +17,7 @@ use rustc_hash::FxHashMap;
 use tracing::{error, warn};
 
 use crate::{
-    block::state_nbt::block_state_to_nbt,
+    block::state_nbt::{block_state_to_nbt, palette_entry_to_state},
     chunk::{
         ChunkEntityData, ChunkReadingError, ChunkSerializingError,
         format::anvil::{SingleChunkDataSerializer, WORLD_DATA_VERSION},
@@ -136,18 +136,7 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
                     pumpkin_nbt::tag::NbtTag::Byte(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Long(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Compound(compound) => {
-                        if let Ok(entry) =
-                            crate::generation::structure::template::PaletteEntry::from_nbt_compound(
-                                compound,
-                            )
-                            && let Some(state) =
-                                crate::generation::structure::template::BlockStateResolver::resolve_simple(
-                                    &entry,
-                                )
-                        {
-                            return state.id;
-                        }
-                        BlockStateId::AIR
+                        palette_entry_to_state(compound)
                     }
                     _ => BlockStateId::AIR,
                 })
