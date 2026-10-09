@@ -75,6 +75,9 @@ phase in progress only, at most one wave ahead. Parked work carries the `later` 
 when the issue enters a wave. Later phases stay in the roadmap of the pinned "Orchestration
 status" issue and in their OpenSpec change until the previous phase is done. Close an issue as
 soon as its work lands; an issue that stays open for weeks without work is noise, not a plan.
+Exception: an issue whose fix is a vanilla-parity fix for Pumpkin-MC/Pumpkin stays open with the
+`upstream-pr` label after the IronPumpkin commit lands, until the upstream PR is opened from the
+draft in its comments; then it is closed.
 
 ## Review of a wave
 
