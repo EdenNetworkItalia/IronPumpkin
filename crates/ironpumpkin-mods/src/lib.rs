@@ -17,11 +17,12 @@
 //! | [`world`]       | `World` and its parts                                                     |
 //! | [`server`]      | `Server`                                                                  |
 //! | [`entity`]      | `Player` and the other entities                                           |
+//! | [`content`]     | builders for custom blocks, items and entity types, and `RegistryError`   |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
-//! [`pumpkin_util`], [`pumpkin_data`] (translation keys, registries), [`pumpkin_macros`] and
-//! [`pumpkin_world`].
+//! [`pumpkin_util`], [`pumpkin_data`] (translation keys, registries), [`pumpkin_macros`],
+//! [`pumpkin_world`] and [`tracing`] (the server log).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 use std::{
@@ -31,10 +32,10 @@ use std::{
 
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
-    entity::custom::{self, EntityFactory},
+    entity::custom,
     plugin::{Context, PluginMetadata, startup},
 };
-use pumpkin_data::dynamic::{EntityTypeDefinition, RegistryError};
+use pumpkin_data::dynamic::{self, BlockDefinition, EntityTypeDefinition, ItemDefinition};
 use tracing::{error, info};
 
 #[doc(hidden)]
@@ -45,9 +46,12 @@ pub use pumpkin_data;
 pub use pumpkin_macros;
 pub use pumpkin_util;
 pub use pumpkin_world;
+pub use tracing;
 
 pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
+
+pub mod content;
 
 /// The events a mod can listen to, and the traits to handle them.
 pub mod event {
@@ -72,6 +76,7 @@ macro_rules! __translate_cross {
     }};
 }
 
+use content::{EntityFactory, RegistryError};
 use event::{EventHandler, EventPriority, Payload};
 use permission::Permission;
 use server::Server;
@@ -103,8 +108,11 @@ macro_rules! register_mod {
 
 type Registration = Box<dyn FnOnce(&Context)>;
 
-/// What a mod registers during [`NativeMod::init`]. The server applies the registrations in the
-/// mod's name when `init` returns, except [`ModInit::register_entity_type`], which applies at once.
+/// What a mod registers during [`NativeMod::init`].
+///
+/// The server applies the registrations in the mod's name when `init` returns, except the content
+/// registrations ([`ModInit::register_block`], [`ModInit::register_item`] and
+/// [`ModInit::register_entity_type`]), which apply at once and return a `Result`.
 ///
 /// It passes `pumpkin-core` types through until the native API lands: the stable boundary for
 /// mods is `ironpumpkin-neo`, not this crate.
@@ -115,7 +123,12 @@ pub struct ModInit {
 }
 
 impl ModInit {
-    fn new(id: &'static str) -> Self {
+    /// Creates the registration handle of the mod `id`. The server does this for each mod; the
+    /// method is public for tests that drive [`NativeMod::init`] without a server. The commands,
+    /// events, permissions and services a test registers are dropped.
+    #[doc(hidden)]
+    #[must_use]
+    pub fn new(id: &'static str) -> Self {
         Self {
             id,
             // Must agree with `Context::get_data_folder`, which is not reachable without a server.
@@ -190,16 +203,53 @@ impl ModInit {
         }));
     }
 
-    /// Registers a custom entity type and the factory that spawns it. Content registers at
-    /// once, not when `init` returns: the server freezes the content registry after the last
-    /// mod's `init` and before the first world loads. See
-    /// [`pumpkin_core::entity::custom::register_entity_type`].
+    /// Registers a custom block. Pass a [`BlockBuilder`](content::BlockBuilder).
+    ///
+    /// Content registers at once, not when `init` returns: the server freezes the content
+    /// registry after the last mod's `init` and before the first world loads. The registry
+    /// allocates the id when it freezes.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
+    /// namespace or is already registered as a block, the display state is not a vanilla state, a
+    /// property is invalid, a tag is unknown, or the registry is frozen.
+    pub fn register_block(
+        &mut self,
+        block: impl Into<BlockDefinition>,
+    ) -> Result<(), RegistryError> {
+        dynamic::register_block(block.into())
+    }
+
+    /// Registers a custom item. Pass an [`ItemBuilder`](content::ItemBuilder). It applies at
+    /// once, like [`ModInit::register_block`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
+    /// namespace or is already registered as an item, the display item is not a vanilla item, a tag
+    /// is unknown, or the registry is frozen. The block that the item places is not checked here:
+    /// the freeze checks it.
+    pub fn register_item(&mut self, item: impl Into<ItemDefinition>) -> Result<(), RegistryError> {
+        dynamic::register_item(item.into())
+    }
+
+    /// Registers a custom entity type and the factory that spawns it. Pass an
+    /// [`EntityTypeBuilder`](content::EntityTypeBuilder). It applies at once, like
+    /// [`ModInit::register_block`]. See [`pumpkin_core::entity::custom::register_entity_type`].
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`RegistryError`] of the registry: the name is invalid, uses the `minecraft`
+    /// namespace or is already registered as an entity type, the display type is not a vanilla
+    /// type, a dimension is not positive and finite, a tag is unknown, or the registry is
+    /// frozen.
     pub fn register_entity_type(
         &mut self,
-        definition: EntityTypeDefinition,
+        definition: impl Into<EntityTypeDefinition>,
         factory: EntityFactory,
     ) -> Result<(), RegistryError> {
-        custom::register_entity_type(definition, factory)
+        custom::register_entity_type(definition.into(), factory)
     }
 
     /// See [`Context::get_data_folder`]: `plugins/data/<mod id>`, created on first use.
