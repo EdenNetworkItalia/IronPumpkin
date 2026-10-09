@@ -1,12 +1,15 @@
 use super::jigsaw_placement::{
     DimensionPadding, JigsawPlacement, LiquidSettings, MaxDistance, PoolAliasLookup,
 };
+use crate::generation::structure::start::rotation_name;
 use crate::generation::structure::structures::{
     StructureGenerator, StructureGeneratorContext, StructurePieceBase, StructurePosition,
 };
 use crate::generation::structure::template::{
     BlockMirror, BlockPlacer, BlockRotation, PaletteEntry, StructureTemplate,
 };
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::block_box::BlockBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -18,6 +21,17 @@ use std::sync::Arc;
 pub enum JigsawProjection {
     Rigid,
     TerrainMatching,
+}
+
+impl JigsawProjection {
+    /// Vanilla `StructureTemplatePool.Projection.getName`.
+    #[must_use]
+    pub const fn get_name(self) -> &'static str {
+        match self {
+            Self::Rigid => "rigid",
+            Self::TerrainMatching => "terrain_matching",
+        }
+    }
 }
 
 static DYNAMIC_POOLS: std::sync::LazyLock<dashmap::DashMap<String, Arc<TemplatePool>>> =
@@ -294,6 +308,59 @@ impl PoolElementKind {
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         matches!(self, Self::Empty)
+    }
+
+    /// Vanilla `StructurePoolElement.CODEC` encoding of this element with `projection`.
+    #[must_use]
+    pub fn encode(&self, projection: JigsawProjection) -> NbtCompound {
+        let mut tag = NbtCompound::new();
+        let element_type = match self {
+            Self::Empty => {
+                tag.put_string("element_type", "minecraft:empty_pool_element".to_string());
+                return tag;
+            }
+            Self::Single {
+                template,
+                processors,
+                legacy,
+                ..
+            } => {
+                tag.put_string("location", template.clone());
+                match processors {
+                    ProcessorListRef::Named(name) => {
+                        tag.put_string("processors", name.clone());
+                    }
+                    ProcessorListRef::Empty => {
+                        let mut inline = NbtCompound::new();
+                        inline.put_list("processors", Vec::new());
+                        tag.put_compound("processors", inline);
+                    }
+                }
+                if *legacy {
+                    "minecraft:legacy_single_pool_element"
+                } else {
+                    "minecraft:single_pool_element"
+                }
+            }
+            // Vanilla `ListPoolElement` gives every child the projection of the list.
+            Self::List(elements) => {
+                tag.put_list(
+                    "elements",
+                    elements
+                        .iter()
+                        .map(|element| NbtTag::Compound(element.encode(projection)))
+                        .collect(),
+                );
+                "minecraft:list_pool_element"
+            }
+            Self::Feature(feature) => {
+                tag.put_string("feature", format!("minecraft:{}", feature.to_name()));
+                "minecraft:feature_pool_element"
+            }
+        };
+        tag.put_string("element_type", element_type.to_string());
+        tag.put_string("projection", projection.get_name().to_string());
+        tag
     }
 
     #[must_use]
@@ -782,6 +849,20 @@ pub struct JigsawJunction {
     pub projection: JigsawProjection,
 }
 
+impl JigsawJunction {
+    /// Vanilla `JigsawJunction.serialize`.
+    #[must_use]
+    pub fn serialize(&self) -> NbtCompound {
+        let mut tag = NbtCompound::new();
+        tag.put_int("source_x", self.source_x);
+        tag.put_int("source_ground_y", self.source_ground_y);
+        tag.put_int("source_z", self.source_z);
+        tag.put_int("delta_y", self.delta_y);
+        tag.put_string("dest_proj", self.projection.get_name().to_string());
+        tag
+    }
+}
+
 pub struct PoolElementStructurePiece {
     pub piece: crate::generation::structure::structures::StructurePiece,
     pub element: Arc<PoolElement>,
@@ -807,6 +888,28 @@ impl StructurePieceBase for PoolElementStructurePiece {
         &mut self,
     ) -> &mut crate::generation::structure::structures::StructurePiece {
         &mut self.piece
+    }
+
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        tag.put_int("PosX", self.pos.0.x);
+        tag.put_int("PosY", self.pos.0.y);
+        tag.put_int("PosZ", self.pos.0.z);
+        tag.put_int("ground_level_delta", self.ground_level_delta);
+        tag.put_compound(
+            "pool_element",
+            self.element.kind.encode(self.element.projection),
+        );
+        tag.put_string("rotation", rotation_name(self.rotation).to_string());
+        tag.put_list(
+            "junctions",
+            self.junctions
+                .iter()
+                .map(|junction| NbtTag::Compound(junction.serialize()))
+                .collect(),
+        );
+        if self.liquid_settings != LiquidSettings::ApplyWaterlog {
+            tag.put_string("liquid_settings", "ignore_waterlogging".to_string());
+        }
     }
 
     fn place(

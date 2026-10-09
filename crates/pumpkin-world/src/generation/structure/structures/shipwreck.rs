@@ -14,11 +14,14 @@ use crate::{
         positions::chunk_pos::{get_center_x, get_center_z, start_block_x, start_block_z},
         structure::{
             piece::StructurePieceType,
+            start::rotation_name,
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
-            template::{BlockStateResolver, StructureTemplate, get_template},
+            template::{
+                BlockStateResolver, StructureTemplate, add_template_save_data, get_template,
+            },
         },
     },
 };
@@ -173,7 +176,7 @@ impl ShipwreckPiece {
         );
 
         Self {
-            piece: StructurePiece::new(StructurePieceType::Shipwreck, bounding_box, 0),
+            piece: StructurePiece::new_template(StructurePieceType::Shipwreck, bounding_box),
             template,
             rotation,
             template_position: position,
@@ -255,6 +258,17 @@ impl StructurePieceBase for ShipwreckPiece {
 
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(
+            tag,
+            self.template_position,
+            self.template.name.as_deref().unwrap_or_default(),
+        );
+        tag.put_bool("isBeached", self.is_beached);
+        tag.put_string("Rot", rotation_name(self.rotation).to_string());
+        tag.put_bool("height_adjusted", self.height_adjusted);
     }
 
     #[expect(clippy::too_many_lines)]

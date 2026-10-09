@@ -239,6 +239,140 @@ mod test {
         );
     }
 
+    /// The village of `structure_starts_survive_a_save_and_a_cleared_cache` is written with the
+    /// piece fields that vanilla 26.3 writes: the fixture is the start of chunk 36 -126 from a
+    /// world that the vanilla server generated with the same seed.
+    #[test]
+    fn village_start_tag_matches_vanilla() {
+        use pumpkin_nbt::{nbt_compress::read_gzip_compound_tag, tag::NbtTag};
+
+        let expected = read_gzip_compound_tag(std::io::Cursor::new(include_bytes!(
+            "../../../../assets/tests/village_plains_start_36_-126.nbt"
+        )))
+        .expect("fixture parses");
+
+        let seed = Seed(1_782_124_772_053_846_960);
+        let world_gen = get_world_gen(seed, Dimension::OVERWORLD, false, Vec::new(), String::new());
+        let WorldGenerator::Noise(generator) = &*world_gen else {
+            unreachable!()
+        };
+        let mut proto = ProtoChunk::new(36, -126, &world_gen);
+        proto.step_to_biomes(generator);
+        proto.set_structure_starts(generator);
+        let structures = proto.structure_data();
+        let start = structures
+            .get_compound("starts")
+            .and_then(|starts| starts.get_compound("minecraft:village_plains"))
+            .expect("the village start is written");
+
+        let pieces = |start: &pumpkin_nbt::compound::NbtCompound| {
+            start
+                .get_list("Children")
+                .unwrap_or_default()
+                .iter()
+                .filter_map(NbtTag::extract_compound)
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        let (written, vanilla) = (pieces(start), pieces(&expected));
+        for (index, (written, vanilla)) in written.iter().zip(&vanilla).enumerate() {
+            assert_eq!(written, vanilla, "piece {index}");
+        }
+        assert_eq!(written.len(), vanilla.len());
+        assert_eq!(start, &expected);
+    }
+
+    /// Template structure starts are written with the piece fields that vanilla 26.3 writes:
+    /// the fixture holds the starts of a world that the vanilla server generated with the
+    /// same seed, keyed by structure. Vanilla saved them after placement, which moves some
+    /// pieces to the terrain height; this test stops before placement, so it leaves out the
+    /// fields that placement changes.
+    #[test]
+    fn template_start_tags_match_vanilla() {
+        use pumpkin_nbt::{
+            compound::NbtCompound, nbt_compress::read_gzip_compound_tag, tag::NbtTag,
+        };
+
+        let expected = read_gzip_compound_tag(std::io::Cursor::new(include_bytes!(
+            "../../../../assets/tests/template_structure_starts.nbt"
+        )))
+        .expect("fixture parses");
+        let without = |start: &NbtCompound, placement_fields: &[&str]| {
+            let mut start = start.clone();
+            if let Some(NbtTag::List(children)) = start.child_tags.get_mut("Children") {
+                for child in children {
+                    if let NbtTag::Compound(piece) = child {
+                        for field in placement_fields {
+                            piece.child_tags.remove(*field);
+                        }
+                    }
+                }
+            }
+            start
+        };
+
+        let seed = Seed(1_782_124_772_053_846_960);
+        let mut mismatches = Vec::new();
+        for (structure, dimension, chunk_x, chunk_z, placement_fields) in [
+            (
+                "minecraft:igloo",
+                Dimension::OVERWORLD,
+                134,
+                -224,
+                &["BB"][..],
+            ),
+            (
+                "minecraft:shipwreck",
+                Dimension::OVERWORLD,
+                0,
+                -164,
+                &["BB", "TPY", "height_adjusted"][..],
+            ),
+            (
+                "minecraft:shipwreck_beached",
+                Dimension::OVERWORLD,
+                24,
+                -142,
+                &["BB", "TPY", "height_adjusted"][..],
+            ),
+            (
+                "minecraft:ocean_ruin_warm",
+                Dimension::OVERWORLD,
+                29,
+                -135,
+                &["BB", "TPY"][..],
+            ),
+            (
+                "minecraft:ocean_ruin_cold",
+                Dimension::OVERWORLD,
+                40,
+                -176,
+                &["BB", "TPY"][..],
+            ),
+            ("minecraft:end_city", Dimension::THE_END, 88, 24, &[][..]),
+        ] {
+            let world_gen = get_world_gen(seed, dimension, false, Vec::new(), String::new());
+            let WorldGenerator::Noise(generator) = &*world_gen else {
+                unreachable!()
+            };
+            let mut proto = ProtoChunk::new(chunk_x, chunk_z, &world_gen);
+            proto.step_to_biomes(generator);
+            proto.set_structure_starts(generator);
+            let structures = proto.structure_data();
+            let written = structures
+                .get_compound("starts")
+                .and_then(|starts| starts.get_compound(structure))
+                .map(|start| without(start, placement_fields));
+            let vanilla = expected
+                .get_compound(structure)
+                .map(|start| without(start, placement_fields));
+            if written != vanilla {
+                mismatches.push(structure);
+            }
+        }
+        assert!(mismatches.is_empty(), "differ from vanilla: {mismatches:?}");
+    }
+
     /// A chunk saved before the structure stages gets its starts and references in the tag
     /// once generation resumes, instead of the empty tag it was saved with.
     #[test]

@@ -6,6 +6,7 @@
 use std::sync::Arc;
 
 use pumpkin_data::{Mirror, Rotation};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     math::{block_box::BlockBox, vector3::Vector3},
     random::RandomGenerator,
@@ -280,6 +281,18 @@ impl TemplatePiece {
             }
         }
     }
+}
+
+/// Vanilla `TemplateStructurePiece.addAdditionalSaveData`.
+pub fn add_template_save_data(
+    tag: &mut NbtCompound,
+    template_position: Vector3<i32>,
+    template_name: &str,
+) {
+    tag.put_int("TPX", template_position.x);
+    tag.put_int("TPY", template_position.y);
+    tag.put_int("TPZ", template_position.z);
+    tag.put_string("Template", template_name.to_string());
 }
 
 impl StructurePieceBase for TemplatePiece {

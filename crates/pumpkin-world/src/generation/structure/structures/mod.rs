@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use pumpkin_data::{Block, BlockId, BlockState};
 use pumpkin_data::{Mirror, Rotation};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::HeightMap;
 use pumpkin_util::{
     BlockDirection,
@@ -57,6 +58,10 @@ pub trait StructurePieceBase: Send + Sync {
     fn translate(&mut self, x: i32, y: i32, z: i32) {
         self.get_structure_piece_mut().translate(x, y, z);
     }
+
+    /// Vanilla `StructurePiece.addAdditionalSaveData`: the fields of the piece type, written
+    /// after the common ones.
+    fn add_additional_save_data(&self, _tag: &mut NbtCompound) {}
 
     /// Places the blocks for this piece into the chunk.
     fn place(
@@ -123,6 +128,14 @@ impl StructurePiece {
             rotation: Rotation::None,
             chain_length,
         }
+    }
+
+    /// The base of a vanilla `TemplateStructurePiece`, whose constructor faces it north.
+    #[must_use]
+    pub const fn new_template(r#type: StructurePieceType, bounding_box: BlockBox) -> Self {
+        let mut piece = Self::new(r#type, bounding_box, 0);
+        piece.set_facing(Some(BlockDirection::North));
+        piece
     }
 
     pub const fn set_facing(&mut self, facing: Option<BlockDirection>) {

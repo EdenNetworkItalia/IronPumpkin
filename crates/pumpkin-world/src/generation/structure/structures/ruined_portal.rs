@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use pumpkin_data::{Block, Mirror, Rotation, structures::StructureKeys};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     HeightMap,
     math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
@@ -13,13 +14,14 @@ use crate::{
         positions::chunk_pos::{get_center_x, get_center_z},
         structure::{
             piece::StructurePieceType,
+            start::{mirror_name, rotation_name},
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
             template::{
                 BlockStateResolver, PaletteEntry, StructurePlaceSettings, StructureTemplate,
-                get_template,
+                add_template_save_data, get_template,
                 processor::{
                     IgnoredBlock, PosRuleTest, ProcessorContext, ProcessorRule, RuleTest,
                     StructureProcessor,
@@ -60,6 +62,19 @@ pub enum VerticalPlacement {
 }
 
 impl VerticalPlacement {
+    /// Vanilla `RuinedPortalPiece.VerticalPlacement.getName`.
+    #[must_use]
+    pub const fn get_name(self) -> &'static str {
+        match self {
+            Self::OnLandSurface => "on_land_surface",
+            Self::PartlyBuried => "partly_buried",
+            Self::OnOceanFloor => "on_ocean_floor",
+            Self::InMountain => "in_mountain",
+            Self::Underground => "underground",
+            Self::InNether => "in_nether",
+        }
+    }
+
     #[must_use]
     pub const fn get_heightmap_type(self) -> HeightMap {
         match self {
@@ -267,7 +282,7 @@ impl RuinedPortalPiece {
         let bounding_box = template.get_bounding_box(&place_settings, template_position);
 
         Self {
-            piece: StructurePiece::new(StructurePieceType::RuinedPortal, bounding_box, 0),
+            piece: StructurePiece::new_template(StructurePieceType::RuinedPortal, bounding_box),
             template,
             template_name,
             place_settings,
@@ -582,6 +597,36 @@ impl StructurePieceBase for RuinedPortalPiece {
     }
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(
+            tag,
+            self.template_position,
+            self.template.name.as_deref().unwrap_or_default(),
+        );
+        tag.put_string(
+            "Rotation",
+            rotation_name(self.place_settings.get_rotation()).to_string(),
+        );
+        tag.put_string(
+            "Mirror",
+            mirror_name(self.place_settings.get_mirror()).to_string(),
+        );
+        tag.put_string(
+            "VerticalPlacement",
+            self.vertical_placement.get_name().to_string(),
+        );
+        let mut properties = NbtCompound::new();
+        properties.put_bool("cold", self.properties.cold);
+        properties.put_float("mossiness", self.properties.mossiness);
+        properties.put_bool("air_pocket", self.properties.air_pocket);
+        properties.put_bool("overgrown", self.properties.overgrown);
+        properties.put_bool("vines", self.properties.vines);
+        properties.put_bool(
+            "replace_with_blackstone",
+            self.properties.replace_with_blackstone,
+        );
+        tag.put_compound("Properties", properties);
     }
     fn place(
         &mut self,

@@ -53,7 +53,7 @@ pub use structure_template::{
     JigsawBlockInfo, Palette, PaletteEntry, SimplePalette, StructureBlockInfo, StructureEntityInfo,
     StructurePlaceSettings, StructureTemplate, TemplateBlock, TemplateEntity,
 };
-pub use template_piece::TemplatePiece;
+pub use template_piece::{TemplatePiece, add_template_save_data};
 
 /// Abstraction over block placement, implemented by both [`ProtoChunk`] (worldgen) and
 /// [`WorldBlockPlacer`] (live `/place template` command).

@@ -15,11 +15,15 @@ use crate::{
     ProtoChunk,
     generation::structure::{
         piece::StructurePieceType,
+        start::rotation_name,
         structures::{
             StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
             StructurePiecesCollector, StructurePosition, WorldPortalExt,
         },
-        template::{BlockStateResolver, StructurePlaceSettings, StructureTemplate, get_template},
+        template::{
+            BlockStateResolver, StructurePlaceSettings, StructureTemplate, add_template_save_data,
+            get_template,
+        },
     },
 };
 
@@ -366,7 +370,7 @@ impl OceanRuinPiece {
             .set_mirror(Mirror::None);
         let bounding_box = template.get_bounding_box(&place_settings, position);
         Self {
-            piece: StructurePiece::new(StructurePieceType::OceanTemple, bounding_box, 0),
+            piece: StructurePiece::new_template(StructurePieceType::OceanTemple, bounding_box),
             template,
             template_name,
             template_position: position,
@@ -417,6 +421,21 @@ impl StructurePieceBase for OceanRuinPiece {
 
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(
+            tag,
+            self.template_position,
+            self.template.name.as_deref().unwrap_or_default(),
+        );
+        tag.put_string("Rot", rotation_name(self.rotation).to_string());
+        tag.put_float("Integrity", self.integrity);
+        tag.put_string(
+            "BiomeType",
+            if self.is_warm { "WARM" } else { "COLD" }.to_string(),
+        );
+        tag.put_bool("IsLarge", self.is_large);
     }
 
     fn translate(&mut self, x: i32, y: i32, z: i32) {

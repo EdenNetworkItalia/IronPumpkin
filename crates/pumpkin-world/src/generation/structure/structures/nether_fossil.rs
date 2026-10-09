@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use pumpkin_data::{Block, BlockDirection, BlockState, Mirror, Rotation};
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
     math::{block_box::BlockBox, position::BlockPos, vector3::Vector3},
     random::{
@@ -14,12 +15,14 @@ use crate::{
         positions::chunk_pos::{start_block_x, start_block_z},
         structure::{
             piece::StructurePieceType,
+            start::rotation_name,
             structures::{
                 StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
                 StructurePiecesCollector, StructurePosition, WorldPortalExt,
             },
             template::{
-                BlockStateResolver, StructurePlaceSettings, StructureTemplate, get_template,
+                BlockStateResolver, StructurePlaceSettings, StructureTemplate,
+                add_template_save_data, get_template,
                 processor::{IgnoredBlock, ProcessorContext, StructureProcessor},
             },
         },
@@ -147,7 +150,7 @@ impl NetherFossilPiece {
         let bounding_box = template.get_bounding_box(&place_settings, template_position);
 
         Self {
-            piece: StructurePiece::new(StructurePieceType::NetherFossil, bounding_box, 0),
+            piece: StructurePiece::new_template(StructurePieceType::NetherFossil, bounding_box),
             template,
             template_name,
             place_settings,
@@ -258,6 +261,17 @@ impl StructurePieceBase for NetherFossilPiece {
     }
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(
+            tag,
+            self.template_position,
+            self.template.name.as_deref().unwrap_or_default(),
+        );
+        tag.put_string(
+            "Rot",
+            rotation_name(self.place_settings.get_rotation()).to_string(),
+        );
     }
     fn place(
         &mut self,

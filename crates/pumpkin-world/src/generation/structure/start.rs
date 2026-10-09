@@ -1,4 +1,5 @@
 use pumpkin_data::structures::{Structure, StructureKeys, TerrainAdaptation};
+use pumpkin_data::{Mirror, Rotation};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::{
     BlockDirection,
@@ -99,11 +100,11 @@ pub fn adjust_bounding_box(structure: StructureKeys, bounding_box: BlockBox) -> 
 
 /// Vanilla `StructureStart.createTag` for a start that Pumpkin generated.
 ///
-/// Each piece carries the fields of `StructurePiece.createTag` (`id`, `BB`, `O`, `GD`) but not
-/// the type-specific fields of `addAdditionalSaveData`, which Pumpkin does not track. Vanilla
-/// reads such a chunk without a crash, but it drops every jigsaw piece ("Invalid pool element
-/// found"), so villages, outposts, bastions, ancient cities, trail ruins and trial chambers load
-/// as invalid starts, and template pieces rebuild a wrong box from an empty template.
+/// Each piece carries the fields of `StructurePiece.createTag` (`id`, `BB`, `O`, `GD`) and then
+/// those of its `addAdditionalSaveData`. Of the piece types that do not write theirs yet, vanilla
+/// loads mineshaft, fortress, temple, monument and buried treasure pieces with the type-specific
+/// fields at their defaults, but drops every stronghold piece because it requires `EntryDoor`, so
+/// a stronghold start loads as invalid.
 #[must_use]
 pub fn create_tag(
     structure: StructureKeys,
@@ -135,6 +136,7 @@ pub fn create_tag(
             );
             child.put_int("O", data_2d_value(base.facing));
             child.put_int("GD", base.chain_length as i32);
+            piece.add_additional_save_data(&mut child);
             NbtTag::Compound(child)
         })
         .collect();
@@ -156,6 +158,25 @@ const fn data_2d_value(facing: Option<BlockDirection>) -> i32 {
         Some(BlockDirection::North) => 2,
         Some(BlockDirection::East) => 3,
         _ => -1,
+    }
+}
+
+/// The name that vanilla `Rotation.LEGACY_CODEC` writes.
+pub(crate) const fn rotation_name(rotation: Rotation) -> &'static str {
+    match rotation {
+        Rotation::None => "NONE",
+        Rotation::Clockwise90 => "CLOCKWISE_90",
+        Rotation::Rotate180 => "CLOCKWISE_180",
+        Rotation::CounterClockwise90 => "COUNTERCLOCKWISE_90",
+    }
+}
+
+/// The name that vanilla `Mirror.LEGACY_CODEC` writes.
+pub(crate) const fn mirror_name(mirror: Mirror) -> &'static str {
+    match mirror {
+        Mirror::None => "NONE",
+        Mirror::LeftRight => "LEFT_RIGHT",
+        Mirror::FrontBack => "FRONT_BACK",
     }
 }
 

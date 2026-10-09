@@ -13,11 +13,12 @@ use crate::{
     ProtoChunk,
     generation::structure::{
         piece::StructurePieceType,
+        start::rotation_name,
         structures::{
             StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
             StructurePiecesCollector, StructurePosition,
         },
-        template::{BlockStateResolver, PaletteEntry, get_block_entity_id},
+        template::{BlockStateResolver, PaletteEntry, add_template_save_data, get_block_entity_id},
     },
     world::WorldPortalExt,
 };
@@ -77,10 +78,11 @@ struct EndCityTemplatePiece {
 
 impl EndCityTemplatePiece {
     const fn new(descriptor: PieceDescriptor) -> Self {
-        Self {
-            piece: StructurePiece::new(StructurePieceType::EndCity, descriptor.bounding_box, 0),
-            descriptor,
-        }
+        let mut piece =
+            StructurePiece::new_template(StructurePieceType::EndCity, descriptor.bounding_box);
+        // Vanilla keeps the generation group of a piece in its gen depth.
+        piece.chain_length = descriptor.generation_group as u32;
+        Self { piece, descriptor }
     }
 
     const fn world_position(&self, local: Vector3<i32>) -> Vector3<i32> {
@@ -265,6 +267,17 @@ impl StructurePieceBase for EndCityTemplatePiece {
 
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+
+    // Vanilla stores the name without `end_city/` and adds it back on load.
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(
+            tag,
+            self.descriptor.template_position,
+            self.descriptor.template_name,
+        );
+        tag.put_string("Rot", rotation_name(self.descriptor.rotation).to_string());
+        tag.put_bool("OW", self.descriptor.overwrite);
     }
 
     fn place(

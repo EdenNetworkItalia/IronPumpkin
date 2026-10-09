@@ -14,12 +14,14 @@ use crate::{
     ProtoChunk,
     generation::structure::{
         piece::StructurePieceType,
+        start::{mirror_name, rotation_name},
         structures::{
             StructureGenerator, StructureGeneratorContext, StructurePiece, StructurePieceBase,
             StructurePiecesCollector, StructurePosition,
         },
         template::{
-            BlockStateResolver, PaletteEntry, StructureTemplate, get_block_entity_id, get_template,
+            BlockStateResolver, PaletteEntry, StructureTemplate, add_template_save_data,
+            get_block_entity_id, get_template,
         },
     },
     world::WorldPortalExt,
@@ -224,6 +226,7 @@ const fn relative(position: Vector3<i32>, direction: Direction, distance: i32) -
 struct MansionTemplatePiece {
     piece: StructurePiece,
     template: Arc<StructureTemplate>,
+    template_name: String,
     template_position: Vector3<i32>,
     rotation: Rotation,
     mirror: TemplateMirror,
@@ -252,8 +255,9 @@ impl MansionTemplatePiece {
             descriptor.position.z + first.z.max(second.z),
         );
         Some(Self {
-            piece: StructurePiece::new(StructurePieceType::WoodlandMansion, bounding_box, 0),
+            piece: StructurePiece::new_template(StructurePieceType::WoodlandMansion, bounding_box),
             template,
+            template_name: descriptor.template.clone(),
             template_position: descriptor.position,
             rotation: descriptor.rotation,
             mirror: descriptor.mirror,
@@ -422,6 +426,13 @@ impl StructurePieceBase for MansionTemplatePiece {
 
     fn get_structure_piece_mut(&mut self) -> &mut StructurePiece {
         &mut self.piece
+    }
+
+    // Vanilla stores the name without `woodland_mansion/` and adds it back on load.
+    fn add_additional_save_data(&self, tag: &mut NbtCompound) {
+        add_template_save_data(tag, self.template_position, &self.template_name);
+        tag.put_string("Rot", rotation_name(self.rotation).to_string());
+        tag.put_string("Mi", mirror_name(self.mirror.state_mirror()).to_string());
     }
 
     fn place(
