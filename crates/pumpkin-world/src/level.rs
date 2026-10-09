@@ -730,6 +730,11 @@ impl Level {
     async fn fetch_chunk(self: &Arc<Self>, pos: Vector2<i32>) -> SyncChunk {
         let recv = self.chunk_listener.add_single_chunk_listener(pos);
         let _ticket = FetchTicket::add(self, pos);
+        // The scheduler publishes before it notifies, so a chunk published after the caller's
+        // cache miss but before the listener existed is visible here and nowhere else.
+        if let Some(chunk) = self.loaded_chunks.get(&pos) {
+            return chunk.clone();
+        }
         recv.await
             .unwrap_or_else(|_| ChunkData::empty_sync(pos.x, pos.y))
     }
@@ -1328,6 +1333,33 @@ mod tests {
         assert!(
             !has_ticket(&level, pos),
             "the dropped fetch kept its ticket"
+        );
+        level.shutdown().await;
+    }
+
+    /// The chunk is published for another holder after the caller's cache miss and before the
+    /// fetch registers its listener, so the scheduler never notifies the fetch.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn fetch_finds_chunk_published_before_its_listener() {
+        let pos = Vector2::new(0, 0);
+        let (_temp_dir, level) = level_with_saved_area(pos).await;
+        {
+            let mut loading = level.chunk_loading.lock().unwrap();
+            loading.add_ticket(pos, ChunkLoading::FULL_CHUNK_LEVEL);
+            loading.send_change();
+        };
+        wait_until("the scheduler publishes the chunk", || {
+            level.is_chunk_loaded(&pos)
+        })
+        .await;
+
+        let fetched = timeout(Duration::from_secs(5), level.fetch_chunk(pos))
+            .await
+            .expect("the fetch never woke up");
+        assert!(
+            level
+                .read_chunk_sync(&pos, |chunk| Arc::ptr_eq(chunk, &fetched))
+                .unwrap_or(false)
         );
         level.shutdown().await;
     }
