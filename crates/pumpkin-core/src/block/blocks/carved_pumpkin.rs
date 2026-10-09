@@ -18,7 +18,6 @@ use crate::{
 
 pub struct GolemPattern {
     entity_type: &'static EntityType,
-    body: &'static Block,
     blocks: Vec<BlockPos>,
     base: BlockPos,
 }
@@ -33,7 +32,6 @@ pub fn find_golem_pattern(world: &Arc<World>, pos: &BlockPos) -> Option<GolemPat
     if upper == &Block::SNOW_BLOCK && lower == &Block::SNOW_BLOCK {
         return Some(GolemPattern {
             entity_type: &EntityType::SNOW_GOLEM,
-            body: &Block::SNOW_BLOCK,
             blocks: vec![*pos, down_pos, down_pos.down()],
             base: down_pos.down(),
         });
@@ -52,7 +50,6 @@ pub fn find_golem_pattern(world: &Arc<World>, pos: &BlockPos) -> Option<GolemPat
         {
             return Some(GolemPattern {
                 entity_type: &EntityType::IRON_GOLEM,
-                body: &Block::IRON_BLOCK,
                 blocks: vec![*pos, down_pos, down_pos.down(), arm1, arm2],
                 base: down_pos.down(),
             });
@@ -64,7 +61,8 @@ pub fn find_golem_pattern(world: &Arc<World>, pos: &BlockPos) -> Option<GolemPat
 
 fn spawn_golem(world: &Arc<World>, pattern: GolemPattern) {
     for pos in pattern.blocks {
-        world.set_block_state(
+        // Like vanilla `clearPatternBlocks`: each block sends its own state.
+        let state_id = world.set_block_state(
             &pos,
             Block::AIR.default_state.id,
             BlockFlags::NOTIFY_LISTENERS,
@@ -72,7 +70,7 @@ fn spawn_golem(world: &Arc<World>, pattern: GolemPattern) {
         world.sync_world_event(
             WorldEvent::ParticlesAndSoundDestroyBlock,
             pos,
-            pattern.body.default_state.id.as_u16().into(),
+            state_id.as_u16().into(),
         );
     }
 

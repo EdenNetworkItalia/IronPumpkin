@@ -62,11 +62,12 @@ pub fn find_wither_pattern(world: &Arc<World>, skull_pos: &BlockPos) -> Option<W
 
 fn spawn_wither(world: &Arc<World>, pattern: &WitherPattern) {
     for pos in pattern.blocks {
-        world.set_block_state(&pos, Block::AIR.default_state.id, BlockFlags::NOTIFY_ALL);
+        let state_id =
+            world.set_block_state(&pos, Block::AIR.default_state.id, BlockFlags::NOTIFY_ALL);
         world.sync_world_event(
             WorldEvent::ParticlesAndSoundDestroyBlock,
             pos,
-            Block::SOUL_SAND.default_state.id.as_u16().into(),
+            state_id.as_u16().into(),
         );
     }
 
