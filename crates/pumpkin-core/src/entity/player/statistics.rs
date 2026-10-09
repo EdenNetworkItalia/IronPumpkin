@@ -289,6 +289,30 @@ mod tests {
     }
 
     #[test]
+    fn mined_statistics_are_keyed_by_block_id_not_state_id() {
+        for block in [&Block::OAK_STAIRS, &Block::REPEATER, &Block::HOPPER] {
+            let name = namespaced(block.name);
+            let block_id = i32::from(block.id.as_u16());
+            let state_id = i32::from(block.default_state.id.as_u16());
+            assert_ne!(block_id, state_id, "{name}");
+            assert_ne!(
+                stat_name(StatisticCategory::Mined, state_id).as_deref(),
+                Some(name.as_str())
+            );
+
+            let mut stats = Statistics::default();
+            stats.increment(StatisticCategory::Mined, block_id, 1);
+            let mut nbt = NbtCompound::new();
+            stats.write_nbt(&mut nbt);
+            let mined = nbt
+                .get_compound("Statistics")
+                .and_then(|statistics| statistics.get_compound("minecraft:mined"))
+                .unwrap();
+            assert_eq!(mined.get_int(&name), Some(1));
+        }
+    }
+
+    #[test]
     fn drops_names_that_no_registry_resolves() {
         let mut entries = NbtCompound::new();
         entries.put_int("minecraft:stone", 1);
