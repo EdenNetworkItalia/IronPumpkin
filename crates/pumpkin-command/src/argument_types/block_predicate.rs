@@ -7,7 +7,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::text::TextComponent;
 
 use crate::argument_types::argument_type::{ArgumentType, JavaClientArgumentType};
-use crate::argument_types::block::INVALID_BLOCK_ERROR_TYPE;
+use crate::argument_types::block::{INVALID_BLOCK_ERROR_TYPE, UNCLOSED_PROPERTIES_ERROR_TYPE};
 use crate::argument_types::nbt::NbtCompoundArgumentType;
 use crate::context::command_context::CommandContext;
 use crate::errors::command_syntax_error::CommandSyntaxError;
@@ -23,11 +23,6 @@ pub const ERROR_UNKNOWN_TAG: CommandErrorType<1> = CommandErrorType::new(
 pub const ERROR_NO_VALUE: CommandErrorType<1> = CommandErrorType::new(
     translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
     translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
-);
-
-pub const ERROR_UNCLOSED_PROPERTIES: CommandErrorType<0> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
 );
 
 #[derive(Clone, Debug)]
@@ -104,13 +99,13 @@ fn parse_properties(
             } else if reader.peek() == Some(']') {
                 break;
             } else {
-                return Err(ERROR_UNCLOSED_PROPERTIES.create_without_context());
+                return Err(UNCLOSED_PROPERTIES_ERROR_TYPE.create_without_context());
             }
         }
         if reader.peek() == Some(']') {
             reader.skip();
         } else {
-            return Err(ERROR_UNCLOSED_PROPERTIES.create_without_context());
+            return Err(UNCLOSED_PROPERTIES_ERROR_TYPE.create_without_context());
         }
     }
     Ok(properties)

@@ -55,7 +55,7 @@ fn fill_blocks(
     source: &CommandSource,
     from: BlockPos,
     to: BlockPos,
-    target_block: &'static Block,
+    target_state_id: BlockStateId,
     mode: FillMode,
     filter: Option<&BlockPredicate>,
     _strict: bool,
@@ -85,7 +85,6 @@ fn fill_blocks(
         ));
     }
 
-    let target_state_id = target_block.default_state.id;
     let mut changed_positions = Vec::new();
 
     let min_chunk_x = min_x >> 4;
@@ -248,7 +247,7 @@ impl CommandExecutor for FillExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let from = BlockPosArgumentType::get_loaded_block_pos(context, "from")?;
         let to = BlockPosArgumentType::get_loaded_block_pos(context, "to")?;
-        let block = BlockArgumentType::get(context, "block")?;
+        let block = BlockArgumentType::get_state(context, "block")?.state;
 
         let filter = if matches!(self.filter_mode, FilterMode::WithFilter) {
             Some(BlockPredicateArgumentType::get(context, "filter")?)
