@@ -7,6 +7,7 @@ use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
 use pumpkin_data::Enchantment;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::*;
+use pumpkin_data::dynamic::namespaced_name;
 
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
@@ -1318,7 +1319,7 @@ fn serialize_item_stack_template(
     stack: &pumpkin_data::item_stack::ItemStack,
     seq: &mut impl NetworkWriteExt,
 ) -> Result<(), WritingError> {
-    seq.write_var_int(&VarInt::from(stack.item.id))?;
+    seq.write_var_int(&VarInt::from(stack.item.to_java_network_id()))?;
     seq.write_var_int(&VarInt::from(stack.item_count))?;
 
     let mut to_add = 0u8;
@@ -2348,7 +2349,7 @@ impl DataComponentCodec<Self> for EntityDataImpl {
             .get_string("id")
             .ok_or_else(|| WritingError::Message("entity_data has no 'id'".into()))?;
         let type_id = EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id))
-            .map(|entity_type| i32::from(entity_type.id))
+            .map(|entity_type| i32::from(entity_type.to_java_network_id()))
             .ok_or_else(|| WritingError::Message(format!("Unknown entity type {id}")))?;
         nbt.child_tags.remove("id");
         seq.write_var_int(&VarInt(type_id))?;
@@ -2368,7 +2369,10 @@ impl DataComponentCodec<Self> for EntityDataImpl {
             Some(NbtTag::Compound(c)) => c,
             _ => pumpkin_nbt::compound::NbtCompound::new(),
         };
-        nbt.put_string("id", format!("minecraft:{}", entity_type.resource_name));
+        nbt.put_string(
+            "id",
+            namespaced_name(entity_type.resource_name).into_owned(),
+        );
         Ok(Self { nbt: Some(nbt) })
     }
 }

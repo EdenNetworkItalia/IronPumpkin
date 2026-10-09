@@ -10,7 +10,6 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use pumpkin_util::text::hover::HoverEvent;
 
 use crate::command::argument_builder::{
     ArgumentBuilder, LiteralArgumentBuilder, argument, command, literal,
@@ -286,14 +285,10 @@ fn send_callback(context: &CommandContext, drops: &[ItemStack], table_id: Option
         (1, Some(table)) => {
             let drop = &drops[0];
             let item = drop.item;
-            let item_name = item.registry_key;
             let display_comp = TextComponent::text("[")
                 .add_child(item.translated_name())
                 .add_child(TextComponent::text("]"))
-                .hover_event(HoverEvent::ShowItem {
-                    id: item_name.to_string().into(),
-                    count: Some(drop.item_count as i32),
-                });
+                .hover_event(item.show_item_hover(Some(drop.item_count as i32)));
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DROP_SUCCESS_SINGLE_WITH_TABLE,
                 translation::bedrock::COMMANDS_LOOT_SUCCESS,
@@ -307,14 +302,10 @@ fn send_callback(context: &CommandContext, drops: &[ItemStack], table_id: Option
         (1, None) => {
             let drop = &drops[0];
             let item = drop.item;
-            let item_name = item.registry_key;
             let display_comp = TextComponent::text("[")
                 .add_child(item.translated_name())
                 .add_child(TextComponent::text("]"))
-                .hover_event(HoverEvent::ShowItem {
-                    id: item_name.to_string().into(),
-                    count: Some(drop.item_count as i32),
-                });
+                .hover_event(item.show_item_hover(Some(drop.item_count as i32)));
             TextComponent::translate_cross(
                 translation::java::COMMANDS_DROP_SUCCESS_SINGLE,
                 translation::bedrock::COMMANDS_LOOT_SUCCESS,

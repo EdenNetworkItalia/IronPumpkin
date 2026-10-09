@@ -63,7 +63,10 @@ impl MobSpawnerBlockEntity {
             let mut spawn_entry = NbtCompound::new();
 
             let mut entity_nbt = NbtCompound::new();
-            entity_nbt.put_string("id", format!("minecraft:{}", entity_type.resource_name));
+            entity_nbt.put_string(
+                "id",
+                pumpkin_data::dynamic::namespaced_name(entity_type.resource_name).into_owned(),
+            );
 
             spawn_entry.put_compound("entity", entity_nbt);
 
@@ -286,7 +289,10 @@ impl BlockEntity for MobSpawnerBlockEntity {
             let mut spawn_entry = NbtCompound::new();
 
             let mut entity_nbt = NbtCompound::new();
-            entity_nbt.put_string("id", format!("minecraft:{}", entity_type.resource_name));
+            entity_nbt.put_string(
+                "id",
+                pumpkin_data::dynamic::namespaced_name(entity_type.resource_name).into_owned(),
+            );
 
             spawn_entry.put_compound("entity", entity_nbt);
 

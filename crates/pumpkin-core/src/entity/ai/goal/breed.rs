@@ -87,7 +87,7 @@ impl BreedGoal {
             );
             player.trigger_advancement_criterion(
                 pumpkin_data::advancement::Advancement::HUSBANDRY_BRED_ALL_ANIMALS,
-                &format!("minecraft:{entity_type_name}"),
+                &pumpkin_data::dynamic::namespaced_name(entity_type_name),
             );
         }
 

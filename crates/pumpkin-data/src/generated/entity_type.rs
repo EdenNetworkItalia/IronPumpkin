@@ -7572,7 +7572,7 @@ impl EntityType {
 }
 impl IDSetContent for EntityType {
     fn registry_id(&self) -> u16 {
-        Taggable::registry_id(self)
+        self.to_java_network_id()
     }
     fn to_string(&self) -> String {
         Taggable::registry_key(self).to_string()

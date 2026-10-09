@@ -7,7 +7,6 @@ use pumpkin_protocol::java::client::play::CSetContainerSlot;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use pumpkin_util::text::hover::HoverEvent;
 
 use crate::command::argument_builder::{
     ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
@@ -78,7 +77,6 @@ impl CommandExecutor for BlockReplaceExecutor {
         item_stack.item_count = count as u8;
         inventory.set_stack(slot, item_stack);
 
-        let item_name = item.registry_key;
         let msg = TextComponent::translate_cross(
             translation::java::COMMANDS_ITEM_BLOCK_SET_SUCCESS,
             translation::java::COMMANDS_ITEM_BLOCK_SET_SUCCESS,
@@ -89,10 +87,7 @@ impl CommandExecutor for BlockReplaceExecutor {
                 TextComponent::text("[")
                     .add_child(item.translated_name())
                     .add_child(TextComponent::text("]"))
-                    .hover_event(HoverEvent::ShowItem {
-                        id: item_name.to_string().into(),
-                        count: Some(count),
-                    }),
+                    .hover_event(item.show_item_hover(Some(count))),
             ],
         );
         context.source.send_feedback(msg, true);
@@ -227,7 +222,6 @@ impl CommandExecutor for EntityReplaceExecutor {
                 .create_without_context(TextComponent::text(mojang_slot.to_string())));
         }
 
-        let item_name = item.registry_key;
         let msg = if targets.len() == 1 {
             TextComponent::translate_cross(
                 translation::java::COMMANDS_ITEM_ENTITY_SET_SUCCESS_SINGLE,
@@ -237,10 +231,7 @@ impl CommandExecutor for EntityReplaceExecutor {
                     TextComponent::text("[")
                         .add_child(item.translated_name())
                         .add_child(TextComponent::text("]"))
-                        .hover_event(HoverEvent::ShowItem {
-                            id: item_name.to_string().into(),
-                            count: Some(count),
-                        }),
+                        .hover_event(item.show_item_hover(Some(count))),
                 ],
             )
         } else {
@@ -252,10 +243,7 @@ impl CommandExecutor for EntityReplaceExecutor {
                     TextComponent::text("[")
                         .add_child(item.translated_name())
                         .add_child(TextComponent::text("]"))
-                        .hover_event(HoverEvent::ShowItem {
-                            id: item_name.to_string().into(),
-                            count: Some(count),
-                        }),
+                        .hover_event(item.show_item_hover(Some(count))),
                 ],
             )
         };

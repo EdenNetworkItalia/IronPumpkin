@@ -67,7 +67,7 @@ fn write_item_slot_display(
     _version: JavaMinecraftVersion,
 ) -> Result<(), WritingError> {
     write.write_var_int(&VarInt(SLOT_DISPLAY_ITEM as i32))?;
-    write.write_var_int(&VarInt(item.id as i32))?;
+    write.write_var_int(&VarInt(i32::from(item.to_java_network_id())))?;
     Ok(())
 }
 
@@ -202,7 +202,7 @@ fn write_ingredient_holderset(
             // 1 item -> VarInt(1 + 1) = VarInt(2)
             write.write_var_int(&VarInt(2))?;
             if let Some(item) = Item::from_registry_key(key) {
-                write.write_var_int(&VarInt(item.id as i32))?;
+                write.write_var_int(&VarInt(i32::from(item.to_java_network_id())))?;
             } else {
                 // Non-empty fallback item to prevent client UnsupportedOperationException
                 write.write_var_int(&VarInt(0))?;
@@ -212,7 +212,7 @@ fn write_ingredient_holderset(
             if let Some(items) = resolve_item_tag(tag, version) {
                 write.write_var_int(&VarInt(items.len() as i32 + 1))?;
                 for item in &items {
-                    write.write_var_int(&VarInt(item.id as i32))?;
+                    write.write_var_int(&VarInt(i32::from(item.to_java_network_id())))?;
                 }
             } else {
                 let tag = tag.strip_prefix('#').unwrap_or(tag);
@@ -230,7 +230,7 @@ fn write_ingredient_holderset(
                 .iter()
                 .filter_map(|id| {
                     let key = id.strip_prefix("minecraft:").unwrap_or(id);
-                    Item::from_registry_key(key).map(|item| item.id as i32)
+                    Item::from_registry_key(key).map(|item| i32::from(item.to_java_network_id()))
                 })
                 .collect();
             if items.is_empty() {
@@ -771,7 +771,7 @@ fn write_dynamic_ingredient_holderset(
             let key = id.strip_prefix("minecraft:").unwrap_or(id);
             write.write_var_int(&VarInt(2))?;
             if let Some(item) = Item::from_registry_key(key) {
-                write.write_var_int(&VarInt(item.id as i32))?;
+                write.write_var_int(&VarInt(i32::from(item.to_java_network_id())))?;
             } else {
                 write.write_var_int(&VarInt(0))?;
             }
@@ -780,7 +780,7 @@ fn write_dynamic_ingredient_holderset(
             if let Some(items) = resolve_item_tag(tag, version) {
                 write.write_var_int(&VarInt(items.len() as i32 + 1))?;
                 for item in &items {
-                    write.write_var_int(&VarInt(item.id as i32))?;
+                    write.write_var_int(&VarInt(i32::from(item.to_java_network_id())))?;
                 }
             } else {
                 let tag = tag.strip_prefix('#').unwrap_or(tag);
@@ -798,7 +798,7 @@ fn write_dynamic_ingredient_holderset(
                 .iter()
                 .filter_map(|id| {
                     let key = id.strip_prefix("minecraft:").unwrap_or(id);
-                    Item::from_registry_key(key).map(|item| item.id as i32)
+                    Item::from_registry_key(key).map(|item| i32::from(item.to_java_network_id()))
                 })
                 .collect();
             if items.is_empty() {

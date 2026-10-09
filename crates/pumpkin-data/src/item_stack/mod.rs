@@ -6,6 +6,7 @@ use crate::data_component_impl::{
     SwingAnimationImpl, ToolImpl, UnbreakableImpl, UseCooldownImpl, get, get_mut, read_data,
 };
 
+use crate::dynamic::namespaced_name;
 use crate::item::Item;
 use crate::recipes::RecipeResultStruct;
 use crate::tag::Taggable;
@@ -802,7 +803,7 @@ impl ItemStack {
 
     pub fn write_item_stack(&self, compound: &mut NbtCompound) {
         // Minecraft 1.21.4 uses "id" as string with namespaced ID (minecraft:diamond_sword)
-        compound.put_string("id", format!("minecraft:{}", self.item.registry_key));
+        compound.put_string("id", namespaced_name(self.item.registry_key).into_owned());
         compound.put_int("count", self.item_count as i32);
 
         // Create a tag compound for additional data

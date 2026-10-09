@@ -241,7 +241,7 @@ impl IDSetContent for Block {
 
 impl IDSetContent for crate::item::Item {
     fn registry_id(&self) -> u16 {
-        self.id
+        self.to_java_network_id()
     }
 
     fn from_id(id: u16) -> Option<&'static Self> {

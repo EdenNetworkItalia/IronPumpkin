@@ -124,7 +124,7 @@ use crate::entity::projectile::wither_skull::WitherSkullEntity;
 use crate::entity::tnt::TNTEntity;
 use crate::entity::vehicle::boat::BoatEntity;
 use crate::entity::vehicle::minecart::MinecartEntity;
-use crate::entity::{Entity, EntityBase, mob};
+use crate::entity::{Entity, EntityBase, custom, mob};
 use crate::world::World;
 use pumpkin_data::Block;
 use std::sync::atomic::AtomicBool;
@@ -137,6 +137,9 @@ pub fn from_type(
     uuid: Uuid,
 ) -> Arc<dyn EntityBase> {
     let entity = Entity::from_uuid(uuid, world.clone(), position, entity_type);
+    if let Some(factory) = custom::factory(entity_type) {
+        return factory(entity);
+    }
 
     let mob: Arc<dyn EntityBase> = match entity_type.id {
         // Zombie

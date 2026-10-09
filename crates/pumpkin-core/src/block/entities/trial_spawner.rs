@@ -150,7 +150,10 @@ impl SpawnData {
     pub fn write_nbt(&self, nbt: &mut NbtCompound) {
         if let Some(entity_type) = self.entity_type {
             let mut entity_compound = self.raw_entity_nbt.clone().unwrap_or_default();
-            entity_compound.put_string("id", format!("minecraft:{}", entity_type.resource_name));
+            entity_compound.put_string(
+                "id",
+                pumpkin_data::dynamic::namespaced_name(entity_type.resource_name).into_owned(),
+            );
             nbt.put_compound("entity", entity_compound);
         }
         if let Some(rules) = &self.custom_spawn_rules {

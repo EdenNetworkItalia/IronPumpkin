@@ -541,7 +541,12 @@ impl ItemStackSerializer<'_> {
         write: &mut impl NetworkWriteExt,
         version: &JavaMinecraftVersion,
     ) -> Result<(), WritingError> {
-        serialize_item_stack_with_id(self.0.as_ref(), self.0.item.id, *version, write)
+        serialize_item_stack_with_id(
+            self.0.as_ref(),
+            self.0.item.to_java_network_id(),
+            *version,
+            write,
+        )
     }
 
     pub fn write_length_prefixed_with_version(
@@ -551,7 +556,7 @@ impl ItemStackSerializer<'_> {
     ) -> Result<(), WritingError> {
         serialize_length_prefixed_item_stack_with_id(
             self.0.as_ref(),
-            self.0.item.id,
+            self.0.item.to_java_network_id(),
             *version,
             write,
         )
@@ -562,7 +567,12 @@ impl ItemStackSerializer<'_> {
         write: &mut impl NetworkWriteExt,
         version: &JavaMinecraftVersion,
     ) -> Result<(), WritingError> {
-        serialize_item_cost_with_id(self.0.as_ref(), self.0.item.id, *version, write)
+        serialize_item_cost_with_id(
+            self.0.as_ref(),
+            self.0.item.to_java_network_id(),
+            *version,
+            write,
+        )
     }
 
     pub fn write_untrusted_with_version(
@@ -615,7 +625,7 @@ impl ItemStackSerializer<'_> {
             ));
         }
         let (to_add, to_remove) = item_component_counts(self.0.as_ref());
-        write.put_var_int(&VarInt::from(self.0.item.id))?;
+        write.put_var_int(&VarInt::from(self.0.item.to_java_network_id()))?;
         write.put_var_int(&VarInt::from(self.0.item_count))?;
         write.put_var_int(&VarInt::from(to_add))?;
         write.put_var_int(&VarInt::from(to_remove))?;
@@ -753,7 +763,9 @@ impl OptionalItemStackHash {
     #[must_use]
     pub fn hash_equals(&self, other: &ItemStack) -> bool {
         if let Some(hash) = &self.0 {
-            if hash.item_id != other.item.id.into() || hash.count != other.item_count.into() {
+            if hash.item_id != other.item.to_java_network_id().into()
+                || hash.count != other.item_count.into()
+            {
                 return false;
             }
             let calc = || {

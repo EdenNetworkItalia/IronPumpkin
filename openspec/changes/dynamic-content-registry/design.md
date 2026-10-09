@@ -126,7 +126,7 @@ Where ids cross a boundary:
 | Block event packet | `CBlockEvent::new` (`crates/pumpkin-core/src/world/mod.rs` line 949) | raw block id | display block id |
 | Entity metadata | block state data of tnt (`entity/tnt.rs` line 148), block display (`entity/decoration/display.rs` line 685), enderman carried block, falling block | raw state id | display state id |
 | Block particles | particle data that carries a block state | raw state id | display state id |
-| Statistics packet | `CAwardStats` (`entity/player.rs`, 2 sites) | stat ids built from item and block ids | display ids |
+| Statistics packet | `CAwardStats` (`entity/player.rs`, 2 sites) | stat ids built from block, item and entity type ids | statistics of custom content are not sent (`statistics::is_sent_to_client`): mapping them to the display id would overwrite the display entry's own count |
 | Recipe book | `crates/pumpkin-protocol/src/java/client/play/recipe_book_add.rs` lines 70, 205, 215, 774, 783 | raw `item.id` | display item id |
 | Enderman save | `crates/pumpkin-core/src/entity/mob/enderman.rs` lines 404, 409 | `carriedBlockState` as an int state id; vanilla writes a block state compound | block state compound (`Name` + `Properties`) |
 | Block display save | `crates/pumpkin-core/src/entity/decoration/display.rs` lines 694, 699 | `block_state` as a raw int | block state compound, as vanilla |

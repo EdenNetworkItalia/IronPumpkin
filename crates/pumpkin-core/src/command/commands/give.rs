@@ -1,7 +1,6 @@
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
-use pumpkin_util::text::hover::HoverEvent;
 
 use crate::command::argument_builder::{ArgumentBuilder, argument, command};
 use crate::command::argument_types::core::integer::IntegerArgumentType;
@@ -47,7 +46,6 @@ impl CommandExecutor for GiveExecutor {
             }
         }
 
-        let item_name = item.registry_key;
         let msg = if targets.len() == 1 {
             TextComponent::translate_cross(
                 pumpkin_data::translation::java::COMMANDS_GIVE_SUCCESS_SINGLE,
@@ -57,10 +55,7 @@ impl CommandExecutor for GiveExecutor {
                     TextComponent::text("[")
                         .add_child(item.translated_name())
                         .add_child(TextComponent::text("]"))
-                        .hover_event(HoverEvent::ShowItem {
-                            id: item_name.to_string().into(),
-                            count: Some(item_count.min(99)),
-                        }),
+                        .hover_event(item.show_item_hover(Some(item_count.min(99)))),
                     targets[0].as_ref().get_display_name(),
                 ],
             )
@@ -73,10 +68,7 @@ impl CommandExecutor for GiveExecutor {
                     TextComponent::text("[")
                         .add_child(item.translated_name())
                         .add_child(TextComponent::text("]"))
-                        .hover_event(HoverEvent::ShowItem {
-                            id: item_name.to_string().into(),
-                            count: Some(item_count.min(99)),
-                        }),
+                        .hover_event(item.show_item_hover(Some(item_count.min(99)))),
                     TextComponent::text(targets.len().to_string()),
                 ],
             )

@@ -128,9 +128,8 @@ impl From<&ItemStack> for NetworkItemDescriptor {
         if stack.is_empty() {
             Self::default()
         } else {
-            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().id).map_or(
-                Self::default(),
-                |mapping| Self {
+            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().to_java_network_id())
+                .map_or(Self::default(), |mapping| Self {
                     id: VarInt::from(mapping.bedrock_item.id),
                     stack_size: stack.item_count as u16,
                     aux_value: VarUInt(mapping.bedrock_data),
@@ -139,8 +138,7 @@ impl From<&ItemStack> for NetworkItemDescriptor {
                     place_on_blocks: Vec::default(),
                     destroy_blocks: Vec::default(),
                     shield_blocking_tick: 0,
-                },
-            )
+                })
         }
     }
 }
@@ -231,9 +229,8 @@ impl From<&ItemStack> for ItemStackWrapper {
         if stack.is_empty() {
             Self::default()
         } else {
-            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().id).map_or(
-                Self::default(),
-                |mapping| Self {
+            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().to_java_network_id())
+                .map_or(Self::default(), |mapping| Self {
                     id: mapping.bedrock_item.id,
                     stack_size: stack.item_count as u16,
                     aux_value: VarUInt(mapping.bedrock_data),
@@ -243,8 +240,7 @@ impl From<&ItemStack> for ItemStackWrapper {
                     destroy_blocks: Vec::default(),
                     shield_blocking_tick: 0,
                     net_id: Some(stack.uid),
-                },
-            )
+                })
         }
     }
 }
@@ -323,9 +319,8 @@ impl From<&ItemStack> for NetworkItemStackDescriptor {
         if stack.is_empty() {
             Self::default()
         } else {
-            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().id).map_or(
-                Self::default(),
-                |mapping| {
+            JavaToBedrockItemMapping::from_java_item_id(stack.get_item().to_java_network_id())
+                .map_or(Self::default(), |mapping| {
                     // Empty NBT followed by empty can-place and can-destroy lists.
                     let extra_data = vec![0; 10];
 
@@ -337,8 +332,7 @@ impl From<&ItemStack> for NetworkItemStackDescriptor {
                         extra_data,
                         net_id: Some(stack.uid),
                     }
-                },
-            )
+                })
         }
     }
 }

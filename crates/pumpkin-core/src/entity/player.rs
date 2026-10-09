@@ -3364,6 +3364,7 @@ impl Player {
                 stats_guard
                     .stats
                     .iter()
+                    .filter(|((category, stat), _)| statistics::is_sent_to_client(*category, *stat))
                     .map(|((category, stat), value)| Statistic {
                         category_id: VarInt(*category),
                         statistic_id: VarInt(*stat),

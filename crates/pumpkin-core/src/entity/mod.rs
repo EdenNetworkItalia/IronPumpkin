@@ -74,6 +74,7 @@ pub mod area_effect_cloud;
 pub mod attributes;
 pub mod boss;
 pub mod breath;
+pub mod custom;
 pub mod custom_sound;
 pub mod decoration;
 pub mod effect;
@@ -129,6 +130,14 @@ impl dyn EntityBase + '_ {
             || self.considers_entity_as_ally(other)
             || other.considers_entity_as_ally(self)
     }
+}
+
+/// The translation key of an entity type, as vanilla `Util.makeDescriptionId` builds it:
+/// `entity.<namespace>.<path>` with `/` in the path replaced by `.`.
+fn description_id(entity_type: &EntityType) -> String {
+    let name = entity_type.resource_name;
+    let (namespace, path) = name.split_once(':').unwrap_or(("minecraft", name));
+    format!("entity.{namespace}.{}", path.replace('/', "."))
 }
 
 pub trait EntityBase: Send + Sync + std::any::Any {
@@ -408,7 +417,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         let identifier = self
             .get_mob()
             .and_then(mob::Mob::mob_bedrock_identifier)
-            .unwrap_or(entity.entity_type.resource_name);
+            .unwrap_or(entity.entity_type.display_type().resource_name);
         // TODO: non-mob spawn metadata hook like `mob_bedrock_spawn_metadata` (falling block, TNT).
         let mut metadata = entity.bedrock_metadata();
         if let Some(mob) = self.get_mob()
@@ -744,31 +753,29 @@ pub trait EntityBase: Send + Sync + std::any::Any {
             .load()
             .as_ref()
             .clone()
-            .unwrap_or(TextComponent::translate_cross(
-                format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                [],
-            ))
+            .unwrap_or_else(|| {
+                let key = description_id(entity.entity_type);
+                TextComponent::translate_cross(key.clone(), key, [])
+            })
     }
 
     fn get_display_name(&self) -> TextComponent {
         // TODO: team color
         let entity = self.get_entity();
-        let mut name =
-            entity
-                .custom_name
-                .load()
-                .as_ref()
-                .clone()
-                .unwrap_or(TextComponent::translate_cross(
-                    format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                    format!("entity.minecraft.{}", entity.entity_type.resource_name),
-                    [],
-                ));
+        let mut name = entity
+            .custom_name
+            .load()
+            .as_ref()
+            .clone()
+            .unwrap_or_else(|| {
+                let key = description_id(entity.entity_type);
+                TextComponent::translate_cross(key.clone(), key, [])
+            });
         let name_clone = name.clone();
+        // The client resolves the type of a hover event, so a custom type sends its display type.
         name = name.hover_event(HoverEvent::show_entity(
             entity.entity_uuid.to_string(),
-            entity.entity_type.resource_name.into(),
+            entity.entity_type.display_type().resource_name.into(),
             Some(name_clone),
         ));
         name = name.insertion(entity.entity_uuid.to_string());
@@ -2469,7 +2476,7 @@ impl Entity {
         CSpawnEntity::new_packed(
             VarInt(self.entity_id),
             self.entity_uuid,
-            VarInt(i32::from(self.entity_type.id)),
+            VarInt(i32::from(self.entity_type.to_java_network_id())),
             spawn.pos,
             spawn.pitch,
             spawn.yaw,
@@ -3984,7 +3991,7 @@ impl Entity {
         let position = self.pos.load();
         nbt.put_string(
             "id",
-            format!("minecraft:{}", self.entity_type.resource_name),
+            pumpkin_data::dynamic::namespaced_name(self.entity_type.resource_name).into_owned(),
         );
         nbt.put_uuid("UUID", self.entity_uuid);
         nbt.put(

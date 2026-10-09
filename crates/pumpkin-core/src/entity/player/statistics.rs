@@ -86,6 +86,28 @@ impl Statistics {
     }
 }
 
+/// Whether a vanilla client knows the block, item or entity type a statistic counts.
+///
+/// The client cannot decode a custom id, and mapping it to the display entry would overwrite that
+/// entry's own count, so statistics of custom content are not sent.
+#[must_use]
+pub fn is_sent_to_client(category: i32, stat: i32) -> bool {
+    let generated = match StatisticCategory::from_i32(category) {
+        Some(StatisticCategory::Mined) => BlockId::COUNT,
+        Some(
+            StatisticCategory::Crafted
+            | StatisticCategory::Used
+            | StatisticCategory::Broken
+            | StatisticCategory::PickedUp
+            | StatisticCategory::Dropped,
+        ) => Item::COUNT,
+        Some(StatisticCategory::Killed | StatisticCategory::KilledBy) => EntityType::COUNT,
+        Some(StatisticCategory::Custom) => return true,
+        None => return false,
+    };
+    u16::try_from(stat).is_ok_and(|id| id < generated)
+}
+
 fn parse_statistics(stats_compound: &NbtCompound) -> (FxHashMap<(i32, i32), i32>, Vec<String>) {
     let mut stats = FxHashMap::default();
     let mut unresolved = Vec::new();
@@ -319,5 +341,35 @@ mod tests {
             }
         }
         assert_eq!(CUSTOM_STATISTIC_IDS.len(), custom_count);
+    }
+
+    #[test]
+    fn custom_content_stats_are_not_sent() {
+        let cases = [
+            (
+                StatisticCategory::Mined,
+                BlockId::COUNT,
+                Block::STONE.id.as_u16(),
+            ),
+            (StatisticCategory::Crafted, Item::COUNT, Item::DIAMOND.id),
+            (StatisticCategory::PickedUp, Item::COUNT, Item::DIAMOND.id),
+            (
+                StatisticCategory::Killed,
+                EntityType::COUNT,
+                EntityType::PIG.id,
+            ),
+            (
+                StatisticCategory::KilledBy,
+                EntityType::COUNT,
+                EntityType::PIG.id,
+            ),
+        ];
+        for (category, generated, vanilla) in cases {
+            let category = category as i32;
+            assert!(is_sent_to_client(category, i32::from(vanilla)));
+            assert!(!is_sent_to_client(category, i32::from(generated)));
+        }
+        let custom = StatisticCategory::Custom as i32;
+        assert!(is_sent_to_client(custom, CustomStatistic::Jump as i32));
     }
 }

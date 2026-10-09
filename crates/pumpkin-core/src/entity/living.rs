@@ -2259,7 +2259,8 @@ impl LivingEntity {
                 );
 
                 let resource_name = self.entity.entity_type.resource_name;
-                let criterion_key = format!("minecraft:{resource_name}");
+                let criterion_key =
+                    pumpkin_data::dynamic::namespaced_name(resource_name).into_owned();
                 killer_player.trigger_advancement(
                     crate::entity::player::advancement::trigger::AdvancementTrigger::PlayerKilledEntity {
                         entity_type_resource: criterion_key,
@@ -3486,7 +3487,8 @@ impl EntityBase for LivingEntity {
                 if let Some(player) = caller.get_player() {
                     player.trigger_advancement(
                         crate::entity::player::advancement::trigger::AdvancementTrigger::ConsumeItem {
-                            item_id: format!("minecraft:{}", item.item.registry_key),
+                            item_id: pumpkin_data::dynamic::namespaced_name(item.item.registry_key)
+                                .into_owned(),
                         },
                     );
 

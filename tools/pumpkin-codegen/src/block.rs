@@ -1499,6 +1499,9 @@ pub fn build() -> TokenStream {
             pub fn properties(&self, state_id: BlockStateId) -> Option<Box<dyn BlockProperties>> {
                 Some(match self.id {
                     #(#block_properties_from_state_and_block_id_arms)*
+                    _ if self.id.as_u16() >= BlockId::BLOCK_COUNT => {
+                        return crate::dynamic::properties(self, state_id);
+                    }
                     _ => return None,
                 })
             }
@@ -1508,6 +1511,9 @@ pub fn build() -> TokenStream {
             pub fn from_properties(&self, props: &[(&str, &str)]) -> Box<dyn BlockProperties> {
                 match self.id {
                     #(#block_properties_from_props_and_name_arms)*
+                    _ if self.id.as_u16() >= BlockId::BLOCK_COUNT => {
+                        crate::dynamic::properties_from_props(self, props)
+                    }
                     _ => panic!("Invalid props")
                 }
             }

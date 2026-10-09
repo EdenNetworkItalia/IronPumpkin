@@ -1,5 +1,6 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
+use pumpkin_data::dynamic::namespaced_name;
 use pumpkin_data::item::Item;
 use pumpkin_data::tag::Taggable;
 
@@ -15,13 +16,13 @@ impl OwnedRecipeIngredient {
     pub fn match_item(&self, item: &Item) -> bool {
         match self {
             Self::Simple(id) => {
-                let name = format!("minecraft:{}", item.registry_key);
+                let name = namespaced_name(item.registry_key);
                 name == *id
             }
             Self::Tagged(tag) => item.is_tagged_with(tag).unwrap_or(false),
             Self::OneOf(ids) => {
-                let name = format!("minecraft:{}", item.registry_key);
-                ids.contains(&name)
+                let name = namespaced_name(item.registry_key);
+                ids.iter().any(|id| *id == name)
             }
         }
     }
