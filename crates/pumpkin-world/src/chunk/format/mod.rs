@@ -567,12 +567,11 @@ impl ChunkData {
                 .map(|&val| {
                     let name = pumpkin_data::biome::Biome::from_id(val)
                         .map_or("plains", |b| b.registry_id);
-                    let full_name = if name.starts_with("minecraft:") {
-                        name.to_string()
-                    } else {
-                        format!("minecraft:{name}")
-                    };
-                    NbtTag::String(full_name.into())
+                    NbtTag::String(
+                        pumpkin_data::dynamic::namespaced_name(name)
+                            .into_owned()
+                            .into(),
+                    )
                 })
                 .collect();
             b_comp.put_list("palette", biome_palette_tags);
@@ -1418,6 +1417,66 @@ mod tests {
                 .and_then(NbtTag::extract_compound)
                 .and_then(|piece| piece.get_int("ground_level_delta")),
             Some(1)
+        );
+    }
+
+    /// A chunk whose biome palette names a biome with and without the `minecraft:` prefix.
+    fn chunk_with_biome_palette() -> pumpkin_nbt::Nbt {
+        let mut section = test_section(-4, "minecraft:stone", false);
+        let mut biomes = NbtCompound::new();
+        biomes.put(
+            "palette",
+            NbtTag::List(vec![
+                NbtTag::String("minecraft:plains".into()),
+                NbtTag::String("desert".into()),
+                NbtTag::String("minecraft:the_void".into()),
+            ]),
+        );
+        // 64 cells with 2 bits each, 32 cells per long, cycling through the three palette entries.
+        let mut data = [0i64; 2];
+        for cell in 0..64usize {
+            data[cell / 32] |= ((cell % 3) as i64) << (2 * (cell % 32));
+        }
+        biomes.put("data", NbtTag::LongArray(data.to_vec()));
+        section.put("biomes", NbtTag::Compound(biomes));
+        test_chunk(vec![section])
+    }
+
+    #[test]
+    fn palette_name_keeps_its_namespace() {
+        use pumpkin_data::dynamic::namespaced_name;
+
+        assert_eq!(namespaced_name("plains"), "minecraft:plains");
+        assert_eq!(namespaced_name("minecraft:plains"), "minecraft:plains");
+        assert_eq!(namespaced_name("mymod:foo"), "mymod:foo");
+    }
+
+    #[test]
+    fn saved_biome_palette_prefixes_vanilla_names() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        let bytes = chunk_with_biome_palette().write();
+        let chunk = ChunkData::from_bytes(&bytes, Vector2::new(0, 0)).unwrap();
+        let bytes = chunk.to_bytes().unwrap();
+        let mut cursor = std::io::Cursor::new(&bytes[..]);
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(
+            pumpkin_nbt::deserializer::NbtStreamReader(&mut cursor),
+        );
+        let root = pumpkin_nbt::Nbt::read(&mut reader).unwrap().root_tag;
+        let palette: Vec<&str> = root
+            .get_list("sections")
+            .and_then(|sections| sections.first())
+            .and_then(NbtTag::extract_compound)
+            .and_then(|section| section.get_compound("biomes"))
+            .and_then(|biomes| biomes.get_list("palette"))
+            .unwrap()
+            .iter()
+            .filter_map(NbtTag::extract_string)
+            .collect();
+        assert_eq!(
+            palette,
+            ["minecraft:plains", "minecraft:desert", "minecraft:the_void"]
         );
     }
 }

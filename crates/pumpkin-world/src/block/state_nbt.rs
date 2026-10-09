@@ -25,12 +25,10 @@ const _: () = assert!(
 pub fn block_state_to_nbt(id: BlockStateId) -> NbtCompound {
     let block = Block::from_state_id(id);
     let mut compound = NbtCompound::new();
-    let name = if block.name.contains(':') {
-        block.name.to_string()
-    } else {
-        format!("minecraft:{}", block.name)
-    };
-    compound.put_string(NAME_TAG, name);
+    compound.put_string(
+        NAME_TAG,
+        pumpkin_data::dynamic::namespaced_name(block.name).into_owned(),
+    );
     if let Some(properties) = block.properties(id) {
         let properties = properties.to_props();
         if !properties.is_empty() {
