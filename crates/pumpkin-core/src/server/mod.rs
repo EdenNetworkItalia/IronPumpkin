@@ -395,6 +395,13 @@ impl Server {
 
         crate::plugin::startup::run(&server);
 
+        // Mods registered their content in the startup hook. The registry freezes before the
+        // first world reads a chunk, so every saved name resolves.
+        if let Err(error) = crate::content::run(&world_path) {
+            error!("{error}");
+            std::process::exit(1);
+        }
+
         let mut worlds_vec = Vec::new();
         for dim in &server.dimensions {
             info!(

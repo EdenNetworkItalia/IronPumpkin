@@ -11,7 +11,7 @@
 //! property varies fastest.
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashMap, btree_map::Entry};
+use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry};
 use std::fmt;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
@@ -115,12 +115,15 @@ pub struct EntityTypeDefinition {
     pub name: String,
     /// Vanilla entity type that vanilla clients see. The type copies its data.
     pub display: &'static EntityType,
-    /// Width and height in blocks. `None` keeps the display type's. The eye height is 0.85 of
-    /// the height, the default of vanilla's `EntityType.Builder.sized`.
+    /// Width and height in blocks. `None` keeps the display type's.
     pub dimensions: Option<[f32; 2]>,
+    /// Eye height in blocks. `None` keeps the display type's eye height when `dimensions` is
+    /// `None`, and else uses 0.85 of the height, the default of vanilla's
+    /// `EntityType.Builder.sized`.
+    pub eye_height: Option<f32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ContentKind {
     Block,
     Item,
@@ -164,7 +167,7 @@ pub enum RegistryError {
         property: String,
         reason: &'static str,
     },
-    /// The entity type's width or height is not a positive finite number.
+    /// The entity type's width, height or eye height is not a positive finite number.
     InvalidDimensions { name: String },
 }
 
@@ -205,7 +208,7 @@ impl fmt::Display for RegistryError {
             } => write!(f, "property \"{property}\" of block \"{block}\": {reason}"),
             Self::InvalidDimensions { name } => write!(
                 f,
-                "entity type \"{name}\" needs a positive finite width and height"
+                "entity type \"{name}\" needs a positive finite width, height and eye height"
             ),
         }
     }
@@ -222,6 +225,7 @@ pub struct ContentTables {
     states: &'static [BlockState],
     state_blocks: Vec<BlockId>,
     state_displays: Vec<BlockStateId>,
+    block_displays: Vec<u16>,
     #[cfg(feature = "item")]
     items: Vec<Item>,
     #[cfg(feature = "item")]
@@ -236,6 +240,7 @@ pub struct ContentTables {
     entity_type_names: HashMap<&'static str, usize>,
     #[cfg(feature = "entity_type")]
     entity_type_displays: Vec<&'static EntityType>,
+    placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
 }
 
 impl ContentTables {
@@ -345,7 +350,8 @@ struct ContentBuilder {
     #[cfg(feature = "item")]
     items: BTreeMap<String, (&'static Item, Option<String>)>,
     #[cfg(feature = "entity_type")]
-    entity_types: BTreeMap<String, (&'static EntityType, Option<[f32; 2]>)>,
+    entity_types: BTreeMap<String, (&'static EntityType, Option<[f32; 2]>, Option<f32>)>,
+    placeholders: BTreeMap<ContentKind, BTreeSet<String>>,
 }
 
 impl ContentBuilder {
@@ -356,7 +362,26 @@ impl ContentBuilder {
             items: BTreeMap::new(),
             #[cfg(feature = "entity_type")]
             entity_types: BTreeMap::new(),
+            placeholders: BTreeMap::new(),
         }
+    }
+
+    fn contains(&self, kind: ContentKind, name: &str) -> bool {
+        match kind {
+            ContentKind::Block => self.blocks.contains_key(name),
+            #[cfg(feature = "item")]
+            ContentKind::Item => self.items.contains_key(name),
+            #[cfg(not(feature = "item"))]
+            ContentKind::Item => false,
+            #[cfg(feature = "entity_type")]
+            ContentKind::EntityType => self.entity_types.contains_key(name),
+            #[cfg(not(feature = "entity_type"))]
+            ContentKind::EntityType => false,
+        }
+    }
+
+    fn mark_placeholder(&mut self, kind: ContentKind, name: String) {
+        self.placeholders.entry(kind).or_default().insert(name);
     }
 
     fn register_block(&mut self, definition: BlockDefinition) -> Result<(), RegistryError> {
@@ -410,11 +435,12 @@ impl ContentBuilder {
                 name: definition.name,
             });
         };
-        if let Some(dimensions) = definition.dimensions
-            && !dimensions
-                .iter()
-                .all(|size| size.is_finite() && *size > 0.0)
-        {
+        let sizes = definition
+            .dimensions
+            .into_iter()
+            .flatten()
+            .chain(definition.eye_height);
+        if !sizes.into_iter().all(|size| size.is_finite() && size > 0.0) {
             return Err(RegistryError::InvalidDimensions {
                 name: definition.name,
             });
@@ -423,7 +449,7 @@ impl ContentBuilder {
             &mut self.entity_types,
             kind,
             definition.name,
-            (display, definition.dimensions),
+            (display, definition.dimensions, definition.eye_height),
         )
     }
 
@@ -520,6 +546,10 @@ impl ContentBuilder {
                 }
             })
             .collect();
+        let block_displays = blocks
+            .iter()
+            .map(|(_, block)| block.display.to_block().id.as_u16())
+            .collect();
         let block_properties = blocks
             .into_iter()
             .map(|(_, block)| leak_properties(block.properties))
@@ -529,22 +559,31 @@ impl ContentBuilder {
         let entity_type_displays: Vec<&'static EntityType> = self
             .entity_types
             .values()
-            .map(|(display, _)| *display)
+            .map(|(display, ..)| *display)
             .collect();
         #[cfg(feature = "entity_type")]
         let entity_types: Vec<EntityType> = self
             .entity_types
             .into_iter()
             .enumerate()
-            .map(|(index, (name, (display, dimensions)))| {
+            .map(|(index, (name, (display, dimensions, eye_height)))| {
                 let [width, height] = dimensions.unwrap_or(display.dimension);
-                let eye_height = if dimensions.is_some() {
-                    height * 0.85
-                } else {
-                    display.eye_height
-                };
+                let eye_height = eye_height.unwrap_or_else(|| {
+                    if dimensions.is_some() {
+                        height * 0.85
+                    } else {
+                        display.eye_height
+                    }
+                });
+                // A placeholder stands in for content whose mod is missing: it must never spawn.
+                let summonable = display.summonable
+                    && !self
+                        .placeholders
+                        .get(&ContentKind::EntityType)
+                        .is_some_and(|names| names.contains(&name));
                 EntityType {
                     id: EntityType::COUNT + index as u16,
+                    summonable,
                     resource_name: leak(name),
                     dimension: [width, height],
                     eye_height,
@@ -559,6 +598,7 @@ impl ContentBuilder {
             block_properties,
             states,
             state_displays,
+            block_displays,
             state_blocks,
             #[cfg(feature = "item")]
             item_names: name_index(items.iter().map(|item| item.registry_key)),
@@ -574,6 +614,7 @@ impl ContentBuilder {
             entity_types,
             #[cfg(feature = "entity_type")]
             entity_type_displays,
+            placeholders: self.placeholders,
         })
     }
 
@@ -718,6 +759,87 @@ pub fn register_entity_type(definition: EntityTypeDefinition) -> Result<(), Regi
     with_builder(|builder| builder.register_entity_type(definition))
 }
 
+/// Registers a placeholder block: content that the world's content manifest lists and no mod
+/// registered. It works like [`register_block`], and [`is_placeholder`] reports it after the
+/// freeze.
+pub fn register_placeholder_block(definition: BlockDefinition) -> Result<(), RegistryError> {
+    let name = definition.name.clone();
+    with_builder(|builder| {
+        builder.register_block(definition)?;
+        builder.mark_placeholder(ContentKind::Block, name);
+        Ok(())
+    })
+}
+
+/// Registers a placeholder item. See [`register_placeholder_block`].
+#[cfg(feature = "item")]
+pub fn register_placeholder_item(definition: ItemDefinition) -> Result<(), RegistryError> {
+    let name = definition.name.clone();
+    with_builder(|builder| {
+        builder.register_item(definition)?;
+        builder.mark_placeholder(ContentKind::Item, name);
+        Ok(())
+    })
+}
+
+/// Registers a placeholder entity type. See [`register_placeholder_block`]. The type is not
+/// summonable and has no spawn factory, so it never spawns.
+#[cfg(feature = "entity_type")]
+pub fn register_placeholder_entity_type(
+    definition: EntityTypeDefinition,
+) -> Result<(), RegistryError> {
+    let name = definition.name.clone();
+    with_builder(|builder| {
+        builder.register_entity_type(definition)?;
+        builder.mark_placeholder(ContentKind::EntityType, name);
+        Ok(())
+    })
+}
+
+/// Returns whether `name` is registered as this kind and waits for the freeze. Always `false`
+/// after the freeze.
+#[must_use]
+pub fn is_registered(kind: ContentKind, name: &str) -> bool {
+    PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .is_some_and(|builder| builder.contains(kind, name))
+}
+
+/// Returns whether the frozen registry holds `name` as a placeholder of this kind.
+#[must_use]
+pub fn is_placeholder(kind: ContentKind, name: &str) -> bool {
+    TABLES.get().is_some_and(|tables| {
+        tables
+            .placeholders
+            .get(&kind)
+            .is_some_and(|names| names.contains(name))
+    })
+}
+
+#[cfg(feature = "entity_type")]
+impl EntityType {
+    /// Whether this is a placeholder type, which stands in for a missing mod's type and never
+    /// spawns.
+    #[must_use]
+    pub fn is_placeholder(&self) -> bool {
+        self.id >= Self::COUNT && is_placeholder(ContentKind::EntityType, self.resource_name)
+    }
+}
+
+impl BlockStateId {
+    /// The state a vanilla client sees: the state itself, or the display state of a custom state.
+    #[must_use]
+    pub fn display_state(self) -> Self {
+        if self.as_u16() < Self::STATE_COUNT {
+            self
+        } else {
+            display_state(self)
+        }
+    }
+}
+
 /// Allocates the ids of all registered content and installs the tables. Runs once: later calls,
 /// and registrations after it, return [`RegistryError::RegistryFrozen`].
 pub fn freeze() -> Result<&'static ContentTables, RegistryError> {
@@ -840,6 +962,37 @@ pub(crate) fn block(id: BlockId) -> &'static Block {
 pub(crate) fn block_by_name(name: &str) -> Option<&'static Block> {
     let tables = TABLES.get()?;
     tables.blocks.get(*tables.block_names.get(name)?)
+}
+
+#[cold]
+#[inline(never)]
+#[expect(
+    clippy::unreachable,
+    reason = "BlockId::new checks the installed tables"
+)]
+fn display_block(id: BlockId) -> u16 {
+    TABLES
+        .get()
+        .and_then(|tables| {
+            tables
+                .block_displays
+                .get(custom_index(id.as_u16(), BlockId::COUNT)?)
+        })
+        .copied()
+        .unwrap_or_else(|| unreachable!("{id:?} is not an installed custom block"))
+}
+
+impl Block {
+    /// The id a vanilla client knows: the block's own id, or the display block's id for a custom
+    /// block.
+    #[must_use]
+    pub fn to_java_network_id(&self) -> u16 {
+        if self.id.as_u16() < BlockId::COUNT {
+            self.id.as_u16()
+        } else {
+            display_block(self.id)
+        }
+    }
 }
 
 fn properties_of(block: BlockId) -> &'static [BlockProperty] {
@@ -1149,6 +1302,7 @@ mod tests {
             name: name.to_string(),
             display: &EntityType::ZOMBIE,
             dimensions: None,
+            eye_height: None,
         }
     }
 
@@ -1251,6 +1405,19 @@ mod tests {
         builder
             .register_entity_type(entity_type("mymod:same"))
             .unwrap();
+        builder
+            .register_entity_type(EntityTypeDefinition {
+                dimensions: Some([2.0, 3.0]),
+                eye_height: Some(2.0),
+                ..entity_type("mymod:eyes")
+            })
+            .unwrap();
+        builder
+            .register_entity_type(EntityTypeDefinition {
+                eye_height: Some(1.25),
+                ..entity_type("mymod:eyes_only")
+            })
+            .unwrap();
         for dimensions in [
             [0.0, 1.0],
             [1.0, -1.0],
@@ -1267,16 +1434,31 @@ mod tests {
                 })
             );
         }
+        for eye_height in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(
+                builder.register_entity_type(EntityTypeDefinition {
+                    eye_height: Some(eye_height),
+                    ..entity_type("mymod:bad")
+                }),
+                Err(RegistryError::InvalidDimensions {
+                    name: "mymod:bad".to_string()
+                })
+            );
+        }
 
         let tables = builder.build().unwrap();
-        let [big, same] = tables.entity_types() else {
-            panic!("expected two entity types");
+        let [big, eyes, eyes_only, same] = tables.entity_types() else {
+            panic!("expected four entity types");
         };
         assert_eq!(big.dimension, [2.0, 3.0]);
         assert!((big.eye_height - 2.55).abs() < 1e-6);
+        assert_eq!(eyes.dimension, [2.0, 3.0]);
+        assert_eq!(eyes.eye_height, 2.0);
+        assert_eq!(eyes_only.dimension, EntityType::ZOMBIE.dimension);
+        assert_eq!(eyes_only.eye_height, 1.25);
         assert_eq!(same.dimension, EntityType::ZOMBIE.dimension);
         assert_eq!(same.eye_height, EntityType::ZOMBIE.eye_height);
-        assert_eq!(tables.entity_type_displays, [&EntityType::ZOMBIE; 2]);
+        assert_eq!(tables.entity_type_displays, [&EntityType::ZOMBIE; 4]);
     }
 
     #[test]
@@ -1662,6 +1844,14 @@ mod tests {
             BlockState::to_be_network_id(Block::STONE.default_state.id)
         );
         assert!(alpha.properties(state_id).is_none());
+        assert_eq!(alpha.to_java_network_id(), Block::STONE.id.as_u16());
+        assert_eq!(
+            Block::from_name("test:zeta").unwrap().to_java_network_id(),
+            Block::DIRT.id.as_u16()
+        );
+        assert_eq!(Block::STONE.to_java_network_id(), Block::STONE.id.as_u16());
+        assert_eq!(namespaced_name("stone"), "minecraft:stone");
+        assert_eq!(namespaced_name("test:alpha"), "test:alpha");
 
         // Items and the block they place.
         let alpha_item = Item::from_registry_key("test:alpha").unwrap();

@@ -53,6 +53,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub mod block;
 pub mod command;
+pub mod content;
 pub mod crash;
 pub mod data;
 pub mod enchantment;

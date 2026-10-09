@@ -21,6 +21,7 @@ fn definition(name: &str) -> EntityTypeDefinition {
         name: name.to_string(),
         display: &EntityType::ZOMBIE,
         dimensions: Some([1.0, 2.0]),
+        eye_height: Some(1.5),
     }
 }
 
@@ -43,6 +44,7 @@ fn factories_resolve_after_the_freeze() {
     assert!(factory(EntityType::from_name("test:plain").unwrap()).is_none());
     assert!(factory(&EntityType::ZOMBIE).is_none());
     assert_eq!(golem.dimension, [1.0, 2.0]);
+    assert_eq!(golem.eye_height, 1.5);
     assert_eq!(golem.to_java_network_id(), EntityType::ZOMBIE.id);
     assert_eq!(
         register_entity_type(definition("test:late"), spawn),

@@ -204,11 +204,7 @@ fn registry_name(variant: &impl Debug) -> String {
 }
 
 fn namespaced(name: &str) -> String {
-    if name.contains(':') {
-        name.to_string()
-    } else {
-        format!("minecraft:{name}")
-    }
+    pumpkin_data::dynamic::namespaced_name(name).into_owned()
 }
 
 #[cfg(test)]

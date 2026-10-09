@@ -40,10 +40,15 @@ impl JavaClient {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-            let is_armor_equipped = player_screen_handler
+            let current = player_screen_handler
                 .get_slot(packet.slot as usize)
-                .get_stack()
-                .are_equal(&item_stack);
+                .get_stack();
+            // The client knows a custom item only as its display item and sends it back as such.
+            if current.is_displayed_as(&item_stack) {
+                return Ok(());
+            }
+
+            let is_armor_equipped = current.are_equal(&item_stack);
             if !is_armor_equipped {
                 if (5..9).contains(&packet.slot) {
                     player.enqueue_equipment_change(

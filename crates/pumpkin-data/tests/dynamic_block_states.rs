@@ -5,6 +5,7 @@
     reason = "a test fails on the first missing value"
 )]
 
+use pumpkin_data::data_component_impl::IDSetContent;
 use pumpkin_data::dynamic::{self, BlockDefinition, BlockPropertyDefinition};
 use pumpkin_data::{Block, BlockState, BlockStateId};
 
@@ -93,4 +94,14 @@ fn custom_state_ids_resolve_to_their_block_and_values() {
         vec![("inverted", "false"), ("power", "0")]
     );
     assert!(props(&Block::STONE, Block::STONE.default_state.id).is_none());
+
+    // A client knows a custom block as its display block, and a generated block as itself.
+    for custom in [crop, lamp, plain] {
+        assert_eq!(custom.to_java_network_id(), Block::STONE.id.as_u16());
+        assert_eq!(IDSetContent::registry_id(custom), Block::STONE.id.as_u16());
+    }
+    for generated in [&Block::STONE, &Block::DAYLIGHT_DETECTOR, &Block::AIR] {
+        assert_eq!(generated.to_java_network_id(), generated.id.as_u16());
+        assert_eq!(IDSetContent::registry_id(generated), generated.id.as_u16());
+    }
 }

@@ -4296,9 +4296,9 @@ impl World {
                     // live. The live entity list becomes the single source of
                     // truth, so the chunk's NBT is taken (cleared) to avoid keeping
                     // a duplicate copy that would be re-appended on the next unload
-                    // and doubled on every reload.
-                    let entity_nbts = std::mem::take(
-                        &mut *chunk
+                    // and doubled on every reload. Placeholder records stay.
+                    let entity_nbts = crate::content::take_spawnable_records(
+                        &mut chunk
                             .data
                             .lock()
                             .unwrap_or_else(std::sync::PoisonError::into_inner),
@@ -4844,6 +4844,9 @@ impl World {
     #[expect(clippy::needless_pass_by_value)]
     pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
         let _base_entity = entity.get_entity();
+        if entity.get_entity().entity_type.is_placeholder() {
+            return;
+        }
         self.entity_tracker.add_entity(&entity, self);
         self.spawn_state.load().add_entity(self, entity.as_ref());
 
@@ -4871,6 +4874,10 @@ impl World {
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     pub fn spawn_entity(self: &Arc<Self>, entity: Arc<dyn EntityBase>) -> bool {
+        // A placeholder type stands in for a missing mod's type and never spawns.
+        if entity.get_entity().entity_type.is_placeholder() {
+            return false;
+        }
         let mut event = crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
             entity.get_entity().entity_id,
             entity.get_entity().entity_type.id.to_string(),
@@ -4899,6 +4906,9 @@ impl World {
         player: Option<Arc<Player>>,
     ) -> bool {
         let base = entity.get_entity();
+        if base.entity_type.is_placeholder() {
+            return false;
+        }
         let mut event = crate::plugin::api::events::entity::creature_spawn::CreatureSpawnEvent::new(
             base.entity_id,
             base.entity_type.resource_name.to_string(),
@@ -4919,6 +4929,9 @@ impl World {
     #[expect(clippy::needless_pass_by_value)]
     pub fn add_entity_silent(&self, entity: Arc<dyn EntityBase>) {
         let base_entity = entity.get_entity();
+        if base_entity.entity_type.is_placeholder() {
+            return;
+        }
 
         // Guard against duplicate entities with the same UUID.
         // This can happen when chunk entity data is loaded while the entity
@@ -7492,7 +7505,7 @@ pub fn calculate_celestial_angle(time_of_day: i64) -> f32 {
 /// records are the only copy of unspawned entities, so they stay and are only replaced by UUID.
 fn merge_entity_records(data: &mut Vec<NbtCompound>, live: bool, fresh: Vec<NbtCompound>) {
     if live {
-        *data = fresh;
+        crate::content::rebuild_live_records(data, fresh);
         return;
     }
 

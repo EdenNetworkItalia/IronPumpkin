@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::sync::Once;
 
 use pumpkin_data::data_component_impl::IDSetContent;
-use pumpkin_data::dynamic::{self, ItemDefinition};
+use pumpkin_data::dynamic::{self, ContentKind, ItemDefinition};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::Nbt;
@@ -19,6 +19,8 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::hover::HoverEvent;
 
 const RUBY: &str = "test:ruby";
+/// Listed in the world's content manifest, but no mod registers it.
+const GHOST: &str = "test:ghost";
 
 fn ruby() -> &'static Item {
     static FREEZE: Once = Once::new();
@@ -29,6 +31,12 @@ fn ruby() -> &'static Item {
             block: None,
         })
         .expect("register test item");
+        dynamic::register_placeholder_item(ItemDefinition {
+            name: GHOST.to_string(),
+            display: &Item::EMERALD,
+            block: None,
+        })
+        .expect("register placeholder item");
         dynamic::freeze().expect("freeze registry");
     });
     Item::from_registry_key(RUBY).expect("custom item resolves after the freeze")
@@ -56,7 +64,7 @@ fn custom_item_stack_round_trips_by_namespaced_name() {
 
     let read = ItemStack::read_item_stack(&compound).expect("custom stack reads back");
     assert_eq!(read.item, ruby);
-    assert_eq!(read.item.id, Item::COUNT);
+    assert!(read.item.id >= Item::COUNT);
     assert_eq!(read.item_count, 5);
     assert_eq!(read.get_custom_data("test", "charge"), Some(NbtTag::Int(3)));
 }
@@ -79,6 +87,7 @@ fn vanilla_item_stack_nbt_is_unchanged() {
     );
 }
 
+/// A name in neither the registry nor the content manifest is dropped, as in vanilla.
 #[test]
 fn unknown_namespaced_item_is_dropped() {
     ruby();
@@ -86,6 +95,25 @@ fn unknown_namespaced_item_is_dropped() {
     compound.put_string("id", "test:missing".to_string());
     compound.put_int("count", 1);
     assert!(ItemStack::read_item_stack(&compound).is_none());
+}
+
+/// A stack of a placeholder item keeps its name and components through a save.
+#[test]
+fn placeholder_item_stack_round_trips() {
+    ruby();
+    let ghost = Item::from_registry_key(GHOST).expect("placeholder resolves after the freeze");
+    assert!(dynamic::is_placeholder(ContentKind::Item, GHOST));
+    assert!(!dynamic::is_placeholder(ContentKind::Item, RUBY));
+    assert_eq!(ghost.to_java_network_id(), Item::EMERALD.id);
+
+    let mut stack = ItemStack::new(3, ghost);
+    stack.set_custom_data("test", "charge", NbtTag::Int(7));
+    let compound = nbt_round_trip(&stack);
+    assert_eq!(compound.get_string("id"), Some(GHOST));
+    let read = ItemStack::read_item_stack(&compound).expect("placeholder stack reads back");
+    assert_eq!(read.item, ghost);
+    assert_eq!(read.item_count, 3);
+    assert_eq!(read.get_custom_data("test", "charge"), Some(NbtTag::Int(7)));
 }
 
 #[test]
@@ -107,4 +135,26 @@ fn hover_event_and_id_sets_name_the_display_item() {
     assert_eq!(Item::DIAMOND.show_item_hover(Some(2)), diamond);
     assert_eq!(IDSetContent::registry_id(ruby), Item::DIAMOND.id);
     assert_eq!(IDSetContent::registry_id(&Item::STONE), Item::STONE.id);
+}
+
+#[test]
+fn custom_stack_is_displayed_as_its_display_item_stack() {
+    let ruby = ruby();
+    let mut custom = ItemStack::new(3, ruby);
+    custom.set_custom_data("test", "charge", NbtTag::Int(1));
+
+    let mut shown = ItemStack::new(3, &Item::DIAMOND);
+    shown.set_custom_data("test", "charge", NbtTag::Int(1));
+    assert!(custom.is_displayed_as(&shown));
+
+    shown.item_count = 2;
+    assert!(!custom.is_displayed_as(&shown));
+    shown.item_count = 3;
+    shown.set_custom_data("test", "charge", NbtTag::Int(2));
+    assert!(!custom.is_displayed_as(&shown));
+    assert!(!custom.is_displayed_as(&ItemStack::new(3, &Item::EMERALD)));
+
+    // A vanilla stack is never replaced, even by an equal one.
+    let vanilla = ItemStack::new(3, &Item::DIAMOND);
+    assert!(!vanilla.is_displayed_as(&ItemStack::new(3, &Item::DIAMOND)));
 }

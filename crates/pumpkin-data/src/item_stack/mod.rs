@@ -743,6 +743,23 @@ impl ItemStack {
         self.item_count == other.item_count && self.are_items_and_components_equal(other)
     }
 
+    /// Whether this stack holds a custom item and `incoming` is the stack a vanilla client sees
+    /// for it: the display item with the same count and components. A client that sends a
+    /// stack back unchanged (creative mode does) sends this, and the server keeps its own stack.
+    #[must_use]
+    pub fn is_displayed_as(&self, incoming: &Self) -> bool {
+        let display = self.item.to_java_network_id();
+        if display == self.item.id {
+            return false;
+        }
+        let Some(item) = Item::from_id(display) else {
+            return false;
+        };
+        let mut shown = self.clone();
+        shown.item = item;
+        shown.are_equal(incoming)
+    }
+
     /// Determines the mining speed for a block based on tool rules.
     /// Direct matches return immediately, tagged blocks are checked separately.
     /// If no match is found, returns the tool's default mining speed or `1.0`.

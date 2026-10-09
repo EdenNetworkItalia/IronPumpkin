@@ -34,7 +34,7 @@ pub fn crafting_data() -> &'static [BedrockRecipe] {
 
 fn item_descriptor(identifier: &str) -> Option<ItemDescriptorCount> {
     let item = Item::from_registry_key(identifier)?;
-    let mapping = JavaToBedrockItemMapping::from_java_item_id(item.id)?;
+    let mapping = JavaToBedrockItemMapping::from_java_item_id(item.to_java_network_id())?;
     Some(ItemDescriptorCount::item(
         mapping.bedrock_item.registry_key.to_string(),
         mapping.bedrock_data as i32,
@@ -117,7 +117,7 @@ fn ingredient_variants(options: &[Vec<ItemDescriptorCount>]) -> Vec<Vec<ItemDesc
 
 fn output_descriptor(result: &RecipeResultStruct) -> Option<NetworkItemDescriptor> {
     let item = Item::from_registry_key(result.id)?;
-    let mapping = JavaToBedrockItemMapping::from_java_item_id(item.id)?;
+    let mapping = JavaToBedrockItemMapping::from_java_item_id(item.to_java_network_id())?;
     Some(NetworkItemDescriptor {
         id: VarInt::from(mapping.bedrock_item.id),
         stack_size: result.count as u16,

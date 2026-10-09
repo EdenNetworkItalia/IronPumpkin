@@ -988,7 +988,9 @@ impl TrialSpawner {
                 &self.config.normal
             };
             let spawn_data = self.data.get_or_create_next_spawn_data(active_cfg);
-            let ent_type = spawn_data.and_then(|sd| sd.entity_type)?;
+            let ent_type = spawn_data
+                .and_then(|sd| sd.entity_type)
+                .filter(|ty| ty.summonable)?;
             let equip = spawn_data
                 .and_then(|sd| {
                     sd.equipment

@@ -5,7 +5,6 @@ use crate::BlockId;
 use crate::data_component::DataComponent;
 use crate::entity_type::EntityType;
 use crate::sound::Sound;
-use crate::tag::Taggable;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use std::any::Any;
@@ -223,7 +222,7 @@ pub trait IDSetContent {
 
 impl IDSetContent for Block {
     fn registry_id(&self) -> u16 {
-        Taggable::registry_id(self)
+        self.to_java_network_id()
     }
 
     fn from_id(id: u16) -> Option<&'static Self> {

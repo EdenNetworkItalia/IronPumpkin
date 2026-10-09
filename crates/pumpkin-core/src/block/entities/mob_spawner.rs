@@ -106,7 +106,8 @@ impl BlockEntity for MobSpawnerBlockEntity {
     }
 
     fn tick(&self, world: &Arc<World>) {
-        if let Some(entity_type) = &self.entity_type.load() {
+        // A placeholder type is not summonable: the spawner keeps it and spawns nothing.
+        if let Some(entity_type) = &self.entity_type.load().filter(|ty| ty.summonable) {
             let center = self.position.to_centered_f64();
             let max_player_dist_sq = (self.required_player_range as f64).powi(2);
             let player_nearby = world.players.load().iter().any(|p| {

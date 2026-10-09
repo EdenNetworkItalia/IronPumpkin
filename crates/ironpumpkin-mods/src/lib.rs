@@ -31,8 +31,10 @@ use std::{
 
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
+    entity::custom::{self, EntityFactory},
     plugin::{Context, PluginMetadata, startup},
 };
+use pumpkin_data::dynamic::{EntityTypeDefinition, RegistryError};
 use tracing::{error, info};
 
 #[doc(hidden)]
@@ -102,7 +104,7 @@ macro_rules! register_mod {
 type Registration = Box<dyn FnOnce(&Context)>;
 
 /// What a mod registers during [`NativeMod::init`]. The server applies the registrations in the
-/// mod's name when `init` returns.
+/// mod's name when `init` returns, except [`ModInit::register_entity_type`], which applies at once.
 ///
 /// It passes `pumpkin-core` types through until the native API lands: the stable boundary for
 /// mods is `ironpumpkin-neo`, not this crate.
@@ -186,6 +188,18 @@ impl ModInit {
                 cx.register_service(name, service),
             ));
         }));
+    }
+
+    /// Registers a custom entity type and the factory that spawns it. Content registers at
+    /// once, not when `init` returns: the server freezes the content registry after the last
+    /// mod's `init` and before the first world loads. See
+    /// [`pumpkin_core::entity::custom::register_entity_type`].
+    pub fn register_entity_type(
+        &mut self,
+        definition: EntityTypeDefinition,
+        factory: EntityFactory,
+    ) -> Result<(), RegistryError> {
+        custom::register_entity_type(definition, factory)
     }
 
     /// See [`Context::get_data_folder`]: `plugins/data/<mod id>`, created on first use.
