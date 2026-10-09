@@ -5757,35 +5757,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "pumpkin-api-macros"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-plugin-api"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-plugin-utils"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-scheduler"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-api-macros"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-plugin-api"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-plugin-utils"
-version = "0.2.0+26.3-26.51"
-
-[[patch.unused]]
-name = "pumpkin-scheduler"
-version = "0.2.0+26.3-26.51"

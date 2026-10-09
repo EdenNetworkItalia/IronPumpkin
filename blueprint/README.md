@@ -72,8 +72,9 @@ others in its crate documentation) and the pumpkin crates themselves.
 The binary must contain exactly one copy of each server crate: the mods register in
 `ironpumpkin-mods`, and a second copy is one the server never reads. The build fails when a server
 crate resolves to more than one package, for example when a mod depends on IronPumpkin from a fork
-URL. The build also prints one "patch was not used in the crate graph" warning per server crate
-that no mod uses by the git URL; these warnings are expected.
+URL. The build points the server crates that the binary links at the checkout. It does not patch
+the other server crates, such as `pumpkin-plugin-api`: the build fails when a mod depends on one of
+them by git URL. Depend on `ironpumpkin-mods` instead.
 
 ## Patches
 
