@@ -1,0 +1,22 @@
+[package]
+name = "ironpumpkin-test-mod"
+version.workspace = true
+description = "Native mod for the boot tests: one block, one item and one entity type."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+ironpumpkin-mods.workspace = true
+
+[dev-dependencies]
+pumpkin = { path = "../pumpkin" }
+pumpkin-neoforge-client = { path = "../../tools/pumpkin-neoforge-client" }
+pumpkin-protocol.workspace = true
+hex.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt", "time"] }
+
+[lints]
+workspace = true

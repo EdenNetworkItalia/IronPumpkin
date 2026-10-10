@@ -9,3 +9,9 @@ neoforge:network
 minecraft:register
 # The vanilla configuration:
 minecraft:brand
+# The registry sync task (SyncRegistries) for block, item and entity_type:
+neoforge:frozen_registry_sync_start
+neoforge:frozen_registry
+neoforge:frozen_registry
+neoforge:frozen_registry
+neoforge:frozen_registry_sync_completed

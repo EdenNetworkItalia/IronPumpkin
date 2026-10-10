@@ -25,6 +25,7 @@ members = [
     "crates/pumpkin-wasm-host-v0_2",
     "crates/pumpkin-world",
     "crates/ironpumpkin-mods",
+    "crates/ironpumpkin-test-mod",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-neoforge-client",

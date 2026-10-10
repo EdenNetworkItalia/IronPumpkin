@@ -365,6 +365,7 @@ impl PendingConnection {
                 }
             }
         }
+        self.log_left_during_task();
         PacketHandlerResult::Stop
     }
 
