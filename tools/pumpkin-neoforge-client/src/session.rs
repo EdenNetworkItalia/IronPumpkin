@@ -21,10 +21,13 @@ use pumpkin_protocol::{
         },
         neoforge::{
             CommonRegisterPayload, CommonVersionPayload, ConnectionProtocol,
-            FeatureFlagDataPayload, FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload,
-            FrozenRegistrySyncStartPayload, MinecraftRegisterPayload, MinecraftUnregisterPayload,
-            ModdedNetworkPayload, ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload,
-            PacketFlow, SplitPacketPayload, decode_exact,
+            ExtensibleEnumAcknowledgePayload, ExtensibleEnumDataPayload,
+            FeatureFlagAcknowledgePayload, FeatureFlagDataPayload, FrozenRegistryPayload,
+            FrozenRegistrySyncCompletedPayload, FrozenRegistrySyncStartPayload,
+            KnownRegistryDataMapsPayload, KnownRegistryDataMapsReplyPayload,
+            MinecraftRegisterPayload, MinecraftUnregisterPayload, ModdedNetworkPayload,
+            ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload, PacketFlow,
+            SplitPacketPayload, decode_exact,
         },
         packet_decoder::TCPNetworkDecoder,
         packet_encoder::TCPNetworkEncoder,
@@ -68,12 +71,6 @@ const SPLIT_STATE_FIRST: u8 = 1;
 /// `NetworkRegistry.SUPPORTED_COMMON_NETWORKING_VERSIONS`.
 const COMMON_NETWORKING_VERSION: i32 = 1;
 
-// NeoForge channels that pumpkin-protocol has no payload codec for.
-const FEATURE_FLAGS_ACK: &str = "neoforge:feature_flags_ack";
-const EXTENSIBLE_ENUM_DATA: &str = "neoforge:extensible_enum_data";
-const EXTENSIBLE_ENUM_ACK: &str = "neoforge:extensible_enum_ack";
-const KNOWN_REGISTRY_DATA_MAPS: &str = "neoforge:known_registry_data_maps";
-const KNOWN_REGISTRY_DATA_MAPS_REPLY: &str = "neoforge:known_registry_data_maps_reply";
 const BRAND: &str = "minecraft:brand";
 
 /// What to connect to and how to behave.
@@ -630,11 +627,30 @@ impl Session<'_> {
                 }
                 return self.reply(channel, &[]).await;
             }
-            FeatureFlagDataPayload::CHANNEL => return self.reply(FEATURE_FLAGS_ACK, &[]).await,
-            EXTENSIBLE_ENUM_DATA => return self.reply(EXTENSIBLE_ENUM_ACK, &[]).await,
+            FeatureFlagDataPayload::CHANNEL => {
+                decode_exact(data, FeatureFlagDataPayload::read)?;
+                let mut reply = Vec::new();
+                FeatureFlagAcknowledgePayload.write(&mut reply)?;
+                return self
+                    .reply(FeatureFlagAcknowledgePayload::CHANNEL, &reply)
+                    .await;
+            }
+            ExtensibleEnumDataPayload::CHANNEL => {
+                decode_exact(data, ExtensibleEnumDataPayload::read)?;
+                let mut reply = Vec::new();
+                ExtensibleEnumAcknowledgePayload.write(&mut reply)?;
+                return self
+                    .reply(ExtensibleEnumAcknowledgePayload::CHANNEL, &reply)
+                    .await;
+            }
             // An empty map: the client knows no data maps, which only fails for mandatory ones.
-            KNOWN_REGISTRY_DATA_MAPS => {
-                return self.reply(KNOWN_REGISTRY_DATA_MAPS_REPLY, &[0]).await;
+            KnownRegistryDataMapsPayload::CHANNEL => {
+                decode_exact(data, KnownRegistryDataMapsPayload::read)?;
+                let mut reply = Vec::new();
+                KnownRegistryDataMapsReplyPayload::default().write(&mut reply)?;
+                return self
+                    .reply(KnownRegistryDataMapsReplyPayload::CHANNEL, &reply)
+                    .await;
             }
             SplitPacketPayload::CHANNEL => self.on_split(data)?,
             _ => {}

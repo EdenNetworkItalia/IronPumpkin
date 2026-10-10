@@ -19,6 +19,8 @@ use crate::{
 
 mod common;
 mod config_file;
+mod data_maps;
+mod extensible_enums;
 mod feature_flags;
 mod network;
 mod register;
@@ -27,7 +29,14 @@ mod split;
 
 pub use common::{CommonRegisterPayload, CommonVersionPayload};
 pub use config_file::ConfigFilePayload;
-pub use feature_flags::FeatureFlagDataPayload;
+pub use data_maps::{
+    KnownDataMap, KnownRegistryDataMapsPayload, KnownRegistryDataMapsReplyPayload,
+};
+pub use extensible_enums::{
+    EnumEntry, ExtensibleEnumAcknowledgePayload, ExtensibleEnumDataPayload, ExtensionData,
+    NetworkCheck,
+};
+pub use feature_flags::{FeatureFlagAcknowledgePayload, FeatureFlagDataPayload};
 pub use network::{
     ModdedNetworkPayload, ModdedNetworkQueryComponent, ModdedNetworkQueryPayload,
     ModdedNetworkSetupFailedPayload, NetworkChannel, NetworkPayloadSetup,
@@ -191,6 +200,15 @@ fn write_byte_array(write: &mut impl Write, data: &[u8]) -> Result<(), WritingEr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Decodes a capture fixture: hex digits, surrounding whitespace ignored.
+    pub(super) fn hex_fixture(text: &str) -> Vec<u8> {
+        let text = text.trim();
+        (0..text.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&text[i..i + 2], 16).unwrap())
+            .collect()
+    }
 
     #[test]
     fn decode_exact_rejects_trailing_bytes() {

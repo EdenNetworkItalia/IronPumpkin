@@ -3426,6 +3426,7 @@ dependencies = [
  "cfb8",
  "flate2",
  "hybrid-array",
+ "indexmap",
  "pumpkin-data",
  "pumpkin-macros",
  "pumpkin-nbt",

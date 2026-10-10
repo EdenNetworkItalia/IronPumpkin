@@ -1,0 +1,137 @@
+# Channels of a NeoForge 26.3.x client without mods: the registrations in NeoForge's
+# NetworkInitialization.register and GenericPacketSplitter.register, plus one fake mod channel
+# (probe:fake) that no server knows. All of them are optional, so the negotiation with a server
+# that lacks a channel drops it instead of failing.
+
+[[configuration]]
+id = "neoforge:config_file"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:frozen_registry_sync_start"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:frozen_registry"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:frozen_registry_sync_completed"
+version = "1"
+optional = true
+
+[[configuration]]
+id = "neoforge:known_registry_data_maps"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:extensible_enum_data"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:feature_flags"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:known_registry_data_maps_reply"
+version = "1"
+flow = "serverbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:extensible_enum_ack"
+version = "1"
+flow = "serverbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:feature_flags_ack"
+version = "1"
+flow = "serverbound"
+optional = true
+
+[[configuration]]
+id = "neoforge:split"
+version = "1"
+optional = true
+
+[[configuration]]
+id = "probe:fake"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:config_file"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:advanced_add_entity"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:advanced_open_screen"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:auxiliary_light_data"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:registry_data_map_sync"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:advanced_container_set_data"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:recipe_content"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:sync_attachments"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "neoforge:split"
+version = "1"
+optional = true
+
+[[configuration]]
+id = "mymod:sync"
+version = "1"
+optional = false
+
+[[play]]
+id = "mymod:sync"
+version = "1"
+optional = false

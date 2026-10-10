@@ -4,13 +4,16 @@ use std::fmt::Write as _;
 
 use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::java::neoforge::{
-    CommonRegisterPayload, CommonVersionPayload, ConfigFilePayload, FeatureFlagDataPayload,
-    FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload, FrozenRegistrySyncStartPayload,
-    MinecraftRegisterPayload, MinecraftUnregisterPayload, ModdedNetworkPayload,
-    ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload, PacketFlow, SplitPacketPayload,
-    decode_exact,
+    CommonRegisterPayload, CommonVersionPayload, ConfigFilePayload,
+    ExtensibleEnumAcknowledgePayload, ExtensibleEnumDataPayload, FeatureFlagAcknowledgePayload,
+    FeatureFlagDataPayload, FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload,
+    FrozenRegistrySyncStartPayload, KnownRegistryDataMapsPayload,
+    KnownRegistryDataMapsReplyPayload, MinecraftRegisterPayload, MinecraftUnregisterPayload,
+    ModdedNetworkPayload, ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload, NetworkCheck,
+    PacketFlow, SplitPacketPayload, decode_exact,
 };
 use pumpkin_protocol::ser::{NetworkReadSliceExt, ReadingError};
+use pumpkin_util::identifier::Identifier;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,12 +193,52 @@ pub fn decode_payload(channel: &str, data: &[u8]) -> (Decode, Option<String>, Op
             |r| r.get_str_borrowed().map(str::to_owned),
             |brand| format!("brand={brand:?}"),
         ),
-        _ => return (Decode::NoCodec, None, None),
+        _ => match decode_check_payload(channel, data) {
+            Some(result) => result,
+            None => return (Decode::NoCodec, None, None),
+        },
     };
     match result {
         Ok(summary) => (Decode::Ok, (!summary.is_empty()).then_some(summary), None),
         Err(e) => (Decode::Error, None, Some(e.to_string())),
     }
+}
+
+/// The payloads of the `NeoForge` data map, extensible enum and feature flag checks.
+fn decode_check_payload(channel: &str, data: &[u8]) -> Option<Result<String, ReadingError>> {
+    Some(match channel {
+        FeatureFlagAcknowledgePayload::CHANNEL => {
+            summarize(data, FeatureFlagAcknowledgePayload::read, |_| String::new())
+        }
+        KnownRegistryDataMapsPayload::CHANNEL => {
+            summarize(data, KnownRegistryDataMapsPayload::read, |p| {
+                show_data_maps(p.data_maps.iter().map(|(registry, maps)| {
+                    let maps = maps
+                        .iter()
+                        .map(|m| format!("{}{}", m.id, if m.mandatory { "!" } else { "" }));
+                    (registry, join(maps))
+                }))
+            })
+        }
+        KnownRegistryDataMapsReplyPayload::CHANNEL => {
+            summarize(data, KnownRegistryDataMapsReplyPayload::read, |p| {
+                show_data_maps(
+                    p.data_maps.iter().map(|(registry, ids)| {
+                        (registry, join(ids.iter().map(ToString::to_string)))
+                    }),
+                )
+            })
+        }
+        ExtensibleEnumDataPayload::CHANNEL => {
+            summarize(data, ExtensibleEnumDataPayload::read, |p| show_enums(&p))
+        }
+        ExtensibleEnumAcknowledgePayload::CHANNEL => {
+            summarize(data, ExtensibleEnumAcknowledgePayload::read, |_| {
+                String::new()
+            })
+        }
+        _ => return None,
+    })
 }
 
 fn show_query(payload: &ModdedNetworkQueryPayload) -> String {
@@ -212,6 +255,31 @@ fn show_query(payload: &ModdedNetworkQueryPayload) -> String {
         format!("{}={}", protocol.id(), join(channels))
     });
     format!("queries={{{}}}", protocols.collect::<Vec<_>>().join(" "))
+}
+
+fn show_data_maps<'a>(registries: impl Iterator<Item = (&'a Identifier, String)>) -> String {
+    let registries = registries.map(|(registry, maps)| format!("{registry}={maps}"));
+    format!("data_maps={{{}}}", registries.collect::<Vec<_>>().join(" "))
+}
+
+fn show_enums(payload: &ExtensibleEnumDataPayload) -> String {
+    let entries = payload.enum_entries.values().map(|e| {
+        let check = match e.network_check {
+            NetworkCheck::Clientbound => ">c",
+            NetworkCheck::Serverbound => ">s",
+            NetworkCheck::Bidirectional => "",
+        };
+        let extension = e.data.as_ref().map_or_else(String::new, |d| {
+            format!(
+                "+{}/{}{}",
+                d.vanilla_count,
+                d.total_count,
+                join(d.entries.iter().cloned())
+            )
+        });
+        format!("{}{check}{extension}", e.class_name)
+    });
+    format!("enums={}", join(entries))
 }
 
 fn summarize<T>(
