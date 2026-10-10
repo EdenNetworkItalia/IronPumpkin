@@ -5,7 +5,14 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 use pumpkin_neoforge_client::{
-    Error, channels::ChannelMap, check, parse_expected, record::Entry, session,
+    Error,
+    channels::ChannelMap,
+    check,
+    compare::compare_with_reference,
+    parse_expected,
+    record::{Entry, read_jsonl},
+    registries::{RegistryExpectations, check_registries},
+    session,
 };
 use tracing::{error, info};
 
@@ -33,7 +40,7 @@ enum Mode {
             long,
             value_delimiter = ',',
             conflicts_with = "expected_file",
-            required_unless_present_any = ["expected_file", "expect_disconnect"]
+            required_unless_present_any = ["expected_file", "expect_disconnect", "registries"]
         )]
         expect: Vec<String>,
         /// File with one expected channel per line; `#` starts a comment.
@@ -43,6 +50,20 @@ enum Mode {
         /// `finish_configuration`.
         #[arg(long, value_name = "TRANSLATION_KEY")]
         expect_disconnect: Option<String>,
+        /// TOML file with the expected `neoforge:frozen_registry` payloads.
+        #[arg(long)]
+        registries: Option<PathBuf>,
+    },
+    /// Compare a recording with a capture of a real `NeoForge` server: the clientbound channel
+    /// order from `neoforge:frozen_registry_sync_start` to `finish_configuration`, with the
+    /// registries limited to block, item and entity type, and the bodies of the modded task
+    /// payloads.
+    Compare {
+        /// The capture, JSONL or gzipped JSONL.
+        #[arg(long)]
+        reference: PathBuf,
+        /// The recording, JSONL or gzipped JSONL.
+        recording: PathBuf,
     },
 }
 
@@ -135,27 +156,50 @@ async fn run(cli: Cli) -> Result<bool, Error> {
             expect,
             expected_file,
             expect_disconnect,
+            registries,
         } => {
+            let registries = registries
+                .as_deref()
+                .map(RegistryExpectations::load)
+                .transpose()?;
             let expected = match expected_file {
                 Some(path) => Some(parse_expected(&std::fs::read_to_string(path)?)),
                 None if expect.is_empty() => None,
                 None => Some(expect),
             };
             let (entries, outcome) = record(&connection).await?;
-            let failures = check(
+            let mut failures = check(
                 &entries,
                 &outcome,
                 expected.as_deref(),
                 expect_disconnect.as_deref(),
             );
+            if let Some(registries) = &registries {
+                failures.extend(check_registries(&entries, registries));
+            }
             for failure in &failures {
                 error!("{failure}");
             }
             if failures.is_empty() {
                 info!(
-                    "assert passed: {outcome}, {} channels matched",
-                    expected.as_ref().map_or(0, Vec::len)
+                    "assert passed: {outcome}, {} channels and {} registries matched",
+                    expected.as_ref().map_or(0, Vec::len),
+                    registries.as_ref().map_or(0, |r| r.0.len())
                 );
+            }
+            Ok(failures.is_empty())
+        }
+        Mode::Compare {
+            reference,
+            recording,
+        } => {
+            let failures =
+                compare_with_reference(&read_jsonl(&recording)?, &read_jsonl(&reference)?);
+            for failure in &failures {
+                error!("{failure}");
+            }
+            if failures.is_empty() {
+                info!("the recording matches {}", reference.display());
             }
             Ok(failures.is_empty())
         }

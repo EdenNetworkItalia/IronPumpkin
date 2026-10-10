@@ -1,6 +1,8 @@
 //! One recorded packet, and the decoding of custom payload bodies through the `NeoForge` codecs.
 
 use std::fmt::Write as _;
+use std::io::{BufRead, BufReader, Read};
+use std::path::Path;
 
 use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::java::neoforge::{
@@ -309,4 +311,20 @@ pub fn read_disconnect_reason(
     data: &[u8],
 ) -> Result<pumpkin_util::text::TextComponent, ReadingError> {
     decode_exact(data, |read| read.get_component(&CURRENT_MC_VERSION))
+}
+
+/// Reads a JSONL recording in the format of `--out`. A file whose name ends in `.gz` is gunzipped
+/// first, like the captures.
+pub fn read_jsonl(path: &Path) -> Result<Vec<Entry>, crate::Error> {
+    let file = std::fs::File::open(path)?;
+    let reader: Box<dyn Read> = if path.extension().is_some_and(|ext| ext == "gz") {
+        Box::new(flate2::read::GzDecoder::new(file))
+    } else {
+        Box::new(file)
+    };
+    BufReader::new(reader)
+        .lines()
+        .map(|line| Ok(serde_json::from_str(&line?)?))
+        .collect::<Result<_, crate::Error>>()
+        .map_err(|e| format!("{}: {e}", path.display()).into())
 }

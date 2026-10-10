@@ -20,6 +20,7 @@ use pumpkin_neoforge_client::{
     channels::ChannelMap,
     check, parse_expected,
     record::{Direction, Entry},
+    registries::{RegistryExpectations, check_registries},
     session::{self, Outcome},
 };
 use pumpkin_protocol::java::neoforge::{
@@ -181,18 +182,6 @@ fn body(entry: &Entry) -> Vec<u8> {
     hex::decode(&entry.data).unwrap()
 }
 
-/// The id count, then the names at `ids`, of a snapshot.
-fn names_at(registry: &FrozenRegistryPayload, ids: [i32; 3]) -> (usize, [String; 3]) {
-    let snapshot = &registry.snapshot.ids;
-    let name = |id| {
-        snapshot
-            .get(&id)
-            .map(ToString::to_string)
-            .unwrap_or_default()
-    };
-    (snapshot.len(), ids.map(name))
-}
-
 fn check_neoforge_client(server: &Server, port: u16) {
     let channels = ChannelMap::load(
         &Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -236,39 +225,14 @@ fn check_neoforge_client(server: &Server, port: u16) {
     );
 
     // The generated entries keep their ids and the custom entry takes the first free id.
-    assert_eq!(
-        names_at(&registries[0], [0, 1285, 1286]),
-        (
-            1287,
-            [
-                "minecraft:air".to_owned(),
-                "minecraft:firefly_bush".to_owned(),
-                BLOCK.to_owned()
-            ]
-        )
-    );
-    assert_eq!(
-        names_at(&registries[1], [0, 1657, 1658]),
-        (
-            1659,
-            [
-                "minecraft:air".to_owned(),
-                "minecraft:ominous_bottle".to_owned(),
-                ITEM.to_owned()
-            ]
-        )
-    );
-    assert_eq!(
-        names_at(&registries[2], [0, 160, 161]),
-        (
-            162,
-            [
-                "minecraft:acacia_boat".to_owned(),
-                "minecraft:fishing_bobber".to_owned(),
-                ENTITY_TYPE.to_owned()
-            ]
-        )
-    );
+    let expectations = RegistryExpectations::parse(include_str!(
+        "../../../tools/pumpkin-neoforge-client/expected/pumpkin-neoforge-test-mod-registries.toml"
+    ))
+    .unwrap();
+    let custom: Vec<&str> = expectations.0.iter().map(|r| r.last.as_str()).collect();
+    assert_eq!(custom, [BLOCK, ITEM, ENTITY_TYPE]);
+    let failures = check_registries(&entries, &expectations);
+    assert!(failures.is_empty(), "{failures:#?}");
 
     // The known packs wait for the client's echo of the completed payload.
     let completed = Some(FrozenRegistrySyncCompletedPayload::CHANNEL);

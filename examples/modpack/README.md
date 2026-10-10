@@ -1,8 +1,14 @@
 # Example modpack
 
 A Cargo workspace that compiles the IronPumpkin server with the native mods of the pack.
-`mods/hello-mod` registers `/hello`, which answers with the mod id, and a block and an item
-through the builders of `ironpumpkin_mods::content`.
+`mods/hello-mod` registers `/hello`, which answers with the mod id, and three kinds of content
+through the builders of `ironpumpkin_mods::content`:
+
+| Name | Kind | Vanilla clients see |
+|:--|:--|:--|
+| `hello-mod:greeter_lamp` | block, with a `lit` property | `minecraft:redstone_lamp` |
+| `hello-mod:greeter_lamp` | item that places the block | `minecraft:redstone_lamp` |
+| `hello-mod:greeter` | entity type | `minecraft:pig` |
 
 - `src/main.rs` references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`.
   A mod crate that the binary does not reference is not linked, and its mod does not load.
@@ -28,5 +34,5 @@ cd /path/to/server/dir && /path/to/IronPumpkin/target/debug/example-modpack
 ```
 
 The log shows `[ironpumpkin] loaded 1 native mod: hello-mod (client_required = true)`. Type
-`hello` on the console to run the command. The content phase writes `hello-mod:greeter_lamp`, as a
-block and as an item, to `<world>/ironpumpkin/content_registry.json`.
+`hello` on the console to run the command. The content phase writes the block, the item and the
+entity type to `<world>/ironpumpkin/content_registry.json`.

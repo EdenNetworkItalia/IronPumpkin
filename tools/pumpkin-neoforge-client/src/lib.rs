@@ -3,7 +3,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 pub mod channels;
+pub mod compare;
 pub mod record;
+pub mod registries;
 pub mod session;
 
 use std::fmt;

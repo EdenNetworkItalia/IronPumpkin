@@ -1,5 +1,5 @@
-//! Example native mod. It registers `/hello`, which answers with the mod id, and a block and an
-//! item whose behaviours log what the server runs.
+//! Example native mod. It registers `/hello`, which answers with the mod id, a block and an item
+//! whose behaviours log what the server runs, and an entity type.
 
 use std::{any::Any, sync::Arc};
 
@@ -10,15 +10,17 @@ use ironpumpkin_mods::{
         context::command_context::CommandContext,
         node::{CommandExecutor, CommandExecutorResult},
     },
-    content::{BlockBehaviour, BlockBuilder, ItemBehaviour, ItemBuilder, RegistryError},
-    entity::player::Player,
+    content::{
+        BlockBehaviour, BlockBuilder, EntityTypeBuilder, ItemBehaviour, ItemBuilder, RegistryError,
+    },
+    entity::{Entity, EntityBase, player::Player},
     math::{position::BlockPos, vector3::Vector3},
     permission::{Permission, PermissionDefault},
     pumpkin_core::block::{
         BrokenArgs, NormalUseArgs, OnStateReplacedArgs, PlacedArgs, registry::BlockActionResult,
     },
     pumpkin_data::{
-        Block, BlockDirection, item::Item, item_stack::ItemStack,
+        Block, BlockDirection, entity::EntityType, item::Item, item_stack::ItemStack,
         translation::java::CHAT_SQUARE_BRACKETS,
     },
     register_mod,
@@ -30,6 +32,7 @@ use ironpumpkin_mods::{
 const ID: &str = "hello-mod";
 const DESCRIPTION: &str = "Answers with the id of the mod that registered it.";
 const LAMP: &str = "hello-mod:greeter_lamp";
+const GREETER: &str = "hello-mod:greeter";
 
 struct HelloMod;
 
@@ -62,8 +65,8 @@ impl NativeMod for HelloMod {
     }
 }
 
-/// A lamp that vanilla clients see as a redstone lamp, and the item that places it. Content
-/// registers at once and returns the error of the registry.
+/// A lamp that vanilla clients see as a redstone lamp, the item that places it, and an entity
+/// type that they see as a pig. Content registers at once and returns the error of the registry.
 fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
     cx.register_block(
         BlockBuilder::new(LAMP, Block::REDSTONE_LAMP.default_state.id)
@@ -74,7 +77,15 @@ fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
         ItemBuilder::new(LAMP, &Item::REDSTONE_LAMP)
             .places(LAMP)
             .behaviour(Arc::new(GreeterLampItem)),
+    )?;
+    cx.register_entity_type(
+        EntityTypeBuilder::new(GREETER, &EntityType::PIG),
+        spawn_greeter,
     )
+}
+
+fn spawn_greeter(entity: Entity) -> Arc<dyn EntityBase> {
+    Arc::new(entity)
 }
 
 /// Logs the block hooks that the server runs for the lamp.

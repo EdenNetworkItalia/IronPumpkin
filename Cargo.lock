@@ -3374,6 +3374,7 @@ version = "0.2.0+26.3-26.51"
 dependencies = [
  "bytes",
  "clap",
+ "flate2",
  "hex",
  "pumpkin-data",
  "pumpkin-protocol",

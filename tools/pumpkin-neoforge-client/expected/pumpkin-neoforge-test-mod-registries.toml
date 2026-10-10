@@ -1,0 +1,25 @@
+# The neoforge:frozen_registry payloads that IronPumpkin with the native mod ironpumpkin-test-mod
+# sends to a NeoForge client, in order. The generated entries keep their ids, and each custom
+# entry takes the first free id. `at` names more entries by id. The boot test of
+# crates/ironpumpkin-test-mod reads this file.
+
+[[registry]]
+name = "minecraft:block"
+ids = 1287
+first = "minecraft:air"
+last = "test-mod:test_block"
+at = { 1285 = "minecraft:firefly_bush" }
+
+[[registry]]
+name = "minecraft:item"
+ids = 1659
+first = "minecraft:air"
+last = "test-mod:test_item"
+at = { 1657 = "minecraft:ominous_bottle" }
+
+[[registry]]
+name = "minecraft:entity_type"
+ids = 162
+first = "minecraft:acacia_boat"
+last = "test-mod:test_entity"
+at = { 160 = "minecraft:fishing_bobber" }

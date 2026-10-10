@@ -1,0 +1,22 @@
+# The neoforge:frozen_registry payloads that IronPumpkin without native mods sends to a NeoForge
+# client, in order. The ids are 0..ids without gaps: `first` is the name at id 0, `last` the name
+# at id ids - 1. The counts and the first and last names equal run (b) of the NeoForge
+# 26.3.0.64-beta capture.
+
+[[registry]]
+name = "minecraft:block"
+ids = 1286
+first = "minecraft:air"
+last = "minecraft:firefly_bush"
+
+[[registry]]
+name = "minecraft:item"
+ids = 1658
+first = "minecraft:air"
+last = "minecraft:ominous_bottle"
+
+[[registry]]
+name = "minecraft:entity_type"
+ids = 161
+first = "minecraft:acacia_boat"
+last = "minecraft:fishing_bobber"
