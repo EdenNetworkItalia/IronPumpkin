@@ -2,6 +2,8 @@
 use super::*;
 use pumpkin_util::uuid::name_uuid_from_bytes;
 
+use crate::net::java::neoforge;
+
 impl PendingConnection {
     pub async fn handle_login_acknowledged(
         &mut self,
@@ -9,7 +11,7 @@ impl PendingConnection {
     ) -> Option<PacketHandlerResult> {
         debug!("Handling login acknowledgement");
         self.connection_state.store(ConnectionState::Config);
-        if server.basic_config.detect_neoforge_clients {
+        if neoforge::detects_neoforge_clients(&server.basic_config) {
             self.send_neoforge_probe(server).await;
         } else {
             self.run_configuration(server).await;

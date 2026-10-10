@@ -212,7 +212,7 @@ pub struct BasicConfiguration {
     pub advertise_modded: bool,
     /// Whether the configuration phase starts with the `NeoForge` channel probe, which detects
     /// `NeoForge` clients and negotiates their channels. Vanilla clients see five extra packets
-    /// before the brand.
+    /// before the brand. A loaded client-required native mod turns it on.
     pub detect_neoforge_clients: bool,
     /// The default level name
     pub default_level_name: String,

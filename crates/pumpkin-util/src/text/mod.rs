@@ -1,6 +1,7 @@
 use crate::text::color::{ARGBColor, hsv_to_rgb};
 use crate::translation::{
-    Locale, get_translation, get_translation_text, reorder_substitutions, translation_to_pretty,
+    Locale, get_translation, get_translation_or, get_translation_text, pretty_with,
+    reorder_substitutions, text_with, translation_to_pretty,
 };
 use crate::version::JavaMinecraftVersion;
 use click::ClickEvent;
@@ -134,9 +135,15 @@ impl TextComponentBase {
                 compound.put_string("text", text.to_string());
             }
             TextContent::Translate {
-                translate, with, ..
+                translate,
+                fallback,
+                with,
+                ..
             } => {
                 compound.put_string("translate", translate.to_string());
+                if let Some(fallback) = fallback {
+                    compound.put_string("fallback", fallback.to_string());
+                }
                 if !with.is_empty() {
                     let list = with
                         .iter()
@@ -468,12 +475,21 @@ impl TextComponentBase {
                 );
             }
             TextContent::Translate {
-                translate, with, ..
+                translate,
+                fallback,
+                with,
+                ..
             } => {
                 map.insert(
                     "translate".to_string(),
                     serde_json::Value::String(translate.to_string()),
                 );
+                if let Some(fallback) = fallback {
+                    map.insert(
+                        "fallback".to_string(),
+                        serde_json::Value::String(fallback.to_string()),
+                    );
+                }
                 if !with.is_empty() {
                     let list: Vec<serde_json::Value> = with
                         .iter()
@@ -1004,8 +1020,18 @@ impl TextComponentBase {
         let mut text = match *self.content {
             TextContent::Text { text } => text.into_owned(),
             TextContent::Translate {
-                translate, with, ..
-            } => translation_to_pretty(format!("minecraft:{translate}"), Locale::EnUs, with),
+                translate,
+                fallback,
+                with,
+                ..
+            } => pretty_with(
+                get_translation_or(
+                    &format!("minecraft:{translate}"),
+                    fallback.as_deref(),
+                    Locale::EnUs,
+                ),
+                with,
+            ),
             TextContent::EntityNames {
                 selector,
                 separator: _,
@@ -1058,7 +1084,7 @@ impl TextComponentBase {
             TextContent::Translate {
                 translate,
                 bedrock_translate,
-                with: _,
+                ..
             } => {
                 let key = bedrock_translate.as_deref().unwrap_or(translate.as_ref());
                 let _ = write!(text, "%{key}");
@@ -1123,10 +1149,12 @@ impl TextComponentBase {
             TextContent::Translate {
                 translate,
                 bedrock_translate,
+                fallback,
                 with,
             } => {
                 let key = bedrock_translate.as_ref().unwrap_or(translate);
-                text.push_str(&get_translation_text(key.to_string(), locale, with.clone()));
+                let translation = get_translation_or(key, fallback.as_deref(), locale);
+                text.push_str(&text_with(translation, locale, with.clone()));
             }
             TextContent::EntityNames { selector, .. } => text.push_str(selector),
             TextContent::Keybind { keybind } => text.push_str(keybind),
@@ -1165,10 +1193,16 @@ impl TextComponentBase {
             TextContent::Translate {
                 translate,
                 bedrock_translate,
+                fallback,
                 with,
             } => {
                 let key = bedrock_translate.as_ref().unwrap_or(&translate);
-                get_translation_text(format!("minecraft:{key}"), locale, with)
+                let key = format!("minecraft:{key}");
+                text_with(
+                    get_translation_or(&key, fallback.as_deref(), locale),
+                    locale,
+                    with,
+                )
             }
             TextContent::EntityNames {
                 selector,
@@ -1242,6 +1276,7 @@ impl TextComponentBase {
             TextContent::Translate {
                 translate,
                 bedrock_translate,
+                fallback,
                 with,
             } => {
                 let mut translated_with = vec![];
@@ -1252,6 +1287,7 @@ impl TextComponentBase {
                     content: Box::new(TextContent::Translate {
                         translate,
                         bedrock_translate,
+                        fallback,
                         with: translated_with,
                     }),
                     style: self.style,
@@ -1377,6 +1413,7 @@ impl TextComponent {
             content: Box::new(TextContent::Translate {
                 translate: key.into(),
                 bedrock_translate: None,
+                fallback: None,
                 with: with.into().into_iter().map(|x| x.0).collect(),
             }),
             style: Box::new(Style::default()),
@@ -1411,6 +1448,36 @@ impl TextComponent {
             content: Box::new(TextContent::Translate {
                 translate: java_key.into(),
                 bedrock_translate: Some(bedrock_key.into()),
+                fallback: None,
+                with: with.into().into_iter().map(|x| x.0).collect(),
+            }),
+            style: Box::new(Style::default()),
+            extra: vec![],
+        })
+    }
+
+    /// Creates a translation that a client without the key shows as `fallback`, like vanilla's
+    /// `Component.translatableWithFallback`. Use it for keys that vanilla clients do not have.
+    ///
+    /// # Arguments
+    /// - `key` – The translation key.
+    /// - `fallback` – The format string shown without the key; `%s` takes the arguments.
+    /// - `with` – The substitution parameters for the translation.
+    #[must_use]
+    pub fn translate_with_fallback<
+        K: Into<Cow<'static, str>>,
+        F: Into<Cow<'static, str>>,
+        W: Into<Vec<Self>>,
+    >(
+        key: K,
+        fallback: F,
+        with: W,
+    ) -> Self {
+        Self(TextComponentBase {
+            content: Box::new(TextContent::Translate {
+                translate: key.into(),
+                bedrock_translate: None,
+                fallback: Some(fallback.into()),
                 with: with.into().into_iter().map(|x| x.0).collect(),
             }),
             style: Box::new(Style::default()),
@@ -2069,6 +2136,10 @@ pub enum TextContent {
         /// Bedrock translation key. If specified, Bedrock clients receive an `SText::translation` packet.
         #[serde(skip, default)]
         bedrock_translate: Option<Cow<'static, str>>,
+        /// The text a client shows when it has no translation for the key, as vanilla's
+        /// `translatableWithFallback`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fallback: Option<Cow<'static, str>>,
         /// Substitution parameters for the translation.
         #[serde(
             default,
@@ -2376,6 +2447,90 @@ mod test {
         };
         assert_eq!(with.len(), 1);
         assert_eq!(TextComponent(with[0].clone()).get_text(), "1234");
+    }
+
+    fn decode_nbt(bytes: &[u8]) -> pumpkin_nbt::tag::NbtTag {
+        let mut reader =
+            pumpkin_nbt::deserializer::NbtReadHelperJava::new(std::io::Cursor::new(bytes));
+        pumpkin_nbt::tag::NbtTag::deserialize(&mut reader).unwrap()
+    }
+
+    #[test]
+    fn translate_fallback_round_trips_through_nbt_and_json() {
+        let component = TextComponent::translate_with_fallback(
+            "test.key",
+            "Install version %s",
+            [TextComponent::text("1.0")],
+        );
+
+        // Vanilla `TranslatableContents.MAP_CODEC`: `fallback` is a string next to `translate`.
+        let tag = decode_nbt(&component.encode());
+        let pumpkin_nbt::tag::NbtTag::Compound(compound) = &tag else {
+            panic!("not a compound: {tag:?}");
+        };
+        assert_eq!(compound.get_string("translate"), Some("test.key"));
+        assert_eq!(compound.get_string("fallback"), Some("Install version %s"));
+        assert_eq!(TextComponent::from_nbt(&tag), component);
+
+        let json = component.to_json_value_for_version(&JavaMinecraftVersion::V_26_3);
+        assert_eq!(json["fallback"], "Install version %s");
+        assert_eq!(json["with"][0], "1.0");
+        let serde_json = serde_json::to_value(&component).unwrap();
+        assert_eq!(serde_json["fallback"], "Install version %s");
+        assert_eq!(
+            serde_json::from_value::<TextComponent>(serde_json).unwrap(),
+            component
+        );
+    }
+
+    #[test]
+    fn an_unknown_key_renders_the_fallback() {
+        let unknown = TextComponent::translate_with_fallback(
+            "test.unknown.key",
+            "fallback %s",
+            [TextComponent::text("1.0")],
+        );
+        let locale = crate::translation::Locale::EnUs;
+        assert_eq!(unknown.clone().get_text(), "fallback 1.0");
+        assert!(
+            unknown
+                .0
+                .clone()
+                .to_pretty_console()
+                .contains("fallback 1.0")
+        );
+        assert!(unknown.0.to_bedrock_legacy(locale).contains("fallback 1.0"));
+        assert!(unknown.to_legacy_string(locale).contains("fallback 1.0"));
+
+        // A known key ignores the fallback.
+        let known = TextComponent::translate_with_fallback(
+            "multiplayer.disconnect.kicked",
+            "fallback",
+            Vec::<TextComponent>::new(),
+        );
+        assert_eq!(known.get_text(), "Kicked by an operator");
+    }
+
+    #[test]
+    fn translate_without_fallback_writes_no_fallback() {
+        #[allow(deprecated)]
+        let component = TextComponent::translate("test.key", [TextComponent::text("1.0")]);
+
+        let tag = decode_nbt(&component.encode());
+        let pumpkin_nbt::tag::NbtTag::Compound(compound) = &tag else {
+            panic!("not a compound: {tag:?}");
+        };
+        assert_eq!(compound.get_string("fallback"), None);
+        assert_eq!(TextComponent::from_nbt(&tag), component);
+
+        let json = component.to_json_value_for_version(&JavaMinecraftVersion::V_26_3);
+        assert!(json.get("fallback").is_none());
+        let serde_json = serde_json::to_value(&component).unwrap();
+        assert!(serde_json.get("fallback").is_none());
+        assert_eq!(
+            serde_json::from_value::<TextComponent>(serde_json).unwrap(),
+            component
+        );
     }
 }
 

@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use crate::text::color::Color;
 use crate::text::{TextComponent, TextContent};
-use crate::translation::{Locale, get_translation_text};
+use crate::translation::{Locale, get_translation_or, get_translation_text, text_with};
 
 impl TextComponent {
     /// Parses a legacy Minecraft formatted string (using section signs '§' by default) into a text component.
@@ -268,14 +268,13 @@ impl TextComponent {
             TextContent::Text { text: t } => text.push_str(t),
             TextContent::Translate {
                 translate,
-                bedrock_translate: _,
+                fallback,
                 with,
+                ..
             } => {
-                text.push_str(&get_translation_text(
-                    format!("minecraft:{translate}"),
-                    locale,
-                    with.clone(),
-                ));
+                let key = format!("minecraft:{translate}");
+                let translation = get_translation_or(&key, fallback.as_deref(), locale);
+                text.push_str(&text_with(translation, locale, with.clone()));
             }
             TextContent::EntityNames { selector, .. } => text.push_str(selector),
             TextContent::Keybind { keybind } => text.push_str(keybind),

@@ -55,7 +55,7 @@ use crate::{
 use super::{
     JavaClient,
     configuration_tasks::{ConfigurationTasks, TaskReply, is_terminal_resource_pack_response},
-    neoforge::ClientChannels,
+    neoforge::{self, ClientChannels},
 };
 
 /// The channel of vanilla `BrandPayload`.
@@ -652,7 +652,7 @@ impl PendingConnection {
                 self.run_configuration_tasks(server).await;
             }
         } else {
-            let handled = server.basic_config.detect_neoforge_clients
+            let handled = neoforge::detects_neoforge_clients(&server.basic_config)
                 && self
                     .handle_neoforge_payload(server, plugin_message.channel, plugin_message.data)
                     .await?;

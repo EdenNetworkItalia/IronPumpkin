@@ -9,7 +9,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use pumpkin_data::{dynamic::ContentIds, packet::CURRENT_MC_VERSION, translation};
+use pumpkin_config::BasicConfiguration;
+use pumpkin_data::{dynamic::ContentIds, translation};
 use pumpkin_protocol::{
     java::{
         client::config::CConfigPing,
@@ -30,13 +31,72 @@ use pumpkin_util::{
     text::TextComponent,
 };
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use super::pending::PendingConnection;
-use crate::server::Server;
+use crate::{
+    plugin::startup::{self, NativeModInfo},
+    server::Server,
+};
+
+/// The `NeoForge` version this server presents, in place of `NeoForgeVersion.getVersion()`: the
+/// version of the server the captures come from.
+pub const EMULATED_NEOFORGE_VERSION: &str = "26.3.0.64-beta";
 
 /// The id of the probe ping. Its pong starts the vanilla configuration.
 const PROBE_PING_ID: i32 = 0;
+
+/// Whether connections run the `NeoForge` probe: `detect_neoforge_clients`, or a loaded
+/// client-required native mod, which needs the probe to tell a vanilla client from a `NeoForge`
+/// client.
+#[must_use]
+pub fn detects_neoforge_clients(config: &BasicConfiguration) -> bool {
+    detection_on(config.detect_neoforge_clients, startup::native_mods())
+}
+
+fn detection_on(option: bool, mods: &[NativeModInfo]) -> bool {
+    option || mods.iter().any(|native_mod| native_mod.client_required)
+}
+
+fn client_required_mod_ids(mods: &[NativeModInfo]) -> Vec<&str> {
+    mods.iter()
+        .filter(|native_mod| native_mod.client_required)
+        .map(|native_mod| native_mod.id.as_str())
+        .collect()
+}
+
+/// Warns at startup, after the native mods are set, when a client-required mod turns on the
+/// detection that the configuration turns off.
+pub(crate) fn warn_if_detection_forced(config: &BasicConfiguration) {
+    if let Some(warning) =
+        forced_detection_warning(config.detect_neoforge_clients, startup::native_mods())
+    {
+        warn!("{warning}");
+    }
+}
+
+fn forced_detection_warning(option: bool, mods: &[NativeModInfo]) -> Option<String> {
+    let ids = client_required_mod_ids(mods);
+    (!option && !ids.is_empty()).then(|| {
+        format!(
+            "detect_neoforge_clients is false, but the client-required native mods {} need it: \
+             NeoForge client detection is on",
+            ids.join(", ")
+        )
+    })
+}
+
+/// The reason `NetworkRegistry.initializeOtherConnection` gives a client that cannot join a
+/// `NeoForge` server. The fallback is for a client without `NeoForge`, which has no translation
+/// for the key.
+fn vanilla_client_not_supported() -> TextComponent {
+    TextComponent::translate_with_fallback(
+        "neoforge.network.negotiation.failure.vanilla.client.not_supported",
+        "You are trying to connect to a server that is running NeoForge, but you are not. Please \
+         install NeoForge Version: %s to connect to this server.",
+        [TextComponent::text(EMULATED_NEOFORGE_VERSION)],
+    )
+}
 
 /// `NetworkRegistry.BUILTIN_PAYLOADS`: the channels a `NeoForge` server listens on before negotiation.
 const BUILTIN_CHANNELS: [Identifier; 7] = [
@@ -628,6 +688,12 @@ impl PendingConnection {
         Ok(true)
     }
 
+    fn player_name(&self) -> &str {
+        self.gameprofile
+            .as_ref()
+            .map_or("unknown", |profile| profile.name.as_str())
+    }
+
     /// `NeoForge`'s `handlePong`: the probe pong initializes a client that did not answer the probe
     /// and starts the vanilla configuration.
     pub async fn handle_neoforge_probe_pong(&mut self, server: &Server, pong: &SConfigPong) {
@@ -638,9 +704,7 @@ impl PendingConnection {
         info!(
             "Client {} ({}) connection type: {:?}, {} NeoForge channels declared",
             self.id,
-            self.gameprofile
-                .as_ref()
-                .map_or("unknown", |profile| profile.name.as_str()),
+            self.player_name(),
             self.client_channels.connection_type,
             self.client_channels.modded_channel_count()
         );
@@ -686,9 +750,8 @@ impl PendingConnection {
                     .await;
                     self.kick(TextComponent::translate(
                         translation::java::MULTIPLAYER_DISCONNECT_INCOMPATIBLE,
-                        // CURRENT_MC_VERSION stands in for NeoForgeVersion.getVersion().
                         [TextComponent::text(format!(
-                            "NeoForge {CURRENT_MC_VERSION}"
+                            "NeoForge {EMULATED_NEOFORGE_VERSION}"
                         ))],
                     ))
                     .await;
@@ -717,17 +780,25 @@ impl PendingConnection {
     }
 
     /// `NetworkRegistry.initializeOtherConnection`. Returns false when the client was disconnected.
+    ///
+    /// A client-required native mod also disconnects the client, as on a `NeoForge` server, where
+    /// a client without `NeoForge` cannot have the mod.
     async fn initialize_other_connection(&mut self, server: &Server) -> bool {
+        let required_mods = client_required_mod_ids(startup::native_mods());
+        if !required_mods.is_empty() {
+            info!(
+                "Kicking {} ({}): a client without NeoForge cannot have the client-required native mods {}",
+                self.id,
+                self.player_name(),
+                required_mods.join(", ")
+            );
+            self.kick(vanilla_client_not_supported()).await;
+            return false;
+        }
         for protocol in NEGOTIATED_PROTOCOLS {
             let server_channels = server.network_registry.registrations(protocol).await;
             if negotiate(&server_channels, &[]).is_err() {
-                // The fallback of the `translatableWithFallback`: a client without NeoForge has no
-                // translation for the key. CURRENT_MC_VERSION stands in for
-                // NeoForgeVersion.getVersion().
-                self.kick(TextComponent::text(format!(
-                    "You are trying to connect to a server that is running NeoForge, but you are not. Please install NeoForge Version: {CURRENT_MC_VERSION} to connect to this server."
-                )))
-                .await;
+                self.kick(vanilla_client_not_supported()).await;
                 return false;
             }
         }
@@ -755,6 +826,76 @@ mod tests {
     #[test]
     fn a_connection_negotiates_nothing_by_default() {
         assert_eq!(NOT_NEGOTIATED, NegotiatedState::default());
+    }
+
+    fn native_mod(id: &str, client_required: bool) -> NativeModInfo {
+        NativeModInfo {
+            id: id.to_owned(),
+            display_name: id.to_owned(),
+            version: "1.0.0".to_owned(),
+            client_required,
+        }
+    }
+
+    #[test]
+    fn a_client_required_mod_forces_detection_on() {
+        let required = [native_mod("test-mod", true)];
+        let optional = [native_mod("server-only", false)];
+        assert!(detection_on(false, &required));
+        assert!(!detection_on(false, &optional));
+        assert!(!detection_on(false, &[]));
+        assert!(detection_on(true, &optional));
+        assert!(detection_on(true, &[]));
+    }
+
+    #[test]
+    fn the_forced_detection_warning_names_the_client_required_mods() {
+        let mods = [
+            native_mod("server-only", false),
+            native_mod("test-mod", true),
+        ];
+        let warning = forced_detection_warning(false, &mods).unwrap();
+        assert!(warning.contains("test-mod"), "{warning}");
+        assert!(!warning.contains("server-only"), "{warning}");
+        assert_eq!(forced_detection_warning(true, &mods), None);
+        assert_eq!(
+            forced_detection_warning(false, &[native_mod("server-only", false)]),
+            None
+        );
+    }
+
+    #[test]
+    fn the_vanilla_client_kick_carries_the_fallback_and_the_version() {
+        let bytes = vanilla_client_not_supported().encode();
+        let mut reader =
+            pumpkin_nbt::deserializer::NbtReadHelperJava::new(std::io::Cursor::new(&bytes[..]));
+        let tag = pumpkin_nbt::tag::NbtTag::deserialize(&mut reader).unwrap();
+        let reason = TextComponent::from_nbt(&tag);
+        let pumpkin_util::text::TextContent::Translate {
+            translate,
+            fallback,
+            with,
+            ..
+        } = *reason.0.content
+        else {
+            panic!("not a translate component: {reason:?}");
+        };
+        assert_eq!(
+            translate,
+            "neoforge.network.negotiation.failure.vanilla.client.not_supported"
+        );
+        assert_eq!(
+            fallback.as_deref(),
+            Some(
+                "You are trying to connect to a server that is running NeoForge, but you are not. \
+                 Please install NeoForge Version: %s to connect to this server."
+            )
+        );
+        assert_eq!(with.len(), 1);
+        assert_eq!(
+            TextComponent(with[0].clone()).get_text(),
+            EMULATED_NEOFORGE_VERSION
+        );
     }
 
     fn component(
@@ -804,6 +945,21 @@ mod tests {
         )];
         let channels = negotiate(&server, &client).unwrap();
         assert_eq!(
+    /// The server has no translation for the `NeoForge` key, so the console shows the fallback.
+    #[test]
+    fn the_console_renders_the_vanilla_client_kick_from_the_fallback() {
+        let expected = format!(
+            "You are trying to connect to a server that is running NeoForge, but you are not. \
+             Please install NeoForge Version: {EMULATED_NEOFORGE_VERSION} to connect to this server."
+        );
+        assert_eq!(vanilla_client_not_supported().get_text(), expected);
+        assert!(
+            vanilla_client_not_supported()
+                .to_pretty_console()
+                .contains(&expected)
+        );
+    }
+
             channels.values().collect::<Vec<_>>(),
             [&NetworkChannel {
                 id: Identifier::parse_static("a:sync"),

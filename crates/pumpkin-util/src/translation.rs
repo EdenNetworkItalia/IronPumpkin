@@ -116,20 +116,38 @@ pub fn add_translation_file<P: Into<String>>(namespace: P, file_path: P, locale:
 /// # Returns
 /// The localized translation. Falls back to `en_us`, then to the lowercased key without a
 /// leading `minecraft:`, as vanilla `Language.getOrDefault` returns the bare key.
+#[must_use]
 pub fn get_translation(key: &str, locale: Locale) -> String {
+    get_translation_or(key, None, locale)
+}
+
+/// The translation of `key` in `locale`, then in `en_us`. `None` when neither table has the key.
+#[must_use]
+pub fn find_translation(key: &str, locale: Locale) -> Option<String> {
     let translations = TRANSLATIONS
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     let key = key.to_lowercase();
-    translations[locale as usize].get(&key).map_or_else(
-        || {
-            translations[Locale::EnUs as usize].get(&key).map_or_else(
-                || key.strip_prefix("minecraft:").unwrap_or(&key).to_owned(),
-                Clone::clone,
-            )
-        },
-        Clone::clone,
-    )
+    translations[locale as usize]
+        .get(&key)
+        .or_else(|| translations[Locale::EnUs as usize].get(&key))
+        .cloned()
+}
+
+/// Like [`get_translation`], but an unknown key gives `fallback` when there is one, as vanilla
+/// `TranslatableContents.decompose` does: `Language.getOrDefault(key, fallback != null ? fallback
+/// : key)`.
+#[must_use]
+pub fn get_translation_or(key: &str, fallback: Option<&str>, locale: Locale) -> String {
+    find_translation(key, locale).unwrap_or_else(|| {
+        fallback.map_or_else(
+            || {
+                let key = key.to_lowercase();
+                key.strip_prefix("minecraft:").unwrap_or(&key).to_owned()
+            },
+            str::to_owned,
+        )
+    })
 }
 
 /// What a `%` in a translation string introduces.
@@ -261,7 +279,12 @@ pub fn translation_to_pretty<P: Into<Cow<'static, str>>>(
     locale: Locale,
     with: Vec<TextComponentBase>,
 ) -> String {
-    let translation = get_translation(&namespaced_key.into(), locale);
+    pretty_with(get_translation(&namespaced_key.into(), locale), with)
+}
+
+/// [`translation_to_pretty`] for a translation string already looked up.
+#[must_use]
+pub fn pretty_with(translation: String, with: Vec<TextComponentBase>) -> String {
     if with.is_empty() || !translation.contains('%') {
         return translation;
     }
@@ -297,7 +320,16 @@ pub fn get_translation_text<P: Into<Cow<'static, str>>>(
     locale: Locale,
     with: Vec<TextComponentBase>,
 ) -> String {
-    let translation = get_translation(&namespaced_key.into(), locale);
+    text_with(
+        get_translation(&namespaced_key.into(), locale),
+        locale,
+        with,
+    )
+}
+
+/// [`get_translation_text`] for a translation string already looked up.
+#[must_use]
+pub fn text_with(translation: String, locale: Locale, with: Vec<TextComponentBase>) -> String {
     if with.is_empty() || !translation.contains('%') {
         return translation;
     }
@@ -795,6 +827,7 @@ mod tests {
         let message = TextComponent::from_content(TextContent::Translate {
             translate: "commands.scoreboard.players.get.success".into(),
             bedrock_translate: Some("commands.scoreboard.players.get.success".into()),
+            fallback: None,
             with: vec![arg("7")],
         });
         assert_eq!(message.0.to_bedrock_legacy(Locale::EnUs), "7");

@@ -46,6 +46,7 @@ pub(crate) fn run(server: &Arc<Server>) {
     if let Some(hook) = STARTUP_HOOK.get() {
         hook(server);
     }
+    crate::net::java::neoforge::warn_if_detection_forced(&server.basic_config);
 }
 
 /// Creates the context of a plugin that no loader manages, such as a native mod.
