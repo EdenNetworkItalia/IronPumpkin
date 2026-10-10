@@ -14,7 +14,7 @@ The connection type, the negotiated channel setup and the content id mode of a c
 - **THEN** its player has connection type NeoForge and a channel setup with 11 configuration and 9 play channels
 
 ### Requirement: Content id mode
-A connection SHALL use the `Real` content id mode only when it is a NeoForge connection and the client echoed `neoforge:frozen_registry_sync_completed`. Every other connection SHALL use the `Display` mode. Status: planned (T5, T9).
+A connection SHALL use the `Real` content id mode only when it is a NeoForge connection and the client echoed `neoforge:frozen_registry_sync_completed`. Every other connection SHALL use the `Display` mode. Status: implemented (#90, #95).
 
 #### Scenario: Vanilla client
 - **WHEN** a vanilla client joins with only client-optional mods loaded
