@@ -13,7 +13,7 @@ use pumpkin_data::packet::{
     clientbound::{config, login},
 };
 use pumpkin_protocol::{
-    ClientPacket, ConnectionState, MAX_PACKET_DATA_SIZE, RawPacket, ServerPacket, VarInt,
+    ClientPacket, ConnectionState, RawPacket, ServerPacket, VarInt,
     java::{
         client::{
             config::CConfigPing,
@@ -27,7 +27,7 @@ use pumpkin_protocol::{
             KnownRegistryDataMapsPayload, KnownRegistryDataMapsReplyPayload,
             MinecraftRegisterPayload, MinecraftUnregisterPayload, ModdedNetworkPayload,
             ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload, PacketFlow,
-            SplitPacketPayload, decode_exact,
+            SplitPacketPayload, decode_exact, decode_payload,
         },
         packet_decoder::TCPNetworkDecoder,
         packet_encoder::TCPNetworkEncoder,
@@ -59,7 +59,9 @@ use tracing::{debug, info, warn};
 use crate::{
     Error,
     channels::ChannelMap,
-    record::{Decode, Direction, Entry, State, decode_payload, read_disconnect_reason},
+    record::{
+        Decode, Direction, Entry, State, decode_payload as describe_payload, read_disconnect_reason,
+    },
 };
 
 /// Compression level for the packets this client sends. Any zlib level is valid.
@@ -147,6 +149,42 @@ fn packet_name(table: &[(PacketId, &str)], id: i32) -> String {
             || format!("unknown_0x{id:02x}"),
             |(_, name)| (*name).to_owned(),
         )
+}
+
+/// The channel and data of a configuration `custom_payload` body. Vanilla's 1 MiB clientbound
+/// bound does not apply to `neoforge:split`, which `NeoForge` reads with its own codec.
+fn read_custom_payload(body: &[u8]) -> Result<(&str, &[u8]), Error> {
+    if let Some(data) = SplitPacketPayload::data_of(body) {
+        return Ok((SplitPacketPayload::CHANNEL, data));
+    }
+    let payload = SPluginMessage::read(&mut &body[..], &CURRENT_MC_VERSION)?;
+    Ok((payload.channel, payload.data))
+}
+
+/// `GenericPacketSplitter.receivedPacket`: the slices form a whole packet, id included. Like
+/// `NeoForge`, the joined size has no cap, and bytes after the body are ignored: the last part of
+/// a `NeoForge` sender carries the unused capacity of its buffer (see `SplitPacketReassembler`).
+fn join_split(buffer: &mut Vec<u8>, data: &[u8]) -> Result<Option<RawPacket>, Error> {
+    let slice = decode_exact(data, SplitPacketPayload::read)?.payload;
+    let Some((&state, content)) = slice.split_first() else {
+        return Err("empty neoforge:split slice".into());
+    };
+    if state == SPLIT_STATE_FIRST && !buffer.is_empty() {
+        warn!("neoforge:split received out of order, dropping the earlier slices");
+        buffer.clear();
+    }
+    buffer.extend_from_slice(content);
+    if state != SPLIT_STATE_LAST {
+        return Ok(None);
+    }
+    let full = std::mem::take(buffer);
+    let mut read = &full[..];
+    let id = read.get_var_int()?.0;
+    debug!(id, len = full.len(), "reassembled a split packet");
+    Ok(Some(RawPacket {
+        id,
+        payload: Bytes::copy_from_slice(read),
+    }))
 }
 
 /// A player name such as `Probe042117`, unique enough for back-to-back runs.
@@ -275,7 +313,7 @@ impl Session<'_> {
         reassembled: bool,
     ) {
         let (decode, summary, error) = channel.map_or((Decode::NotPayload, None, None), |c| {
-            decode_payload(c, data)
+            describe_payload(c, data, reassembled)
         });
         let entry = Entry {
             seq: self.seq,
@@ -418,19 +456,17 @@ impl Session<'_> {
         let mut body = &packet.payload[..];
 
         if packet.id == config::CUSTOM_PAYLOAD {
-            // Same layout as the serverbound packet, including vanilla's 1 MiB clientbound bound.
-            let payload = SPluginMessage::read(&mut body, version)?;
+            // Same layout as the serverbound packet.
+            let (channel, data) = read_custom_payload(body)?;
             self.record(
                 Direction::Clientbound,
                 State::Configuration,
                 name,
-                Some(payload.channel),
-                payload.data,
+                Some(channel),
+                data,
                 reassembled,
             );
-            return self
-                .handle_custom_payload(payload.channel, payload.data)
-                .await;
+            return self.handle_custom_payload(channel, data, reassembled).await;
         }
 
         self.record(
@@ -490,10 +526,13 @@ impl Session<'_> {
 
     /// The custom payload dispatch of `ClientConfigurationPacketListenerImpl.handleCustomPayload`
     /// followed by `ClientCommonPacketListenerImpl.handleCustomPayload`.
+    /// `reassembled` is whether the payload came in a packet joined from `neoforge:split` parts,
+    /// which can end with padding.
     async fn handle_custom_payload(
         &mut self,
         channel: &str,
         data: &[u8],
+        reassembled: bool,
     ) -> Result<Option<Outcome>, Error> {
         let options = self.options;
         let Some(channels) = options.channels.as_ref() else {
@@ -502,7 +541,8 @@ impl Session<'_> {
         };
         match channel {
             MinecraftRegisterPayload::CHANNEL => {
-                let registered = decode_exact(data, MinecraftRegisterPayload::read)?.channels;
+                let registered =
+                    decode_payload(data, reassembled, MinecraftRegisterPayload::read)?.channels;
                 self.adhoc_channels.extend(registered);
                 if self.setup.is_none() {
                     self.send_channels(channel, channels.initial_listening_channels())
@@ -510,7 +550,8 @@ impl Session<'_> {
                 }
             }
             MinecraftUnregisterPayload::CHANNEL => {
-                let forgotten = decode_exact(data, MinecraftUnregisterPayload::read)?.channels;
+                let forgotten =
+                    decode_payload(data, reassembled, MinecraftUnregisterPayload::read)?.channels;
                 self.adhoc_channels.retain(|id| !forgotten.contains(id));
             }
             ModdedNetworkQueryPayload::CHANNEL => {
@@ -520,7 +561,7 @@ impl Session<'_> {
                 self.send_payload(channel, &reply).await?;
             }
             ModdedNetworkPayload::CHANNEL => {
-                let setup = decode_exact(data, ModdedNetworkPayload::read)?.setup;
+                let setup = decode_payload(data, reassembled, ModdedNetworkPayload::read)?.setup;
                 if self.setup.is_none() {
                     let configuration: BTreeSet<Identifier> = setup
                         .channels
@@ -541,7 +582,8 @@ impl Session<'_> {
                 return self.initialize_other_connection().await;
             }
             CommonVersionPayload::CHANNEL => {
-                let versions = decode_exact(data, CommonVersionPayload::read)?.versions;
+                let versions =
+                    decode_payload(data, reassembled, CommonVersionPayload::read)?.versions;
                 if !versions.contains(&COMMON_NETWORKING_VERSION) {
                     return Ok(Some(Outcome::Disconnected(format!(
                         "client: unsupported common network versions {versions:?}"
@@ -564,7 +606,11 @@ impl Session<'_> {
                 .write(&mut reply)?;
                 self.send_payload(channel, &reply).await?;
             }
-            _ => return self.handle_modded_payload(channels, channel, data).await,
+            _ => {
+                return self
+                    .handle_modded_payload(channels, channel, data, reassembled)
+                    .await;
+            }
         }
         Ok(None)
     }
@@ -576,6 +622,7 @@ impl Session<'_> {
         channels: &ChannelMap,
         channel: &str,
         data: &[u8],
+        reassembled: bool,
     ) -> Result<Option<Outcome>, Error> {
         let Ok(id) = Identifier::parse(channel) else {
             return Ok(None);
@@ -606,13 +653,15 @@ impl Session<'_> {
 
         match channel {
             FrozenRegistrySyncStartPayload::CHANNEL => {
-                self.to_synchronize = decode_exact(data, FrozenRegistrySyncStartPayload::read)?
-                    .to_access
-                    .into_iter()
-                    .collect();
+                self.to_synchronize =
+                    decode_payload(data, reassembled, FrozenRegistrySyncStartPayload::read)?
+                        .to_access
+                        .into_iter()
+                        .collect();
             }
             FrozenRegistryPayload::CHANNEL => {
-                let name = decode_exact(data, FrozenRegistryPayload::read)?.registry_name;
+                let name =
+                    decode_payload(data, reassembled, FrozenRegistryPayload::read)?.registry_name;
                 self.to_synchronize.remove(&name);
             }
             FrozenRegistrySyncCompletedPayload::CHANNEL => {
@@ -630,7 +679,7 @@ impl Session<'_> {
                 return self.reply(channel, &[]).await;
             }
             FeatureFlagDataPayload::CHANNEL => {
-                decode_exact(data, FeatureFlagDataPayload::read)?;
+                decode_payload(data, reassembled, FeatureFlagDataPayload::read)?;
                 let mut reply = Vec::new();
                 FeatureFlagAcknowledgePayload.write(&mut reply)?;
                 return self
@@ -638,7 +687,7 @@ impl Session<'_> {
                     .await;
             }
             ExtensibleEnumDataPayload::CHANNEL => {
-                decode_exact(data, ExtensibleEnumDataPayload::read)?;
+                decode_payload(data, reassembled, ExtensibleEnumDataPayload::read)?;
                 let mut reply = Vec::new();
                 ExtensibleEnumAcknowledgePayload.write(&mut reply)?;
                 return self
@@ -647,7 +696,7 @@ impl Session<'_> {
             }
             // An empty map: the client knows no data maps, which only fails for mandatory ones.
             KnownRegistryDataMapsPayload::CHANNEL => {
-                decode_exact(data, KnownRegistryDataMapsPayload::read)?;
+                decode_payload(data, reassembled, KnownRegistryDataMapsPayload::read)?;
                 let mut reply = Vec::new();
                 KnownRegistryDataMapsReplyPayload::default().write(&mut reply)?;
                 return self
@@ -660,31 +709,9 @@ impl Session<'_> {
         Ok(None)
     }
 
-    /// `GenericPacketSplitter.receivedPacket`: the slices form a whole packet, id included.
     fn on_split(&mut self, data: &[u8]) -> Result<(), Error> {
-        let slice = decode_exact(data, SplitPacketPayload::read)?.payload;
-        let Some((&state, content)) = slice.split_first() else {
-            return Err("empty neoforge:split slice".into());
-        };
-        if state == SPLIT_STATE_FIRST && !self.split_buffer.is_empty() {
-            warn!("neoforge:split received out of order, dropping the earlier slices");
-            self.split_buffer.clear();
-        }
-        if self.split_buffer.len() + content.len() > MAX_PACKET_DATA_SIZE {
-            return Err(
-                format!("neoforge:split packet exceeds {MAX_PACKET_DATA_SIZE} bytes").into(),
-            );
-        }
-        self.split_buffer.extend_from_slice(content);
-        if state == SPLIT_STATE_LAST {
-            let full = std::mem::take(&mut self.split_buffer);
-            let mut read = &full[..];
-            let id = read.get_var_int()?.0;
-            debug!(id, len = full.len(), "reassembled a split packet");
-            self.pending.push_back(RawPacket {
-                id,
-                payload: Bytes::copy_from_slice(read),
-            });
+        if let Some(packet) = join_split(&mut self.split_buffer, data)? {
+            self.pending.push_back(packet);
         }
         Ok(())
     }
@@ -740,5 +767,95 @@ impl Session<'_> {
             .await?;
         self.send_channels(MinecraftRegisterPayload::CHANNEL, listening)
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Frames `packet` like the server egress for a client that declared `neoforge:split`, then
+    /// reads the frames back as this client does: the states of the parts and the joined packets.
+    async fn receive_split(
+        packet: &[u8],
+        compression: Option<usize>,
+    ) -> Result<(Vec<u8>, Vec<RawPacket>), Error> {
+        let mut wire = Vec::new();
+        let mut encoder = TCPNetworkEncoder::new(&mut wire);
+        if let Some(threshold) = compression {
+            encoder.set_compression((threshold, COMPRESSION_LEVEL));
+        }
+        encoder.set_split_payload_id(Some(config::CUSTOM_PAYLOAD.0));
+        encoder.write_packet(Bytes::copy_from_slice(packet)).await?;
+        let mut decoder = TCPNetworkDecoder::new(&wire[..]);
+        if let Some(threshold) = compression {
+            decoder.set_compression(threshold);
+        }
+        let (mut states, mut joined, mut buffer) = (Vec::new(), Vec::new(), Vec::new());
+        loop {
+            let part = match decoder.get_raw_packet().await {
+                Ok(part) => part,
+                Err(pumpkin_protocol::PacketDecodeError::ConnectionClosed) => break,
+                Err(err) => return Err(err.into()),
+            };
+            assert_eq!(part.id, config::CUSTOM_PAYLOAD);
+            let (channel, data) = read_custom_payload(&part.payload)?;
+            assert_eq!(channel, SplitPacketPayload::CHANNEL);
+            states.push(decode_exact(data, SplitPacketPayload::read)?.payload[0]);
+            joined.extend(join_split(&mut buffer, data)?);
+        }
+        Ok((states, joined))
+    }
+
+    #[tokio::test]
+    async fn joins_a_9_mib_packet_split_by_the_server() -> Result<(), Error> {
+        // config::REGISTRY_DATA with a counting body.
+        let mut packet = vec![u8::try_from(config::REGISTRY_DATA.0)?];
+        packet.extend((1..9 * 1024 * 1024).map(|i| i as u8));
+        for (compression, expected) in [(None, &[1, 0, 0, 0, 2][..]), (Some(256), &[1, 2])] {
+            let (states, joined) = receive_split(&packet, compression).await?;
+            assert_eq!(states, expected);
+            assert_eq!(joined.len(), 1);
+            assert_eq!(joined[0].id, config::REGISTRY_DATA);
+            assert_eq!(joined[0].payload, packet[1..]);
+        }
+        Ok(())
+    }
+
+    /// A `NeoForge` sender pads the last part with the unused capacity of its buffer.
+    #[test]
+    fn decodes_a_joined_payload_with_a_padded_last_part() -> Result<(), Error> {
+        let mut data = Vec::new();
+        CommonVersionPayload {
+            versions: vec![1, 2],
+        }
+        .write(&mut data)?;
+        let mut packet = vec![u8::try_from(config::CUSTOM_PAYLOAD.0)?];
+        packet.write_string(CommonVersionPayload::CHANNEL)?;
+        packet.extend_from_slice(&data);
+        let middle = packet.len() / 2;
+        let mut last = packet[middle..].to_vec();
+        last.extend([0; 16]);
+
+        let mut buffer = Vec::new();
+        let mut joined = None;
+        for (state, slice) in [
+            (SPLIT_STATE_FIRST, &packet[..middle]),
+            (SPLIT_STATE_LAST, &last),
+        ] {
+            let mut part = Vec::new();
+            SplitPacketPayload {
+                payload: [&[state][..], slice].concat().into_boxed_slice(),
+            }
+            .write(&mut part)?;
+            joined = join_split(&mut buffer, &part)?;
+        }
+        let joined = joined.ok_or("the last part joins the packet")?;
+        let (channel, data) = read_custom_payload(&joined.payload)?;
+        assert_eq!(channel, CommonVersionPayload::CHANNEL);
+        assert!(decode_exact(data, CommonVersionPayload::read).is_err());
+        let versions = decode_payload(data, true, CommonVersionPayload::read)?.versions;
+        assert_eq!(versions, [1, 2]);
+        Ok(())
     }
 }

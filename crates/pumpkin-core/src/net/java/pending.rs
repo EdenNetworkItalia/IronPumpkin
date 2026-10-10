@@ -15,7 +15,10 @@ use pumpkin_protocol::{
         client::config::{CConfigDisconnect, CPluginMessage},
         client::login::CLoginDisconnect,
         client::play::CPlayDisconnect,
-        neoforge::{NetworkPayloadSetup, decode_exact},
+        neoforge::{
+            Accepted, NetworkPayloadSetup, SplitPacketPayload, SplitPacketReassembler,
+            decode_payload,
+        },
         packet_decoder::TCPNetworkDecoder,
         packet_encoder::TCPNetworkEncoder,
         server::config::{
@@ -63,8 +66,8 @@ pub const BRAND_CHANNEL: &str = "minecraft:brand";
 
 /// `BrandPayload.STREAM_CODEC`: `FriendlyByteBuf.readUtf()`, a `VarInt` byte length, then UTF-8 of
 /// at most 32767 UTF-16 units, and nothing after it.
-fn read_brand(data: &[u8]) -> Result<String, ReadingError> {
-    decode_exact(data, |read| Ok(read.get_str_borrowed()?.to_owned()))
+fn read_brand(data: &[u8], joined: bool) -> Result<String, ReadingError> {
+    decode_payload(data, joined, |read| Ok(read.get_str_borrowed()?.to_owned()))
 }
 
 /// How long a connection may stay silent before login finishes.
@@ -104,6 +107,11 @@ pub struct PendingConnection {
     /// The configuration tasks: filled after `update_enabled_features`, and each reply finishes
     /// the current task.
     pub configuration_tasks: ConfigurationTasks,
+    /// Joins the `neoforge:split` parts the client sends in the configuration phase.
+    split_reassembler: SplitPacketReassembler,
+    /// Whether the packet in hand was joined from `neoforge:split` parts, so its payload can end
+    /// with padding.
+    pub(super) packet_joined: bool,
     /// For the connection packet events.
     server: Weak<Server>,
 }
@@ -138,6 +146,8 @@ impl PendingConnection {
             payload_setup: NetworkPayloadSetup::default(),
             content_ids: pumpkin_data::dynamic::ContentIds::default(),
             configuration_tasks: ConfigurationTasks::default(),
+            split_reassembler: SplitPacketReassembler::default(),
+            packet_joined: false,
             server,
         }
     }
@@ -232,6 +242,11 @@ impl PendingConnection {
         let Some(payload) = self.translate_outgoing(Bytes::from(packet_buf)).await else {
             return;
         };
+        let split = self.connection_state.load() == ConnectionState::Config
+            && SplitPacketPayload::is_declared(&self.payload_setup, &self.client_channels.ad_hoc);
+        // The parts are written after `translate_outgoing`, in the client's version.
+        self.network_writer
+            .set_split_payload_id(split.then(|| CPluginMessage::to_id(self.version.load())));
         if let Err(err) = self.network_writer.write_packet(payload).await {
             warn!("Failed to send packet to client {}: {}", self.id, err);
         }
@@ -377,7 +392,23 @@ impl PendingConnection {
         let Some(packet) = self.translate_incoming(packet).await else {
             return Ok(None);
         };
-        let packet = &packet;
+        let packet = if self.connection_state.load() == ConnectionState::Config
+            && neoforge::joins_split_packets(
+                neoforge::detects_neoforge_clients(&server.basic_config),
+                &self.payload_setup,
+                &self.client_channels.ad_hoc,
+            ) {
+            // `translate_incoming` has turned the parts into 26.3 packets.
+            let custom_payload_id = SPluginMessage::to_id(CURRENT_MC_VERSION);
+            match self.split_reassembler.accept(packet, custom_payload_id)? {
+                Some(accepted) => accepted,
+                None => return Ok(None),
+            }
+        } else {
+            Accepted::Whole(packet)
+        };
+        self.packet_joined = packet.is_joined();
+        let packet = &packet.into_packet();
         match self.connection_state.load() {
             ConnectionState::HandShake => self.handle_handshake_packet(server, packet).await,
             ConnectionState::Status => self.handle_status_packet(server, packet).await,
@@ -644,7 +675,7 @@ impl PendingConnection {
     ) -> Result<(), ReadingError> {
         debug!("Handling plugin message");
         if plugin_message.channel == BRAND_CHANNEL {
-            let brand = read_brand(plugin_message.data)?;
+            let brand = read_brand(plugin_message.data, self.packet_joined)?;
             debug!("Got a client brand {brand:?}");
             self.brand = Some(brand);
         } else if let Some(reply) = TaskReply::for_channel(plugin_message.channel) {
@@ -782,14 +813,19 @@ mod tests {
     #[test]
     fn brand_decodes_recorded_bytes() {
         let vanilla = [0x07, 0x76, 0x61, 0x6e, 0x69, 0x6c, 0x6c, 0x61];
-        assert_eq!(read_brand(&vanilla).unwrap(), "vanilla");
+        assert_eq!(read_brand(&vanilla, false).unwrap(), "vanilla");
         let neoforge = [0x08, 0x6e, 0x65, 0x6f, 0x66, 0x6f, 0x72, 0x67, 0x65];
-        assert_eq!(read_brand(&neoforge).unwrap(), "neoforge");
+        assert_eq!(read_brand(&neoforge, false).unwrap(), "neoforge");
     }
 
     #[test]
     fn brand_rejects_bytes_after_the_string() {
         let data = [0x07, 0x76, 0x61, 0x6e, 0x69, 0x6c, 0x6c, 0x61, 0x00];
-        assert!(matches!(read_brand(&data), Err(ReadingError::TooLarge(_))));
+        assert!(matches!(
+            read_brand(&data, false),
+            Err(ReadingError::TooLarge(_))
+        ));
+        // A payload of a joined packet can end with the padding of the last part.
+        assert_eq!(read_brand(&data, true).unwrap(), "vanilla");
     }
 }

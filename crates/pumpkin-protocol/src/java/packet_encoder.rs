@@ -8,6 +8,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use crate::{
     Aes128Cfb8Enc, ClientPacket, CompressionLevel, CompressionThreshold, MAX_PACKET_DATA_SIZE,
     MAX_PACKET_SIZE, PacketEncodeError, StreamEncryptor, VarInt, WritingError,
+    java::neoforge::{SplitLimits, write_split_part},
     ser::NetworkWriteExt,
 };
 
@@ -91,6 +92,9 @@ pub struct TCPNetworkEncoder<W: AsyncWrite + Unpin> {
     // Reused compression buffer to avoid allocating a new Vec for each packet.
     compression_scratch: Vec<u8>,
     frame_scratch: Vec<u8>,
+    /// The `custom_payload` packet id of the current protocol when the client declared
+    /// `neoforge:split`: an encoded packet above the limit goes out as split parts in that packet.
+    split_payload_id: Option<i32>,
 }
 
 impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
@@ -101,7 +105,14 @@ impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
             compressor: None,
             compression_scratch: Vec::new(),
             frame_scratch: Vec::new(),
+            split_payload_id: None,
         }
+    }
+
+    /// Sends packets above the `GenericPacketSplitter` limit as `neoforge:split` parts in the
+    /// `custom_payload` packet with this id, or never splits with `None`.
+    pub const fn set_split_payload_id(&mut self, custom_payload_id: Option<i32>) {
+        self.split_payload_id = custom_payload_id;
     }
 
     pub const fn set_compression(
@@ -235,10 +246,34 @@ impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
             .is_some_and(|(threshold, _)| packet_data.len() >= threshold)
     }
 
-    #[allow(clippy::too_many_lines)]
+    /// Frames one encoded packet, or its `neoforge:split` parts when splitting is on and it
+    /// exceeds the limit.
     pub fn frame_packet(
         &mut self,
         packet_data: &Bytes,
+        out: &mut Vec<u8>,
+    ) -> Result<(), PacketEncodeError> {
+        let limits = SplitLimits::new(self.compression.is_some());
+        let parts = self
+            .split_payload_id
+            .and_then(|id| Some((id, limits.split(packet_data)?)));
+        let Some((custom_payload_id, parts)) = parts else {
+            return self.frame_single_packet(packet_data, out);
+        };
+        let mut part_packet = Vec::with_capacity(limits.packet);
+        for (state, slice) in parts {
+            part_packet.clear();
+            write_split_part(custom_payload_id, state, slice, &mut part_packet)
+                .map_err(|err| PacketEncodeError::Message(err.to_string()))?;
+            self.frame_single_packet(&part_packet, out)?;
+        }
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn frame_single_packet(
+        &mut self,
+        packet_data: &[u8],
         out: &mut Vec<u8>,
     ) -> Result<(), PacketEncodeError> {
         let data_len = packet_data.len();
@@ -259,7 +294,7 @@ impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
             self.compression
         {
             if data_len >= compression_threshold {
-                self.compress_packet_data(packet_data.as_ref(), compression_level)?;
+                self.compress_packet_data(packet_data, compression_level)?;
                 debug_assert!(!self.compression_scratch.is_empty());
 
                 let full_packet_len_var_int: VarInt = (data_len_var_int.written_size()
@@ -308,7 +343,7 @@ impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
                     .encode(&mut header_cursor)
                     .map_err(|err| PacketEncodeError::Message(err.to_string()))?;
 
-                packet_data.as_ref()
+                packet_data
             }
         } else {
             let full_packet_len_var_int: VarInt = data_len_var_int;
@@ -323,7 +358,7 @@ impl<W: AsyncWrite + Unpin> TCPNetworkEncoder<W> {
                 .encode(&mut header_cursor)
                 .map_err(|err| PacketEncodeError::Message(err.to_string()))?;
 
-            packet_data.as_ref()
+            packet_data
         };
 
         let header_len = header_cursor.position() as usize;
@@ -795,5 +830,98 @@ mod tests {
 
         assert_eq!(buffer, expected_payload);
         Ok(())
+    }
+
+    const SPLIT_PAYLOAD_ID: i32 = 0x18;
+
+    /// An encoded packet of `len` bytes: id 0x2a, then a counting body.
+    fn encoded_packet(len: usize) -> Bytes {
+        let mut packet = vec![0x2a];
+        packet.extend((1..len).map(|i| i as u8));
+        packet.into()
+    }
+
+    /// Encodes `packet` and reads the frames back with the decoder.
+    async fn encode_and_decode(
+        packet: &Bytes,
+        compression: Option<CompressionThreshold>,
+        split: bool,
+    ) -> Result<Vec<crate::RawPacket>, PacketEncodeError> {
+        let mut buf = Vec::new();
+        let mut encoder = TCPNetworkEncoder::new(&mut buf);
+        if let Some(threshold) = compression {
+            encoder.set_compression((threshold, 6));
+        }
+        encoder.set_split_payload_id(split.then_some(SPLIT_PAYLOAD_ID));
+        encoder.write_packet(packet.clone()).await?;
+        let mut decoder = crate::java::packet_decoder::TCPNetworkDecoder::new(&buf[..]);
+        if let Some(threshold) = compression {
+            decoder.set_compression(threshold);
+        }
+        let mut packets = Vec::new();
+        loop {
+            match decoder.get_raw_packet().await {
+                Ok(packet) => packets.push(packet),
+                Err(crate::PacketDecodeError::ConnectionClosed) => break,
+                Err(err) => panic!("undecodable frame: {err}"),
+            }
+        }
+        Ok(packets)
+    }
+
+    /// The states of the parts and the packet their slices join to. The server's reassembler caps
+    /// the join at 8 MiB, so the slices are joined here.
+    fn join_parts(parts: Vec<crate::RawPacket>) -> (Vec<u8>, Vec<u8>) {
+        use crate::java::neoforge::{SplitPacketPayload, decode_exact};
+        let mut states = Vec::new();
+        let mut joined = Vec::new();
+        for part in parts {
+            assert_eq!(part.id, SPLIT_PAYLOAD_ID);
+            let data = SplitPacketPayload::data_of(&part.payload).unwrap();
+            let payload = decode_exact(data, SplitPacketPayload::read)
+                .unwrap()
+                .payload;
+            states.push(payload[0]);
+            joined.extend_from_slice(&payload[1..]);
+        }
+        (states, joined)
+    }
+
+    #[tokio::test]
+    async fn splits_a_9_mib_packet() {
+        let packet = encoded_packet(9 * 1024 * 1024);
+        for (compression, expected_states) in [(None, &[1, 0, 0, 0, 2][..]), (Some(256), &[1, 2])] {
+            let parts = encode_and_decode(&packet, compression, true).await.unwrap();
+            let (states, joined) = join_parts(parts);
+            assert_eq!(states, expected_states);
+            assert_eq!(joined, packet);
+        }
+    }
+
+    #[tokio::test]
+    async fn sends_a_packet_below_the_limit_unsplit() {
+        // The largest frozen registry payload of the NeoForge capture.
+        for (len, compression) in [
+            (71_788, None),
+            (71_788, Some(256)),
+            (3 * 1024 * 1024, Some(256)),
+        ] {
+            let packet = encoded_packet(len);
+            let packets = encode_and_decode(&packet, compression, true).await.unwrap();
+            assert_eq!(packets.len(), 1);
+            assert_eq!(packets[0].id, 0x2a);
+            assert_eq!(packets[0].payload, packet[1..]);
+        }
+    }
+
+    #[tokio::test]
+    async fn never_splits_without_the_channel() {
+        let packet = encoded_packet(9 * 1024 * 1024);
+        for compression in [None, Some(256)] {
+            assert!(matches!(
+                encode_and_decode(&packet, compression, false).await,
+                Err(PacketEncodeError::TooLong(_))
+            ));
+        }
     }
 }

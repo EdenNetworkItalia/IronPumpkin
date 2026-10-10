@@ -46,7 +46,9 @@ pub use registry::{
     FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload, FrozenRegistrySyncStartPayload,
     RegistrySnapshot,
 };
-pub use split::SplitPacketPayload;
+pub use split::{
+    Accepted, SplitLimits, SplitPacketPayload, SplitPacketReassembler, write_split_part,
+};
 
 /// Vanilla `net.minecraft.network.ConnectionProtocol`, sent by ordinal (`idMapper`) or by `id()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -135,6 +137,22 @@ impl PacketFlow {
 /// Upper bound for capacity reserved from a network count, like the
 /// `Math.min(count, 65536)` in vanilla `ByteBufCodecs.collection`.
 const MAX_PREALLOCATED: usize = 65536;
+
+/// Decodes a payload body with `read`, exactly unless `joined`.
+///
+/// The payload of a packet joined from `neoforge:split` parts can carry padding after its data
+/// (see [`SplitPacketReassembler`]), so only a payload of a whole packet must be exact.
+pub fn decode_payload<T>(
+    mut data: &[u8],
+    joined: bool,
+    read: impl FnOnce(&mut &[u8]) -> Result<T, ReadingError>,
+) -> Result<T, ReadingError> {
+    if joined {
+        read(&mut data)
+    } else {
+        decode_exact(data, read)
+    }
+}
 
 /// Decodes a whole payload body with `read` and fails when bytes are left over.
 pub fn decode_exact<T>(

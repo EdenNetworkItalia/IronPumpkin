@@ -10,7 +10,7 @@ use pumpkin_protocol::java::neoforge::{
     FrozenRegistrySyncStartPayload, KnownRegistryDataMapsPayload,
     KnownRegistryDataMapsReplyPayload, MinecraftRegisterPayload, MinecraftUnregisterPayload,
     ModdedNetworkPayload, ModdedNetworkQueryPayload, ModdedNetworkSetupFailedPayload, NetworkCheck,
-    PacketFlow, SplitPacketPayload, decode_exact,
+    PacketFlow, SplitPacketPayload, decode_exact, decode_payload as decode_payload_body,
 };
 use pumpkin_protocol::ser::{NetworkReadSliceExt, ReadingError};
 use pumpkin_util::identifier::Identifier;
@@ -101,9 +101,15 @@ impl Entry {
     }
 }
 
-/// Decodes a custom payload body with the codec for `channel`.
+/// Decodes a custom payload body with the codec for `channel`. `reassembled` is whether the
+/// payload came in a packet joined from `neoforge:split` parts, which can end with padding.
 #[must_use]
-pub fn decode_payload(channel: &str, data: &[u8]) -> (Decode, Option<String>, Option<String>) {
+pub fn decode_payload(
+    channel: &str,
+    data: &[u8],
+    reassembled: bool,
+) -> (Decode, Option<String>, Option<String>) {
+    let data = Body(data, reassembled);
     let result = match channel {
         CommonVersionPayload::CHANNEL => summarize(data, CommonVersionPayload::read, |p| {
             format!("versions={:?}", p.versions)
@@ -205,7 +211,7 @@ pub fn decode_payload(channel: &str, data: &[u8]) -> (Decode, Option<String>, Op
 }
 
 /// The payloads of the `NeoForge` data map, extensible enum and feature flag checks.
-fn decode_check_payload(channel: &str, data: &[u8]) -> Option<Result<String, ReadingError>> {
+fn decode_check_payload(channel: &str, data: Body<'_>) -> Option<Result<String, ReadingError>> {
     Some(match channel {
         FeatureFlagAcknowledgePayload::CHANNEL => {
             summarize(data, FeatureFlagAcknowledgePayload::read, |_| String::new())
@@ -282,12 +288,16 @@ fn show_enums(payload: &ExtensibleEnumDataPayload) -> String {
     format!("enums={}", join(entries))
 }
 
+/// A payload body to summarize, and whether it came in a reassembled packet.
+#[derive(Clone, Copy)]
+struct Body<'a>(&'a [u8], bool);
+
 fn summarize<T>(
-    data: &[u8],
+    data: Body<'_>,
     read: impl FnOnce(&mut &[u8]) -> Result<T, ReadingError>,
     show: impl FnOnce(T) -> String,
 ) -> Result<String, ReadingError> {
-    decode_exact(data, read).map(show)
+    decode_payload_body(data.0, data.1, read).map(show)
 }
 
 fn join(items: impl Iterator<Item = String>) -> String {

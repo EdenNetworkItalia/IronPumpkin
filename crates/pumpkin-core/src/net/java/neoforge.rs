@@ -20,7 +20,7 @@ use pumpkin_protocol::{
             FrozenRegistrySyncStartPayload, MinecraftRegisterPayload, MinecraftUnregisterPayload,
             ModdedNetworkPayload, ModdedNetworkQueryComponent, ModdedNetworkQueryPayload,
             ModdedNetworkSetupFailedPayload, NetworkChannel, NetworkPayloadSetup, PacketFlow,
-            SplitPacketPayload, decode_exact,
+            SplitPacketPayload, decode_payload,
         },
         server::config::SConfigPong,
     },
@@ -52,6 +52,18 @@ const PROBE_PING_ID: i32 = 0;
 #[must_use]
 pub fn detects_neoforge_clients(config: &BasicConfiguration) -> bool {
     detection_on(config.detect_neoforge_clients, startup::native_mods())
+}
+
+/// Whether a connection joins the `neoforge:split` parts its client sends. The rule matches the
+/// egress, which splits only for a client that declared the channel, so a client that never
+/// declared it cannot make the server buffer parts.
+#[must_use]
+pub(crate) fn joins_split_packets(
+    detection: bool,
+    payload_setup: &NetworkPayloadSetup,
+    ad_hoc_channels: &BTreeSet<Identifier>,
+) -> bool {
+    detection && SplitPacketPayload::is_declared(payload_setup, ad_hoc_channels)
 }
 
 fn detection_on(option: bool, mods: &[NativeModInfo]) -> bool {
@@ -250,15 +262,21 @@ impl ClientChannels {
     /// Applies a payload on one of the channel declaration channels.
     ///
     /// Returns `Ok(false)` when `channel` is not one of them.
-    pub fn handle_payload(&mut self, channel: &str, data: &[u8]) -> Result<bool, ReadingError> {
+    /// `joined` is whether the payload came in a packet joined from `neoforge:split` parts.
+    pub fn handle_payload(
+        &mut self,
+        channel: &str,
+        data: &[u8],
+        joined: bool,
+    ) -> Result<bool, ReadingError> {
         match channel {
             ModdedNetworkQueryPayload::CHANNEL => {
-                let query = decode_exact(data, ModdedNetworkQueryPayload::read)?;
+                let query = decode_payload(data, joined, ModdedNetworkQueryPayload::read)?;
                 self.connection_type = ConnectionType::NeoForge;
                 self.modded = query.queries;
             }
             MinecraftRegisterPayload::CHANNEL => {
-                let register = decode_exact(data, MinecraftRegisterPayload::read)?;
+                let register = decode_payload(data, joined, MinecraftRegisterPayload::read)?;
                 self.ad_hoc.extend(register.channels);
                 if self.ad_hoc.len() > MAX_AD_HOC_CHANNELS {
                     return Err(ReadingError::TooLarge(format!(
@@ -267,7 +285,7 @@ impl ClientChannels {
                 }
             }
             MinecraftUnregisterPayload::CHANNEL => {
-                let unregister = decode_exact(data, MinecraftUnregisterPayload::read)?;
+                let unregister = decode_payload(data, joined, MinecraftUnregisterPayload::read)?;
                 self.ad_hoc.retain(|id| !unregister.channels.contains(id));
             }
             _ => return Ok(false),
@@ -679,7 +697,10 @@ impl PendingConnection {
                 .await;
             return Ok(true);
         }
-        if !self.client_channels.handle_payload(channel, data)? {
+        if !self
+            .client_channels
+            .handle_payload(channel, data, self.packet_joined)?
+        {
             return Ok(false);
         }
         if is_query {
@@ -849,6 +870,32 @@ mod tests {
     }
 
     #[test]
+    fn split_packets_are_joined_only_with_detection_and_a_declared_channel() {
+        let forced = detection_on(false, &[native_mod("test-mod", true)]);
+        let split = Identifier::parse_static(SplitPacketPayload::CHANNEL);
+        let declared = NetworkPayloadSetup {
+            channels: BTreeMap::from([(
+                ConnectionProtocol::Play,
+                BTreeMap::from([(
+                    split.clone(),
+                    NetworkChannel {
+                        id: split.clone(),
+                        chosen_version: NEOFORGE_PAYLOAD_VERSION.to_owned(),
+                    },
+                )]),
+            )]),
+        };
+        let undeclared = NetworkPayloadSetup::default();
+        let none = BTreeSet::new();
+        let ad_hoc = BTreeSet::from([split]);
+
+        assert!(joins_split_packets(forced, &declared, &none));
+        assert!(joins_split_packets(forced, &undeclared, &ad_hoc));
+        assert!(!joins_split_packets(forced, &undeclared, &none));
+        assert!(!joins_split_packets(false, &declared, &ad_hoc));
+    }
+
+    #[test]
     fn the_forced_detection_warning_names_the_client_required_mods() {
         let mods = [
             native_mod("server-only", false),
@@ -895,6 +942,21 @@ mod tests {
         assert_eq!(
             TextComponent(with[0].clone()).get_text(),
             EMULATED_NEOFORGE_VERSION
+        );
+    }
+
+    /// The server has no translation for the `NeoForge` key, so the console shows the fallback.
+    #[test]
+    fn the_console_renders_the_vanilla_client_kick_from_the_fallback() {
+        let expected = format!(
+            "You are trying to connect to a server that is running NeoForge, but you are not. \
+             Please install NeoForge Version: {EMULATED_NEOFORGE_VERSION} to connect to this server."
+        );
+        assert_eq!(vanilla_client_not_supported().get_text(), expected);
+        assert!(
+            vanilla_client_not_supported()
+                .to_pretty_console()
+                .contains(&expected)
         );
     }
 
@@ -945,21 +1007,6 @@ mod tests {
         )];
         let channels = negotiate(&server, &client).unwrap();
         assert_eq!(
-    /// The server has no translation for the `NeoForge` key, so the console shows the fallback.
-    #[test]
-    fn the_console_renders_the_vanilla_client_kick_from_the_fallback() {
-        let expected = format!(
-            "You are trying to connect to a server that is running NeoForge, but you are not. \
-             Please install NeoForge Version: {EMULATED_NEOFORGE_VERSION} to connect to this server."
-        );
-        assert_eq!(vanilla_client_not_supported().get_text(), expected);
-        assert!(
-            vanilla_client_not_supported()
-                .to_pretty_console()
-                .contains(&expected)
-        );
-    }
-
             channels.values().collect::<Vec<_>>(),
             [&NetworkChannel {
                 id: Identifier::parse_static("a:sync"),
@@ -1206,7 +1253,7 @@ mod tests {
         let mut channels = ClientChannels::default();
         assert!(
             channels
-                .handle_payload(ModdedNetworkQueryPayload::CHANNEL, &bytes)
+                .handle_payload(ModdedNetworkQueryPayload::CHANNEL, &bytes, false)
                 .unwrap()
         );
         assert_eq!(channels.connection_type, ConnectionType::NeoForge);
@@ -1223,7 +1270,7 @@ mod tests {
         let mut channels = ClientChannels::default();
         assert!(
             channels
-                .handle_payload(ModdedNetworkQueryPayload::CHANNEL, &[0x00, 0x00])
+                .handle_payload(ModdedNetworkQueryPayload::CHANNEL, &[0x00, 0x00], false)
                 .is_err()
         );
         assert_eq!(channels.connection_type, ConnectionType::Other);
@@ -1234,12 +1281,12 @@ mod tests {
         let mut channels = ClientChannels::default();
         assert!(
             channels
-                .handle_payload(MinecraftRegisterPayload::CHANNEL, b"a:one\0a:two\0")
+                .handle_payload(MinecraftRegisterPayload::CHANNEL, b"a:one\0a:two\0", false)
                 .unwrap()
         );
         assert!(
             channels
-                .handle_payload(MinecraftUnregisterPayload::CHANNEL, b"a:one\0")
+                .handle_payload(MinecraftUnregisterPayload::CHANNEL, b"a:one\0", false)
                 .unwrap()
         );
         assert_eq!(
@@ -1260,19 +1307,19 @@ mod tests {
         let full = register(0..MAX_AD_HOC_CHANNELS);
         assert!(
             channels
-                .handle_payload(MinecraftRegisterPayload::CHANNEL, &full)
+                .handle_payload(MinecraftRegisterPayload::CHANNEL, &full, false)
                 .is_ok()
         );
         // Registering a known channel again does not count.
         assert!(
             channels
-                .handle_payload(MinecraftRegisterPayload::CHANNEL, b"a:c0\0")
+                .handle_payload(MinecraftRegisterPayload::CHANNEL, b"a:c0\0", false)
                 .is_ok()
         );
         let one_more = register(MAX_AD_HOC_CHANNELS..MAX_AD_HOC_CHANNELS + 1);
         assert!(
             channels
-                .handle_payload(MinecraftRegisterPayload::CHANNEL, &one_more)
+                .handle_payload(MinecraftRegisterPayload::CHANNEL, &one_more, false)
                 .is_err()
         );
     }

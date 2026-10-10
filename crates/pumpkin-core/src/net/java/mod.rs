@@ -1,4 +1,6 @@
-use pumpkin_protocol::java::client::play::{CChunkBatchEnd, CChunkBatchStart, CPlayDisconnect};
+use pumpkin_protocol::java::client::play::{
+    CChunkBatchEnd, CChunkBatchStart, CCustomPayload, CPlayDisconnect,
+};
 use pumpkin_world::level::SyncChunk;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
@@ -31,6 +33,7 @@ use pumpkin_protocol::{
     codec::var_int::VarInt,
     java::{
         client::{config::CConfigDisconnect, login::CLoginDisconnect},
+        neoforge::{Accepted, SplitPacketPayload, SplitPacketReassembler},
         packet_decoder::TCPNetworkDecoder,
         packet_encoder::TCPNetworkEncoder,
     },
@@ -148,6 +151,12 @@ impl JavaClient {
         negotiated: NegotiatedState,
     ) -> Self {
         let (send, recv) = tokio::sync::mpsc::unbounded_channel();
+        let mut network_writer = pending.network_writer;
+        let split =
+            SplitPacketPayload::is_declared(&negotiated.payload_setup, &negotiated.ad_hoc_channels);
+        // A `JavaClient` exists only in play, so its parts are always play `custom_payload` packets.
+        network_writer
+            .set_split_payload_id(split.then(|| CCustomPayload::to_id(pending.version.load())));
 
         Self {
             id: pending.id,
@@ -163,7 +172,7 @@ impl JavaClient {
             outgoing_packet_queue_recv: Some(recv),
             pending_bytes: Arc::new(AtomicUsize::new(0)),
             version: pending.version,
-            network_writer: std::sync::Mutex::new(Some(pending.network_writer)),
+            network_writer: std::sync::Mutex::new(Some(network_writer)),
             network_reader: std::sync::Mutex::new(Some(pending.network_reader)),
             brand: ArcSwap::from_pointee(pending.brand),
             player: ArcSwap::from_pointee(None),
@@ -235,6 +244,18 @@ impl JavaClient {
 
         // Skip the immediate first tick so we don't send a keep-alive the exact millisecond they join
         keep_alive_interval.tick().await;
+
+        let joins_split = neoforge::joins_split_packets(
+            neoforge::detects_neoforge_clients(&server.basic_config),
+            &self.negotiated.payload_setup,
+            &self.negotiated.ad_hoc_channels,
+        );
+        // The parts are joined before the multiversion translation, so they carry the id of the
+        // client's version.
+        let mut split = joins_split.then(|| {
+            let id = SCustomPayload::to_id(self.version.load());
+            (id, SplitPacketReassembler::default())
+        });
 
         loop {
             tokio::select! {
@@ -310,8 +331,32 @@ impl JavaClient {
                         break;
                     }
 
-                    player.inbound_packets.push(packet);
+                    if let Some(packet) = self.reassemble_split(split.as_mut(), packet).await {
+                        player.inbound_packets.push(packet);
+                    }
                 }
+            }
+        }
+    }
+
+    /// Joins the `neoforge:split` parts of the play phase; any other packet passes through. `None`
+    /// while a split packet is incomplete, or after a broken one disconnected the client.
+    async fn reassemble_split(
+        &self,
+        split: Option<&mut (i32, SplitPacketReassembler)>,
+        packet: RawPacket,
+    ) -> Option<RawPacket> {
+        let Some((custom_payload_id, reassembler)) = split else {
+            return Some(packet);
+        };
+        match reassembler.accept(packet, *custom_payload_id) {
+            // Play decodes no `NeoForge` payload, so a joined packet needs no mark: the data of a
+            // joined `custom_payload` reaches the plugins with any padding after it.
+            Ok(accepted) => accepted.map(Accepted::into_packet),
+            Err(err) => {
+                let text = format!("Error while reading incoming packet {err}");
+                self.kick(TextComponent::text(text)).await;
+                None
             }
         }
     }
