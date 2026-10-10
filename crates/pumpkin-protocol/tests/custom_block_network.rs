@@ -56,7 +56,7 @@ fn raw(id: BlockStateId) -> i32 {
 fn bytes(packet: &impl ClientPacket, version: JavaMinecraftVersion) -> Vec<u8> {
     let mut buf = Vec::new();
     packet
-        .write_packet_data(&mut buf, &version)
+        .write_packet_data(&mut buf, &version.into())
         .expect("packet writes");
     buf
 }
@@ -64,7 +64,7 @@ fn bytes(packet: &impl ClientPacket, version: JavaMinecraftVersion) -> Vec<u8> {
 fn metadata(tracked: TrackedData, value: VarInt) -> Vec<u8> {
     let mut buf = Vec::new();
     Metadata::new(tracked, value)
-        .write(&mut buf, &VERSION)
+        .write(&mut buf, &VERSION.into())
         .expect("metadata writes");
     buf
 }
@@ -78,9 +78,15 @@ fn var_int(value: i32) -> Vec<u8> {
 #[test]
 fn the_state_egress_maps_only_custom_states() {
     let lit = lit_lamp();
-    assert_eq!(lit.to_java_network_id(), display().as_u16());
+    assert_eq!(
+        lit.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        display().as_u16()
+    );
     for state in [BlockStateId::AIR, Block::STONE.default_state.id, display()] {
-        assert_eq!(state.to_java_network_id(), state.as_u16());
+        assert_eq!(
+            state.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+            state.as_u16()
+        );
     }
 }
 
@@ -212,11 +218,11 @@ fn block_particles_carry_the_display_state() {
     shown_particle.extend(&shown);
     let mut written = Vec::new();
     Metadata::new(area_effect_cloud::DATA_PARTICLE, RawValue(block_particle))
-        .write(&mut written, &VERSION)
+        .write(&mut written, &VERSION.into())
         .expect("metadata writes");
     let mut expected = Vec::new();
     Metadata::new(area_effect_cloud::DATA_PARTICLE, RawValue(shown_particle))
-        .write(&mut expected, &VERSION)
+        .write(&mut expected, &VERSION.into())
         .expect("metadata writes");
     assert_eq!(written, expected);
 }
@@ -269,7 +275,7 @@ impl pumpkin_protocol::java::client::play::MetadataSerializer for RawValue {
     fn write_metadata(
         &self,
         writer: &mut impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &pumpkin_protocol::EncodingKey,
     ) -> Result<(), pumpkin_protocol::ser::WritingError> {
         writer
             .write_all(&self.0)

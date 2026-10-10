@@ -45,7 +45,7 @@ impl ClientPacket for CSoundEffect {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_19_3 {
             crate::IdOr::<crate::SoundEvent>::write(&self.sound_event, &mut write, |w, e| {
@@ -124,7 +124,7 @@ mod tests {
         let mut bytes = Vec::new();
 
         packet
-            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_21_11)
+            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_21_11.into())
             .unwrap();
 
         assert_eq!(first_var_int(bytes), VarInt::from(0));
@@ -143,7 +143,7 @@ mod tests {
         let mut bytes = Vec::new();
 
         packet
-            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_26_2)
+            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_26_2.into())
             .unwrap();
 
         let mut cursor = Cursor::new(bytes);

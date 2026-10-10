@@ -1,8 +1,8 @@
+use crate::EncodingKey;
 use crate::java::client::dialog::DialogNBT;
 use crate::{ClientPacket, IdOr, ser::WritingError};
 use pumpkin_data::packet::clientbound::play::SHOW_DIALOG;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(SHOW_DIALOG)]
 pub struct CPlayShowDialog<'a> {
@@ -20,7 +20,7 @@ impl ClientPacket for CPlayShowDialog<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         self.dialog
             .write(&mut write, |w, value| value.write_packet_data(w, version))

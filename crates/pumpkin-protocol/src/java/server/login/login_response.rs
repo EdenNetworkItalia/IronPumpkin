@@ -21,7 +21,7 @@ impl crate::ClientPacket for SLoginAcknowledged {
     fn write_packet_data(
         &self,
         _write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         Ok(())
     }

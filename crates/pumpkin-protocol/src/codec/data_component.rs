@@ -7,7 +7,7 @@ use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
 use pumpkin_data::Enchantment;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::*;
-use pumpkin_data::dynamic::namespaced_name;
+use pumpkin_data::dynamic::{ContentIds, namespaced_name};
 
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::EntityType;
@@ -75,6 +75,7 @@ fn deserialize_idset<T: IDSetContent>(
 fn serialize_idset<C: IDSetContent>(
     idset: &IDSet<C>,
     seq: &mut impl NetworkWriteExt,
+    ids: ContentIds,
 ) -> Result<(), WritingError> {
     match idset {
         IDSet::Tag(tag) => {
@@ -84,7 +85,7 @@ fn serialize_idset<C: IDSetContent>(
         IDSet::IDs(elements) => {
             seq.write_var_int(&VarInt(elements.len() as i32 + 1))?;
             for elmt in elements.iter() {
-                seq.write_var_int(&VarInt(elmt.registry_id() as i32))?;
+                seq.write_var_int(&VarInt(elmt.registry_id(ids) as i32))?;
             }
             Ok(())
         }
@@ -144,7 +145,7 @@ fn serialize_status_effects(
             .ok_or_else(|| {
                 WritingError::Message(format!("Invalid status effect: {}", effect.effect_id))
             })?
-            .registry_id();
+            .registry_id(ContentIds::Display);
         seq.write_var_int(&VarInt(effect_id as i32))?;
         // Effect parameters
         seq.write_var_int(&VarInt::from(effect.amplifier))?;
@@ -214,7 +215,8 @@ fn serialize_consume_effect(
             serialize_status_effects(&effects.to_vec(), seq)?;
             seq.write_f32(*probability)?;
         }
-        ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq)?,
+        // Status effects have no custom ids.
+        ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq, ContentIds::Display)?,
         ConsumeEffect::ClearAllEffects => (),
         ConsumeEffect::TeleportRandomly(diameter) => seq.write_f32(*diameter)?,
         ConsumeEffect::PlaySound(id_or) => {
@@ -227,8 +229,18 @@ fn serialize_consume_effect(
     Ok(())
 }
 
+/// A codec whose component holds block, item or entity type ids also implements `serialize_for`,
+/// and implements `serialize` as `serialize_for` in `Display` mode.
 pub(crate) trait DataComponentCodec<Impl: DataComponentImpl> {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError>;
+    /// Writes the component for a client in this content id mode.
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        _ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        self.serialize(seq)
+    }
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Impl, ReadingError>;
 }
 
@@ -536,6 +548,13 @@ impl DataComponentCodec<Self> for ConsumableImpl {
 
 impl DataComponentCodec<Self> for EquippableImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt(self.slot.get_slot_index()))?;
         crate::IdOr::<crate::SoundEvent>::write(
             &data_to_proto_sound(&self.equip_sound),
@@ -558,7 +577,7 @@ impl DataComponentCodec<Self> for EquippableImpl {
 
         seq.write_bool(self.allowed_entities.is_some())?;
         if let Some(allowed) = &self.allowed_entities {
-            serialize_idset(allowed, seq)?;
+            serialize_idset(allowed, seq, ids)?;
         }
 
         seq.write_bool(self.dispensable)?;
@@ -890,7 +909,14 @@ impl DataComponentCodec<Self> for StoredEnchantmentsImpl {
 
 impl DataComponentCodec<Self> for RepairableImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        serialize_idset(&self.items, seq)
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        serialize_idset(&self.items, seq, ids)
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
@@ -1090,6 +1116,7 @@ pub fn serialize(
     id: DataComponent,
     value: &dyn DataComponentImpl,
     seq: &mut impl NetworkWriteExt,
+    ids: ContentIds,
 ) -> Result<(), WritingError> {
     match id {
         DataComponent::CustomData => get::<CustomDataImpl>(value).serialize(seq),
@@ -1124,12 +1151,12 @@ pub fn serialize(
         DataComponent::UseRemainder => get::<UseRemainderImpl>(value).serialize(seq),
         DataComponent::UseCooldown => get::<UseCooldownImpl>(value).serialize(seq),
         DataComponent::DamageResistant => get::<DamageResistantImpl>(value).serialize(seq),
-        DataComponent::Tool => get::<ToolImpl>(value).serialize(seq),
+        DataComponent::Tool => get::<ToolImpl>(value).serialize_for(seq, ids),
         DataComponent::Weapon => get::<WeaponImpl>(value).serialize(seq),
         DataComponent::AttackRange => get::<AttackRangeImpl>(value).serialize(seq),
         DataComponent::Enchantable => get::<EnchantableImpl>(value).serialize(seq),
-        DataComponent::Equippable => get::<EquippableImpl>(value).serialize(seq),
-        DataComponent::Repairable => get::<RepairableImpl>(value).serialize(seq),
+        DataComponent::Equippable => get::<EquippableImpl>(value).serialize_for(seq, ids),
+        DataComponent::Repairable => get::<RepairableImpl>(value).serialize_for(seq, ids),
         DataComponent::Glider => get::<GliderImpl>(value).serialize(seq),
         DataComponent::TooltipStyle => get::<TooltipStyleImpl>(value).serialize(seq),
         DataComponent::DeathProtection => get::<DeathProtectionImpl>(value).serialize(seq),
@@ -1145,7 +1172,7 @@ pub fn serialize(
         DataComponent::MapDecorations => get::<MapDecorationsImpl>(value).serialize(seq),
         DataComponent::MapPostProcessing => get::<MapPostProcessingImpl>(value).serialize(seq),
         DataComponent::ChargedProjectiles => get::<ChargedProjectilesImpl>(value).serialize(seq),
-        DataComponent::BundleContents => get::<BundleContentsImpl>(value).serialize(seq),
+        DataComponent::BundleContents => get::<BundleContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionContents => get::<PotionContentsImpl>(value).serialize(seq),
         DataComponent::PotionDurationScale => get::<PotionDurationScaleImpl>(value).serialize(seq),
         DataComponent::SuspiciousStewEffects => {
@@ -1155,7 +1182,7 @@ pub fn serialize(
         DataComponent::WrittenBookContent => get::<WrittenBookContentImpl>(value).serialize(seq),
         DataComponent::Trim => get::<TrimImpl>(value).serialize(seq),
         DataComponent::DebugStickState => get::<DebugStickStateImpl>(value).serialize(seq),
-        DataComponent::EntityData => get::<EntityDataImpl>(value).serialize(seq),
+        DataComponent::EntityData => get::<EntityDataImpl>(value).serialize_for(seq, ids),
         DataComponent::BucketEntityData => get::<BucketEntityDataImpl>(value).serialize(seq),
         DataComponent::BlockEntityData => get::<BlockEntityDataImpl>(value).serialize(seq),
         DataComponent::Instrument => get::<InstrumentImpl>(value).serialize(seq),
@@ -1178,7 +1205,7 @@ pub fn serialize(
         DataComponent::BannerPatterns => get::<BannerPatternsImpl>(value).serialize(seq),
         DataComponent::BaseColor => get::<BaseColorImpl>(value).serialize(seq),
         DataComponent::PotDecorations => get::<PotDecorationsImpl>(value).serialize(seq),
-        DataComponent::Container => get::<ContainerImpl>(value).serialize(seq),
+        DataComponent::Container => get::<ContainerImpl>(value).serialize_for(seq, ids),
         DataComponent::BlockState => get::<BlockStateImpl>(value).serialize(seq),
         DataComponent::Bees => get::<BeesImpl>(value).serialize(seq),
         DataComponent::SulfurCubeContent => get::<SulfurCubeContentImpl>(value).serialize(seq),
@@ -1318,8 +1345,9 @@ fn deserialize_item_stack_template(
 fn serialize_item_stack_template(
     stack: &pumpkin_data::item_stack::ItemStack,
     seq: &mut impl NetworkWriteExt,
+    ids: ContentIds,
 ) -> Result<(), WritingError> {
-    seq.write_var_int(&VarInt::from(stack.item.to_java_network_id()))?;
+    seq.write_var_int(&VarInt::from(stack.item.to_java_network_id(ids)))?;
     seq.write_var_int(&VarInt::from(stack.item_count))?;
 
     let mut to_add = 0u8;
@@ -1338,7 +1366,7 @@ fn serialize_item_stack_template(
     for (id, data) in &stack.patch {
         if let Some(data) = data {
             seq.write_var_int(&VarInt::from(id.to_id()))?;
-            serialize(*id, data.as_ref(), seq)?;
+            serialize(*id, data.as_ref(), seq, ids)?;
         }
     }
 
@@ -1353,9 +1381,16 @@ fn serialize_item_stack_template(
 
 impl DataComponentCodec<Self> for BundleContentsImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt::from(self.items.len() as i32))?;
         for item in &self.items {
-            serialize_item_stack_template(item, seq)?;
+            serialize_item_stack_template(item, seq, ids)?;
         }
         Ok(())
     }
@@ -1785,9 +1820,16 @@ impl DataComponentCodec<Self> for DamageResistantImpl {
 
 impl DataComponentCodec<Self> for ToolImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt::from(self.rules.len() as i32))?;
         for rule in self.rules.iter() {
-            serialize_idset(&rule.blocks, seq)?;
+            serialize_idset(&rule.blocks, seq, ids)?;
             seq.write_bool(rule.speed.is_some())?;
             if let Some(speed) = rule.speed {
                 seq.write_f32(speed)?;
@@ -2343,13 +2385,20 @@ impl DataComponentCodec<Self> for DebugStickStateImpl {
 
 impl DataComponentCodec<Self> for EntityDataImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         let mut nbt = self.nbt.clone().unwrap_or_default();
         // Vanilla TypedEntityData always carries its type, there is no fallback.
         let id = nbt
             .get_string("id")
             .ok_or_else(|| WritingError::Message("entity_data has no 'id'".into()))?;
         let type_id = EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id))
-            .map(|entity_type| i32::from(entity_type.to_java_network_id()))
+            .map(|entity_type| i32::from(entity_type.to_java_network_id(ids)))
             .ok_or_else(|| WritingError::Message(format!("Unknown entity type {id}")))?;
         nbt.child_tags.remove("id");
         seq.write_var_int(&VarInt(type_id))?;
@@ -2716,10 +2765,17 @@ impl DataComponentCodec<Self> for PotDecorationsImpl {
 
 impl DataComponentCodec<Self> for ContainerImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt::from(self.items.len() as i32))?;
         for (_slot, stack) in &self.items {
             seq.write_bool(true)?;
-            serialize_item_stack_template(stack, seq)?;
+            serialize_item_stack_template(stack, seq, ids)?;
         }
         Ok(())
     }

@@ -1343,9 +1343,11 @@ impl VillagerEntity {
         if stack.is_empty() {
             return item;
         }
-        let Some(mapping) =
-            JavaToBedrockItemMapping::from_java_item_id(stack.item.to_java_network_id())
-        else {
+        let Some(mapping) = JavaToBedrockItemMapping::from_java_item_id(
+            stack
+                .item
+                .to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        ) else {
             return item;
         };
         item.put_byte("Count", count as i8);
@@ -2183,7 +2185,7 @@ impl Mob for VillagerEntity {
         Some("minecraft:villager_v2")
     }
 
-    fn mob_java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    fn mob_java_spawn_metadata(&self, version: pumpkin_protocol::EncodingKey) -> Option<Box<[u8]>> {
         if version < JavaMinecraftVersion::V_1_9 {
             return None;
         }
@@ -2387,7 +2389,7 @@ mod tests {
         let mut bytes = Vec::new();
 
         metadata
-            .write(&mut bytes, &JavaMinecraftVersion::V_26_3)
+            .write(&mut bytes, &JavaMinecraftVersion::V_26_3.into())
             .unwrap();
 
         assert_eq!(bytes, [19, 18, 2, 9, 1]);
@@ -2428,7 +2430,7 @@ mod tests {
         let mut bytes = Vec::new();
 
         metadata
-            .write(&mut bytes, &JavaMinecraftVersion::V_26_3)
+            .write(&mut bytes, &JavaMinecraftVersion::V_26_3.into())
             .unwrap();
 
         assert_eq!(bytes, [18, 1, 40]);

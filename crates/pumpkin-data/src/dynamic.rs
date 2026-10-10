@@ -186,12 +186,13 @@ impl fmt::Display for ContentKind {
 }
 
 /// Which ids a client gets for custom content in play packets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum ContentIds {
     /// A custom id maps to the id of its display entry, which a vanilla client knows.
     #[default]
     Display,
-    /// Ids as allocated. Only a client that synced the registries of the server knows them.
+    /// Ids as allocated. Only a client that synced the registries of the server knows them. A
+    /// placeholder is not in the synced registries, so it keeps its display id.
     Real,
 }
 
@@ -311,6 +312,15 @@ pub struct ContentTables {
     state_blocks: Vec<BlockId>,
     state_displays: Vec<BlockStateId>,
     block_displays: Vec<u16>,
+    /// The state ids a `Real` client gets: the client-side id, which skips the states of
+    /// placeholders, or the display id of a placeholder.
+    real_states: Vec<u16>,
+    /// The ids a `Real` client gets: the id itself, or the display id of a placeholder.
+    real_blocks: Vec<u16>,
+    #[cfg(feature = "item")]
+    real_items: Vec<u16>,
+    #[cfg(feature = "entity_type")]
+    real_entity_types: Vec<u16>,
     #[cfg(feature = "item")]
     items: Vec<Item>,
     #[cfg(feature = "item")]
@@ -743,6 +753,12 @@ impl ContentBuilder {
         #[cfg(feature = "entity_type")]
         check_range("entity type", EntityType::COUNT, self.entity_types.len())?;
         self.check_tags()?;
+        let block_placeholders = self.placeholder_flags(ContentKind::Block, self.blocks.keys());
+        #[cfg(feature = "item")]
+        let item_placeholders = self.placeholder_flags(ContentKind::Item, self.items.keys());
+        #[cfg(feature = "entity_type")]
+        let entity_type_placeholders =
+            self.placeholder_flags(ContentKind::EntityType, self.entity_types.keys());
 
         #[cfg(feature = "item")]
         let (block_items, item_blocks) = self.link_items()?;
@@ -764,6 +780,8 @@ impl ContentBuilder {
         #[cfg(feature = "item")]
         let item_displays: Vec<u16> = self.items.values().map(|(display, _)| display.id).collect();
         #[cfg(feature = "item")]
+        let real_items = real_ids(Item::COUNT, &item_displays, &item_placeholders);
+        #[cfg(feature = "item")]
         let items: Vec<Item> = self
             .items
             .into_iter()
@@ -782,10 +800,23 @@ impl ContentBuilder {
         let mut states = Vec::with_capacity(state_count);
         let mut state_blocks = Vec::with_capacity(state_count);
         let mut state_displays = Vec::with_capacity(state_count);
-        for ((_, block), &block_id) in blocks.iter().zip(&block_ids) {
+        let mut real_states = Vec::with_capacity(state_count);
+        // A NeoForge client numbers block states itself, appending each synced block's states in
+        // block id order. Placeholders are not synced, so live blocks after one shift down.
+        let mut next_real_state = BlockStateId::STATE_COUNT;
+        for (((_, block), &block_id), &placeholder) in
+            blocks.iter().zip(&block_ids).zip(&block_placeholders)
+        {
             let display = block.display.to_state();
             for _ in 0..block.state_count {
                 let id = BlockStateId::STATE_COUNT + states.len() as u16;
+                real_states.push(if placeholder {
+                    block.display.as_u16()
+                } else {
+                    let real = next_real_state;
+                    next_real_state += 1;
+                    real
+                });
                 states.push(BlockState {
                     id: BlockStateId::new_unchecked(id),
                     state_flags: display.state_flags,
@@ -828,6 +859,7 @@ impl ContentBuilder {
             .iter()
             .map(|(_, block)| block.display.to_block().id.as_u16())
             .collect();
+        let real_blocks = real_ids(BlockId::COUNT, &block_displays, &block_placeholders);
         let block_tags = tag_tables(
             ContentKind::Block,
             BlockId::COUNT,
@@ -849,6 +881,15 @@ impl ContentBuilder {
             .values()
             .map(|(display, ..)| *display)
             .collect();
+        #[cfg(feature = "entity_type")]
+        let real_entity_types = real_ids(
+            EntityType::COUNT,
+            &entity_type_displays
+                .iter()
+                .map(|display| display.id)
+                .collect::<Vec<_>>(),
+            &entity_type_placeholders,
+        );
         #[cfg(feature = "entity_type")]
         let entity_types: Vec<EntityType> = self
             .entity_types
@@ -911,6 +952,12 @@ impl ContentBuilder {
             state_displays,
             block_displays,
             state_blocks,
+            real_states,
+            real_blocks,
+            #[cfg(feature = "item")]
+            real_items,
+            #[cfg(feature = "entity_type")]
+            real_entity_types,
             #[cfg(feature = "item")]
             item_names: name_index(items.iter().map(|item| item.registry_key)),
             #[cfg(feature = "item")]
@@ -934,6 +981,18 @@ impl ContentBuilder {
             explicit_tags: self.tags,
             mod_tags: self.mod_tags,
         })
+    }
+
+    /// Whether each name, in allocation order, is a placeholder.
+    fn placeholder_flags<'a>(
+        &self,
+        kind: ContentKind,
+        names: impl Iterator<Item = &'a String>,
+    ) -> Vec<bool> {
+        let placeholders = self.placeholders.get(&kind);
+        names
+            .map(|name| placeholders.is_some_and(|set| set.contains(name)))
+            .collect()
     }
 
     /// Resolves the item -> block links before anything is leaked, so a failed build leaks
@@ -973,6 +1032,23 @@ impl ContentBuilder {
         }
         Ok((block_items, item_blocks))
     }
+}
+
+/// The id a `Real` client gets for each custom entry: its own id, or the display id of a
+/// placeholder.
+fn real_ids(generated: u16, displays: &[u16], placeholders: &[bool]) -> Vec<u16> {
+    displays
+        .iter()
+        .zip(placeholders)
+        .enumerate()
+        .map(|(index, (&display, &placeholder))| {
+            if placeholder {
+                display
+            } else {
+                generated + index as u16
+            }
+        })
+        .collect()
 }
 
 fn leak(name: String) -> &'static str {
@@ -1324,15 +1400,24 @@ impl BlockStateId {
         }
     }
 
-    /// The id a vanilla client knows: the state's own id, or the display state's id for a custom
-    /// state. Packet code writes block state ids only through this function.
+    /// The id a client in this mode knows. A generated state keeps its id. A custom state has the
+    /// display state's id in `Display` mode and the client-side id in `Real` mode, except a
+    /// placeholder state, which keeps the display id. The client-side id differs from the server
+    /// id when a placeholder block sorts before the block: the client numbers states itself and
+    /// skips unsynced blocks. Packet code writes block state ids only through this function.
     #[inline]
     #[must_use]
-    pub fn to_java_network_id(self) -> u16 {
+    pub fn to_java_network_id(self, ids: ContentIds) -> u16 {
         if self.as_u16() < Self::STATE_COUNT {
             self.as_u16()
         } else {
-            display_state(self).as_u16()
+            match ids {
+                ContentIds::Display => display_state(self).as_u16(),
+                ContentIds::Real => real_id(self.as_u16(), Self::STATE_COUNT, |tables| {
+                    &tables.real_states
+                })
+                .unwrap_or_else(|| display_state(self).as_u16()),
+            }
         }
     }
 }
@@ -1364,6 +1449,18 @@ pub fn namespaced_name(name: &str) -> Cow<'_, str> {
     } else {
         Cow::Owned(format!("{VANILLA_NAMESPACE}:{name}"))
     }
+}
+
+/// The `Real` mode id of a custom entry from one of the `real_*` tables.
+fn real_id(
+    raw: u16,
+    generated: u16,
+    table: impl FnOnce(&'static ContentTables) -> &'static [u16],
+) -> Option<u16> {
+    TABLES
+        .get()
+        .and_then(|tables| table(tables).get(custom_index(raw, generated)?))
+        .copied()
 }
 
 fn custom_index(raw: u16, generated: u16) -> Option<usize> {
@@ -1486,14 +1583,19 @@ fn display_block(id: BlockId) -> u16 {
 }
 
 impl Block {
-    /// The id a vanilla client knows: the block's own id, or the display block's id for a custom
-    /// block.
+    /// The id a client in this mode knows. See [`BlockStateId::to_java_network_id`].
     #[must_use]
-    pub fn to_java_network_id(&self) -> u16 {
+    pub fn to_java_network_id(&self, ids: ContentIds) -> u16 {
         if self.id.as_u16() < BlockId::COUNT {
             self.id.as_u16()
         } else {
-            display_block(self.id)
+            match ids {
+                ContentIds::Display => display_block(self.id),
+                ContentIds::Real => real_id(self.id.as_u16(), BlockId::COUNT, |tables| {
+                    &tables.real_blocks
+                })
+                .unwrap_or_else(|| display_block(self.id)),
+            }
         }
     }
 }
@@ -1696,14 +1798,18 @@ fn display_item(id: u16) -> u16 {
 
 #[cfg(feature = "item")]
 impl Item {
-    /// The id a vanilla client knows: the item's own id, or the display item's id for a custom
-    /// item. Packet code writes item ids only through this function.
+    /// The id a client in this mode knows. See [`BlockStateId::to_java_network_id`]. Packet code
+    /// writes item ids only through this function.
     #[must_use]
-    pub fn to_java_network_id(&self) -> u16 {
+    pub fn to_java_network_id(&self, ids: ContentIds) -> u16 {
         if self.id < Self::COUNT {
             self.id
         } else {
-            display_item(self.id)
+            match ids {
+                ContentIds::Display => display_item(self.id),
+                ContentIds::Real => real_id(self.id, Self::COUNT, |tables| &tables.real_items)
+                    .unwrap_or_else(|| display_item(self.id)),
+            }
         }
     }
 
@@ -1711,7 +1817,8 @@ impl Item {
     /// custom item shows its display item.
     #[must_use]
     pub fn show_item_hover(&self, count: Option<i32>) -> HoverEvent {
-        let display = Self::from_id(self.to_java_network_id()).unwrap_or(&Self::AIR);
+        let display =
+            Self::from_id(self.to_java_network_id(ContentIds::Display)).unwrap_or(&Self::AIR);
         HoverEvent::ShowItem {
             id: display.registry_key.into(),
             count,
@@ -1768,14 +1875,20 @@ impl EntityType {
         }
     }
 
-    /// The id a vanilla client knows: the type's own id, or the display type's id for a custom
-    /// type. Packet code writes entity type ids only through this function.
+    /// The id a client in this mode knows. See [`BlockStateId::to_java_network_id`]. Packet code
+    /// writes entity type ids only through this function.
     #[must_use]
-    pub fn to_java_network_id(&self) -> u16 {
+    pub fn to_java_network_id(&self, ids: ContentIds) -> u16 {
         if self.id < Self::COUNT {
             self.id
         } else {
-            display_entity_type(self.id).id
+            match ids {
+                ContentIds::Display => display_entity_type(self.id).id,
+                ContentIds::Real => {
+                    real_id(self.id, Self::COUNT, |tables| &tables.real_entity_types)
+                        .unwrap_or_else(|| display_entity_type(self.id).id)
+                }
+            }
         }
     }
 }
@@ -1816,6 +1929,73 @@ fn resolve_any_tag(key: RegistryKey, tag: &str) -> Option<(&'static str, &'stati
 pub fn tag_ids(key: RegistryKey, tag: &str) -> Option<(&'static [u16], &'static [u16])> {
     let (name, generated) = resolve_any_tag(key, tag)?;
     Some((generated, custom_tag_ids(key, name)))
+}
+
+/// The members of a generated tag as a client in this mode gets them in `update_tags`. A
+/// `Display` client gets the generated ids only. A `Real` client also gets the custom ids,
+/// without placeholders, which no client knows.
+#[must_use]
+pub fn network_tag_ids(
+    key: RegistryKey,
+    tag: &str,
+    generated: &'static [u16],
+    ids: ContentIds,
+) -> Cow<'static, [u16]> {
+    if ids == ContentIds::Display {
+        return Cow::Borrowed(generated);
+    }
+    let custom = custom_tag_ids(key, tag);
+    if custom.is_empty() {
+        return Cow::Borrowed(generated);
+    }
+    Cow::Owned(
+        generated
+            .iter()
+            .chain(custom)
+            .copied()
+            .filter(|&id| is_synced_id(key, id))
+            .collect(),
+    )
+}
+
+/// The mod tags of a registry as a client in this mode gets them in `update_tags`, in name order,
+/// each with its generated and custom members. Only a `Real` client knows mod tags.
+#[must_use]
+pub fn network_mod_tags(key: RegistryKey, ids: ContentIds) -> Vec<(&'static str, Vec<u16>)> {
+    let Some(tables) = tag_tables_of(key).filter(|_| ids == ContentIds::Real) else {
+        return Vec::new();
+    };
+    let mut tags: Vec<(&'static str, Vec<u16>)> = tables
+        .mod_tags
+        .iter()
+        .map(|(&name, generated)| {
+            let members = generated
+                .iter()
+                .chain(custom_tag_ids(key, name))
+                .copied()
+                .filter(|&id| is_synced_id(key, id))
+                .collect();
+            (name, members)
+        })
+        .collect();
+    tags.sort_unstable_by_key(|(name, _)| *name);
+    tags
+}
+
+/// Whether a `Real` client knows the id: a generated id or a custom id that is not a placeholder.
+fn is_synced_id(key: RegistryKey, id: u16) -> bool {
+    let Some(tables) = TABLES.get() else {
+        return true;
+    };
+    let (generated, real): (u16, &[u16]) = match key {
+        RegistryKey::Block => (BlockId::COUNT, &tables.real_blocks),
+        #[cfg(feature = "item")]
+        RegistryKey::Item => (Item::COUNT, &tables.real_items),
+        #[cfg(feature = "entity_type")]
+        RegistryKey::EntityType => (EntityType::COUNT, &tables.real_entity_types),
+        _ => return true,
+    };
+    custom_index(id, generated).is_none_or(|index| real.get(index) == Some(&id))
 }
 
 /// Tag membership that includes custom content. It reads both tag tables, so it is for paths off
@@ -2841,12 +3021,23 @@ mod tests {
             BlockState::to_be_network_id(Block::STONE.default_state.id)
         );
         assert!(alpha.properties(state_id).is_none());
-        assert_eq!(alpha.to_java_network_id(), Block::STONE.id.as_u16());
         assert_eq!(
-            Block::from_name("test:zeta").unwrap().to_java_network_id(),
+            alpha.to_java_network_id(ContentIds::Display),
+            Block::STONE.id.as_u16()
+        );
+        assert_eq!(alpha.to_java_network_id(ContentIds::Real), BlockId::COUNT);
+        assert_eq!(
+            Block::from_name("test:zeta")
+                .unwrap()
+                .to_java_network_id(ContentIds::Display),
             Block::DIRT.id.as_u16()
         );
-        assert_eq!(Block::STONE.to_java_network_id(), Block::STONE.id.as_u16());
+        for ids in [ContentIds::Display, ContentIds::Real] {
+            assert_eq!(
+                Block::STONE.to_java_network_id(ids),
+                Block::STONE.id.as_u16()
+            );
+        }
         assert_eq!(namespaced_name("stone"), "minecraft:stone");
         assert_eq!(namespaced_name("test:alpha"), "test:alpha");
 
@@ -2873,8 +3064,17 @@ mod tests {
             Some(&EntityType::ZOMBIE)
         );
         assert_eq!(golem.display_type(), &EntityType::ZOMBIE);
-        assert_eq!(golem.to_java_network_id(), EntityType::ZOMBIE.id);
-        assert_eq!(EntityType::PIG.to_java_network_id(), EntityType::PIG.id);
+        assert_eq!(
+            golem.to_java_network_id(ContentIds::Display),
+            EntityType::ZOMBIE.id
+        );
+        assert_eq!(
+            golem.to_java_network_id(ContentIds::Real),
+            EntityType::COUNT
+        );
+        for ids in [ContentIds::Display, ContentIds::Real] {
+            assert_eq!(EntityType::PIG.to_java_network_id(ids), EntityType::PIG.id);
+        }
 
         // Generated tag lists hold generated ids only.
         assert!(!alpha.has_tag(&crate::tag::Block::MINECRAFT_BASE_STONE_OVERWORLD));

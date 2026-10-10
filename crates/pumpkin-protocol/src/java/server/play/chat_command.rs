@@ -24,7 +24,7 @@ impl crate::ClientPacket for SChatCommand<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_string(self.command)?;

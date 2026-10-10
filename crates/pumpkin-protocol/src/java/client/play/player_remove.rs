@@ -2,9 +2,9 @@ use pumpkin_data::packet::clientbound::play::PLAYER_INFO_REMOVE;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Sent by the server to remove one or more players from the client's player list (tab list).
 ///
@@ -27,7 +27,7 @@ impl ClientPacket for CRemovePlayerInfo<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&VarInt(self.players.len() as i32))?;
         for uuid in self.players {

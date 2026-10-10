@@ -31,7 +31,7 @@ impl ClientPacket for CUpdateEntityPos {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version <= JavaMinecraftVersion::V_1_7_6 {
             write.write_i32_be(self.entity_id.0)?;

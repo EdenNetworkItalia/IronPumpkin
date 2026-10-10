@@ -1,9 +1,9 @@
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
 use pumpkin_data::packet::clientbound::play::BLOCK_CHANGED_ACK;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 /// Sent by the server to acknowledge a sequence of block changes initiated by the client.
 ///
 /// This packet is critical for preventing "ghost blocks" and synchronization issues.
@@ -29,7 +29,7 @@ impl ClientPacket for CAcknowledgeBlockChange {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.sequence_id)?;
         Ok(())

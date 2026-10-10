@@ -32,7 +32,7 @@ impl ClientPacket for CMoveVehicle {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_f64_be(self.x)?;
         write.write_f64_be(self.y)?;

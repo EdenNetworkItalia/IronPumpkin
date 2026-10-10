@@ -259,7 +259,10 @@ fn start_without_mod(world: &Path) {
 
     let item = Item::from_registry_key("test:lamp").unwrap();
     assert!(dynamic::is_placeholder(ContentKind::Item, "test:lamp"));
-    assert_eq!(item.to_java_network_id(), Item::REDSTONE_LAMP.id);
+    assert_eq!(
+        item.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Item::REDSTONE_LAMP.id
+    );
 
     assert_tags();
 
@@ -267,7 +270,10 @@ fn start_without_mod(world: &Path) {
     assert!(golem.is_placeholder());
     assert!(!golem.summonable);
     assert!(factory(golem).is_none());
-    assert_eq!(golem.to_java_network_id(), EntityType::IRON_GOLEM.id);
+    assert_eq!(
+        golem.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        EntityType::IRON_GOLEM.id
+    );
     assert!(!EntityType::IRON_GOLEM.is_placeholder());
 
     // A chunk goes live, then its live entities are saved: the placeholder record never spawns

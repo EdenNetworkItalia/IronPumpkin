@@ -2,7 +2,6 @@ use crate::block::entities::{BlockEntity, block_entity_from_nbt};
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::item::{BedrockItem, BedrockItemVersion};
-use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_data::structures::StructureKeys;
 use pumpkin_protocol::bedrock::client::item_registry::{CItemRegistry, ItemData};
 use pumpkin_protocol::bedrock::client::level_event::{CLevelEvent, LevelEvent};
@@ -93,6 +92,7 @@ use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::EncodingKey;
 use pumpkin_protocol::bedrock::client::set_actor_data::{CSetActorData, PropertySyncData};
 use pumpkin_protocol::bedrock::client::start_game::{CStartGame, ServerTelemetryData};
 use pumpkin_protocol::java::client::play::{
@@ -962,18 +962,17 @@ impl World {
         }
     }
 
-    /// Keyed by encode version: always `CURRENT_MC_VERSION`, older clients are converted
-    /// per connection on enqueue by the multiversion plugin.
-    // TODO: collapse to a plain recipient list with a single serialize.
+    /// Keyed by encoding key: the version is always `CURRENT_MC_VERSION`, older clients are
+    /// converted per connection on enqueue by the multiversion plugin. The content id mode splits
+    /// the recipients in at most two groups.
     pub(crate) fn collect_java_recipients_by_version<'a>(
         players: impl Iterator<Item = &'a Arc<Player>>,
-    ) -> BTreeMap<JavaMinecraftVersion, Vec<&'a JavaClient>> {
-        let mut recipients_by_version: BTreeMap<JavaMinecraftVersion, Vec<&'a JavaClient>> =
-            BTreeMap::new();
+    ) -> BTreeMap<EncodingKey, Vec<&'a JavaClient>> {
+        let mut recipients_by_version: BTreeMap<EncodingKey, Vec<&'a JavaClient>> = BTreeMap::new();
         for player in players {
             if let ClientPlatform::Java(java_client) = player.client.as_ref() {
                 recipients_by_version
-                    .entry(CURRENT_MC_VERSION)
+                    .entry(java_client.encoding_key())
                     .or_default()
                     .push(java_client);
             }
@@ -985,20 +984,20 @@ impl World {
         packet: &P,
         recipients: impl Iterator<Item = &'a JavaClient>,
     ) {
-        let mut recipients_by_version: BTreeMap<JavaMinecraftVersion, Vec<&JavaClient>> =
-            BTreeMap::new();
+        let mut recipients_by_version: BTreeMap<EncodingKey, Vec<&JavaClient>> = BTreeMap::new();
         for client in recipients {
             recipients_by_version
-                .entry(CURRENT_MC_VERSION)
+                .entry(client.encoding_key())
                 .or_default()
                 .push(client);
         }
         Self::broadcast_java_grouped(packet, recipients_by_version);
     }
 
+    /// Serializes the packet once per encoding key and sends each group its bytes.
     fn broadcast_java_grouped<P: ClientPacket>(
         packet: &P,
-        recipients_by_version: BTreeMap<JavaMinecraftVersion, Vec<&JavaClient>>,
+        recipients_by_version: BTreeMap<EncodingKey, Vec<&JavaClient>>,
     ) {
         for (version, recipients) in recipients_by_version {
             let packet_data = match JavaClient::serialize_packet_for_version(packet, version) {
@@ -3524,14 +3523,14 @@ impl World {
                     pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMISATION,
                     config.skin_parts,
                 );
-                let _ = meta.write(&mut buf, &CURRENT_MC_VERSION);
+                let _ = meta.write(&mut buf, &client.encoding_key());
             };
             {
                 let meta = Metadata::new(
                     pumpkin_data::tracked_data::player::PLAYER_MODE_CUSTOMIZATION_ID,
                     config.skin_parts,
                 );
-                let _ = meta.write(&mut buf, &CURRENT_MC_VERSION);
+                let _ = meta.write(&mut buf, &client.encoding_key());
             };
             drop(config);
             // END

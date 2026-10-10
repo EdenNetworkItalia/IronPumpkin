@@ -45,7 +45,7 @@ impl ClientPacket for CPlayerSpawnPosition {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_21_9 {
             write.write_string(&self.dimension_name)?;

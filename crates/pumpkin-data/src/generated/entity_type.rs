@@ -7571,8 +7571,8 @@ impl EntityType {
     }
 }
 impl IDSetContent for EntityType {
-    fn registry_id(&self) -> u16 {
-        self.to_java_network_id()
+    fn registry_id(&self, ids: crate::dynamic::ContentIds) -> u16 {
+        self.to_java_network_id(ids)
     }
     fn to_string(&self) -> String {
         Taggable::registry_key(self).to_string()

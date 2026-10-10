@@ -15,12 +15,12 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::sound::{Sound, SoundCategory};
+use pumpkin_protocol::EncodingKey;
 use pumpkin_protocol::IdOr;
 use pumpkin_protocol::java::client::play::{CEntityVelocity, CSoundEffect, Metadata};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Represents the pickup rules for arrows
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -489,7 +489,7 @@ impl EntityBase for ArrowEntity {
         }
     }
 
-    fn java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    fn java_spawn_metadata(&self, version: EncodingKey) -> Option<Box<[u8]>> {
         let entity = self.get_entity();
         let flags = self.get_flags();
         let pierce = self.pierce_level.load(Ordering::Relaxed);

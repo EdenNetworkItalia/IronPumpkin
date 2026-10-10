@@ -345,7 +345,7 @@ impl EntityBase for ItemFrameEntity {
             client.try_enqueue_packet(data);
         }
 
-        let ver = pumpkin_data::packet::CURRENT_MC_VERSION;
+        let ver = client.encoding_key();
         let item_serializer = ItemStackSerializer::from(
             self.item_stack
                 .lock()

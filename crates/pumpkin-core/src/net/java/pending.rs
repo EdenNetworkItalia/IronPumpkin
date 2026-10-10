@@ -233,9 +233,8 @@ impl PendingConnection {
     /// Encoded as 26.3. `ConnectionPacketSentEvent` can rewrite it.
     pub async fn send_packet_now<P: ClientPacket>(&mut self, packet: &P) {
         let mut packet_buf = Vec::new();
-        if let Err(err) =
-            JavaClient::write_packet_for_version(packet, CURRENT_MC_VERSION, &mut packet_buf)
-        {
+        let key = pumpkin_protocol::EncodingKey::new(CURRENT_MC_VERSION, self.content_ids);
+        if let Err(err) = JavaClient::write_packet_for_version(packet, key, &mut packet_buf) {
             error!("Failed to write packet: {err:?}");
             return;
         }

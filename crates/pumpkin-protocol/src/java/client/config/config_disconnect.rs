@@ -3,8 +3,8 @@ use pumpkin_macros::java_packet;
 use pumpkin_util::text::TextComponent;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Forces the client to disconnect from the server while in the "Configuration" state.
 ///
@@ -26,7 +26,7 @@ impl ClientPacket for CConfigDisconnect<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_component(self.reason, version)
     }
@@ -48,7 +48,7 @@ mod tests {
         );
         let mut data = Vec::new();
         CConfigDisconnect::new(&reason)
-            .write_packet_data(&mut data, &CURRENT_MC_VERSION)
+            .write_packet_data(&mut data, &CURRENT_MC_VERSION.into())
             .unwrap();
 
         let mut read = data.as_slice();

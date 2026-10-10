@@ -1,10 +1,10 @@
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
 use pumpkin_data::packet::clientbound::play::PLAYER_COMBAT_KILL;
 use pumpkin_macros::java_packet;
 use pumpkin_util::text::TextComponent;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Notifies the client that a player has died.
 ///
@@ -29,7 +29,7 @@ impl ClientPacket for CCombatDeath<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.player_id)?;
         write.write_component(self.message, version)?;

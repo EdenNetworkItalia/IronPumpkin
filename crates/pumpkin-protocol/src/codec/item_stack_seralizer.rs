@@ -1,10 +1,11 @@
-use crate::VarInt;
 use crate::codec::data_component::{DataComponentCodec, deserialize, serialize};
 use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
+use crate::{EncodingKey, VarInt};
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{
     CustomDataImpl, CustomNameImpl, DataComponentImpl, ItemNameImpl,
 };
+use pumpkin_data::dynamic::ContentIds;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::tag::NbtTag;
@@ -34,7 +35,7 @@ fn item_component_counts(stack: &ItemStack) -> (u8, u8) {
 fn serialize_item_stack_with_id(
     stack: &ItemStack,
     item_id: u16,
-    version: JavaMinecraftVersion,
+    version: EncodingKey,
     write: &mut impl NetworkWriteExt,
 ) -> Result<(), WritingError> {
     if version >= JavaMinecraftVersion::V_1_20_5 {
@@ -50,7 +51,7 @@ fn serialize_item_stack_with_id(
             for (id, data) in &stack.patch {
                 if let Some(data) = data {
                     write.put_var_int(&VarInt(i32::from(id.to_id())))?;
-                    serialize(*id, data.as_ref(), write)?;
+                    serialize(*id, data.as_ref(), write, version.content_ids())?;
                 }
             }
 
@@ -99,7 +100,7 @@ fn serialize_item_stack_with_id(
 fn serialize_length_prefixed_item_stack_with_id(
     stack: &ItemStack,
     item_id: u16,
-    version: JavaMinecraftVersion,
+    version: EncodingKey,
     write: &mut impl NetworkWriteExt,
 ) -> Result<(), WritingError> {
     if version >= JavaMinecraftVersion::V_1_20_5 {
@@ -116,7 +117,7 @@ fn serialize_length_prefixed_item_stack_with_id(
                 if let Some(data) = data {
                     write.put_var_int(&VarInt(i32::from(id.to_id())))?;
                     let mut comp_buf = Vec::new();
-                    serialize(*id, data.as_ref(), &mut comp_buf)?;
+                    serialize(*id, data.as_ref(), &mut comp_buf, version.content_ids())?;
                     write.put_var_int(&VarInt::from(comp_buf.len() as i32))?;
                     write.write_slice(&comp_buf)?;
                 }
@@ -138,7 +139,7 @@ fn serialize_length_prefixed_item_stack_with_id(
 fn serialize_item_cost_with_id(
     stack: &ItemStack,
     item_id: u16,
-    _version: JavaMinecraftVersion,
+    version: EncodingKey,
     write: &mut impl NetworkWriteExt,
 ) -> Result<(), WritingError> {
     let component_count = stack
@@ -155,7 +156,7 @@ fn serialize_item_cost_with_id(
     for (id, data) in &stack.patch {
         if let Some(data) = data {
             write.put_var_int(&VarInt(i32::from(id.to_id())))?;
-            serialize(*id, data.as_ref(), write)?;
+            serialize(*id, data.as_ref(), write, version.content_ids())?;
         }
     }
     Ok(())
@@ -476,7 +477,7 @@ impl ItemStackSerializer<'_> {
     }
 
     pub fn write(&self, write: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        self.write_with_version(write, &JavaMinecraftVersion::V_26_3)
+        self.write_with_version(write, &JavaMinecraftVersion::V_26_3.into())
     }
 
     pub fn read_length_prefixed_optional(
@@ -539,11 +540,11 @@ impl ItemStackSerializer<'_> {
     pub fn write_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         serialize_item_stack_with_id(
             self.0.as_ref(),
-            self.0.item.to_java_network_id(),
+            self.0.item.to_java_network_id(version.content_ids()),
             *version,
             write,
         )
@@ -552,11 +553,11 @@ impl ItemStackSerializer<'_> {
     pub fn write_length_prefixed_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         serialize_length_prefixed_item_stack_with_id(
             self.0.as_ref(),
-            self.0.item.to_java_network_id(),
+            self.0.item.to_java_network_id(version.content_ids()),
             *version,
             write,
         )
@@ -565,11 +566,11 @@ impl ItemStackSerializer<'_> {
     pub fn write_item_cost_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         serialize_item_cost_with_id(
             self.0.as_ref(),
-            self.0.item.to_java_network_id(),
+            self.0.item.to_java_network_id(version.content_ids()),
             *version,
             write,
         )
@@ -578,7 +579,7 @@ impl ItemStackSerializer<'_> {
     pub fn write_untrusted_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_21_5 {
             self.write_length_prefixed_with_version(write, version)
@@ -590,7 +591,7 @@ impl ItemStackSerializer<'_> {
     pub fn write_template_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         if *version < JavaMinecraftVersion::V_26_1 {
             self.write_with_version(write, version)
@@ -602,7 +603,7 @@ impl ItemStackSerializer<'_> {
     pub fn write_optional_template_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         if *version < JavaMinecraftVersion::V_26_1 {
             self.write_with_version(write, version)
@@ -617,7 +618,7 @@ impl ItemStackSerializer<'_> {
     pub fn write_template0(
         &self,
         write: &mut impl NetworkWriteExt,
-        _version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         if self.0.is_empty() {
             return Err(WritingError::Message(
@@ -625,7 +626,9 @@ impl ItemStackSerializer<'_> {
             ));
         }
         let (to_add, to_remove) = item_component_counts(self.0.as_ref());
-        write.put_var_int(&VarInt::from(self.0.item.to_java_network_id()))?;
+        write.put_var_int(&VarInt::from(
+            self.0.item.to_java_network_id(version.content_ids()),
+        ))?;
         write.put_var_int(&VarInt::from(self.0.item_count))?;
         write.put_var_int(&VarInt::from(to_add))?;
         write.put_var_int(&VarInt::from(to_remove))?;
@@ -633,7 +636,7 @@ impl ItemStackSerializer<'_> {
         for (id, data) in &self.0.patch {
             if let Some(data) = data {
                 write.put_var_int(&VarInt(i32::from(id.to_id())))?;
-                serialize(*id, data.as_ref(), write)?;
+                serialize(*id, data.as_ref(), write, version.content_ids())?;
             }
         }
 
@@ -763,9 +766,11 @@ impl OptionalItemStackHash {
     #[must_use]
     pub fn hash_equals(&self, other: &ItemStack) -> bool {
         if let Some(hash) = &self.0 {
-            if hash.item_id != other.item.to_java_network_id().into()
-                || hash.count != other.item_count.into()
-            {
+            // A `Real` client hashes the custom id, any other client the display id.
+            let item_known = [ContentIds::Display, ContentIds::Real]
+                .into_iter()
+                .any(|ids| hash.item_id == other.item.to_java_network_id(ids).into());
+            if !item_known || hash.count != other.item_count.into() {
                 return false;
             }
             let calc = || {
@@ -818,14 +823,14 @@ impl ItemStackTemplateSerializer<'_> {
     pub fn write_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let serializer = ItemStackSerializer(Cow::Borrowed(self.0.as_ref()));
         serializer.write_template_with_version(write, version)
     }
 
     pub fn write(&self, write: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        self.write_with_version(write, &JavaMinecraftVersion::V_26_3)
+        self.write_with_version(write, &JavaMinecraftVersion::V_26_3.into())
     }
 }
 
@@ -841,14 +846,14 @@ impl ItemStackOptionalTemplateSerializer<'_> {
     pub fn write_with_version(
         &self,
         write: &mut impl NetworkWriteExt,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let serializer = ItemStackSerializer(Cow::Borrowed(self.0.as_ref()));
         serializer.write_optional_template_with_version(write, version)
     }
 
     pub fn write(&self, write: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        self.write_with_version(write, &JavaMinecraftVersion::V_26_3)
+        self.write_with_version(write, &JavaMinecraftVersion::V_26_3.into())
     }
 }
 

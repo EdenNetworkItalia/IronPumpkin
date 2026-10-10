@@ -36,7 +36,7 @@ impl ClientPacket for CChunkData<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &pumpkin_protocol::EncodingKey,
     ) -> Result<(), WritingError> {
         v1_18::write_chunk_data(self.0, write, version)
     }
@@ -59,7 +59,7 @@ mod tests {
             let id = CChunkData::to_id(version);
             assert_ne!(id, -1, "Packet ID for version {version:?} must be valid");
             assert!(
-                packet.write_packet_data(&mut buf, &version).is_ok(),
+                packet.write_packet_data(&mut buf, &version.into()).is_ok(),
                 "Failed to serialize chunk data for version {version:?}"
             );
             assert!(
@@ -97,7 +97,7 @@ mod tests {
             let id = CChunkData::to_id(version);
             assert_ne!(id, -1, "Packet ID for version {version:?} must be valid");
             assert!(
-                packet.write_packet_data(&mut buf, &version).is_ok(),
+                packet.write_packet_data(&mut buf, &version.into()).is_ok(),
                 "Failed to serialize populated chunk data for version {version:?}"
             );
             assert!(

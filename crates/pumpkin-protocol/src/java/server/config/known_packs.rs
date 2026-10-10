@@ -36,7 +36,7 @@ impl crate::ClientPacket for SKnownPacks<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::{VarInt, ser::NetworkWriteExt};
         write.write_var_int(&VarInt(self.known_packs.len() as i32))?;

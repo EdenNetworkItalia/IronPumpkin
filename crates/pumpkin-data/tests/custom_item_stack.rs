@@ -9,7 +9,7 @@ use std::io::Cursor;
 use std::sync::Once;
 
 use pumpkin_data::data_component_impl::IDSetContent;
-use pumpkin_data::dynamic::{self, ContentKind, ItemDefinition};
+use pumpkin_data::dynamic::{self, ContentIds, ContentKind, ItemDefinition};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_nbt::Nbt;
@@ -106,7 +106,10 @@ fn placeholder_item_stack_round_trips() {
     let ghost = Item::from_registry_key(GHOST).expect("placeholder resolves after the freeze");
     assert!(dynamic::is_placeholder(ContentKind::Item, GHOST));
     assert!(!dynamic::is_placeholder(ContentKind::Item, RUBY));
-    assert_eq!(ghost.to_java_network_id(), Item::EMERALD.id);
+    assert_eq!(
+        ghost.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Item::EMERALD.id
+    );
 
     let mut stack = ItemStack::new(3, ghost);
     stack.set_custom_data("test", "charge", NbtTag::Int(7));
@@ -121,9 +124,18 @@ fn placeholder_item_stack_round_trips() {
 #[test]
 fn network_id_of_custom_item_is_its_display_item() {
     let ruby = ruby();
-    assert_eq!(ruby.to_java_network_id(), Item::DIAMOND.id);
-    assert_eq!(Item::DIAMOND.to_java_network_id(), Item::DIAMOND.id);
-    assert_eq!(Item::AIR.to_java_network_id(), Item::AIR.id);
+    assert_eq!(
+        ruby.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Item::DIAMOND.id
+    );
+    assert_eq!(
+        Item::DIAMOND.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Item::DIAMOND.id
+    );
+    assert_eq!(
+        Item::AIR.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Item::AIR.id
+    );
 }
 
 #[test]
@@ -135,8 +147,14 @@ fn hover_event_and_id_sets_name_the_display_item() {
     };
     assert_eq!(ruby.show_item_hover(Some(2)), diamond);
     assert_eq!(Item::DIAMOND.show_item_hover(Some(2)), diamond);
-    assert_eq!(IDSetContent::registry_id(ruby), Item::DIAMOND.id);
-    assert_eq!(IDSetContent::registry_id(&Item::STONE), Item::STONE.id);
+    assert_eq!(
+        IDSetContent::registry_id(ruby, pumpkin_data::dynamic::ContentIds::Display),
+        Item::DIAMOND.id
+    );
+    assert_eq!(
+        IDSetContent::registry_id(&Item::STONE, pumpkin_data::dynamic::ContentIds::Display),
+        Item::STONE.id
+    );
 }
 
 #[test]
@@ -147,16 +165,30 @@ fn custom_stack_is_displayed_as_its_display_item_stack() {
 
     let mut shown = ItemStack::new(3, &Item::DIAMOND);
     shown.set_custom_data("test", "charge", NbtTag::Int(1));
-    assert!(custom.is_displayed_as(&shown));
+    assert!(custom.is_displayed_as(&shown, ContentIds::Display));
+    // A `Real` client knows the custom item and sends it, never its display item.
+    assert!(!custom.is_displayed_as(&shown, ContentIds::Real));
 
     shown.item_count = 2;
-    assert!(!custom.is_displayed_as(&shown));
+    assert!(!custom.is_displayed_as(&shown, ContentIds::Display));
     shown.item_count = 3;
     shown.set_custom_data("test", "charge", NbtTag::Int(2));
-    assert!(!custom.is_displayed_as(&shown));
-    assert!(!custom.is_displayed_as(&ItemStack::new(3, &Item::EMERALD)));
+    assert!(!custom.is_displayed_as(&shown, ContentIds::Display));
+    assert!(!custom.is_displayed_as(&ItemStack::new(3, &Item::EMERALD), ContentIds::Display));
 
     // A vanilla stack is never replaced, even by an equal one.
     let vanilla = ItemStack::new(3, &Item::DIAMOND);
-    assert!(!vanilla.is_displayed_as(&ItemStack::new(3, &Item::DIAMOND)));
+    for ids in [ContentIds::Display, ContentIds::Real] {
+        assert!(!vanilla.is_displayed_as(&ItemStack::new(3, &Item::DIAMOND), ids));
+    }
+}
+
+#[test]
+fn placeholder_stack_is_displayed_as_its_display_item_in_both_modes() {
+    ruby();
+    let ghost = Item::from_registry_key(GHOST).expect("placeholder resolves after the freeze");
+    let placeholder = ItemStack::new(3, ghost);
+    for ids in [ContentIds::Display, ContentIds::Real] {
+        assert!(placeholder.is_displayed_as(&ItemStack::new(3, &Item::EMERALD), ids));
+    }
 }

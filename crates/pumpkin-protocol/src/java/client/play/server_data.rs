@@ -22,7 +22,7 @@ impl ClientPacket for CServerData<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version >= JavaMinecraftVersion::V_1_19_4 {
             write.write_component(self.motd, version)?;

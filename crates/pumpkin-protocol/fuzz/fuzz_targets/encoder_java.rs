@@ -53,7 +53,7 @@ fuzz_target!(|data: &[u8]| {
             let mut packet_buf = Vec::new();
             let id = CPlayerPosition::to_id(TARGET_VERSION);
             let _ = packet_buf.write_var_int(&VarInt(id));
-            let _ = packet.write_packet_data(&mut packet_buf, &TARGET_VERSION);
+            let _ = packet.write_packet_data(&mut packet_buf, &TARGET_VERSION.into());
             let _ = encoder.write_packet(packet_buf.into()).await;
         }
 

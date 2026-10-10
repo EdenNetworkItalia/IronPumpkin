@@ -2,9 +2,9 @@ use pumpkin_data::packet::clientbound::play::HURT_ANIMATION;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Triggers the "hurt" visual effect on an entity.
 ///
@@ -31,7 +31,7 @@ impl ClientPacket for CHurtAnimation {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         write.write_f32_be(self.yaw)?;

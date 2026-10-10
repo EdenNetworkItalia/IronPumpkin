@@ -27,7 +27,7 @@ impl ClientPacket for CRemoveEntities<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version == JavaMinecraftVersion::V_1_17 {
             write.write_var_int(self.entity_ids.first().unwrap_or(&VarInt(0)))?;

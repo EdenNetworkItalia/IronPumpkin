@@ -1,11 +1,11 @@
 use std::io::Write;
 
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
 use crate::{ClientPacket, VarInt, WritingError};
 use pumpkin_data::packet::clientbound::play::WAYPOINT;
 use pumpkin_macros::java_packet;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::version::JavaMinecraftVersion;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,7 +114,7 @@ impl ClientPacket for CWaypoint<'_> {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         // 1. Operation (TRACK = 0, UNTRACK = 1, UPDATE = 2)
         write.write_var_int(&VarInt(self.operation as i32))?;

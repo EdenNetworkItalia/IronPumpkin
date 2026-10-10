@@ -28,7 +28,7 @@ impl crate::ClientPacket for SPickItemFromBlock {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_block_pos(&self.pos, version)?;
@@ -56,7 +56,7 @@ impl crate::ClientPacket for SPickItemFromEntity {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_var_int(&self.id)?;

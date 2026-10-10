@@ -22,7 +22,7 @@ impl ClientPacket for CRecipeBookRemove<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_var_int(&VarInt(self.recipes.len() as i32))?;
         for recipe in self.recipes {

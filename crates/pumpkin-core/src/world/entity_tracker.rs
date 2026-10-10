@@ -9,7 +9,6 @@ use crossbeam::atomic::AtomicCell;
 use dashmap::DashMap;
 use dashmap::DashSet;
 use pumpkin_data::entity::EntityType;
-use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::bedrock::client::CSetActorMotion;
 use pumpkin_protocol::bedrock::client::move_actor_delta::{
     CMoveActorDelta, MOVE_ACTOR_DELTA_FLAG_HAS_HEAD_YAW, MOVE_ACTOR_DELTA_FLAG_HAS_PITCH,
@@ -461,7 +460,7 @@ impl TrackedEntity {
             let target_id = target_entity.entity_id;
 
             if let ClientPlatform::Java(client) = player.client.as_ref() {
-                let version = CURRENT_MC_VERSION;
+                let version = client.encoding_key();
                 let mut buf = Vec::new();
                 for meta in [
                     Metadata::new(
@@ -518,7 +517,7 @@ impl TrackedEntity {
         }
 
         if let ClientPlatform::Java(client) = player.client.as_ref() {
-            let version = CURRENT_MC_VERSION;
+            let version = client.encoding_key();
             if let Some(non_default) = self
                 .entity
                 .get_entity()

@@ -49,7 +49,7 @@ impl ClientPacket for CEncryptionRequest<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_string(self.server_id)?;
         if *version <= JavaMinecraftVersion::V_1_7_6 {
@@ -129,7 +129,7 @@ mod tests {
             CEncryptionRequest::new("test_server", b"public_key_bytes", b"verify_1234", true);
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_21_4;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = CEncryptionRequest::read(&mut slice, &version).unwrap();

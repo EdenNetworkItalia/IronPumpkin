@@ -531,7 +531,7 @@ impl StatusEffect {
     }
 }
 impl IDSetContent for StatusEffect {
-    fn registry_id(&self) -> u16 {
+    fn registry_id(&self, _ids: crate::dynamic::ContentIds) -> u16 {
         self.id as u16
     }
     fn from_id(id: u16) -> Option<&'static Self> {

@@ -29,7 +29,7 @@ use pumpkin_protocol::java::server::play::{
 };
 use pumpkin_protocol::packet::MultiVersionJavaPacket;
 use pumpkin_protocol::{
-    ClientPacket, ConnectionState, PacketDecodeError, RawPacket, ServerPacket,
+    ClientPacket, ConnectionState, EncodingKey, PacketDecodeError, RawPacket, ServerPacket,
     codec::var_int::VarInt,
     java::{
         client::{config::CConfigDisconnect, login::CLoginDisconnect},
@@ -57,6 +57,8 @@ use tracing::{debug, error, warn};
 pub mod chunk_data;
 pub mod configuration_payloads;
 pub mod configuration_tasks;
+#[cfg(test)]
+mod encoding_key_tests;
 pub mod handshake;
 pub mod login;
 pub mod neoforge;
@@ -407,6 +409,7 @@ impl JavaClient {
             return;
         }
 
+        let key = self.encoding_key();
         let (tx, rx) = oneshot::channel();
         rayon::spawn(move || {
             let mut serialized = Vec::with_capacity(valid_chunks.len());
@@ -417,9 +420,7 @@ impl JavaClient {
                     error!("Failed to write chunk data id: {err:?}");
                     continue;
                 }
-                if let Err(err) =
-                    CChunkData(&chunk).write_packet_data(&mut buf, &CURRENT_MC_VERSION)
-                {
+                if let Err(err) = CChunkData(&chunk).write_packet_data(&mut buf, &key) {
                     error!("Failed to write chunk data: {err:?}");
                     continue;
                 }
@@ -675,23 +676,31 @@ impl JavaClient {
         }
     }
 
+    /// A bare version encodes display ids.
     pub fn write_packet_for_version<P: ClientPacket>(
         packet: &P,
-        version: JavaMinecraftVersion,
+        version: impl Into<EncodingKey>,
         write: impl Write,
     ) -> Result<(), WritingError> {
-        pumpkin_protocol::java::packet_encoder::write_packet(packet, &version, write)
+        pumpkin_protocol::java::packet_encoder::write_packet(packet, &version.into(), write)
     }
 
     pub fn serialize_packet_for_version<P: ClientPacket>(
         packet: &P,
-        version: JavaMinecraftVersion,
+        version: EncodingKey,
     ) -> Result<Bytes, WritingError> {
         pumpkin_protocol::java::packet_encoder::serialize_packet(packet, &version)
     }
 
+    /// What packets for this connection are encoded for. Always `CURRENT_MC_VERSION`: older
+    /// clients are converted per connection by the multiversion plugin.
+    #[must_use]
+    pub const fn encoding_key(&self) -> EncodingKey {
+        EncodingKey::new(CURRENT_MC_VERSION, self.negotiated.content_ids)
+    }
+
     pub fn serialize_packet<P: ClientPacket>(&self, packet: &P) -> Result<Bytes, WritingError> {
-        Self::serialize_packet_for_version(packet, CURRENT_MC_VERSION)
+        Self::serialize_packet_for_version(packet, self.encoding_key())
     }
 
     pub fn try_send_packet<P: ClientPacket>(&self, packet: &P) {
@@ -717,7 +726,7 @@ impl JavaClient {
         packet: &P,
         write: impl Write,
     ) -> Result<(), WritingError> {
-        Self::write_packet_for_version(packet, CURRENT_MC_VERSION, write)
+        Self::write_packet_for_version(packet, self.encoding_key(), write)
     }
 
     /// Handles an incoming packet, routing it to the appropriate handler based on the current connection state.

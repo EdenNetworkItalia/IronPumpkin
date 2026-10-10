@@ -4,8 +4,8 @@ use crate::codec::var_int::VarInt;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(COOLDOWN)]
 pub struct CItemCooldown {
@@ -24,7 +24,7 @@ impl ClientPacket for CItemCooldown {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_string(&self.group)?;
         write.write_var_int(&self.cooldown)?;

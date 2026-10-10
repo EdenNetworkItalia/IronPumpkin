@@ -161,7 +161,7 @@ impl ClientPacket for CParticle<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
 
@@ -178,7 +178,12 @@ impl ClientPacket for CParticle<'_> {
         } else if *version >= JavaMinecraftVersion::V_26_3 {
             // The particle moved back to the front of the packet in 26.3
             write.write_var_int(&self.particle_id)?;
-            super::write_particle_data(&mut write, self.particle_id.0, self.data)?;
+            super::write_particle_data(
+                &mut write,
+                self.particle_id.0,
+                self.data,
+                version.content_ids(),
+            )?;
         }
 
         if *version >= JavaMinecraftVersion::V_1_8 {
@@ -217,7 +222,12 @@ impl ClientPacket for CParticle<'_> {
         if *version >= JavaMinecraftVersion::V_1_20_5 {
             write.write_var_int(&self.particle_id)?;
         }
-        super::write_particle_data(&mut write, self.particle_id.0, self.data)?;
+        super::write_particle_data(
+            &mut write,
+            self.particle_id.0,
+            self.data,
+            version.content_ids(),
+        )?;
 
         Ok(())
     }
@@ -318,7 +328,7 @@ mod tests {
         );
         let mut bytes = Vec::new();
         packet
-            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_7_6)
+            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_7_6.into())
             .unwrap();
 
         let mut slice = bytes.as_slice();
@@ -342,7 +352,7 @@ mod tests {
         );
         let mut bytes = Vec::new();
         packet
-            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_8)
+            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_8.into())
             .unwrap();
 
         let mut slice = bytes.as_slice();
@@ -364,7 +374,7 @@ mod tests {
         );
         let mut bytes = Vec::new();
         packet
-            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_19)
+            .write_packet_data(&mut bytes, &JavaMinecraftVersion::V_1_19.into())
             .unwrap();
 
         let mut cursor = Cursor::new(bytes);

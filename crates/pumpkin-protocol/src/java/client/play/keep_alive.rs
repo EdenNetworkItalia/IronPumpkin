@@ -30,7 +30,7 @@ impl ClientPacket for CKeepAlive {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if version >= &JavaMinecraftVersion::V_1_12_2 {
             write.write_i64_be(self.keep_alive_id)?;
@@ -70,7 +70,7 @@ mod tests {
         let packet = CKeepAlive::new(1234567890123456789);
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_21_4;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = CKeepAlive::read(&mut slice, &version).unwrap();
@@ -82,7 +82,7 @@ mod tests {
         let packet = CKeepAlive::new(12345);
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_8;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = CKeepAlive::read(&mut slice, &version).unwrap();
@@ -94,7 +94,7 @@ mod tests {
         let packet = CKeepAlive::new(12345);
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_7_2;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = CKeepAlive::read(&mut slice, &version).unwrap();

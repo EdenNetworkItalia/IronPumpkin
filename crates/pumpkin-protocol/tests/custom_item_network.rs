@@ -63,13 +63,13 @@ fn encodings(stack: ItemStack) -> Vec<u8> {
     let mut out = Vec::new();
     serializer.write(&mut out).unwrap();
     serializer
-        .write_length_prefixed_with_version(&mut out, &version)
+        .write_length_prefixed_with_version(&mut out, &version.into())
         .unwrap();
     serializer
-        .write_item_cost_with_version(&mut out, &version)
+        .write_item_cost_with_version(&mut out, &version.into())
         .unwrap();
     serializer
-        .write_template_with_version(&mut out, &version)
+        .write_template_with_version(&mut out, &version.into())
         .unwrap();
     ItemStackTemplateSerializer::from(stack)
         .write(&mut out)
@@ -106,7 +106,7 @@ fn dynamic_entries(recipes: &[DynamicRecipe]) -> Vec<u8> {
     let encode = |recipes: &[DynamicRecipe]| {
         let mut out = Vec::new();
         CRecipeBookAdd::new(true, recipes)
-            .write_packet_data(&mut out, &JavaMinecraftVersion::V_26_3)
+            .write_packet_data(&mut out, &JavaMinecraftVersion::V_26_3.into())
             .unwrap();
         out
     };
@@ -204,6 +204,9 @@ fn client_hash_of_display_item_matches_custom_stack() {
     };
     let custom = ItemStack::new(3, ruby);
     assert!(hash_of(Item::DIAMOND.id).hash_equals(&custom));
-    assert!(!hash_of(ruby.id).hash_equals(&custom));
+    // A `Real` client hashes the custom id.
+    assert!(hash_of(ruby.id).hash_equals(&custom));
+    assert!(!hash_of(Item::EMERALD.id).hash_equals(&custom));
     assert!(hash_of(Item::DIAMOND.id).hash_equals(&ItemStack::new(3, &Item::DIAMOND)));
+    assert!(!hash_of(ruby.id).hash_equals(&ItemStack::new(3, &Item::DIAMOND)));
 }

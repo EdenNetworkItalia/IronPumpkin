@@ -46,10 +46,10 @@ impl crate::ClientPacket for SPlayerAction {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
-        let status = status_to_version(self.status, *version);
+        let status = status_to_version(self.status, version.version());
         if version >= &JavaMinecraftVersion::V_1_9 {
             write.write_var_int(&status)?;
         } else {

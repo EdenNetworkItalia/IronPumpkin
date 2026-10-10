@@ -175,12 +175,13 @@ impl ClientPacket for CSpawnEntity {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         let v1_9 = *version >= JavaMinecraftVersion::V_1_9;
         let v1_14 = *version >= JavaMinecraftVersion::V_1_14;
         let v1_19 = *version >= JavaMinecraftVersion::V_1_19;
         let v1_21_9 = *version >= JavaMinecraftVersion::V_1_21_9;
+        let network_type = super::java_entity_type_id(self.r#type.0, version.content_ids());
 
         write.write_var_int(&self.entity_id)?;
 
@@ -189,9 +190,9 @@ impl ClientPacket for CSpawnEntity {
         }
 
         if v1_14 {
-            write.write_var_int(&self.r#type)?;
+            write.write_var_int(&VarInt(network_type))?;
         } else {
-            write.write_u8(self.r#type.0 as u8)?;
+            write.write_u8(network_type as u8)?;
         }
 
         if v1_9 {
@@ -217,8 +218,8 @@ impl ClientPacket for CSpawnEntity {
 
         let mut data = self.data;
 
-        if self.r#type.0 == i32::from(EntityType::FALLING_BLOCK.id) {
-            data = VarInt(super::java_block_state_id(data.0));
+        if network_type == i32::from(EntityType::FALLING_BLOCK.id) {
+            data = VarInt(super::java_block_state_id(data.0, version.content_ids()));
         }
 
         if !v1_14 && data.0 == 0 {
@@ -283,7 +284,7 @@ mod tests {
             velocity,
         );
         let mut out = Vec::new();
-        packet.write_packet_data(&mut out, &version)?;
+        packet.write_packet_data(&mut out, &version.into())?;
         Ok(out)
     }
 

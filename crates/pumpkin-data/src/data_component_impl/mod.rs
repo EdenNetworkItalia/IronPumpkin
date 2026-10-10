@@ -206,7 +206,12 @@ pub fn get_idset_hash<T: IDSetContent>(val: &IDSet<T>) -> u32 {
             digest.update(&[2u8]);
             for id in ids.iter() {
                 digest.update(&[3u8]);
-                digest.update(&get_i32_hash(id.registry_id() as i32).to_le_bytes());
+                // The hash a `Display` client computes. Custom ids in a set are rare, and a
+                // mismatch only resends the slot.
+                digest.update(
+                    &get_i32_hash(id.registry_id(crate::dynamic::ContentIds::Display) as i32)
+                        .to_le_bytes(),
+                );
             }
         }
     }
@@ -214,15 +219,16 @@ pub fn get_idset_hash<T: IDSetContent>(val: &IDSet<T>) -> u32 {
 }
 
 pub trait IDSetContent {
-    fn registry_id(&self) -> u16;
+    /// The id a client in this mode knows.
+    fn registry_id(&self, ids: crate::dynamic::ContentIds) -> u16;
     fn to_string(&self) -> String;
     fn from_id(id: u16) -> Option<&'static Self>;
     fn from_str(name: &str) -> Option<&'static Self>;
 }
 
 impl IDSetContent for Block {
-    fn registry_id(&self) -> u16 {
-        self.to_java_network_id()
+    fn registry_id(&self, ids: crate::dynamic::ContentIds) -> u16 {
+        self.to_java_network_id(ids)
     }
 
     fn from_id(id: u16) -> Option<&'static Self> {
@@ -239,8 +245,8 @@ impl IDSetContent for Block {
 }
 
 impl IDSetContent for crate::item::Item {
-    fn registry_id(&self) -> u16 {
-        self.to_java_network_id()
+    fn registry_id(&self, ids: crate::dynamic::ContentIds) -> u16 {
+        self.to_java_network_id(ids)
     }
 
     fn from_id(id: u16) -> Option<&'static Self> {

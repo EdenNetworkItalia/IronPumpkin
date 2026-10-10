@@ -63,7 +63,7 @@ impl ClientPacket for CUpdateScore {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &pumpkin_util::version::JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_string(&self.entity_name)?;
         if *version >= pumpkin_util::version::JavaMinecraftVersion::V_1_20_3 {
@@ -95,19 +95,19 @@ mod tests {
         // Modern 1.20.3+
         let mut buf_modern = Vec::new();
         packet
-            .write_packet_data(&mut buf_modern, &JavaMinecraftVersion::V_1_20_3)
+            .write_packet_data(&mut buf_modern, &JavaMinecraftVersion::V_1_20_3.into())
             .unwrap();
 
         // 1.8 - 1.20.2
         let mut buf_legacy = Vec::new();
         packet
-            .write_packet_data(&mut buf_legacy, &JavaMinecraftVersion::V_1_8)
+            .write_packet_data(&mut buf_legacy, &JavaMinecraftVersion::V_1_8.into())
             .unwrap();
 
         // 1.7.6
         let mut buf_v1_7 = Vec::new();
         packet
-            .write_packet_data(&mut buf_v1_7, &JavaMinecraftVersion::V_1_7_6)
+            .write_packet_data(&mut buf_v1_7, &JavaMinecraftVersion::V_1_7_6.into())
             .unwrap();
 
         assert!(!buf_modern.is_empty());

@@ -100,7 +100,7 @@ impl PlayerSpawnData {
     pub fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if version >= &JavaMinecraftVersion::V_1_20_5 {
             write.write_var_int(&VarInt(self.dimension.id as i32))?;
@@ -113,7 +113,12 @@ impl PlayerSpawnData {
         }
         write.write_string(self.dimension.minecraft_name)?;
         write.write_i64_be(self.hashed_seed)?;
-        write_game_modes(&mut write, self.game_mode, self.previous_gamemode, *version)?;
+        write_game_modes(
+            &mut write,
+            self.game_mode,
+            self.previous_gamemode,
+            version.version(),
+        )?;
         write.write_bool(self.debug)?;
         write.write_bool(self.is_flat)?;
         if version >= &JavaMinecraftVersion::V_1_19 {

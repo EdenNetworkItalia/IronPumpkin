@@ -2,8 +2,8 @@ use pumpkin_data::packet::clientbound::config::CODE_OF_CONDUCT;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(CODE_OF_CONDUCT)]
 pub struct CCodeOfConduct<'a> {
@@ -21,7 +21,7 @@ impl ClientPacket for CCodeOfConduct<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_string(self.code_of_conduct)?;
         Ok(())

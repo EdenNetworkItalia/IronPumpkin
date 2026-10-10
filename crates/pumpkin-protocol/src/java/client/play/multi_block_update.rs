@@ -60,7 +60,7 @@ impl ClientPacket for CMultiBlockUpdate {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_16 {
             let chunk_section = vector3::packed_chunk_pos(&self.chunk_section);
@@ -74,7 +74,7 @@ impl ClientPacket for CMultiBlockUpdate {
 
             for (pos, state_id) in &self.updates {
                 let local_pos = pack_local_chunk_section(pos) as u64;
-                let raw_state_id = state_id.to_java_network_id();
+                let raw_state_id = state_id.to_java_network_id(version.content_ids());
                 let packed = (u64::from(raw_state_id) << 12) | (local_pos & 0xFFF);
                 write.write_var_long(&VarLong(packed as i64))?;
             }
@@ -91,7 +91,7 @@ impl ClientPacket for CMultiBlockUpdate {
                 let packed_pos = (rel_x << 12) | (rel_z << 8) | rel_y;
                 write.write_i16_be(packed_pos as i16)?;
 
-                let raw_state_id = state_id.to_java_network_id();
+                let raw_state_id = state_id.to_java_network_id(version.content_ids());
                 write.write_i16_be(raw_state_id as i16)?;
             }
         } else {
@@ -106,7 +106,7 @@ impl ClientPacket for CMultiBlockUpdate {
                 let packed_pos = (rel_x << 12) | (rel_z << 8) | rel_y;
                 write.write_i16_be(packed_pos as i16)?;
 
-                let raw_state_id = state_id.to_java_network_id();
+                let raw_state_id = state_id.to_java_network_id(version.content_ids());
                 write.write_var_int(&VarInt(i32::from(raw_state_id)))?;
             }
         }

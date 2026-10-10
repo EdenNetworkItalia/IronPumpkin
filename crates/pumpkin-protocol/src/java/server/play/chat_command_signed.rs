@@ -60,7 +60,7 @@ impl ClientPacket for SChatCommandSigned<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_string(self.command)?;
         write.write_i64_be(self.timestamp)?;

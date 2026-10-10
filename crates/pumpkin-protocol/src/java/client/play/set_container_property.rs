@@ -28,7 +28,7 @@ impl ClientPacket for CSetContainerProperty {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_container_id(&self.window_id, version)?;
         write.write_i16_be(self.property)?;

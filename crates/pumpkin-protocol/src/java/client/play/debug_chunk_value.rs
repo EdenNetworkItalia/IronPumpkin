@@ -28,7 +28,7 @@ impl ClientPacket for CDebugChunkValue<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_i32_be(self.chunk_pos.x)?;
         write.write_i32_be(self.chunk_pos.y)?;

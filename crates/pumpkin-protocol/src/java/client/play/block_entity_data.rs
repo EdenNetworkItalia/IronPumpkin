@@ -157,7 +157,7 @@ impl ClientPacket for CBlockEntityData {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_block_pos(&self.location, version)?;
 

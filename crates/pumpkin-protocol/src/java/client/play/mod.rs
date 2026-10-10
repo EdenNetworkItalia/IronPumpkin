@@ -324,29 +324,40 @@ pub use test_instance_block_status::*;
 mod post_effects;
 pub use post_effects::*;
 
-/// The block state id a vanilla client knows, for a raw id in a packet field. A value that names
-/// no block state passes through.
-pub(crate) fn java_block_state_id(raw: i32) -> i32 {
+use pumpkin_data::dynamic::ContentIds;
+
+/// The block state id a client in this mode knows, for a raw id in a packet field. A value that
+/// names no block state passes through.
+pub(crate) fn java_block_state_id(raw: i32, ids: ContentIds) -> i32 {
     u16::try_from(raw)
         .ok()
         .and_then(pumpkin_data::BlockStateId::new)
-        .map_or(raw, |id| i32::from(id.to_java_network_id()))
+        .map_or(raw, |id| i32::from(id.to_java_network_id(ids)))
 }
 
-/// The block id a vanilla client knows, for a raw id in a packet field. A value that names no
-/// block passes through.
-pub(crate) fn java_block_id(raw: i32) -> i32 {
+/// The block id a client in this mode knows, for a raw id in a packet field. A value that names
+/// no block passes through.
+pub(crate) fn java_block_id(raw: i32, ids: ContentIds) -> i32 {
     u16::try_from(raw)
         .ok()
         .and_then(pumpkin_data::BlockId::new)
         .map_or(raw, |id| {
-            i32::from(pumpkin_data::Block::from_id(id).to_java_network_id())
+            i32::from(pumpkin_data::Block::from_id(id).to_java_network_id(ids))
         })
 }
 
-/// The data of a level event as a vanilla client knows it. Of the events with a block state in
-/// their data, only that state changes.
-pub(crate) fn java_level_event_data(event: i32, data: i32) -> i32 {
+/// The entity type id a client in this mode knows, for a raw id in a packet field. A value that
+/// names no entity type passes through.
+pub(crate) fn java_entity_type_id(raw: i32, ids: ContentIds) -> i32 {
+    u16::try_from(raw)
+        .ok()
+        .and_then(pumpkin_data::entity::EntityType::from_raw)
+        .map_or(raw, |ty| i32::from(ty.to_java_network_id(ids)))
+}
+
+/// The data of a level event as a client in this mode knows it. Of the events with a block state
+/// in their data, only that state changes.
+pub(crate) fn java_level_event_data(event: i32, data: i32, ids: ContentIds) -> i32 {
     use pumpkin_data::world::WorldEvent;
     const BLOCK_STATE_EVENTS: [i32; 3] = [
         WorldEvent::ParticlesAndSoundDestroyBlock as i32,
@@ -354,7 +365,7 @@ pub(crate) fn java_level_event_data(event: i32, data: i32) -> i32 {
         WorldEvent::ParticlesAndSoundBrushBlockComplete as i32,
     ];
     if BLOCK_STATE_EVENTS.contains(&event) {
-        java_block_state_id(data)
+        java_block_state_id(data, ids)
     } else {
         data
     }
@@ -366,6 +377,7 @@ pub(crate) fn write_particle_data(
     write: &mut impl std::io::Write,
     particle_id: i32,
     data: &[u8],
+    ids: ContentIds,
 ) -> Result<(), crate::ser::WritingError> {
     use crate::VarInt;
     use crate::ser::{NetworkReadExt, NetworkWriteExt};
@@ -386,7 +398,7 @@ pub(crate) fn write_particle_data(
         });
     let mut rest = data;
     if is_block_particle && let Ok(state) = rest.get_var_int() {
-        write.write_var_int(&VarInt(java_block_state_id(state.0)))?;
+        write.write_var_int(&VarInt(java_block_state_id(state.0, ids)))?;
         return write.write_slice(rest);
     }
     write.write_slice(data)

@@ -1,11 +1,11 @@
 use std::io::Write;
 
+use crate::EncodingKey;
 use crate::java::client::play::BosseventAction;
 use crate::ser::NetworkWriteExt;
 use crate::{ClientPacket, WritingError};
 use pumpkin_data::packet::clientbound::play::BOSS_EVENT;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Updates the "Boss Bar" displayed at the top of the player's screen.
 ///
@@ -30,7 +30,7 @@ impl ClientPacket for CBossEvent<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
 

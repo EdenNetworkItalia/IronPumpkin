@@ -32,7 +32,7 @@ impl ClientPacket for CEntityAnimation {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         // 26.3 moved the swings into their own packet and renumbered the remaining animations
@@ -84,7 +84,7 @@ impl ClientPacket for CSwingArm {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         if *version >= JavaMinecraftVersion::V_26_3 {

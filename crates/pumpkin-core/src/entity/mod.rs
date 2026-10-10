@@ -20,7 +20,6 @@ use pumpkin_data::dimension::Dimension;
 use pumpkin_data::entity::EntityStatus;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
 use pumpkin_data::{Block, BlockDirection};
@@ -383,7 +382,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
         None
     }
 
-    fn java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    fn java_spawn_metadata(&self, version: pumpkin_protocol::EncodingKey) -> Option<Box<[u8]>> {
         if version < JavaMinecraftVersion::V_1_9 {
             let entity = self.get_entity();
             let shared_flags = entity.flags.load(Ordering::Relaxed);
@@ -451,7 +450,7 @@ pub trait EntityBase: Send + Sync + std::any::Any {
 
     fn send_java_spawn_packet(&self, client: &JavaClient) {
         let entity = self.get_entity();
-        let metadata = self.java_spawn_metadata(CURRENT_MC_VERSION);
+        let metadata = self.java_spawn_metadata(client.encoding_key());
         let spawn_packet = entity.create_spawn_packet();
         if let Ok(data) = client.serialize_packet(&spawn_packet) {
             client.try_enqueue_packet(data);
@@ -2476,7 +2475,7 @@ impl Entity {
         CSpawnEntity::new_packed(
             VarInt(self.entity_id),
             self.entity_uuid,
-            VarInt(i32::from(self.entity_type.to_java_network_id())),
+            VarInt(i32::from(self.entity_type.id)),
             spawn.pos,
             spawn.pitch,
             spawn.yaw,

@@ -35,7 +35,7 @@ impl ClientPacket for CRespawn {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         let v1_14 = *version >= JavaMinecraftVersion::V_1_14;
         let v1_15 = *version >= JavaMinecraftVersion::V_1_15;
@@ -74,7 +74,7 @@ impl ClientPacket for CRespawn {
         if !v1_20_2 {
             if v1_16_2 && *version < JavaMinecraftVersion::V_1_19 {
                 let dim_type_compound = crate::java::client::play::login::get_dimension_type_nbt(
-                    *version,
+                    version.version(),
                     self.player_spawn_info.dimension.minecraft_name,
                 );
                 let dim_bytes = pumpkin_nbt::Nbt::new(String::new(), dim_type_compound).write();

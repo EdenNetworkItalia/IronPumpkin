@@ -22,7 +22,7 @@ impl ClientPacket for CUpdateRecipes<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_slice(self.raw_data)?;
         Ok(())

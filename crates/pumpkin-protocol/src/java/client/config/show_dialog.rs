@@ -4,7 +4,7 @@ use pumpkin_data::packet::clientbound::config::SHOW_DIALOG;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
-use pumpkin_util::version::JavaMinecraftVersion;
+use crate::EncodingKey;
 
 #[java_packet(SHOW_DIALOG)]
 pub struct CConfigShowDialog<'a> {
@@ -22,7 +22,7 @@ impl ClientPacket for CConfigShowDialog<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         self.dialog
             .write(&mut write, |w, dialog| dialog.write_packet_data(w, version))?;

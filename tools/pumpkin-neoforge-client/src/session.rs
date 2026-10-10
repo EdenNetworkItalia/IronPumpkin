@@ -257,7 +257,7 @@ impl Session<'_> {
     }
 
     async fn send(&mut self, packet: &impl ClientPacket) -> Result<(), Error> {
-        let bytes = packet.serialize_packet(&CURRENT_MC_VERSION)?;
+        let bytes = packet.serialize_packet(&CURRENT_MC_VERSION.into())?;
         self.encoder.write_packet(bytes).await?;
         self.encoder.flush().await?;
         Ok(())

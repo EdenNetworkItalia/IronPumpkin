@@ -264,13 +264,13 @@ mod tests {
     fn wobble_metadata(version: JavaMinecraftVersion) -> Vec<u8> {
         let mut bytes = Vec::new();
         Metadata::new(pumpkin_data::tracked_data::boat::ID_HURT, VarInt(10))
-            .write(&mut bytes, &version)
+            .write(&mut bytes, &version.into())
             .unwrap();
         Metadata::new(pumpkin_data::tracked_data::boat::ID_HURTDIR, VarInt(-1))
-            .write(&mut bytes, &version)
+            .write(&mut bytes, &version.into())
             .unwrap();
         Metadata::new(pumpkin_data::tracked_data::boat::ID_DAMAGE, 10.0f32)
-            .write(&mut bytes, &version)
+            .write(&mut bytes, &version.into())
             .unwrap();
         bytes
     }

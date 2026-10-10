@@ -28,7 +28,7 @@ impl ClientPacket for CTestInstanceBlockStatus<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_block_pos(&self.pos, version)?;
         write.write_var_int(&self.status)?;

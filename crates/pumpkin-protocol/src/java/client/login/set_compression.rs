@@ -30,7 +30,7 @@ impl ClientPacket for CSetCompression {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.threshold)?;
         Ok(())
@@ -59,7 +59,7 @@ mod tests {
         let packet = CSetCompression::new(crate::VarInt(256));
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_21_4;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = CSetCompression::read(&mut slice, &version).unwrap();

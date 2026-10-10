@@ -248,6 +248,8 @@ impl TrackedStack {
         if let Some(stack) = &self.received_stack {
             return stack.are_equal(actual_stack);
         } else if let Some(hash) = &self.received_hash
+            // The tracked stack does not know the player's content id mode, so `hash_equals`
+            // accepts the item id of either mode.
             && hash.hash_equals(actual_stack)
         {
             self.received_stack = Some(actual_stack.clone());

@@ -45,7 +45,7 @@ impl ClientPacket for SChangeDifficulty {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_21_6 {
             write.write_var_int(&VarInt(self.difficulty as i32))?;

@@ -742,12 +742,14 @@ impl ItemStack {
         self.item_count == other.item_count && self.are_items_and_components_equal(other)
     }
 
-    /// Whether this stack holds a custom item and `incoming` is the stack a vanilla client sees
-    /// for it: the display item with the same count and components. A client that sends a
-    /// stack back unchanged (creative mode does) sends this, and the server keeps its own stack.
+    /// Whether this stack holds a custom item that a client in mode `ids` sees as another item,
+    /// and `incoming` is that stack: the shown item with the same count and components. A client
+    /// that sends a stack back unchanged (creative mode does) sends this, and the server keeps its
+    /// own stack. A `Display` client sees every custom item as its display item, a `Real` client
+    /// only placeholders.
     #[must_use]
-    pub fn is_displayed_as(&self, incoming: &Self) -> bool {
-        let display = self.item.to_java_network_id();
+    pub fn is_displayed_as(&self, incoming: &Self, ids: crate::dynamic::ContentIds) -> bool {
+        let display = self.item.to_java_network_id(ids);
         if display == self.item.id {
             return false;
         }

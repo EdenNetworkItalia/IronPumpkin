@@ -23,7 +23,7 @@ impl ClientPacket for CDebugEvent<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_string(self.name)?;
         write.write_slice(self.data)?;

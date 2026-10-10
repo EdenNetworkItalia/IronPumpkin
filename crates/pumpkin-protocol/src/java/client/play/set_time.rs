@@ -46,7 +46,7 @@ impl ClientPacket for CUpdateTime {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_i64_be(self.game_time)?;
 

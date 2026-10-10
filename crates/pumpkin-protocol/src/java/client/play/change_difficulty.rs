@@ -36,7 +36,7 @@ impl ClientPacket for CChangeDifficulty {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         // Difficulty enum serialized as VarInt in 1.21.6+, and unsigned byte before
         if *version >= JavaMinecraftVersion::V_1_21_6 {

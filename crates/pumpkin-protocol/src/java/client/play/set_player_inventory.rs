@@ -4,9 +4,9 @@ use crate::VarInt;
 use crate::codec::item_stack_seralizer::ItemStackSerializer;
 use crate::{ClientPacket, WritingError, ser::NetworkWriteExt};
 
+use crate::EncodingKey;
 use pumpkin_data::packet::clientbound::play::SET_PLAYER_INVENTORY;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(SET_PLAYER_INVENTORY)]
 pub struct CSetPlayerInventory<'a> {
@@ -25,7 +25,7 @@ impl ClientPacket for CSetPlayerInventory<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
         write.write_var_int(&self.slot)?;

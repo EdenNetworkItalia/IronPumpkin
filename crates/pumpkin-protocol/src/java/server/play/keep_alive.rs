@@ -29,7 +29,7 @@ impl crate::ClientPacket for SKeepAlive {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         if version >= &JavaMinecraftVersion::V_1_12_2 {
@@ -55,7 +55,7 @@ mod tests {
         };
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_21_4;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = SKeepAlive::read(&mut slice, &version).unwrap();
@@ -69,7 +69,7 @@ mod tests {
         };
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_8;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = SKeepAlive::read(&mut slice, &version).unwrap();
@@ -83,7 +83,7 @@ mod tests {
         };
         let mut buf = Vec::new();
         let version = JavaMinecraftVersion::V_1_7_2;
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
 
         let mut slice = buf.as_slice();
         let read_packet = SKeepAlive::read(&mut slice, &version).unwrap();

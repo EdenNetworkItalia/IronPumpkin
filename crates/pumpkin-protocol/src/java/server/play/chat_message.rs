@@ -75,7 +75,7 @@ impl ClientPacket for SChatMessage<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_string(self.message)?;
 

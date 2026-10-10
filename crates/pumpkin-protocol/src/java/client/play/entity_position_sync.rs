@@ -65,7 +65,7 @@ impl ClientPacket for CEntityPositionSync {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         // Since 26.3 the position is a path. 0 is a linear path, which is just the end position.

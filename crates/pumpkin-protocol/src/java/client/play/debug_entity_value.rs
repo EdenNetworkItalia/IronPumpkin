@@ -28,7 +28,7 @@ impl ClientPacket for CDebugEntityValue<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_var_int(&self.entity_id)?;
         write.write_string(self.name)?;

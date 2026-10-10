@@ -1,9 +1,9 @@
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::codec::var_int::VarInt;
 use crate::ser::NetworkWriteExt;
 use pumpkin_data::packet::clientbound::play::CHUNK_BATCH_FINISHED;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Notifies the client that the server has finished sending a batch of chunks.
 ///
@@ -29,7 +29,7 @@ impl ClientPacket for CChunkBatchEnd {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.batch_size)?;
         Ok(())

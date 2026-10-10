@@ -40,7 +40,7 @@ impl ClientPacket for SClientCommand {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_8 {
             write.write_var_int(&self.action_id)?;

@@ -79,7 +79,7 @@ impl crate::ClientPacket for SClickSlot {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_container_id(&self.sync_id, version)?;

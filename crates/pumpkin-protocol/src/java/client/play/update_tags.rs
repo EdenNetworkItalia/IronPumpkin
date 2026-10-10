@@ -63,7 +63,7 @@ impl ClientPacket for CUpdateTagsPlay<'_> {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if version < &JavaMinecraftVersion::V_1_13 {
             return Ok(());
@@ -85,7 +85,7 @@ impl ClientPacket for CUpdateTagsPlay<'_> {
             };
 
             for &key in categories {
-                let Some(values) = get_registry_key_tags(*version, key) else {
+                let Some(values) = get_registry_key_tags(version.version(), key) else {
                     write.write_var_int(&VarInt::from(0))?;
                     continue;
                 };
@@ -102,13 +102,13 @@ impl ClientPacket for CUpdateTagsPlay<'_> {
             .tags
             .iter()
             .copied()
-            .filter(|key| key.is_valid_for_version(*version))
+            .filter(|key| key.is_valid_for_version(version.version()))
             .collect();
 
         write.write_list(&valid_keys, |p, &registry_key| {
             p.write_string(&format!("minecraft:{}", registry_key.identifier_string()))?;
 
-            let Some(values) = get_registry_key_tags(*version, registry_key) else {
+            let Some(values) = get_registry_key_tags(version.version(), registry_key) else {
                 // no tags defined for that registry key in this version
                 // write an empty list and continue
                 p.write_var_int(&VarInt::from(0))?;

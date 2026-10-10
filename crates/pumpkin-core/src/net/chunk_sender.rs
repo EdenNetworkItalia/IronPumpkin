@@ -5,11 +5,10 @@ use std::num::NonZero;
 use std::sync::{Arc, Weak};
 
 use crate::net::java::chunk_data::CChunkData;
-use pumpkin_data::packet::CURRENT_MC_VERSION;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::{CChunkBatchEnd, CChunkBatchStart, CUnloadChunk};
 use pumpkin_protocol::ser::NetworkWriteExt;
-use pumpkin_protocol::{ClientPacket, MultiVersionJavaPacket};
+use pumpkin_protocol::{ClientPacket, EncodingKey, MultiVersionJavaPacket};
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
@@ -273,6 +272,7 @@ impl ChunkSender {
 
     pub fn encode_batch(
         batch: &PreparedBatch,
+        key: &EncodingKey,
         cache: &mut FxHashMap<Vector2<i32>, EncodedChunk>,
     ) -> Vec<EncodedChunk> {
         let cached_map = &*cache;
@@ -291,13 +291,13 @@ impl ChunkSender {
                 let chunk = &candidate.chunk;
                 let mut chunk_buf = Vec::with_capacity(32 * 1024);
                 if chunk_buf
-                    .write_var_int(&VarInt(CChunkData::to_id(CURRENT_MC_VERSION)))
+                    .write_var_int(&VarInt(CChunkData::to_id(key.version())))
                     .is_err()
                 {
                     return None;
                 }
                 if CChunkData(chunk)
-                    .write_packet_data(&mut chunk_buf, &CURRENT_MC_VERSION)
+                    .write_packet_data(&mut chunk_buf, key)
                     .is_err()
                 {
                     return None;

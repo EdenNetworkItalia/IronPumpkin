@@ -3,8 +3,8 @@ use pumpkin_macros::java_packet;
 use pumpkin_util::identifier::Identifier;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(SELECT_ADVANCEMENTS_TAB)]
 pub struct CSelectAdvancementsTab {
@@ -22,7 +22,7 @@ impl ClientPacket for CSelectAdvancementsTab {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_option(&self.tab_id, |w, id| w.write_string(&id.to_string()))?;
         Ok(())

@@ -639,7 +639,14 @@ impl HostItemStack for PluginHostState {
         for (id, data) in &stack.patch {
             if let Some(data) = data {
                 let mut buf = Vec::new();
-                if serialize(*id, data.as_ref(), &mut buf).is_ok() {
+                if serialize(
+                    *id,
+                    data.as_ref(),
+                    &mut buf,
+                    pumpkin_data::dynamic::ContentIds::Display,
+                )
+                .is_ok()
+                {
                     components.push(WitDataComponentValue {
                         component: to_wit_data_component(*id),
                         value: buf,

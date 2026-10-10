@@ -2,8 +2,8 @@ use pumpkin_data::packet::clientbound::play::GAME_EVENT;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Updates the game state or triggers specific environmental changes.
 ///
@@ -50,7 +50,7 @@ impl ClientPacket for CGameEvent {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_u8(self.event)?;
         write.write_f32_be(self.value)?;

@@ -43,7 +43,7 @@ impl MerchantOffer {
     pub fn write(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version >= JavaMinecraftVersion::V_1_20_5 {
             self.base_cost_a
@@ -107,7 +107,7 @@ impl ClientPacket for CMerchantOffers {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.window_id)?;
         if *version >= JavaMinecraftVersion::V_1_19 {
@@ -261,7 +261,9 @@ mod tests {
         let packet =
             CMerchantOffers::new(VarInt(1), vec![offer()], VarInt(1), VarInt(0), true, true);
         let mut bytes = Vec::new();
-        packet.write_packet_data(&mut bytes, &version).unwrap();
+        packet
+            .write_packet_data(&mut bytes, &version.into())
+            .unwrap();
         let mut cursor = Cursor::new(&bytes);
 
         assert_eq!(cursor.get_var_int().unwrap(), VarInt(1));
@@ -342,7 +344,7 @@ mod tests {
                 true,
             );
             packet
-                .write_packet_data(&mut Vec::new(), &JavaMinecraftVersion::V_26_2)
+                .write_packet_data(&mut Vec::new(), &JavaMinecraftVersion::V_26_2.into())
                 .unwrap();
         }
     }

@@ -1,8 +1,8 @@
 use pumpkin_data::packet::clientbound::play::DELETE_CHAT;
 use pumpkin_macros::java_packet;
 
+use crate::EncodingKey;
 use crate::{ClientPacket, codec::var_int::VarInt, ser::NetworkWriteExt};
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(DELETE_CHAT)]
 pub struct CDeleteChat<'a> {
@@ -48,7 +48,7 @@ impl ClientPacket for CDeleteChat<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.signature_id)?;
         if let Some(signature) = self.signature {

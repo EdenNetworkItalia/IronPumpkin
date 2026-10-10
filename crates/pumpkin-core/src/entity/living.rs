@@ -158,7 +158,7 @@ impl MetadataSerializer for EffectParticles {
     fn write_metadata(
         &self,
         writer: &mut impl std::io::Write,
-        _version: &pumpkin_util::version::JavaMinecraftVersion,
+        _version: &pumpkin_protocol::EncodingKey,
     ) -> Result<(), WritingError> {
         let count = i32::try_from(self.0.len())
             .map_err(|_| WritingError::Message("Too many effect particles".into()))?;
@@ -4052,7 +4052,7 @@ mod tests {
         metadata
             .write(
                 &mut bytes,
-                &pumpkin_util::version::JavaMinecraftVersion::V_26_3,
+                &pumpkin_util::version::JavaMinecraftVersion::V_26_3.into(),
             )
             .unwrap();
 

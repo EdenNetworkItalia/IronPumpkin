@@ -43,8 +43,7 @@ impl JavaClient {
             let current = player_screen_handler
                 .get_slot(packet.slot as usize)
                 .get_stack();
-            // The client knows a custom item only as its display item and sends it back as such.
-            if current.is_displayed_as(&item_stack) {
+            if current.is_displayed_as(&item_stack, player.negotiated_state().content_ids) {
                 return Ok(());
             }
 

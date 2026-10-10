@@ -3,6 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 use pumpkin_data::{
     BlockState, BlockStateId,
     block_properties::{has_random_ticks, is_air, is_liquid},
+    dynamic::ContentIds,
     fluid::Fluid,
 };
 use pumpkin_util::encompassing_bits;
@@ -723,12 +724,13 @@ impl BlockPalette {
         }
     }
 
+    /// The palette as a client in this content id mode reads it.
     #[must_use]
-    pub fn convert_network(&self) -> NetworkSerialization<u16> {
+    pub fn convert_network(&self, ids: ContentIds) -> NetworkSerialization<u16> {
         match self {
             Self::Homogeneous(registry_id) => NetworkSerialization {
                 bits_per_entry: 0,
-                palette: NetworkPalette::Single(registry_id.to_java_network_id()),
+                palette: NetworkPalette::Single(registry_id.to_java_network_id(ids)),
                 packed_data: Box::new([]),
             },
             Self::Heterogeneous(data) => {
@@ -746,7 +748,7 @@ impl BlockPalette {
                                 let y = (current_idx + i) / (Self::SIZE * Self::SIZE);
                                 let z = ((current_idx + i) / Self::SIZE) % Self::SIZE;
                                 let x = (current_idx + i) % Self::SIZE;
-                                let value = data.get(x, y, z).to_java_network_id();
+                                let value = data.get(x, y, z).to_java_network_id(ids);
                                 debug_assert!((1u32 << bits_per_entry) > u32::from(value));
                                 acc |= (value as u64) << (bits_per_entry as u64 * i as u64);
                             }
@@ -767,7 +769,7 @@ impl BlockPalette {
                     NetworkSerialization {
                         bits_per_entry,
                         palette: NetworkPalette::Indirect(
-                            palette.iter().map(|v| v.to_java_network_id()).collect(),
+                            palette.iter().map(|v| v.to_java_network_id(ids)).collect(),
                         ),
                         packed_data: packed,
                     }
@@ -1004,7 +1006,7 @@ pub(crate) const BIOME_NETWORK_MAX_BITS: u8 = 7;
 
 #[cfg(test)]
 mod tests {
-    use super::{BlockPalette, NetworkPalette};
+    use super::{BlockPalette, ContentIds, NetworkPalette};
     use pumpkin_data::{Block, BlockStateId};
 
     fn network_palette_values(palette: NetworkPalette<u16>) -> Option<Box<[u16]>> {
@@ -1037,8 +1039,8 @@ mod tests {
         assert_eq!(mutated.non_air_block_count(), bulk.non_air_block_count());
         assert_eq!(mutated.liquid_block_count(), bulk.liquid_block_count());
 
-        let mutated_network = mutated.convert_network();
-        let bulk_network = bulk.convert_network();
+        let mutated_network = mutated.convert_network(ContentIds::Display);
+        let bulk_network = bulk.convert_network(ContentIds::Display);
         assert_eq!(mutated_network.bits_per_entry, bulk_network.bits_per_entry);
         assert_eq!(mutated_network.packed_data, bulk_network.packed_data);
         assert_eq!(
@@ -1087,7 +1089,7 @@ mod tests {
 
     /// The Java network encoding with raw state ids, as written before the block state egress.
     fn raw_network(palette: &BlockPalette) -> Network {
-        let bits = palette.convert_network().bits_per_entry;
+        let bits = palette.convert_network(ContentIds::Display).bits_per_entry;
         match palette {
             BlockPalette::Homogeneous(value) => (0, Some(Box::new([value.as_u16()])), Box::new([])),
             BlockPalette::Heterogeneous(_) if bits <= 8 => {
@@ -1134,7 +1136,7 @@ mod tests {
             }),
         ];
         for palette in &palettes {
-            let network = palette.convert_network();
+            let network = palette.convert_network(ContentIds::Display);
             assert_eq!(
                 (
                     network.bits_per_entry,
@@ -1145,7 +1147,7 @@ mod tests {
             );
         }
         assert!(matches!(
-            palettes[2].convert_network().palette,
+            palettes[2].convert_network(ContentIds::Display).palette,
             NetworkPalette::Direct
         ));
     }

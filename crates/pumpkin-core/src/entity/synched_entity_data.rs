@@ -3,8 +3,10 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bytes::BufMut;
+use pumpkin_data::dynamic::ContentIds;
 use pumpkin_data::meta_data_type::MetaDataType;
 use pumpkin_data::tracked_data::{TrackedData, TrackedId};
+use pumpkin_protocol::EncodingKey;
 use pumpkin_protocol::java::client::play::{Metadata, MetadataSerializer};
 use pumpkin_protocol::ser::WritingError;
 use pumpkin_util::version::JavaMinecraftVersion;
@@ -15,7 +17,7 @@ pub trait ErasedSerializer: Send + Sync {
         index: TrackedId,
         r#type: MetaDataType,
         writer: &mut dyn std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError>;
 
     fn write_canonical(&self) -> Vec<u8>;
@@ -33,7 +35,7 @@ impl<T: MetadataSerializer + Clone + Send + Sync + 'static> ErasedSerializer
         index: TrackedId,
         r#type: MetaDataType,
         writer: &mut dyn std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let meta = Metadata::new_raw(index, r#type, &self.value);
         meta.write(writer, version)
@@ -42,10 +44,12 @@ impl<T: MetadataSerializer + Clone + Send + Sync + 'static> ErasedSerializer
     fn write_canonical(&self) -> Vec<u8> {
         // The raw value, not `Metadata::write`: its Java egress maps custom block states to
         // their display state, so two custom states with one display state would compare equal.
+        // `Real` ids keep two custom items with one display item apart too.
         let mut buf = Vec::new();
-        let _ = self
-            .value
-            .write_metadata(&mut buf, &JavaMinecraftVersion::V_26_3);
+        let _ = self.value.write_metadata(
+            &mut buf,
+            &EncodingKey::new(JavaMinecraftVersion::V_26_3, ContentIds::Real),
+        );
         buf
     }
 }
@@ -150,7 +154,7 @@ impl SynchedEntityData {
 
     /// Serializes the values that changed since the last [`Self::clear_dirty`], or
     /// `None` when nothing changed.
-    pub fn pack_dirty_for_version(&self, version: &JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    pub fn pack_dirty_for_version(&self, version: &EncodingKey) -> Option<Box<[u8]>> {
         if !self.is_dirty.load(Ordering::Acquire) {
             return None;
         }
@@ -198,10 +202,7 @@ impl SynchedEntityData {
 
     /// Serializes every value that differs from the default the client assumes, or
     /// `None` when they are all still at their default.
-    pub fn get_non_default_values_for_version(
-        &self,
-        version: &JavaMinecraftVersion,
-    ) -> Option<Box<[u8]>> {
+    pub fn get_non_default_values_for_version(&self, version: &EncodingKey) -> Option<Box<[u8]>> {
         let items = self
             .items
             .lock()
@@ -247,12 +248,13 @@ mod test {
         data.define(PLAYER_MODE_CUSTOMISATION, 0u8);
         assert!(data.set(PLAYER_MODE_CUSTOMISATION, 0x7Fu8));
 
-        let current = data.get_non_default_values_for_version(&JavaMinecraftVersion::V_26_3);
-        let legacy = data.get_non_default_values_for_version(&JavaMinecraftVersion::V_1_20_5);
+        let current = data.get_non_default_values_for_version(&JavaMinecraftVersion::V_26_3.into());
+        let legacy =
+            data.get_non_default_values_for_version(&JavaMinecraftVersion::V_1_20_5.into());
         assert!(current.is_some());
         assert_eq!(current, legacy);
         assert_eq!(
-            data.pack_dirty_for_version(&JavaMinecraftVersion::V_1_20_5),
+            data.pack_dirty_for_version(&JavaMinecraftVersion::V_1_20_5.into()),
             current
         );
     }
@@ -294,7 +296,7 @@ mod test {
         data.define(PLAYER_MODE_CUSTOMISATION, 0u8);
 
         assert!(
-            data.get_non_default_values_for_version(&JavaMinecraftVersion::V_26_3)
+            data.get_non_default_values_for_version(&JavaMinecraftVersion::V_26_3.into())
                 .is_none()
         );
     }

@@ -18,10 +18,11 @@ pub fn build_java_mapping() -> String {
     output.push_str("use std::io::Cursor;\n");
     output.push_str("use std::any::Any;\n");
     output.push_str("use pumpkin_protocol::packet::MultiVersionJavaPacket;\n");
-    output.push_str("use pumpkin_protocol::packet::Packet;\n\n");
+    output.push_str("use pumpkin_protocol::packet::Packet;\n");
+    output.push_str("use pumpkin_protocol::EncodingKey;\n\n");
 
     output.push_str("#[must_use]\n");
-    output.push_str("pub fn serialize_java_packet(packet: &ClientboundPacket, version: JavaMinecraftVersion) -> Option<Bytes> {\n");
+    output.push_str("pub fn serialize_java_packet(packet: &ClientboundPacket, key: EncodingKey) -> Option<Bytes> {\n");
     output.push_str("    match packet {\n");
 
     let client_states = &["config", "login", "play", "status"];
@@ -770,7 +771,7 @@ fn emit_struct_output(
             output.push_str("            };\n");
             output.push_str("            let mut buf = Vec::new();\n");
             if attr_name == "java_packet" {
-                output.push_str("            pumpkin_core::net::java::JavaClient::write_packet_for_version(&p, version, &mut buf).unwrap();\n");
+                output.push_str("            pumpkin_core::net::java::JavaClient::write_packet_for_version(&p, key, &mut buf).unwrap();\n");
             } else {
                 output.push_str("            pumpkin_core::net::bedrock::BedrockClient::write_raw_packet(&p, &mut buf).unwrap();\n");
             }
@@ -897,7 +898,7 @@ fn process_enum(
             output.push_str("            };\n");
             output.push_str("            let mut buf = Vec::new();\n");
             if attr_name == "java_packet" {
-                output.push_str("            pumpkin_core::net::java::JavaClient::write_packet_for_version(&p, version, &mut buf).unwrap();\n");
+                output.push_str("            pumpkin_core::net::java::JavaClient::write_packet_for_version(&p, key, &mut buf).unwrap();\n");
             } else {
                 output.push_str("            pumpkin_core::net::bedrock::BedrockClient::write_raw_packet(&p, &mut buf).unwrap();\n");
             }

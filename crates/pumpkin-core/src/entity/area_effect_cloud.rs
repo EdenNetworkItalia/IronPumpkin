@@ -22,7 +22,7 @@ impl pumpkin_protocol::java::client::play::MetadataSerializer for ParticleMeta {
     fn write_metadata(
         &self,
         writer: &mut impl std::io::Write,
-        _version: &pumpkin_util::version::JavaMinecraftVersion,
+        _version: &pumpkin_protocol::EncodingKey,
     ) -> Result<(), pumpkin_protocol::ser::WritingError> {
         use pumpkin_protocol::ser::NetworkWriteExt;
         writer.write_var_int(&self.particle_id)?;

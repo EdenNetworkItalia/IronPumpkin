@@ -81,7 +81,7 @@ impl crate::ClientPacket for SClientInformationConfig<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_string(self.locale)?;
@@ -178,7 +178,7 @@ mod tests {
         };
         let mut buf = Vec::new();
         packet
-            .write_packet_data(&mut buf, &JavaMinecraftVersion::V_26_3)
+            .write_packet_data(&mut buf, &JavaMinecraftVersion::V_26_3.into())
             .expect("write client information");
 
         assert_eq!(buf, VANILLA_MINIMAL);

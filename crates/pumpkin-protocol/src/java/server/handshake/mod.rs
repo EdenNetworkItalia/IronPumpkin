@@ -45,7 +45,7 @@ impl ClientPacket for SHandShake {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.protocol_version)?;
         write.write_string(&self.server_address)?;

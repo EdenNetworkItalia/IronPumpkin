@@ -61,7 +61,7 @@ impl ClientPacket for CSetPlayerTeam<'_> {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_18 {
             write.write_string(&self.team_name)?;

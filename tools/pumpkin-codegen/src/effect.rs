@@ -194,7 +194,7 @@ pub fn build() -> TokenStream {
             }
         }
         impl IDSetContent for StatusEffect {
-            fn registry_id(&self) -> u16 {
+            fn registry_id(&self, _ids: crate::dynamic::ContentIds) -> u16 {
                 self.id as u16
             }
 

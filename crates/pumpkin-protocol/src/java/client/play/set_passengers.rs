@@ -2,9 +2,9 @@ use pumpkin_data::packet::clientbound::play::SET_PASSENGERS;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(SET_PASSENGERS)]
 pub struct CSetPassengers<'a> {
@@ -26,7 +26,7 @@ impl ClientPacket for CSetPassengers<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         write.write_var_int(&crate::VarInt(self.passengers.len() as i32))?;

@@ -46,7 +46,7 @@ impl ClientPacket for CTeleportEntity<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
 

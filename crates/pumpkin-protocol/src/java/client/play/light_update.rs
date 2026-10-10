@@ -224,7 +224,7 @@ impl ClientPacket for CLightUpdate {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_var_int(&self.chunk_x)?;
         write.write_var_int(&self.chunk_z)?;

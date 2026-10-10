@@ -54,7 +54,7 @@ impl crate::ClientPacket for SConfirmTeleport {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_var_int(&self.teleport_id)?;

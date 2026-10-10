@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use crate::EncodingKey;
 use crate::{
     ClientPacket,
     ser::{NetworkWriteExt, WritingError},
@@ -7,7 +8,6 @@ use crate::{
 use pumpkin_data::packet::clientbound::play::LEVEL_EVENT;
 use pumpkin_macros::java_packet;
 use pumpkin_util::math::position::BlockPos;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Triggers a specific sound or particle effect at a world location.
 ///
@@ -51,12 +51,16 @@ impl ClientPacket for CLevelEvent {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
         write.write_i32_be(self.event)?;
         write.write_block_pos(&self.location, version)?;
-        write.write_i32_be(super::java_level_event_data(self.event, self.data))?;
+        write.write_i32_be(super::java_level_event_data(
+            self.event,
+            self.data,
+            version.content_ids(),
+        ))?;
         write.write_bool(self.disable_relative_volume)?;
 
         Ok(())

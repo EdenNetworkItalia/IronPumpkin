@@ -2,8 +2,8 @@ use pumpkin_data::packet::clientbound::play::ENTITY_EVENT;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Sends a status update for a specific entity.
 ///
@@ -34,7 +34,7 @@ impl ClientPacket for CEntityStatus {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_i32_be(self.entity_id)?;
         write.write_i8(self.entity_status)?;

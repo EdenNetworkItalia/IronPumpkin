@@ -34,7 +34,7 @@ impl ClientPacket for CEntityVelocity {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
 
@@ -71,7 +71,7 @@ mod tests {
             pumpkin_util::math::vector3::Vector3::new(0.5, -0.5, 0.25),
         );
         let mut out = Vec::new();
-        packet.write_packet_data(&mut out, &version)?;
+        packet.write_packet_data(&mut out, &version.into())?;
         Ok(out)
     }
 

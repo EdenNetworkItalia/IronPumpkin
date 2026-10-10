@@ -26,7 +26,7 @@ impl ClientPacket for CUnloadChunk {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version >= JavaMinecraftVersion::V_1_20_2 {
             let chunk_key = ((self.z as i64) << 32) | ((self.x as u32) as i64);

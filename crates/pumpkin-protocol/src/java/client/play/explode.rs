@@ -57,7 +57,7 @@ impl ClientPacket for CExplosion {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version >= JavaMinecraftVersion::V_1_19_3 {
             write.write_f64_be(self.center.x)?;
@@ -175,7 +175,9 @@ mod tests {
             IdOr::Id(0),
         );
         let mut bytes = Vec::new();
-        packet.write_packet_data(&mut bytes, &version).unwrap();
+        packet
+            .write_packet_data(&mut bytes, &version.into())
+            .unwrap();
 
         let mut cursor = Cursor::new(bytes);
         cursor.seek(SeekFrom::Start(33)).unwrap();

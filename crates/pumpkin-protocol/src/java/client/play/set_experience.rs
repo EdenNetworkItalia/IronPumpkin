@@ -28,7 +28,7 @@ impl ClientPacket for CSetExperience {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_f32_be(self.progress)?;
         if *version <= JavaMinecraftVersion::V_1_7_6 {

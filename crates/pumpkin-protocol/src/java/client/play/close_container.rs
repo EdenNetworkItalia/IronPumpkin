@@ -29,7 +29,7 @@ impl ClientPacket for CCloseContainer {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_container_id(&self.sync_id, version)?;
         Ok(())

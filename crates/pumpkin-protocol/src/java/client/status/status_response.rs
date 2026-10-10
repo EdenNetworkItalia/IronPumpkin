@@ -28,7 +28,7 @@ impl ClientPacket for CStatusResponse {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_string(&self.json_response)?;
         Ok(())

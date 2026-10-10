@@ -1,7 +1,7 @@
 use crate::ClientPacket;
+use crate::EncodingKey;
 use pumpkin_data::packet::clientbound::play::CHUNK_BATCH_START;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 /// Signals the beginning of a new batch of chunk data packets.
 ///
 /// This packet initiates a synchronized chunk loading sequence. In modern
@@ -15,7 +15,7 @@ impl ClientPacket for CChunkBatchStart {
     fn write_packet_data(
         &self,
         _write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         Ok(())
     }

@@ -44,7 +44,7 @@ impl crate::ClientPacket for SPlayerPositionRotation {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         use crate::ser::NetworkWriteExt;
         write.write_f64_be(self.position.x)?;

@@ -20,7 +20,7 @@ impl ClientPacket for CSetSelectedSlot {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version >= JavaMinecraftVersion::V_1_21_4 {
             write.write_var_int(&crate::VarInt(i32::from(self.slot)))?;

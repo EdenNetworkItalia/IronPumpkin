@@ -22,13 +22,13 @@ use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::tracked_data;
 use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::EncodingKey;
 use pumpkin_util::Difficulty;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::random::xoroshiro128::Xoroshiro;
 use pumpkin_util::random::{RandomGenerator, get_seed};
-use pumpkin_util::version::JavaMinecraftVersion;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
@@ -858,7 +858,7 @@ pub trait Mob: EntityBase + Send + Sync {
     }
 
     /// Metadata which must accompany this mob whenever it is spawned for a Java client.
-    fn mob_java_spawn_metadata(&self, _version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    fn mob_java_spawn_metadata(&self, _version: EncodingKey) -> Option<Box<[u8]>> {
         None
     }
 

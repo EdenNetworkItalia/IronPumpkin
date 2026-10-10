@@ -98,11 +98,23 @@ fn custom_state_ids_resolve_to_their_block_and_values() {
 
     // A client knows a custom block as its display block, and a generated block as itself.
     for custom in [crop, lamp, plain] {
-        assert_eq!(custom.to_java_network_id(), Block::STONE.id.as_u16());
-        assert_eq!(IDSetContent::registry_id(custom), Block::STONE.id.as_u16());
+        assert_eq!(
+            custom.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+            Block::STONE.id.as_u16()
+        );
+        assert_eq!(
+            IDSetContent::registry_id(custom, pumpkin_data::dynamic::ContentIds::Display),
+            Block::STONE.id.as_u16()
+        );
     }
     for generated in [&Block::STONE, &Block::DAYLIGHT_DETECTOR, &Block::AIR] {
-        assert_eq!(generated.to_java_network_id(), generated.id.as_u16());
-        assert_eq!(IDSetContent::registry_id(generated), generated.id.as_u16());
+        assert_eq!(
+            generated.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+            generated.id.as_u16()
+        );
+        assert_eq!(
+            IDSetContent::registry_id(generated, pumpkin_data::dynamic::ContentIds::Display),
+            generated.id.as_u16()
+        );
     }
 }

@@ -30,7 +30,7 @@ impl ClientPacket for CSetEntityLink {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_i32_be(self.attached_entity_id)?;
         write.write_i32_be(self.holding_entity_id)?;

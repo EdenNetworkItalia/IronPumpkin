@@ -128,7 +128,7 @@ impl ClientPacket for CChunkData<'_> {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         write.write_i32_be(self.chunk_x)?;
         write.write_i32_be(self.chunk_z)?;

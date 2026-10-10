@@ -269,7 +269,7 @@ impl Mob for ZombieVillagerEntity {
         !self.is_converting() && self.villager_xp.load(Ordering::Relaxed) == 0
     }
 
-    fn mob_java_spawn_metadata(&self, version: JavaMinecraftVersion) -> Option<Box<[u8]>> {
+    fn mob_java_spawn_metadata(&self, version: pumpkin_protocol::EncodingKey) -> Option<Box<[u8]>> {
         if version < JavaMinecraftVersion::V_1_9 {
             return None;
         }

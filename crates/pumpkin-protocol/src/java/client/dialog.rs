@@ -1,7 +1,7 @@
 use pumpkin_util::text::TextComponent;
 
+use crate::EncodingKey;
 use crate::ser::NetworkWriteExt;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 pub struct DialogNBT<'a>(pub DialogNBTSource<'a>);
 
@@ -19,7 +19,7 @@ impl<'a> DialogNBT<'a> {
     pub fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         match &self.0 {
             DialogNBTSource::Struct(_dialog) => Err(crate::ser::WritingError::Message(

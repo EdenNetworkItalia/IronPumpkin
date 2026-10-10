@@ -373,9 +373,11 @@ impl WanderingTraderEntity {
         if stack.is_empty() {
             return item;
         }
-        let Some(mapping) =
-            JavaToBedrockItemMapping::from_java_item_id(stack.item.to_java_network_id())
-        else {
+        let Some(mapping) = JavaToBedrockItemMapping::from_java_item_id(
+            stack
+                .item
+                .to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        ) else {
             return item;
         };
         item.put_byte("Count", count as i8);

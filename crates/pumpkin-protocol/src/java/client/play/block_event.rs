@@ -2,10 +2,10 @@ use pumpkin_data::packet::clientbound::play::BLOCK_EVENT;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Triggers a physical block animation or sound effect.
 ///
@@ -45,12 +45,15 @@ impl ClientPacket for CBlockEvent {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_block_pos(&self.location, version)?;
         write.write_u8(self.action_id)?;
         write.write_u8(self.action_parameter)?;
-        write.write_var_int(&VarInt(super::java_block_id(self.block_type.0)))?;
+        write.write_var_int(&VarInt(super::java_block_id(
+            self.block_type.0,
+            version.content_ids(),
+        )))?;
         Ok(())
     }
 }

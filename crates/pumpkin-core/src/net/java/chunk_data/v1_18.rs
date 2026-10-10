@@ -15,7 +15,7 @@ use std::io::Write;
 pub fn write_chunk_data(
     chunk: &ChunkData,
     mut write: impl Write,
-    version: &JavaMinecraftVersion,
+    version: &pumpkin_protocol::EncodingKey,
 ) -> Result<(), WritingError> {
     write.write_i32_be(chunk.x)?;
     write.write_i32_be(chunk.z)?;
@@ -65,7 +65,7 @@ pub fn write_chunk_data(
                 pumpkin_nbt::tag::NbtTag::LongArray(mbnl.to_vec()),
             );
         }
-        write_compound_nbt(&mut write, &comp, *version)?;
+        write_compound_nbt(&mut write, &comp, version.version())?;
     }
     drop(heightmaps);
 
@@ -93,7 +93,7 @@ pub fn write_chunk_data(
                 blocks_and_biomes_buf.write_i16_be(liquid_count)?;
             }
 
-            let block_network = block_palette.convert_network();
+            let block_network = block_palette.convert_network(version.content_ids());
             blocks_and_biomes_buf.write_u8(block_network.bits_per_entry)?;
 
             match block_network.palette {
@@ -209,7 +209,7 @@ pub fn write_chunk_data(
         client_nbt.child_tags.remove("LootTableSeed");
         client_nbt.child_tags.remove("PumpkinCustomData");
         client_nbt.child_tags.remove("BukkitValues");
-        write_compound_nbt(&mut write, &client_nbt, *version)?;
+        write_compound_nbt(&mut write, &client_nbt, version.version())?;
     }
 
     {

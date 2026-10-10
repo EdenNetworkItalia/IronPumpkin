@@ -39,7 +39,7 @@ impl ClientPacket for CAddResourcePack<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         if *version >= JavaMinecraftVersion::V_1_20_3 {
             write.write_uuid(self.uuid)?;

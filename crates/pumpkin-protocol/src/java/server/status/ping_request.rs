@@ -30,7 +30,7 @@ impl crate::ClientPacket for SStatusPingRequest {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &crate::EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_i64_be(self.payload)?;
         Ok(())

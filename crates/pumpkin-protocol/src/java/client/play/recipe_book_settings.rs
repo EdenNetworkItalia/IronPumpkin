@@ -1,8 +1,8 @@
 use std::io::Write;
 
+use crate::EncodingKey;
 use pumpkin_data::packet::clientbound::play::RECIPE_BOOK_SETTINGS;
 use pumpkin_macros::java_packet;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 use crate::{ClientPacket, WritingError, ser::NetworkWriteExt};
 
@@ -42,7 +42,7 @@ impl ClientPacket for CRecipeBookSettings {
     fn write_packet_data(
         &self,
         write: impl Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), WritingError> {
         let mut write = write;
         write.write_bool(self.crafting_open)?;

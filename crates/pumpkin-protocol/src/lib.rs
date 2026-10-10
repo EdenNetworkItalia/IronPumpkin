@@ -22,9 +22,11 @@ use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 pub use crate::packet::{MultiVersionJavaPacket, Packet};
+pub use encoding_key::EncodingKey;
 
 pub mod bedrock;
 pub mod codec;
+mod encoding_key;
 pub mod java;
 pub mod packet;
 #[cfg(feature = "query")]
@@ -252,18 +254,14 @@ pub trait ClientPacket: MultiVersionJavaPacket {
     fn write_packet_data(
         &self,
         write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &EncodingKey,
     ) -> Result<(), WritingError>;
 
-    fn write_packet(
-        &self,
-        version: &JavaMinecraftVersion,
-        write: impl Write,
-    ) -> Result<(), WritingError> {
+    fn write_packet(&self, version: &EncodingKey, write: impl Write) -> Result<(), WritingError> {
         crate::java::packet_encoder::write_packet(self, version, write)
     }
 
-    fn serialize_packet(&self, version: &JavaMinecraftVersion) -> Result<Bytes, WritingError> {
+    fn serialize_packet(&self, version: &EncodingKey) -> Result<Bytes, WritingError> {
         crate::java::packet_encoder::serialize_packet(self, version)
     }
 }

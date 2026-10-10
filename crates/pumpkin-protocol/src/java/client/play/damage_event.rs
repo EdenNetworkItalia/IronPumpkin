@@ -1,10 +1,10 @@
 use crate::ClientPacket;
+use crate::EncodingKey;
 use crate::VarInt;
 use crate::ser::NetworkWriteExt;
 use pumpkin_data::packet::clientbound::play::DAMAGE_EVENT;
 use pumpkin_macros::java_packet;
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::version::JavaMinecraftVersion;
 
 /// Notifies the client that an entity has taken damage.
 ///
@@ -53,7 +53,7 @@ impl ClientPacket for CDamageEvent {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.entity_id)?;
         write.write_var_int(&self.source_type_id)?;

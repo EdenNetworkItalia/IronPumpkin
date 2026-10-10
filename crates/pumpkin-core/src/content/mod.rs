@@ -378,7 +378,8 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
         .items()
         .iter()
         .map(|item| {
-            let display = Item::from_id(item.to_java_network_id()).unwrap_or(&Item::AIR);
+            let display = Item::from_id(item.to_java_network_id(dynamic::ContentIds::Display))
+                .unwrap_or(&Item::AIR);
             let display = dynamic::namespaced_name(display.registry_key).into_owned();
             let tags = tables
                 .explicit_tags(ContentKind::Item, item.registry_key)

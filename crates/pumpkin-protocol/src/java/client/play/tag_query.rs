@@ -1,8 +1,8 @@
 use pumpkin_data::packet::clientbound::play::TAG_QUERY;
 use pumpkin_macros::java_packet;
 
+use crate::EncodingKey;
 use crate::{ClientPacket, codec::var_int::VarInt, ser::NetworkWriteExt};
-use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(TAG_QUERY)]
 pub struct CTagQueryResponse<'a> {
@@ -24,7 +24,7 @@ impl ClientPacket for CTagQueryResponse<'_> {
     fn write_packet_data(
         &self,
         mut write: impl std::io::Write,
-        _version: &JavaMinecraftVersion,
+        _version: &EncodingKey,
     ) -> Result<(), crate::ser::WritingError> {
         write.write_var_int(&self.transaction_id)?;
         write.write_slice(self.nbt_bytes)?;

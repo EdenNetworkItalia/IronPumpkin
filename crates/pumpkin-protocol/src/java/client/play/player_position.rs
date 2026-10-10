@@ -57,7 +57,7 @@ impl ClientPacket for CPlayerPosition {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if version >= &JavaMinecraftVersion::V_1_21_2 {
             // Reordered and added delta/int flags in 1.21.2

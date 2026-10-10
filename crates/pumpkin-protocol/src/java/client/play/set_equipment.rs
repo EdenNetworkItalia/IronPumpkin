@@ -65,7 +65,7 @@ impl ClientPacket for CSetEquipment {
     fn write_packet_data(
         &self,
         mut write: impl Write,
-        version: &JavaMinecraftVersion,
+        version: &crate::EncodingKey,
     ) -> Result<(), WritingError> {
         if *version <= JavaMinecraftVersion::V_1_7_6 {
             write.write_i32_be(self.entity_id.0)?;
@@ -153,7 +153,7 @@ mod tests {
         let legs = ItemStackSerializer::from(ItemStack::new(1, &Item::DIAMOND_LEGGINGS));
         let packet = CSetEquipment::new(VarInt(42), vec![(4, chest), (3, legs)]);
         let mut buf = Vec::new();
-        packet.write_packet_data(&mut buf, &version).unwrap();
+        packet.write_packet_data(&mut buf, &version.into()).unwrap();
         buf
     }
 

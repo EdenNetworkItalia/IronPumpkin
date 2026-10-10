@@ -115,8 +115,8 @@ fn a_mod_registers_a_block_and_an_item_that_the_registry_holds() {
     let defaults = lamp.properties(lamp.default_state.id).unwrap().to_props();
     assert_eq!(defaults, vec![("level", "2"), ("lit", "false")]);
     assert_eq!(
-        lamp.to_java_network_id(),
-        Block::REDSTONE_LAMP.to_java_network_id()
+        lamp.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        Block::REDSTONE_LAMP.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display)
     );
 
     assert!(lamp.has_tag_dynamic("minecraft:mineable/pickaxe"));
@@ -157,7 +157,10 @@ fn a_mod_registers_an_entity_type_with_its_factory() {
     let golem = EntityType::from_name("sample-mod:golem").unwrap();
     assert_eq!(golem.dimension, [1.5, 2.5]);
     assert_eq!(golem.eye_height, 2.0);
-    assert_eq!(golem.to_java_network_id(), EntityType::ZOMBIE.id);
+    assert_eq!(
+        golem.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),
+        EntityType::ZOMBIE.id
+    );
     assert!(custom::factory(golem).is_some());
     assert!(golem.has_tag_dynamic("minecraft:skeletons"));
 }
