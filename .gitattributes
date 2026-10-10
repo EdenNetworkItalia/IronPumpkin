@@ -1,0 +1,2 @@
+# Fixtures compared byte for byte (`include_bytes!`); a CRLF checkout would change them.
+assets/neoforge/*.toml -text

@@ -1,7 +1,8 @@
 //! Boots a server with the test mod in a child process and runs the headless client against it.
 //! A `NeoForge` client gets the registry sync with the test mod's content at the first free ids,
-//! and a vanilla client gets no sync. The child reruns this test binary with `SERVER_DIR` set and
-//! starts the server from that directory.
+//! then the modded configuration tasks with the test mod's synced config. A vanilla client gets
+//! neither: the client-required test mod gets it kicked. The child reruns this test binary with
+//! `SERVER_DIR` set and starts the server from that directory.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use ironpumpkin_test_mod::{BLOCK, ENTITY_TYPE, ITEM};
+use ironpumpkin_test_mod::{BLOCK, ENTITY_TYPE, ITEM, SYNCED_CONFIG, SYNCED_CONFIG_CONTENTS};
 use pumpkin_neoforge_client::{
     channels::ChannelMap,
     check, parse_expected,
@@ -22,8 +23,9 @@ use pumpkin_neoforge_client::{
     session::{self, Outcome},
 };
 use pumpkin_protocol::java::neoforge::{
-    FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload, FrozenRegistrySyncStartPayload,
-    decode_exact,
+    CommonRegisterPayload, CommonVersionPayload, ConfigFilePayload, ExtensibleEnumDataPayload,
+    FeatureFlagDataPayload, FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload,
+    FrozenRegistrySyncStartPayload, KnownRegistryDataMapsPayload, decode_exact,
 };
 
 const SERVER_DIR: &str = "SERVER_DIR";
@@ -199,7 +201,7 @@ fn check_neoforge_client(server: &Server, port: u16) {
     .unwrap();
     let (entries, outcome) = record(port, NEOFORGE_PLAYER, Some(channels));
     let expected = parse_expected(include_str!(
-        "../../../tools/pumpkin-neoforge-client/expected/pumpkin-neoforge.txt"
+        "../../../tools/pumpkin-neoforge-client/expected/pumpkin-neoforge-test-mod.txt"
     ));
     let failures = check(&entries, &outcome, Some(&expected), None);
     assert!(failures.is_empty(), "{failures:#?}");
@@ -288,19 +290,91 @@ fn check_neoforge_client(server: &Server, port: u16) {
         "{sent} {echo} {known_packs}"
     );
 
+    check_modded_tasks(&entries);
+
     server.wait_for_log(&format!(
         "{NEOFORGE_PLAYER} entered play as a NeoForge client"
     ));
 }
 
+/// The clientbound channels of the modded configuration tasks, in task order.
+const MODDED_TASK_CHANNELS: [&str; 6] = [
+    CommonVersionPayload::CHANNEL,
+    CommonRegisterPayload::CHANNEL,
+    ConfigFilePayload::CHANNEL,
+    KnownRegistryDataMapsPayload::CHANNEL,
+    ExtensibleEnumDataPayload::CHANNEL,
+    FeatureFlagDataPayload::CHANNEL,
+];
+
+/// The modded tasks run between `update_tags` and `finish_configuration`, the bodies of
+/// `c:register` and the first `neoforge:config_file` equal run (b), and the test mod's config
+/// follows.
+fn check_modded_tasks(entries: &[Entry]) {
+    let tags = position(entries, Direction::Clientbound, "update_tags", None);
+    let finish = position(
+        entries,
+        Direction::Clientbound,
+        "finish_configuration",
+        None,
+    );
+    let positions = MODDED_TASK_CHANNELS.map(|channel| {
+        position(
+            entries,
+            Direction::Clientbound,
+            "custom_payload",
+            Some(channel),
+        )
+    });
+    assert!(
+        tags < positions[0] && positions.is_sorted() && positions[5] < finish,
+        "{tags} {positions:?} {finish}"
+    );
+
+    // Run (b), seq 88: version 1, protocol play, the channel neoforge:split.
+    let register = &entries[positions[1]];
+    assert_eq!(
+        register.data,
+        "0104706c6179010e6e656f666f7267653a73706c6974"
+    );
+    let configs: Vec<ConfigFilePayload> = entries
+        .iter()
+        .filter(|entry| {
+            entry.direction == Direction::Clientbound
+                && entry.channel.as_deref() == Some(ConfigFilePayload::CHANNEL)
+        })
+        .map(|entry| decode_exact(&body(entry), ConfigFilePayload::read).unwrap())
+        .collect();
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[0].file_name, "neoforge-synced.toml");
+    assert_eq!(
+        &*configs[0].contents,
+        include_bytes!("../../../assets/neoforge/neoforge-synced.toml")
+    );
+    assert_eq!(configs[1].file_name, SYNCED_CONFIG);
+    assert_eq!(&*configs[1].contents, SYNCED_CONFIG_CONTENTS);
+}
+
+/// `NetworkRegistry.initializeOtherConnection` refuses a vanilla client while a client-required
+/// mod is loaded.
 fn check_vanilla_client(port: u16) {
     let (entries, outcome) = record(port, VANILLA_PLAYER, None);
-    let synced: Vec<&str> = entries
+    let failures = check(
+        &entries,
+        &outcome,
+        None,
+        Some("neoforge.network.negotiation.failure.vanilla.client.not_supported"),
+    );
+    assert!(failures.is_empty(), "{failures:#?}");
+    let modded: Vec<&str> = entries
         .iter()
         .filter_map(|entry| entry.channel.as_deref())
-        .filter(|channel| channel.starts_with("neoforge:frozen_registry"))
+        .filter(|channel| {
+            channel.starts_with("neoforge:frozen_registry")
+                || MODDED_TASK_CHANNELS.contains(channel)
+        })
         .collect();
-    assert!(synced.is_empty(), "{outcome}: {synced:?}");
+    assert!(modded.is_empty(), "{outcome}: {modded:?}");
 }
 
 #[test]

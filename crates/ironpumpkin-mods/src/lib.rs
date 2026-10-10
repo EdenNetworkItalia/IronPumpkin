@@ -36,7 +36,7 @@ use pumpkin_core::{
     entity::custom,
     plugin::{
         Context, PluginMetadata,
-        startup::{self, NativeModInfo},
+        startup::{self, NativeModInfo, SyncedConfig},
     },
 };
 use pumpkin_data::dynamic::{self, EntityTypeDefinition};
@@ -140,6 +140,7 @@ pub struct ModInit {
     data_root: PathBuf,
     registrations: Vec<Registration>,
     content_error: Option<ContentRegistrationError>,
+    synced_configs: Vec<SyncedConfig>,
 }
 
 /// The first content registration that failed in a mod's [`NativeMod::init`].
@@ -181,7 +182,21 @@ impl ModInit {
             data_root: Path::new("plugins").join("data"),
             registrations: Vec::new(),
             content_error: None,
+            synced_configs: Vec::new(),
         }
+    }
+
+    /// Registers a synced config file, like a `ModConfig.Type.SYNCED` config of `NeoForge`. During
+    /// configuration, every `NeoForge` client that has the channel `neoforge:config_file` gets
+    /// `contents` under `file_name`, after `NeoForge`'s own `neoforge-synced.toml`. The client
+    /// applies only a file name that it knows, so use the name of the client mod's config.
+    ///
+    /// The server stops after the last `init` when two configs share a file name.
+    pub fn synced_config(&mut self, file_name: impl Into<String>, contents: impl Into<Box<[u8]>>) {
+        self.synced_configs.push(SyncedConfig {
+            file_name: file_name.into(),
+            contents: contents.into(),
+        });
     }
 
     /// See [`Context::register_command`].
@@ -444,8 +459,10 @@ fn native_mod_infos(mods: &[&dyn NativeMod]) -> Vec<NativeModInfo> {
 pub fn init_mods(server: &Arc<Server>) {
     let mods = mods().unwrap_or_else(|err| refuse_to_start(&err));
     startup::set_native_mods(native_mod_infos(&mods));
+    let mut synced_configs = Vec::new();
     for native_mod in &mods {
-        let init = init_mod(*native_mod).unwrap_or_else(|err| refuse_to_start(&err));
+        let mut init = init_mod(*native_mod).unwrap_or_else(|err| refuse_to_start(&err));
+        synced_configs.append(&mut init.synced_configs);
         let metadata = PluginMetadata {
             name: native_mod.id().to_owned(),
             version: native_mod.version().to_owned(),
@@ -456,6 +473,7 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         init.apply(&startup::create_context(server, metadata));
     }
+    startup::set_synced_configs(synced_configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()
         .map(|native_mod| {
@@ -627,6 +645,20 @@ mod tests {
         let mut init = ModInit::new("test-mod");
         init.register_service("test-mod:service", Arc::new(TestService));
         assert_eq!(init.registrations.len(), 1);
+    }
+
+    #[test]
+    fn records_a_synced_config() {
+        let mut init = ModInit::new("test-mod");
+        init.synced_config("testmod-server.toml", b"enabled = 1\n".as_slice());
+        let configs: Vec<(&str, &[u8])> = init
+            .synced_configs
+            .iter()
+            .map(|config| (config.file_name.as_str(), &*config.contents))
+            .collect();
+        assert_eq!(configs, [("testmod-server.toml", &b"enabled = 1\n"[..])]);
+        assert_eq!(configs[0].1.len(), 12);
+        assert!(init.registrations.is_empty());
     }
 
     #[test]

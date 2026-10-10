@@ -1,6 +1,7 @@
 //! Native mod for the boot tests of the root workspace. It registers one block, one item and one
-//! entity type, each with a vanilla display entry. A test binary links it with
-//! `use ironpumpkin_test_mod as _;` and starts the server with `pumpkin::run`.
+//! entity type, each with a vanilla display entry, and the synced config [`SYNCED_CONFIG`]. A test
+//! binary links it by using one of its items, such as `use ironpumpkin_test_mod::BLOCK;`, and
+//! starts the server with `pumpkin::run`.
 
 use std::sync::Arc;
 
@@ -16,6 +17,8 @@ pub const ID: &str = "test-mod";
 pub const BLOCK: &str = "test-mod:test_block";
 pub const ITEM: &str = "test-mod:test_item";
 pub const ENTITY_TYPE: &str = "test-mod:test_entity";
+pub const SYNCED_CONFIG: &str = "testmod-server.toml";
+pub const SYNCED_CONFIG_CONTENTS: &[u8] = b"enabled = true\n";
 
 struct TestMod;
 
@@ -33,6 +36,7 @@ impl NativeMod for TestMod {
     }
 
     fn init(&self, cx: &mut ModInit) {
+        cx.synced_config(SYNCED_CONFIG, SYNCED_CONFIG_CONTENTS);
         // `ModInit` keeps the first content error, and the server stops on it after `init`.
         let _ = register_content(cx);
     }

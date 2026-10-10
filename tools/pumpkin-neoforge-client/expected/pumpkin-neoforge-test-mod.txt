@@ -1,5 +1,6 @@
-# Clientbound configuration payloads that IronPumpkin sends to a NeoForge client, with
-# detect_neoforge_clients = true and the channel map channels/neoforge-26.3.toml.
+# Clientbound configuration payloads that IronPumpkin with the native mod ironpumpkin-test-mod
+# sends to a NeoForge client, with detect_neoforge_clients = true and the channel map
+# channels/neoforge-26.3.toml. The boot test of crates/ironpumpkin-test-mod reads this file.
 # The probe:
 minecraft:unregister
 minecraft:register
@@ -16,10 +17,11 @@ neoforge:frozen_registry
 neoforge:frozen_registry
 neoforge:frozen_registry_sync_completed
 # After update_tags, the RegisterConfigurationTasksEvent tasks: common version, common register,
-# the synced configs (neoforge-synced.toml only, without native mod configs), data maps, enums,
-# feature flags:
+# the synced configs (neoforge-synced.toml, then the test mod's testmod-server.toml), data maps,
+# enums, feature flags:
 c:version
 c:register
+neoforge:config_file
 neoforge:config_file
 neoforge:known_registry_data_maps
 neoforge:extensible_enum_data

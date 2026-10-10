@@ -678,9 +678,11 @@ impl PendingConnection {
             let brand = read_brand(plugin_message.data, self.packet_joined)?;
             debug!("Got a client brand {brand:?}");
             self.brand = Some(brand);
-        } else if let Some(reply) = TaskReply::for_channel(plugin_message.channel) {
+        } else if let Some(reply) = TaskReply::for_channel(plugin_message.channel)
+            && neoforge::detects_neoforge_clients(&server.basic_config)
+        {
             if self.finish_configuration_task(reply).await {
-                self.handle_task_reply(reply, plugin_message.data);
+                self.handle_task_reply(reply, plugin_message.data).await?;
                 self.run_configuration_tasks(server).await;
             }
         } else {

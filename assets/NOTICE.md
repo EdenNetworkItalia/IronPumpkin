@@ -31,3 +31,11 @@ This repository contains data files, protocol mappings, and game assets necessar
 ### 5. Pumpkin Source Code & Plugin API
 * **Server Source Code**: All original Pumpkin server source code, custom tools, and code generators are licensed under the **GNU General Public License v3.0 (GPLv3)** (see the root `LICENSE` file).
 * **Plugin API**: The `pumpkin-plugin-api` and `pumpkin-plugin-wit` crates are dual-licensed under **MIT OR Apache-2.0** to allow plugin authors to use their preferred license.
+
+---
+
+### 6. NeoForge Synced Config
+* **Files**: `assets/neoforge/neoforge-synced.toml`.
+* **Copyright**: © NeoForged project and contributors (https://neoforged.net).
+* **License**: GNU Lesser General Public License v2.1 (LGPL-2.1), the license of NeoForge.
+* **Source**: The `neoforge-synced.toml` that a NeoForge 26.3.0.64-beta server sends in its `neoforge:config_file` payload, captured from run (b) in `tools/pumpkin-neoforge-client/captures/neoforge-26.3.0.64-beta/`. IronPumpkin sends it unchanged to NeoForge clients.

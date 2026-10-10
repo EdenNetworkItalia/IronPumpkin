@@ -87,6 +87,8 @@ server has, so the negotiation fails.
   `detect_neoforge_clients = false`.
 - `expected/pumpkin-neoforge.txt`: `channels/neoforge-26.3.toml` against IronPumpkin with
   `detect_neoforge_clients = true`.
+- `expected/pumpkin-neoforge-test-mod.txt`: the same against IronPumpkin with the native mod
+  `ironpumpkin-test-mod`, which adds its synced config. The boot test of that crate reads it.
 
 ## NeoForge behaviour
 

@@ -55,6 +55,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, warn};
 
 pub mod chunk_data;
+pub mod configuration_payloads;
 pub mod configuration_tasks;
 pub mod handshake;
 pub mod login;

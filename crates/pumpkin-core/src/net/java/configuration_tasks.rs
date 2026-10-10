@@ -14,21 +14,28 @@ use pumpkin_protocol::{
     java::{
         client::config::CFinishConfig,
         neoforge::{
-            ConnectionProtocol, FrozenRegistryPayload, FrozenRegistrySyncCompletedPayload,
-            FrozenRegistrySyncStartPayload, RegistrySnapshot,
+            CommonRegisterPayload, CommonVersionPayload, ConfigFilePayload, ConnectionProtocol,
+            ExtensibleEnumAcknowledgePayload, ExtensibleEnumDataPayload,
+            FeatureFlagAcknowledgePayload, FeatureFlagDataPayload, FrozenRegistryPayload,
+            FrozenRegistrySyncCompletedPayload, FrozenRegistrySyncStartPayload,
+            KnownRegistryDataMapsPayload, KnownRegistryDataMapsReplyPayload, NetworkPayloadSetup,
+            PacketFlow, RegistrySnapshot, decode_payload,
         },
         server::config::ResourcePackResponseResult,
     },
-    ser::WritingError,
+    ser::{ReadingError, WritingError},
 };
 use pumpkin_util::{identifier::Identifier, text::TextComponent};
 use tracing::{debug, error, info};
 
 use super::{
+    configuration_payloads::{
+        self, SUPPORTED_COMMON_NETWORKING_VERSIONS, unsupported_common_version,
+    },
     neoforge::{ClientChannels, ConnectionType},
     pending::PendingConnection,
 };
-use crate::server::Server;
+use crate::{plugin::startup, server::Server};
 
 /// The snapshot of one synced registry: every id with its namespaced name.
 pub type RegistrySnapshotFn = fn(&ContentTables) -> Vec<(i32, Identifier)>;
@@ -117,13 +124,21 @@ impl RegistrySyncPayloads {
     }
 }
 
-/// `NetworkRegistry.hasChannel` in the configuration protocol: a channel of the client's
-/// `neoforge:register` reply, or an ad hoc channel.
-fn has_configuration_channel(channels: &ClientChannels, channel: &Identifier) -> bool {
-    channels
-        .modded
+/// `NetworkRegistry.hasChannel` in the configuration protocol: a negotiated channel, then a
+/// `c:register` channel, then an ad hoc channel.
+fn has_configuration_channel(
+    channels: &ClientChannels,
+    payload_setup: &NetworkPayloadSetup,
+    channel: &Identifier,
+) -> bool {
+    payload_setup
+        .channels
         .get(&ConnectionProtocol::Configuration)
-        .is_some_and(|query| query.iter().any(|component| component.id == *channel))
+        .is_some_and(|negotiated| negotiated.contains_key(channel))
+        || channels
+            .common
+            .get(&ConnectionProtocol::Configuration)
+            .is_some_and(|common| common.contains(channel))
         || channels.ad_hoc.contains(channel)
 }
 
@@ -138,6 +153,21 @@ pub enum ConfigurationTask {
     KnownPacks,
     /// `ServerResourcePackConfigurationTask`: the resource pack push.
     ResourcePack,
+    /// `CommonVersionTask`: `c:version` with the supported versions, then the wait for the
+    /// client's list.
+    CommonVersion,
+    /// `CommonRegisterTask`: `c:register` with the optional play channels that accept
+    /// serverbound payloads, then the wait for the client's channels.
+    CommonRegister,
+    /// `SyncConfig`: one `neoforge:config_file` per synced config, without a reply.
+    SyncConfig,
+    /// `RegistryDataMapNegotiation`: `neoforge:known_registry_data_maps`, then the wait for the
+    /// client's data maps.
+    DataMaps,
+    /// `CheckExtensibleEnums`: `neoforge:extensible_enum_data`, then the wait for the ack.
+    ExtensibleEnums,
+    /// `CheckFeatureFlags`: `neoforge:feature_flags`, then the wait for the ack.
+    FeatureFlags,
     /// `JoinWorldTask`: `finish_configuration`.
     Finish,
 }
@@ -158,10 +188,16 @@ pub enum TaskReply {
 impl ConfigurationTask {
     /// Every task, to find the task that waits for a custom payload channel. A new task goes here
     /// too: `every_payload_reply_resolves_through_its_channel` checks the replies of this list.
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 10] = [
         Self::RegistrySync,
         Self::KnownPacks,
         Self::ResourcePack,
+        Self::CommonVersion,
+        Self::CommonRegister,
+        Self::SyncConfig,
+        Self::DataMaps,
+        Self::ExtensibleEnums,
+        Self::FeatureFlags,
         Self::Finish,
     ];
 
@@ -174,6 +210,16 @@ impl ConfigurationTask {
             )),
             Self::KnownPacks => Some(TaskReply::KnownPacks),
             Self::ResourcePack => Some(TaskReply::ResourcePack),
+            Self::CommonVersion => Some(TaskReply::Payload(CommonVersionPayload::CHANNEL)),
+            Self::CommonRegister => Some(TaskReply::Payload(CommonRegisterPayload::CHANNEL)),
+            Self::SyncConfig => None,
+            Self::DataMaps => Some(TaskReply::Payload(
+                KnownRegistryDataMapsReplyPayload::CHANNEL,
+            )),
+            Self::ExtensibleEnums => Some(TaskReply::Payload(
+                ExtensibleEnumAcknowledgePayload::CHANNEL,
+            )),
+            Self::FeatureFlags => Some(TaskReply::Payload(FeatureFlagAcknowledgePayload::CHANNEL)),
             Self::Finish => Some(TaskReply::FinishConfiguration),
         }
     }
@@ -185,6 +231,12 @@ impl ConfigurationTask {
             Self::RegistrySync => "neoforge:sync_registries",
             Self::KnownPacks => "synchronize_registries",
             Self::ResourcePack => "server_resource_pack",
+            Self::CommonVersion => "neoforge:common_version",
+            Self::CommonRegister => "neoforge:common_register",
+            Self::SyncConfig => "neoforge:sync_config",
+            Self::DataMaps => "neoforge:registry_data_map_negotiation",
+            Self::ExtensibleEnums => "neoforge:check_extensible_enum",
+            Self::FeatureFlags => "neoforge:check_feature_flags",
             Self::Finish => "join_world",
         }
     }
@@ -231,14 +283,18 @@ pub struct ConfigurationTasks {
 impl ConfigurationTasks {
     /// The tasks of `runConfiguration` in order, without the tasks whose condition does not hold.
     #[must_use]
-    pub fn new(channels: &ClientChannels, resource_pack: bool) -> Self {
+    pub fn new(
+        channels: &ClientChannels,
+        payload_setup: &NetworkPayloadSetup,
+        resource_pack: bool,
+    ) -> Self {
         let mut pending = VecDeque::new();
-        pending.extend(Self::early_tasks(channels));
+        pending.extend(Self::early_tasks(channels, payload_setup));
         pending.push_back(ConfigurationTask::KnownPacks);
         if resource_pack {
             pending.push_back(ConfigurationTask::ResourcePack);
         }
-        pending.extend(Self::modded_tasks(channels));
+        pending.extend(Self::modded_tasks(channels, payload_setup));
         pending.push_back(ConfigurationTask::Finish);
         Self {
             pending,
@@ -251,11 +307,14 @@ impl ConfigurationTasks {
     /// The registry sync runs only for a `NeoForge` connection that has the three sync channels.
     /// An `Other` connection that declared them as ad hoc channels gets no sync, because only a
     /// `NeoForge` client can apply the snapshots.
-    fn early_tasks(channels: &ClientChannels) -> Vec<ConfigurationTask> {
+    fn early_tasks(
+        channels: &ClientChannels,
+        payload_setup: &NetworkPayloadSetup,
+    ) -> Vec<ConfigurationTask> {
         let sync = channels.connection_type == ConnectionType::NeoForge
             && REGISTRY_SYNC_CHANNELS
                 .iter()
-                .all(|channel| has_configuration_channel(channels, channel));
+                .all(|channel| has_configuration_channel(channels, payload_setup, channel));
         if sync {
             vec![ConfigurationTask::RegistrySync]
         } else {
@@ -263,14 +322,41 @@ impl ConfigurationTasks {
         }
     }
 
-    /// The `RegisterConfigurationTasksEvent` tasks, after the resource pack. The common version,
-    /// common register, config, data map, enum and feature flag tasks belong here.
+    /// The `RegisterConfigurationTasksEvent` tasks after the resource pack, in the order of
+    /// `ConfigurationInitialization.configureModdedClient`.
     ///
     /// A task whose wait depends on the connection type is queued only for a `NeoForge`
     /// connection. The checks of an `Other` connection (mandatory data maps, extensible enums,
     /// modded feature flags) run in `initialize_other_connection` instead.
-    const fn modded_tasks(_channels: &ClientChannels) -> Vec<ConfigurationTask> {
-        Vec::new()
+    fn modded_tasks(
+        channels: &ClientChannels,
+        payload_setup: &NetworkPayloadSetup,
+    ) -> Vec<ConfigurationTask> {
+        let has = |channel: &'static str| {
+            has_configuration_channel(channels, payload_setup, &Identifier::parse_static(channel))
+        };
+        let mut tasks = Vec::new();
+        if has(CommonVersionPayload::CHANNEL) && has(CommonRegisterPayload::CHANNEL) {
+            tasks.extend([
+                ConfigurationTask::CommonVersion,
+                ConfigurationTask::CommonRegister,
+            ]);
+        }
+        if has(ConfigFilePayload::CHANNEL) {
+            tasks.push(ConfigurationTask::SyncConfig);
+        }
+        if channels.connection_type == ConnectionType::NeoForge {
+            // `RegistryDataMapNegotiation` and `CheckFeatureFlags` take the `Other` path when the
+            // channel is missing, and that path finishes at once in M3.
+            if has(KnownRegistryDataMapsPayload::CHANNEL) {
+                tasks.push(ConfigurationTask::DataMaps);
+            }
+            tasks.push(ConfigurationTask::ExtensibleEnums);
+            if has(FeatureFlagDataPayload::CHANNEL) {
+                tasks.push(ConfigurationTask::FeatureFlags);
+            }
+        }
+        tasks
     }
 
     /// `startNextTask`: takes the next task. It becomes the current task when it waits for a
@@ -309,6 +395,7 @@ impl PendingConnection {
     pub async fn start_configuration_tasks(&mut self, server: &Server) {
         self.configuration_tasks = ConfigurationTasks::new(
             &self.client_channels,
+            &self.payload_setup,
             server.advanced_config.resource_pack.java.enabled,
         );
         self.run_configuration_tasks(server).await;
@@ -324,6 +411,60 @@ impl PendingConnection {
                 ConfigurationTask::RegistrySync => self.send_registry_sync().await,
                 ConfigurationTask::KnownPacks => self.send_known_packs(server).await,
                 ConfigurationTask::ResourcePack => self.send_resource_pack(server).await,
+                ConfigurationTask::CommonVersion => {
+                    let version = CommonVersionPayload {
+                        versions: SUPPORTED_COMMON_NETWORKING_VERSIONS.to_vec(),
+                    };
+                    self.send_neoforge_payload(CommonVersionPayload::CHANNEL, |data| {
+                        version.write(data)
+                    })
+                    .await;
+                }
+                ConfigurationTask::CommonRegister => {
+                    // `CommonRegisterTask` sends version 1, the only common register version.
+                    let register = CommonRegisterPayload {
+                        version: 1,
+                        protocol: Some(ConnectionProtocol::Play),
+                        channels: server
+                            .network_registry
+                            .optional_channels(ConnectionProtocol::Play, PacketFlow::Serverbound)
+                            .await
+                            .into_iter()
+                            .collect(),
+                    };
+                    self.send_neoforge_payload(CommonRegisterPayload::CHANNEL, |data| {
+                        register.write(data)
+                    })
+                    .await;
+                }
+                ConfigurationTask::SyncConfig => {
+                    for file in configuration_payloads::config_files(startup::synced_configs()) {
+                        self.send_neoforge_payload(ConfigFilePayload::CHANNEL, |data| {
+                            file.write(data)
+                        })
+                        .await;
+                    }
+                }
+                ConfigurationTask::DataMaps => {
+                    let data_maps = configuration_payloads::known_registry_data_maps();
+                    self.send_neoforge_payload(KnownRegistryDataMapsPayload::CHANNEL, |data| {
+                        data_maps.write(data)
+                    })
+                    .await;
+                }
+                ConfigurationTask::ExtensibleEnums => {
+                    let enums = configuration_payloads::extensible_enum_data();
+                    self.send_neoforge_payload(ExtensibleEnumDataPayload::CHANNEL, |data| {
+                        enums.write(data)
+                    })
+                    .await;
+                }
+                ConfigurationTask::FeatureFlags => {
+                    self.send_neoforge_payload(FeatureFlagDataPayload::CHANNEL, |data| {
+                        FeatureFlagDataPayload::default().write(data)
+                    })
+                    .await;
+                }
                 ConfigurationTask::Finish => self.send_packet_now(&CFinishConfig).await,
             }
         }
@@ -392,19 +533,87 @@ impl PendingConnection {
     }
 
     /// Hands the body of a custom payload reply to the task that it finished, like the payload
-    /// handler of each `NeoForge` configuration task. The common version, common register and
-    /// data map tasks add their arms here.
-    pub fn handle_task_reply(&mut self, reply: TaskReply, data: &[u8]) {
+    /// handler of each `NeoForge` configuration task.
+    ///
+    /// # Errors
+    ///
+    /// Returns the decode error of a malformed body, which disconnects the client like a payload
+    /// that `NeoForge` cannot decode.
+    pub async fn handle_task_reply(
+        &mut self,
+        reply: TaskReply,
+        data: &[u8],
+    ) -> Result<(), ReadingError> {
         debug!(
             "Client {} finished a configuration task with {} ({} bytes)",
             self.id,
             reply.name(),
             data.len()
         );
-        // The echo means that the client applied the snapshots.
-        if Some(reply) == ConfigurationTask::RegistrySync.reply() {
-            self.content_ids = ContentIds::Real;
+        let TaskReply::Payload(channel) = reply else {
+            return Ok(());
+        };
+        match channel {
+            // The echo means that the client applied the snapshots.
+            FrozenRegistrySyncCompletedPayload::CHANNEL => self.content_ids = ContentIds::Real,
+            // `NetworkRegistry.checkCommonVersion`.
+            CommonVersionPayload::CHANNEL => {
+                let client = decode_payload(data, self.packet_joined, CommonVersionPayload::read)?;
+                if !client
+                    .versions
+                    .iter()
+                    .any(|version| SUPPORTED_COMMON_NETWORKING_VERSIONS.contains(version))
+                {
+                    info!(
+                        "Client {} has no supported common network version: {:?}",
+                        self.id, client.versions
+                    );
+                    self.kick(unsupported_common_version()).await;
+                }
+            }
+            // `NetworkRegistry.onCommonRegister` replaces the channels of the protocol.
+            CommonRegisterPayload::CHANNEL => {
+                let client = decode_payload(data, self.packet_joined, CommonRegisterPayload::read)?;
+                if let Some(protocol) = client.protocol {
+                    self.client_channels
+                        .common
+                        .insert(protocol, client.channels);
+                } else {
+                    debug!(
+                        "Client {} sent c:register for an unknown protocol, ignoring it",
+                        self.id
+                    );
+                }
+            }
+            KnownRegistryDataMapsReplyPayload::CHANNEL => {
+                let client = decode_payload(
+                    data,
+                    self.packet_joined,
+                    KnownRegistryDataMapsReplyPayload::read,
+                )?;
+                self.client_channels.known_data_maps = client
+                    .data_maps
+                    .into_iter()
+                    .map(|(registry, ids)| (registry, ids.into_iter().collect()))
+                    .collect();
+            }
+            ExtensibleEnumAcknowledgePayload::CHANNEL => {
+                decode_payload(
+                    data,
+                    self.packet_joined,
+                    ExtensibleEnumAcknowledgePayload::read,
+                )?;
+            }
+            FeatureFlagAcknowledgePayload::CHANNEL => {
+                decode_payload(
+                    data,
+                    self.packet_joined,
+                    FeatureFlagAcknowledgePayload::read,
+                )?;
+            }
+            _ => {}
         }
+        Ok(())
     }
 }
 
@@ -412,10 +621,36 @@ impl PendingConnection {
 mod tests {
     use std::collections::BTreeMap;
 
-    use pumpkin_protocol::java::neoforge::ModdedNetworkQueryComponent;
+    use pumpkin_protocol::java::neoforge::{ModdedNetworkQueryComponent, NetworkChannel};
 
     use super::*;
     use crate::net::java::neoforge::ConnectionType;
+
+    /// The queue of a connection whose negotiated configuration channels are those of its
+    /// `neoforge:register` reply, as against a server that has every channel.
+    fn queue(channels: &ClientChannels, resource_pack: bool) -> ConfigurationTasks {
+        let negotiated = channels
+            .modded
+            .iter()
+            .map(|(protocol, query)| {
+                let map = query
+                    .iter()
+                    .map(|component| {
+                        let channel = NetworkChannel {
+                            id: component.id.clone(),
+                            chosen_version: component.version.clone(),
+                        };
+                        (component.id.clone(), channel)
+                    })
+                    .collect();
+                (*protocol, map)
+            })
+            .collect();
+        let payload_setup = NetworkPayloadSetup {
+            channels: negotiated,
+        };
+        ConfigurationTasks::new(channels, &payload_setup, resource_pack)
+    }
 
     /// Runs the queue to the end, answering every task with its own reply.
     fn order(mut tasks: ConfigurationTasks) -> Vec<ConfigurationTask> {
@@ -432,12 +667,12 @@ mod tests {
 
     #[test]
     fn vanilla_order() {
-        let without_pack = ConfigurationTasks::new(&ClientChannels::default(), false);
+        let without_pack = queue(&ClientChannels::default(), false);
         assert_eq!(
             order(without_pack),
             [ConfigurationTask::KnownPacks, ConfigurationTask::Finish]
         );
-        let with_pack = ConfigurationTasks::new(&ClientChannels::default(), true);
+        let with_pack = queue(&ClientChannels::default(), true);
         assert_eq!(
             order(with_pack),
             [
@@ -462,7 +697,7 @@ mod tests {
             ..ClientChannels::default()
         };
         assert_eq!(
-            order(ConfigurationTasks::new(&channels, false)),
+            order(queue(&channels, false)),
             [ConfigurationTask::KnownPacks, ConfigurationTask::Finish]
         );
     }
@@ -495,11 +730,12 @@ mod tests {
     fn neoforge_connection_syncs_registries_before_the_known_packs() {
         let channels = neoforge(ConnectionProtocol::Configuration, &SYNC_CHANNELS);
         assert_eq!(
-            order(ConfigurationTasks::new(&channels, true)),
+            order(queue(&channels, true)),
             [
                 ConfigurationTask::RegistrySync,
                 ConfigurationTask::KnownPacks,
                 ConfigurationTask::ResourcePack,
+                ConfigurationTask::ExtensibleEnums,
                 ConfigurationTask::Finish
             ]
         );
@@ -510,10 +746,11 @@ mod tests {
             ..ClientChannels::default()
         };
         assert_eq!(
-            order(ConfigurationTasks::new(&ad_hoc, false)),
+            order(queue(&ad_hoc, false)),
             [
                 ConfigurationTask::RegistrySync,
                 ConfigurationTask::KnownPacks,
+                ConfigurationTask::ExtensibleEnums,
                 ConfigurationTask::Finish
             ]
         );
@@ -521,28 +758,28 @@ mod tests {
 
     #[test]
     fn neoforge_connection_without_every_sync_channel_gets_no_sync() {
-        let without_sync = [ConfigurationTask::KnownPacks, ConfigurationTask::Finish];
+        let without_sync = [
+            ConfigurationTask::KnownPacks,
+            ConfigurationTask::ExtensibleEnums,
+            ConfigurationTask::Finish,
+        ];
         for missing in SYNC_CHANNELS {
             let declared: Vec<&str> = SYNC_CHANNELS
                 .into_iter()
                 .filter(|channel| *channel != missing)
                 .collect();
             let channels = neoforge(ConnectionProtocol::Configuration, &declared);
-            assert_eq!(
-                order(ConfigurationTasks::new(&channels, false)),
-                without_sync,
-                "{missing}"
-            );
+            assert_eq!(order(queue(&channels, false)), without_sync, "{missing}");
         }
         // The configuration task needs configuration channels.
         let play = neoforge(ConnectionProtocol::Play, &SYNC_CHANNELS);
-        assert_eq!(order(ConfigurationTasks::new(&play, false)), without_sync);
+        assert_eq!(order(queue(&play, false)), without_sync);
     }
 
     #[test]
     fn known_packs_wait_for_the_registry_sync_echo() {
         let channels = neoforge(ConnectionProtocol::Configuration, &SYNC_CHANNELS);
-        let mut tasks = ConfigurationTasks::new(&channels, false);
+        let mut tasks = queue(&channels, false);
         assert_eq!(tasks.start_next(), Some(ConfigurationTask::RegistrySync));
         assert_eq!(tasks.start_next(), None);
         assert_eq!(
@@ -567,7 +804,7 @@ mod tests {
 
     #[test]
     fn reply_for_another_task_is_rejected() {
-        let mut tasks = ConfigurationTasks::new(&ClientChannels::default(), true);
+        let mut tasks = queue(&ClientChannels::default(), true);
         // Nothing is current before the queue starts.
         assert_eq!(tasks.finish(TaskReply::KnownPacks), Err(None));
         assert_eq!(tasks.start_next(), Some(ConfigurationTask::KnownPacks));
@@ -595,7 +832,7 @@ mod tests {
 
     #[test]
     fn finish_acknowledgement_only_ends_the_finish_task() {
-        let mut tasks = ConfigurationTasks::new(&ClientChannels::default(), false);
+        let mut tasks = queue(&ClientChannels::default(), false);
         // An early acknowledgement does not skip the known packs.
         assert_eq!(tasks.start_next(), Some(ConfigurationTask::KnownPacks));
         assert_eq!(
@@ -626,5 +863,339 @@ mod tests {
         assert!(!is_terminal_resource_pack_response(
             &ResourcePackResponseResult::Downloaded
         ));
+    }
+
+    /// The configuration channels of run (b) that the modded tasks check, beside the registry
+    /// sync channels.
+    const MODDED_CHANNELS: [&str; 3] = [
+        ConfigFilePayload::CHANNEL,
+        KnownRegistryDataMapsPayload::CHANNEL,
+        FeatureFlagDataPayload::CHANNEL,
+    ];
+
+    /// The ad hoc channels of the client's `minecraft:register` in run (b) that the common tasks
+    /// check.
+    const COMMON_CHANNELS: [&str; 2] = [
+        CommonVersionPayload::CHANNEL,
+        CommonRegisterPayload::CHANNEL,
+    ];
+
+    /// The client of run (b): the sync and modded configuration channels, and `c:version` and
+    /// `c:register` as ad hoc channels.
+    fn run_b_client() -> ClientChannels {
+        let declared: Vec<&str> = SYNC_CHANNELS.into_iter().chain(MODDED_CHANNELS).collect();
+        ClientChannels {
+            ad_hoc: COMMON_CHANNELS.map(Identifier::parse_static).into(),
+            ..neoforge(ConnectionProtocol::Configuration, &declared)
+        }
+    }
+
+    #[test]
+    fn has_channel_reads_the_negotiated_setup_then_c_register_then_ad_hoc() {
+        let config_file = Identifier::parse_static(ConfigFilePayload::CHANNEL);
+        // The client's reply lists the channel, but the negotiation did not keep it.
+        let replied = neoforge(
+            ConnectionProtocol::Configuration,
+            &[ConfigFilePayload::CHANNEL],
+        );
+        let empty = NetworkPayloadSetup::default();
+        assert!(!has_configuration_channel(&replied, &empty, &config_file));
+        let negotiated = NetworkPayloadSetup {
+            channels: BTreeMap::from([(
+                ConnectionProtocol::Configuration,
+                BTreeMap::from([(
+                    config_file.clone(),
+                    NetworkChannel {
+                        id: config_file.clone(),
+                        chosen_version: "1".to_owned(),
+                    },
+                )]),
+            )]),
+        };
+        assert!(has_configuration_channel(
+            &replied,
+            &negotiated,
+            &config_file
+        ));
+
+        let common = ClientChannels {
+            common: BTreeMap::from([(
+                ConnectionProtocol::Configuration,
+                [config_file.clone()].into(),
+            )]),
+            ..ClientChannels::default()
+        };
+        assert!(has_configuration_channel(&common, &empty, &config_file));
+        // `c:register` channels count only for their protocol.
+        let common_play = ClientChannels {
+            common: BTreeMap::from([(ConnectionProtocol::Play, [config_file.clone()].into())]),
+            ..ClientChannels::default()
+        };
+        assert!(!has_configuration_channel(
+            &common_play,
+            &empty,
+            &config_file
+        ));
+        let ad_hoc = ClientChannels {
+            ad_hoc: [config_file.clone()].into(),
+            ..ClientChannels::default()
+        };
+        assert!(has_configuration_channel(&ad_hoc, &empty, &config_file));
+    }
+
+    #[test]
+    fn neoforge_client_gets_the_modded_tasks_after_the_resource_pack() {
+        assert_eq!(
+            order(queue(&run_b_client(), true)),
+            [
+                ConfigurationTask::RegistrySync,
+                ConfigurationTask::KnownPacks,
+                ConfigurationTask::ResourcePack,
+                ConfigurationTask::CommonVersion,
+                ConfigurationTask::CommonRegister,
+                ConfigurationTask::SyncConfig,
+                ConfigurationTask::DataMaps,
+                ConfigurationTask::ExtensibleEnums,
+                ConfigurationTask::FeatureFlags,
+                ConfigurationTask::Finish
+            ]
+        );
+    }
+
+    #[test]
+    fn common_tasks_need_both_common_channels() {
+        for declared in COMMON_CHANNELS {
+            let channels = ClientChannels {
+                ad_hoc: [Identifier::parse_static(declared)].into(),
+                ..ClientChannels::default()
+            };
+            assert_eq!(
+                order(queue(&channels, false)),
+                [ConfigurationTask::KnownPacks, ConfigurationTask::Finish],
+                "{declared}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_connection_gets_no_modded_checks() {
+        // A client without `NeoForge` that declared every channel as an ad hoc channel gets the
+        // tasks that only check channels, and no data map, enum or feature flag payload.
+        let channels = ClientChannels {
+            connection_type: ConnectionType::Other,
+            ad_hoc: COMMON_CHANNELS
+                .into_iter()
+                .chain(MODDED_CHANNELS)
+                .map(Identifier::parse_static)
+                .collect(),
+            ..ClientChannels::default()
+        };
+        assert_eq!(
+            order(queue(&channels, false)),
+            [
+                ConfigurationTask::KnownPacks,
+                ConfigurationTask::CommonVersion,
+                ConfigurationTask::CommonRegister,
+                ConfigurationTask::SyncConfig,
+                ConfigurationTask::Finish
+            ]
+        );
+    }
+
+    #[test]
+    fn neoforge_connection_without_the_check_channels_skips_their_tasks() {
+        let channels = neoforge(ConnectionProtocol::Configuration, &[]);
+        assert_eq!(
+            order(queue(&channels, false)),
+            [
+                ConfigurationTask::KnownPacks,
+                ConfigurationTask::ExtensibleEnums,
+                ConfigurationTask::Finish
+            ]
+        );
+    }
+
+    #[test]
+    fn each_modded_task_waits_for_its_reply() {
+        let mut tasks = queue(&run_b_client(), false);
+        for (task, reply) in [
+            (
+                ConfigurationTask::RegistrySync,
+                FrozenRegistrySyncCompletedPayload::CHANNEL,
+            ),
+            (
+                ConfigurationTask::CommonVersion,
+                CommonVersionPayload::CHANNEL,
+            ),
+            (
+                ConfigurationTask::CommonRegister,
+                CommonRegisterPayload::CHANNEL,
+            ),
+            (
+                ConfigurationTask::DataMaps,
+                KnownRegistryDataMapsReplyPayload::CHANNEL,
+            ),
+            (
+                ConfigurationTask::ExtensibleEnums,
+                ExtensibleEnumAcknowledgePayload::CHANNEL,
+            ),
+            (
+                ConfigurationTask::FeatureFlags,
+                FeatureFlagAcknowledgePayload::CHANNEL,
+            ),
+        ] {
+            let mut started = tasks.start_next().unwrap();
+            if started == ConfigurationTask::KnownPacks {
+                assert_eq!(tasks.finish(TaskReply::KnownPacks), Ok(()));
+                started = tasks.start_next().unwrap();
+            }
+            // The config sync sends its files and finishes at once.
+            if started == ConfigurationTask::SyncConfig {
+                assert_eq!(tasks.current(), None);
+                started = tasks.start_next().unwrap();
+            }
+            assert_eq!(started, task);
+            assert_eq!(tasks.start_next(), None, "{task:?} does not wait");
+            let reply = TaskReply::for_channel(reply).unwrap();
+            assert_eq!(task.reply(), Some(reply));
+            assert_eq!(tasks.finish(reply), Ok(()));
+        }
+        assert_eq!(tasks.start_next(), Some(ConfigurationTask::Finish));
+    }
+
+    /// A connection in the configuration state, and the client end of its socket.
+    async fn configuring_connection() -> (PendingConnection, tokio::net::TcpStream) {
+        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let client = tokio::net::TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        let (stream, address) = listener.accept().await.unwrap();
+        let connection = PendingConnection::new(
+            stream,
+            address,
+            1,
+            crate::net::PacketRateLimiter::new(false, 0.0, 0.0),
+            std::sync::Weak::new(),
+        );
+        connection
+            .connection_state
+            .store(pumpkin_protocol::ConnectionState::Config);
+        (connection, client)
+    }
+
+    /// The reason of the configuration disconnect that the client end received.
+    async fn disconnect_reason(client: tokio::net::TcpStream) -> String {
+        use pumpkin_protocol::{
+            java::{client::config::CConfigDisconnect, packet_decoder::TCPNetworkDecoder},
+            packet::MultiVersionJavaPacket,
+        };
+
+        let mut decoder = TCPNetworkDecoder::new(tokio::io::BufReader::new(client));
+        let packet = decoder.get_raw_packet().await.unwrap();
+        assert_eq!(
+            packet.id,
+            CConfigDisconnect::to_id(pumpkin_data::packet::CURRENT_MC_VERSION)
+        );
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(std::io::Cursor::new(
+            &packet.payload[..],
+        ));
+        let tag = pumpkin_nbt::tag::NbtTag::deserialize(&mut reader).unwrap();
+        TextComponent::from_nbt(&tag).get_text()
+    }
+
+    #[tokio::test]
+    async fn common_version_reply_with_version_one_is_accepted() {
+        let (mut connection, _client) = configuring_connection().await;
+        // The client's `c:version` of run (b), seq 87.
+        let reply = TaskReply::for_channel(CommonVersionPayload::CHANNEL).unwrap();
+        connection
+            .handle_task_reply(reply, &[0x01, 0x01])
+            .await
+            .unwrap();
+        assert!(!connection.is_closed());
+    }
+
+    #[tokio::test]
+    async fn common_version_reply_without_version_one_disconnects() {
+        let (mut connection, client) = configuring_connection().await;
+        let reply = TaskReply::for_channel(CommonVersionPayload::CHANNEL).unwrap();
+        connection
+            .handle_task_reply(reply, &[0x01, 0x02])
+            .await
+            .unwrap();
+        assert!(connection.is_closed());
+        assert_eq!(
+            disconnect_reason(client).await,
+            unsupported_common_version().get_text()
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_common_version_reply_is_an_error() {
+        let (mut connection, _client) = configuring_connection().await;
+        let reply = TaskReply::for_channel(CommonVersionPayload::CHANNEL).unwrap();
+        // A list of one version with a stray byte after it.
+        assert!(
+            connection
+                .handle_task_reply(reply, &[0x01, 0x01, 0x00])
+                .await
+                .is_err()
+        );
+    }
+
+    /// The client's `c:register` of run (b), seq 89: its 9 optional clientbound play channels.
+    const RUN_B_COMMON_REGISTER_REPLY: &str = concat!(
+        "0104706c6179091c6e656f666f7267653a616476616e6365645f6164645f656e74697479246e656f666f72",
+        "67653a616476616e6365645f636f6e7461696e65725f7365745f646174611d6e656f666f7267653a616476",
+        "616e6365645f6f70656e5f73637265656e1d6e656f666f7267653a617578696c696172795f6c696768745f",
+        "64617461146e656f666f7267653a636f6e6669675f66696c65176e656f666f7267653a7265636970655f63",
+        "6f6e74656e741f6e656f666f7267653a72656769737472795f646174615f6d61705f73796e630e6e656f66",
+        "6f7267653a73706c6974196e656f666f7267653a73796e635f6174746163686d656e7473",
+    );
+
+    #[tokio::test]
+    async fn common_register_reply_keeps_the_client_play_channels() {
+        let (mut connection, _client) = configuring_connection().await;
+        let data = hex::decode(RUN_B_COMMON_REGISTER_REPLY).unwrap();
+        let reply = TaskReply::for_channel(CommonRegisterPayload::CHANNEL).unwrap();
+        connection.handle_task_reply(reply, &data).await.unwrap();
+        let play = &connection.client_channels.common[&ConnectionProtocol::Play];
+        assert_eq!(play.len(), 9);
+        assert!(play.contains(&Identifier::parse_static("neoforge:split")));
+        assert_eq!(connection.take_negotiated_state().common_channels.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn empty_data_map_reply_keeps_no_data_map() {
+        let (mut connection, _client) = configuring_connection().await;
+        // The client's reply of run (b), seq 92.
+        let reply = TaskReply::for_channel(KnownRegistryDataMapsReplyPayload::CHANNEL).unwrap();
+        connection.handle_task_reply(reply, &[0x00]).await.unwrap();
+        assert!(connection.client_channels.known_data_maps.is_empty());
+        assert!(!connection.is_closed());
+    }
+
+    #[tokio::test]
+    async fn data_map_reply_keeps_the_client_data_maps() {
+        let (mut connection, _client) = configuring_connection().await;
+        let mut data = Vec::new();
+        KnownRegistryDataMapsReplyPayload {
+            data_maps: std::iter::once((
+                Identifier::parse_static("minecraft:block"),
+                vec![Identifier::parse_static("neoforge:waxables")],
+            ))
+            .collect(),
+        }
+        .write(&mut data)
+        .unwrap();
+        let reply = TaskReply::for_channel(KnownRegistryDataMapsReplyPayload::CHANNEL).unwrap();
+        connection.handle_task_reply(reply, &data).await.unwrap();
+        let state = connection.take_negotiated_state();
+        assert_eq!(
+            state.known_data_maps[&Identifier::parse_static("minecraft:block")],
+            [Identifier::parse_static("neoforge:waxables")].into()
+        );
     }
 }

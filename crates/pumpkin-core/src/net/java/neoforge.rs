@@ -256,6 +256,12 @@ pub struct ClientChannels {
     pub modded: BTreeMap<ConnectionProtocol, BTreeSet<ModdedNetworkQueryComponent>>,
     /// The `NeoForge` ad-hoc channels: `minecraft:register` minus `minecraft:unregister`.
     pub ad_hoc: BTreeSet<Identifier>,
+    /// The channels of the client's `c:register` reply, per protocol, like
+    /// `ChannelAttributes.getOrCreateCommonChannels`.
+    pub common: BTreeMap<ConnectionProtocol, BTreeSet<Identifier>>,
+    /// The data maps of the client's `neoforge:known_registry_data_maps_reply`, per registry,
+    /// like `RegistryManager.ATTRIBUTE_KNOWN_DATA_MAPS`.
+    pub known_data_maps: BTreeMap<Identifier, BTreeSet<Identifier>>,
 }
 
 impl ClientChannels {
@@ -584,6 +590,10 @@ pub struct NegotiatedState {
     /// The `NeoForge` ad-hoc channels of the client: `minecraft:register` minus
     /// `minecraft:unregister`.
     pub ad_hoc_channels: BTreeSet<Identifier>,
+    /// The client's `c:register` channels, per protocol.
+    pub common_channels: BTreeMap<ConnectionProtocol, BTreeSet<Identifier>>,
+    /// The data maps the client knows, per registry.
+    pub known_data_maps: BTreeMap<Identifier, BTreeSet<Identifier>>,
     pub content_ids: ContentIds,
 }
 
@@ -617,6 +627,8 @@ pub(crate) static NOT_NEGOTIATED: NegotiatedState = NegotiatedState {
         channels: BTreeMap::new(),
     },
     ad_hoc_channels: BTreeSet::new(),
+    common_channels: BTreeMap::new(),
+    known_data_maps: BTreeMap::new(),
     content_ids: ContentIds::Display,
 };
 
@@ -628,6 +640,8 @@ impl PendingConnection {
             connection_type: self.client_channels.connection_type,
             payload_setup: std::mem::take(&mut self.payload_setup),
             ad_hoc_channels: std::mem::take(&mut self.client_channels.ad_hoc),
+            common_channels: std::mem::take(&mut self.client_channels.common),
+            known_data_maps: std::mem::take(&mut self.client_channels.known_data_maps),
             content_ids: self.content_ids,
         }
     }
@@ -661,7 +675,7 @@ impl PendingConnection {
         self.neoforge_probe_pending = true;
     }
 
-    async fn send_neoforge_payload(
+    pub(super) async fn send_neoforge_payload(
         &mut self,
         channel: &str,
         write: impl FnOnce(&mut Vec<u8>) -> Result<(), WritingError>,
