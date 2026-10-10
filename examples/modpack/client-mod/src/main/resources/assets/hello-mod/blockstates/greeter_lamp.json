@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "lit=false": {
+      "model": "hello-mod:block/greeter_lamp"
+    },
+    "lit=true": {
+      "model": "hello-mod:block/greeter_lamp_on"
+    }
+  }
+}

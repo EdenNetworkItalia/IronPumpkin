@@ -7,6 +7,8 @@ through the builders of `ironpumpkin_mods::content`.
 - `src/main.rs` references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`.
   A mod crate that the binary does not reference is not linked, and its mod does not load.
 - `mods/` holds the mod crates. Each one is a workspace member and a dependency of the binary.
+- `client-mod/` is the NeoForge 26.3 Java mod that a NeoForge client installs to join this pack:
+  it registers the content of `hello-mod` under the same names (see its README).
 - A mod crate depends on `ironpumpkin-mods` only. That crate re-exports the server types a mod
   uses: `ironpumpkin_mods::command`, `::event`, `::text`, `::permission`, `::world` and the
   others listed in its crate documentation.

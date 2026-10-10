@@ -1,0 +1,25 @@
+license = "GPL-3.0"
+
+[[mods]]
+modId = "hello_mod"
+version = "1.0.0"
+displayName = "Hello Mod (IronPumpkin client)"
+description = '''
+Client side of the IronPumpkin example native mod hello-mod. It registers hello-mod:greeter_lamp
+(block and item) and hello-mod:greeter (entity type), so a NeoForge client syncs the registries
+of an IronPumpkin server that loads hello-mod.
+'''
+
+[[dependencies.hello_mod]]
+modId = "neoforge"
+type = "required"
+versionRange = "[26.3.0.64-beta,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.hello_mod]]
+modId = "minecraft"
+type = "required"
+versionRange = "[26.3]"
+ordering = "NONE"
+side = "BOTH"
