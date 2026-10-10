@@ -83,35 +83,35 @@ impl PendingConnection {
             self.send_packet_now(&CConfigServerLinks::new(&links)).await;
         }
 
-        let resource_config = &server.advanced_config.resource_pack.java;
-        if resource_config.enabled {
-            // Vanilla's default when `resource-pack-id` is empty: `UUID.nameUUIDFromBytes(url)`.
-            let uuid = name_uuid_from_bytes(resource_config.url.as_bytes());
-            let resource_pack = CConfigAddResourcePack::new(
-                &uuid,
-                &resource_config.url,
-                &resource_config.sha1,
-                resource_config.force,
-                if resource_config.prompt_message.is_empty() {
-                    None
-                } else {
-                    Some(TextComponent::text(resource_config.prompt_message.clone()))
-                },
-            );
-
-            self.send_packet_now(&resource_pack).await;
-        } else {
-            self.send_known_packs(server).await;
-        }
-        debug!("login acknowledged");
-    }
-
-    pub async fn send_known_packs(&mut self, server: &Server) {
         let features = server.get_enabled_features();
         self.send_packet_now(&CFeatureFlags::new(&features)).await;
+        self.start_configuration_tasks(server).await;
+    }
+
+    /// The start of the known packs task: `select_known_packs` only.
+    pub async fn send_known_packs(&mut self, server: &Server) {
         let version_str = CURRENT_MC_VERSION.to_string();
         let loaded_packs = server.datapack_manager.get_loaded_packs();
         let known_packs = server.get_known_packs(&version_str, &loaded_packs);
         self.send_packet_now(&CKnownPacks::new(&known_packs)).await;
+    }
+
+    /// The start of the resource pack task: the resource pack push.
+    pub async fn send_resource_pack(&mut self, server: &Server) {
+        let resource_config = &server.advanced_config.resource_pack.java;
+        // Vanilla's default when `resource-pack-id` is empty: `UUID.nameUUIDFromBytes(url)`.
+        let uuid = name_uuid_from_bytes(resource_config.url.as_bytes());
+        let resource_pack = CConfigAddResourcePack::new(
+            &uuid,
+            &resource_config.url,
+            &resource_config.sha1,
+            resource_config.force,
+            if resource_config.prompt_message.is_empty() {
+                None
+            } else {
+                Some(TextComponent::text(resource_config.prompt_message.clone()))
+            },
+        );
+        self.send_packet_now(&resource_pack).await;
     }
 }

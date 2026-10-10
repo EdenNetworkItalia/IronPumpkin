@@ -52,7 +52,11 @@ use crate::{
     server::Server,
 };
 
-use super::{JavaClient, neoforge::ClientChannels};
+use super::{
+    JavaClient,
+    configuration_tasks::{ConfigurationTasks, TaskReply, is_terminal_resource_pack_response},
+    neoforge::ClientChannels,
+};
 
 /// The channel of vanilla `BrandPayload`.
 pub const BRAND_CHANNEL: &str = "minecraft:brand";
@@ -97,6 +101,9 @@ pub struct PendingConnection {
     /// Which ids the client gets for custom content in play. `Real` only for a `NeoForge` client
     /// that completed the registry sync.
     pub content_ids: pumpkin_data::dynamic::ContentIds,
+    /// The configuration tasks: filled after `update_enabled_features`, and each reply finishes
+    /// the current task.
+    pub configuration_tasks: ConfigurationTasks,
     /// For the connection packet events.
     server: Weak<Server>,
 }
@@ -130,6 +137,7 @@ impl PendingConnection {
             neoforge_probe_pending: false,
             payload_setup: NetworkPayloadSetup::default(),
             content_ids: pumpkin_data::dynamic::ContentIds::default(),
+            configuration_tasks: ConfigurationTasks::default(),
             server,
         }
     }
@@ -533,6 +541,12 @@ impl PendingConnection {
                 Ok(None)
             }
             id if id == SAcknowledgeFinishConfig::to_id(version) => {
+                if !self
+                    .finish_configuration_task(TaskReply::FinishConfiguration)
+                    .await
+                {
+                    return Ok(Some(PacketHandlerResult::Stop));
+                }
                 let Some(profile) = self.gameprofile.clone() else {
                     return Ok(Some(PacketHandlerResult::Stop));
                 };
@@ -550,7 +564,10 @@ impl PendingConnection {
                 }
             }
             id if id == SKnownPacks::to_id(version) => {
-                self.handle_known_packs(server).await;
+                if self.finish_configuration_task(TaskReply::KnownPacks).await {
+                    self.handle_known_packs(server).await;
+                    self.run_configuration_tasks(server).await;
+                }
                 Ok(None)
             }
             id if id == SConfigResourcePack::to_id(version) => {
@@ -629,6 +646,11 @@ impl PendingConnection {
             let brand = read_brand(plugin_message.data)?;
             debug!("Got a client brand {brand:?}");
             self.brand = Some(brand);
+        } else if let Some(reply) = TaskReply::for_channel(plugin_message.channel) {
+            if self.finish_configuration_task(reply).await {
+                self.handle_task_reply(reply, plugin_message.data);
+                self.run_configuration_tasks(server).await;
+            }
         } else {
             let handled = server.basic_config.detect_neoforge_clients
                 && self
@@ -707,42 +729,37 @@ impl PendingConnection {
         server: &Server,
         packet: SConfigResourcePack,
     ) {
-        let resource_config = &server.advanced_config.resource_pack.java;
-        if resource_config.enabled {
-            use pumpkin_protocol::java::server::config::ResourcePackResponseResult;
-            match packet.response_result() {
-                ResourcePackResponseResult::Downloaded
-                | ResourcePackResponseResult::DownloadSuccess
-                | ResourcePackResponseResult::Discarded
-                | ResourcePackResponseResult::Unknown(_) => {
-                    self.send_known_packs(server).await;
-                }
-                ResourcePackResponseResult::Accepted => {}
-                ResourcePackResponseResult::Declined => {
-                    if resource_config.force {
-                        self.kick(TextComponent::text("Required resource pack was declined"))
-                            .await;
-                    } else {
-                        self.send_known_packs(server).await;
-                    }
-                }
-                ResourcePackResponseResult::DownloadFail => {
-                    if resource_config.force {
-                        self.kick(TextComponent::text("Failed to download resource pack"))
-                            .await;
-                    } else {
-                        self.send_known_packs(server).await;
-                    }
-                }
-                ResourcePackResponseResult::InvalidUrl => {
-                    self.kick(TextComponent::text("Invalid resource pack URL"))
-                        .await;
-                }
-                ResourcePackResponseResult::ReloadFailed => {
-                    self.kick(TextComponent::text("Failed to reload resource pack"))
-                        .await;
-                }
+        use pumpkin_protocol::java::server::config::ResourcePackResponseResult;
+        let result = packet.response_result();
+        if let ResourcePackResponseResult::Unknown(_) = result {
+            // Vanilla fails to decode an action it does not know and disconnects.
+            self.kick(TextComponent::text("Invalid resource pack response"))
+                .await;
+            return;
+        }
+        if !is_terminal_resource_pack_response(&result)
+            || !self
+                .finish_configuration_task(TaskReply::ResourcePack)
+                .await
+        {
+            return;
+        }
+        let force = server.advanced_config.resource_pack.java.force;
+        let kick_reason = match result {
+            ResourcePackResponseResult::Declined if force => {
+                Some("Required resource pack was declined")
             }
+            ResourcePackResponseResult::DownloadFail if force => {
+                Some("Failed to download resource pack")
+            }
+            ResourcePackResponseResult::InvalidUrl => Some("Invalid resource pack URL"),
+            ResourcePackResponseResult::ReloadFailed => Some("Failed to reload resource pack"),
+            _ => None,
+        };
+        if let Some(reason) = kick_reason {
+            self.kick(TextComponent::text(reason)).await;
+        } else {
+            self.run_configuration_tasks(server).await;
         }
     }
 
