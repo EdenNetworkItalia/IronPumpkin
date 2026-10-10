@@ -24,7 +24,7 @@ enum Mode {
         connection: Connection,
     },
     /// Like record, then fail when the clientbound payload channels differ from the expected list,
-    /// a payload does not decode, or the configuration does not finish.
+    /// a payload does not decode, or the configuration does not end as expected.
     Assert {
         #[command(flatten)]
         connection: Connection,
@@ -33,12 +33,16 @@ enum Mode {
             long,
             value_delimiter = ',',
             conflicts_with = "expected_file",
-            required_unless_present = "expected_file"
+            required_unless_present_any = ["expected_file", "expect_disconnect"]
         )]
         expect: Vec<String>,
         /// File with one expected channel per line; `#` starts a comment.
         #[arg(long)]
         expected_file: Option<PathBuf>,
+        /// Translation key of the configuration disconnect that must end the run, instead of
+        /// `finish_configuration`.
+        #[arg(long, value_name = "TRANSLATION_KEY")]
+        expect_disconnect: Option<String>,
     },
 }
 
@@ -116,7 +120,7 @@ async fn record(connection: &Connection) -> Result<(Vec<Entry>, session::Outcome
         info!("wrote {} entries to {}", entries.len(), path.display());
     }
     let outcome = result?;
-    info!(?outcome, "configuration phase ended");
+    info!("configuration phase ended: {outcome}");
     Ok((entries, outcome))
 }
 
@@ -130,18 +134,28 @@ async fn run(cli: Cli) -> Result<bool, Error> {
             connection,
             expect,
             expected_file,
+            expect_disconnect,
         } => {
             let expected = match expected_file {
-                Some(path) => parse_expected(&std::fs::read_to_string(path)?),
-                None => expect,
+                Some(path) => Some(parse_expected(&std::fs::read_to_string(path)?)),
+                None if expect.is_empty() => None,
+                None => Some(expect),
             };
             let (entries, outcome) = record(&connection).await?;
-            let failures = check(&entries, &outcome, &expected);
+            let failures = check(
+                &entries,
+                &outcome,
+                expected.as_deref(),
+                expect_disconnect.as_deref(),
+            );
             for failure in &failures {
                 error!("{failure}");
             }
             if failures.is_empty() {
-                info!("assert passed: {} channels matched", expected.len());
+                info!(
+                    "assert passed: {outcome}, {} channels matched",
+                    expected.as_ref().map_or(0, Vec::len)
+                );
             }
             Ok(failures.is_empty())
         }

@@ -91,8 +91,10 @@ pub struct Options {
 pub enum Outcome {
     /// The server sent `finish_configuration` and the client acknowledged it.
     Finished,
-    /// The server, or the client's own `NeoForge` checks, ended the connection with a reason.
+    /// The server ended the login, or the client's own `NeoForge` checks ended the connection.
     Disconnected(String),
+    /// The server sent a configuration `disconnect` with this reason.
+    Kicked(pumpkin_util::text::TextComponent),
 }
 
 /// `ConnectionType` of `NeoForge`'s client listener.
@@ -470,7 +472,7 @@ impl Session<'_> {
         } else if packet.id == config::CODE_OF_CONDUCT {
             self.send(&SAcceptCodeOfConduct).await?;
         } else if packet.id == config::DISCONNECT {
-            return Ok(Some(Outcome::Disconnected(read_disconnect_reason(body))));
+            return Ok(Some(Outcome::Kicked(read_disconnect_reason(body)?)));
         } else if packet.id == config::FINISH_CONFIGURATION {
             // ClientConfigurationPacketListenerImpl.handleConfigurationFinished: the fallback for a
             // delayed brand runs before NetworkRegistry.onConfigurationFinished.

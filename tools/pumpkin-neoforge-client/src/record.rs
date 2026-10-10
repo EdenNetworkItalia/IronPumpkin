@@ -294,13 +294,9 @@ fn join(items: impl Iterator<Item = String>) -> String {
     format!("[{}]", items.collect::<Vec<_>>().join(","))
 }
 
-/// The text of a configuration disconnect reason. Pumpkin cannot parse every component shape (a
-/// `with` list of plain strings, for one), so a failure only loses the text: the bytes stay in
-/// the recording.
-#[must_use]
-pub fn read_disconnect_reason(mut data: &[u8]) -> String {
-    data.get_component(&CURRENT_MC_VERSION).map_or_else(
-        |e| format!("<unparsed reason: {e}>"),
-        pumpkin_util::text::TextComponent::get_text,
-    )
+/// The reason of a configuration disconnect: one text component and nothing after it.
+pub fn read_disconnect_reason(
+    data: &[u8],
+) -> Result<pumpkin_util::text::TextComponent, ReadingError> {
+    decode_exact(data, |read| read.get_component(&CURRENT_MC_VERSION))
 }

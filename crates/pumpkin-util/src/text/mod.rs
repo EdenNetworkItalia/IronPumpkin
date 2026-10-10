@@ -51,6 +51,24 @@ impl<'de> Deserialize<'de> for TextComponent {
                 })
             }
 
+            // Vanilla's translate arguments also accept numbers and booleans, shown as their
+            // string form.
+            fn visit_bool<E: Error>(self, v: bool) -> Result<Self::Value, E> {
+                self.visit_str(&v.to_string())
+            }
+
+            fn visit_i64<E: Error>(self, v: i64) -> Result<Self::Value, E> {
+                self.visit_str(&v.to_string())
+            }
+
+            fn visit_u64<E: Error>(self, v: u64) -> Result<Self::Value, E> {
+                self.visit_str(&v.to_string())
+            }
+
+            fn visit_f64<E: Error>(self, v: f64) -> Result<Self::Value, E> {
+                self.visit_str(&format!("{v:?}"))
+            }
+
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
                 let mut bases = Vec::new();
                 while let Some(element) = seq.next_element::<TextComponent>()? {
@@ -2027,6 +2045,17 @@ impl std::hash::Hash for ProfileNbt {
     }
 }
 
+/// Reads translation arguments through [`TextComponent`], so a plain string argument (a
+/// `with` list of strings, as `NeoForge` sends in its disconnect reasons) is a text component.
+fn deserialize_translate_args<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Vec<TextComponentBase>, D::Error> {
+    Ok(Vec::<TextComponent>::deserialize(deserializer)?
+        .into_iter()
+        .map(|arg| arg.0)
+        .collect())
+}
+
 /// The content type of the text component.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(untagged)]
@@ -2041,7 +2070,11 @@ pub enum TextContent {
         #[serde(skip, default)]
         bedrock_translate: Option<Cow<'static, str>>,
         /// Substitution parameters for the translation.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[serde(
+            default,
+            skip_serializing_if = "Vec::is_empty",
+            deserialize_with = "deserialize_translate_args"
+        )]
         with: Vec<TextComponentBase>,
     },
     /// Displays the name of one or more entities found by a selector.
@@ -2086,7 +2119,7 @@ pub enum TextContent {
 mod test {
     use crate::text::click::ClickEvent;
     use crate::text::{
-        TextComponent,
+        TextComponent, TextContent,
         color::{Color, NamedColor},
         hover::HoverEvent,
     };
@@ -2280,6 +2313,69 @@ mod test {
         let component = TextComponent::from_nbt(&pumpkin_nbt::tag::NbtTag::Compound(styled));
         assert_eq!(component.0.style.color, Some(Color::Named(NamedColor::Red)));
         assert_eq!(component.get_text(), "hi");
+    }
+
+    #[test]
+    fn translate_with_plain_string_arguments_parses_from_nbt() {
+        // The configuration disconnect body of a NeoForge 26.3.0.64-beta server (run c): network
+        // NBT of {with:["NeoForge 26.3.0.64-beta"], translate:"multiplayer.disconnect.incompatible"}.
+        const BODY: &str = "0a09000477697468080000000100174e656f466f7267652032362e332e302e36342d\
+                            626574610800097472616e736c61746500236d756c7469706c617965722e646973\
+                            636f6e6e6563742e696e636f6d70617469626c6500";
+        let bytes: Vec<u8> = (0..BODY.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&BODY[i..i + 2], 16).unwrap())
+            .collect();
+        assert_eq!(bytes.len(), 88);
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(std::io::Cursor::new(
+            bytes.as_slice(),
+        ));
+        let tag = pumpkin_nbt::tag::NbtTag::deserialize(&mut reader).unwrap();
+
+        let component: TextComponent =
+            serde_json::from_value(super::nbt_tag_to_json(&tag)).unwrap();
+        let TextContent::Translate {
+            translate, with, ..
+        } = *component.0.content
+        else {
+            panic!("not a translate component: {component:?}");
+        };
+        assert_eq!(translate, "multiplayer.disconnect.incompatible");
+        assert_eq!(with.len(), 1);
+        assert_eq!(
+            TextComponent(with[0].clone()).get_text(),
+            "NeoForge 26.3.0.64-beta"
+        );
+    }
+
+    #[test]
+    fn translate_with_mixed_arguments_round_trips_through_nbt() {
+        #[allow(deprecated)]
+        let component = TextComponent::translate(
+            "chat.type.text",
+            [
+                TextComponent::text("a"),
+                TextComponent::text("b").color_named(NamedColor::Red),
+            ],
+        );
+        let bytes = component.encode();
+        let mut reader =
+            pumpkin_nbt::deserializer::NbtReadHelperJava::new(std::io::Cursor::new(&bytes[..]));
+        let tag = pumpkin_nbt::tag::NbtTag::deserialize(&mut reader).unwrap();
+        assert_eq!(TextComponent::from_nbt(&tag), component);
+    }
+
+    #[test]
+    fn translate_with_number_argument_parses_from_nbt() {
+        let mut compound = pumpkin_nbt::compound::NbtCompound::new();
+        compound.put_string("translate", "commands.time.query".to_string());
+        compound.put_list("with", vec![pumpkin_nbt::tag::NbtTag::Int(1234)]);
+        let component = TextComponent::from_nbt(&pumpkin_nbt::tag::NbtTag::Compound(compound));
+        let TextContent::Translate { with, .. } = *component.0.content else {
+            panic!("not a translate component: {component:?}");
+        };
+        assert_eq!(with.len(), 1);
+        assert_eq!(TextComponent(with[0].clone()).get_text(), "1234");
     }
 }
 

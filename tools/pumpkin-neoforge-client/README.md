@@ -20,6 +20,9 @@ cargo run -p pumpkin-neoforge-client -- assert --port 25565 \
     --channels tools/pumpkin-neoforge-client/channels/neoforge-26.3.toml \
     --expected-file tools/pumpkin-neoforge-client/expected/pumpkin-neoforge.txt
 cargo run -p pumpkin-neoforge-client -- assert --port 25565 --expect minecraft:brand
+cargo run -p pumpkin-neoforge-client -- assert --port 25565 \
+    --channels tools/pumpkin-neoforge-client/channels/required-unknown.toml \
+    --expect-disconnect multiplayer.disconnect.incompatible
 ```
 
 Options for both modes:
@@ -40,8 +43,17 @@ list from `--expect` or `--expected-file`. It exits with 1 when the lists differ
 codec fails `decode_exact`, or the configuration does not finish. The expected file has one
 channel per line. `#` starts a comment.
 
+`assert --expect-disconnect <translation key>` expects a kick instead of a finished configuration.
+The run passes only when the server ends the configuration with a `disconnect` whose reason is a
+translate component with that key. It exits with 1 on any other end: `finish_configuration`, a
+disconnect with another key or a plain text reason, a login disconnect, or a disconnect by the
+client's own NeoForge checks. With `--expect-disconnect`, the expected channel list is optional;
+without a list, the client does not check the channel sequence. The log shows the key, the
+arguments and the English text of the reason.
+
 Both modes exit with 2 when the run cannot complete: a connect failure, the timeout, an early end
-of the stream, or a decode error in a packet or payload that the client must act on.
+of the stream, or a decode error in a packet or payload that the client must act on, such as a
+disconnect reason that is not exactly one text component.
 
 Each recorded packet goes to stdout as one line and, with `--out`, to the JSONL file. A JSONL line
 has the direction, the state, the packet name, the channel, the body length, the decode result, a

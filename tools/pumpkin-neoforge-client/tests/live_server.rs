@@ -27,7 +27,7 @@ async fn vanilla_configuration_matches_expected_sequence() -> Result<(), Error> 
     let mut entries = Vec::new();
     let outcome = session::run(&options, &mut |entry| entries.push(entry.clone())).await?;
     let expected = parse_expected(include_str!("../expected/pumpkin-vanilla.txt"));
-    let failures = check(&entries, &outcome, &expected);
+    let failures = check(&entries, &outcome, Some(&expected), None);
     assert!(failures.is_empty(), "{failures:#?}");
     Ok(())
 }
