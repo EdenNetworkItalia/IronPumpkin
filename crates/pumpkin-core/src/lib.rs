@@ -594,7 +594,7 @@ impl PumpkinServer {
                                      pending.close();
                                 },
                                 PacketHandlerResult::ReadyToPlay(profile, config, negotiated) => {
-                                     let mut java_client = JavaClient::from_pending(pending, profile.clone(), config.clone(), negotiated);
+                                     let mut java_client = JavaClient::from_pending(pending, profile.clone(), config.clone(), *negotiated);
                                      java_client.start_outgoing_packet_task();
 
                                      if let Some((player, world, online_profile)) = server_clone

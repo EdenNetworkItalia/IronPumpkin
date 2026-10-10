@@ -122,7 +122,7 @@ impl Default for PlayerConfig {
 
 pub enum PacketHandlerResult {
     Stop,
-    ReadyToPlay(GameProfile, PlayerConfig, NegotiatedState),
+    ReadyToPlay(GameProfile, PlayerConfig, Box<NegotiatedState>),
 }
 
 /// Maximum payload bytes that may be queued for a client before it is considered stalled/overflowing and disconnected.

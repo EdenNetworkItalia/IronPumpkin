@@ -590,7 +590,7 @@ impl PendingConnection {
                     Ok(Some(PacketHandlerResult::ReadyToPlay(
                         profile,
                         config,
-                        self.take_negotiated_state(),
+                        Box::new(self.take_negotiated_state()),
                     )))
                 }
             }
