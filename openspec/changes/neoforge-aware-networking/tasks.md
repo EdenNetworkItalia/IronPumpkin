@@ -33,13 +33,13 @@ Each item mirrors one GitHub issue on EdenNetworkItalia/IronPumpkin. Close the i
 - [x] 7.1 Read particleStatus in both client_information packets (#15); verify: decode and encode tests against vanilla `ClientInformation.write()` bytes
 - [x] 7.2 Stop the login sequence loop after a kick (#14); verify: a regression test or boot check with a buffered pong after a malformed `neoforge:register`
 - [x] 7.3 Decode the configuration brand as a length-prefixed string (#28); verify: a decode test from captured bytes fails without the fix
-- [ ] 7.4 Decode translate components with plain string arguments from NBT; verify: a regression test from the captured NeoForge disconnect reason
-- [ ] 7.5 Kick the old session on duplicate_login and drop closed configuration sessions at once (#26, parked with `later`); verify: boot test with two logins of the same name
+- [ ] 7.4 Decode translate components with plain string arguments from NBT (covered by the M3 configuration disconnect task); verify: a regression test from the captured NeoForge disconnect reason
+- [x] 7.5 Kick the old session on duplicate_login and drop closed configuration sessions at once (#26); verify: boot test with two logins of the same name
 - [x] 7.6 Offline-mode UUIDs equal Java `nameUUIDFromBytes` (#27); verify: a test vector computed by Java
 
 ## 8. Channel negotiation
 
-- [ ] 8.1 Negotiate NeoForge channels with `neoforge:network` after the probe (#31); verify: negotiator unit tests, headless client assert against `expected/pumpkin-neoforge.txt`, the `channels/required-unknown.toml` run gets `neoforge:modded_network_setup_failed` and a disconnect, vanilla assert with the option off
+- [x] 8.1 Negotiate NeoForge channels with `neoforge:network` after the probe (#31); verify: negotiator unit tests, headless client assert against `expected/pumpkin-neoforge.txt`, the `channels/required-unknown.toml` run gets `neoforge:modded_network_setup_failed` and a disconnect, vanilla assert with the option off
 
 ## 9. Phase verification
 
