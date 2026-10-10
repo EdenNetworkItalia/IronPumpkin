@@ -43,6 +43,16 @@ pub struct RegistrySnapshot {
 }
 
 impl RegistrySnapshot {
+    /// A snapshot with these numeric ids and no aliases, the shape of
+    /// `pumpkin_data::dynamic::ContentTables::block_snapshot` and its item and entity type
+    /// siblings.
+    pub fn from_ids(ids: impl IntoIterator<Item = (i32, Identifier)>) -> Self {
+        Self {
+            ids: ids.into_iter().collect(),
+            aliases: BTreeMap::new(),
+        }
+    }
+
     fn read(read: &mut &[u8]) -> Result<Self, ReadingError> {
         let count = read_count(read)?;
         let mut ids = BTreeMap::new();

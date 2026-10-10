@@ -34,7 +34,10 @@ use std::{
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
     entity::custom,
-    plugin::{Context, PluginMetadata, startup},
+    plugin::{
+        Context, PluginMetadata,
+        startup::{self, NativeModInfo},
+    },
 };
 use pumpkin_data::dynamic::{self, EntityTypeDefinition};
 use tracing::{error, info};
@@ -88,6 +91,11 @@ pub trait NativeMod: Sync {
     fn id(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
     fn version(&self) -> &'static str;
+    /// Whether a client must have this mod to join. A client that cannot have it is disconnected
+    /// at the configuration handshake. Override it to return `false` for a server-only mod.
+    fn client_required(&self) -> bool {
+        true
+    }
     /// Called once at startup, before the first world loads.
     ///
     /// If a content registration fails, the server logs the first error with the mod id and
@@ -420,15 +428,22 @@ fn refuse_to_start(reason: &dyn fmt::Display) -> ! {
     std::process::exit(1);
 }
 
+fn native_mod_infos(mods: &[&dyn NativeMod]) -> Vec<NativeModInfo> {
+    mods.iter()
+        .map(|native_mod| NativeModInfo {
+            id: native_mod.id().to_owned(),
+            display_name: native_mod.display_name().to_owned(),
+            version: native_mod.version().to_owned(),
+            client_required: native_mod.client_required(),
+        })
+        .collect()
+}
+
 /// Initializes every linked mod against `server`, or stops the process if the mods conflict or a
 /// mod fails to register its content. Set as the startup hook of `pumpkin-core`.
 pub fn init_mods(server: &Arc<Server>) {
     let mods = mods().unwrap_or_else(|err| refuse_to_start(&err));
-    startup::set_native_mod_ids(
-        mods.iter()
-            .map(|native_mod| native_mod.id().to_owned())
-            .collect(),
-    );
+    startup::set_native_mods(native_mod_infos(&mods));
     for native_mod in &mods {
         let init = init_mod(*native_mod).unwrap_or_else(|err| refuse_to_start(&err));
         let metadata = PluginMetadata {
@@ -441,15 +456,23 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         init.apply(&startup::create_context(server, metadata));
     }
-    let ids: Vec<&str> = mods.iter().map(|native_mod| native_mod.id()).collect();
+    let names: Vec<String> = startup::native_mods()
+        .iter()
+        .map(|native_mod| {
+            format!(
+                "{} (client_required = {})",
+                native_mod.id, native_mod.client_required
+            )
+        })
+        .collect();
     info!(
         "[ironpumpkin] loaded {} native mod{}{}",
-        ids.len(),
-        if ids.len() == 1 { "" } else { "s" },
-        if ids.is_empty() {
+        names.len(),
+        if names.len() == 1 { "" } else { "s" },
+        if names.is_empty() {
             String::new()
         } else {
-            format!(": {}", ids.join(", "))
+            format!(": {}", names.join(", "))
         }
     );
 }
@@ -468,7 +491,7 @@ mod tests {
         command::argument_builder::command, event::Payload, permission::PermissionDefault,
     };
 
-    use super::{ModInit, NativeMod, mods, sorted};
+    use super::{ModInit, NativeMod, mods, native_mod_infos, sorted};
 
     static INITS: AtomicUsize = AtomicUsize::new(0);
 
@@ -495,6 +518,47 @@ mod tests {
                 PermissionDefault::Allow,
             ));
         }
+    }
+
+    struct ServerOnlyMod;
+
+    impl NativeMod for ServerOnlyMod {
+        fn id(&self) -> &'static str {
+            "server-only-mod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Server-only mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "2.0.0"
+        }
+
+        fn client_required(&self) -> bool {
+            false
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+    }
+
+    static DEFAULT: TestMod = TestMod("default-mod");
+    static SERVER_ONLY: ServerOnlyMod = ServerOnlyMod;
+
+    #[test]
+    fn mods_are_client_required_unless_they_opt_out() {
+        let mods = sorted(vec![&SERVER_ONLY, &DEFAULT]).unwrap();
+        let infos: Vec<(String, bool)> = native_mod_infos(&mods)
+            .into_iter()
+            .map(|info| (info.id, info.client_required))
+            .collect();
+        assert_eq!(
+            infos,
+            [
+                ("default-mod".to_owned(), true),
+                ("server-only-mod".to_owned(), false)
+            ]
+        );
     }
 
     static DUPLICATE_A: TestMod = TestMod("dup-mod");

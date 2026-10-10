@@ -25,6 +25,6 @@ cargo build
 cd /path/to/server/dir && /path/to/IronPumpkin/target/debug/example-modpack
 ```
 
-The log shows `[ironpumpkin] loaded 1 native mod: hello-mod`. Type `hello` on the console to
-run the command. The content phase writes `hello-mod:greeter_lamp`, as a block and as an item, to
-`<world>/ironpumpkin/content_registry.json`.
+The log shows `[ironpumpkin] loaded 1 native mod: hello-mod (client_required = true)`. Type
+`hello` on the console to run the command. The content phase writes `hello-mod:greeter_lamp`, as a
+block and as an item, to `<world>/ironpumpkin/content_registry.json`.

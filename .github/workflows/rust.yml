@@ -464,7 +464,7 @@ jobs:
           cd "$RUNNER_TEMP/server"
           timeout 60 "$GITHUB_WORKSPACE/blueprint/target/debug/$(cd "$GITHUB_WORKSPACE/blueprint" && cargo xtask name)" < /dev/null > boot.log 2>&1 || true
           cat boot.log
-          grep -F "[ironpumpkin] loaded 1 native mod: hello-mod" boot.log
+          grep -F "[ironpumpkin] loaded 1 native mod: hello-mod (client_required = true)" boot.log
 
   draft_canary_release:
     name: Update canary release

@@ -386,6 +386,65 @@ impl ContentTables {
     pub fn entity_types(&self) -> &[EntityType] {
         &self.entity_types
     }
+
+    /// Every block id with its namespaced name: the generated blocks, then the custom blocks in id
+    /// order. This is the `minecraft:block` snapshot of the `NeoForge` registry sync.
+    ///
+    /// Placeholders are left out, so their ids are gaps. A `NeoForge` client disconnects on a key
+    /// it does not know, and it would never join a world that still holds content of a removed
+    /// mod. `NeoForge` accepts sparse ids.
+    #[must_use]
+    pub fn block_snapshot(&self) -> Vec<(i32, Identifier)> {
+        let entry = |block: &Block| (block.id.as_u16(), block.name);
+        self.snapshot(
+            ContentKind::Block,
+            (0..BlockId::COUNT)
+                .map(|id| entry(Block::from_id(BlockId::new_unchecked(id))))
+                .chain(self.blocks.iter().map(entry)),
+        )
+    }
+
+    /// Every item id with its namespaced name. See [`Self::block_snapshot`].
+    #[cfg(feature = "item")]
+    #[must_use]
+    pub fn item_snapshot(&self) -> Vec<(i32, Identifier)> {
+        let entry = |item: &Item| (item.id, item.registry_key);
+        self.snapshot(
+            ContentKind::Item,
+            (0..Item::COUNT)
+                .filter_map(Item::from_id)
+                .map(entry)
+                .chain(self.items.iter().map(entry)),
+        )
+    }
+
+    /// Every entity type id with its namespaced name. See [`Self::block_snapshot`].
+    #[cfg(feature = "entity_type")]
+    #[must_use]
+    pub fn entity_type_snapshot(&self) -> Vec<(i32, Identifier)> {
+        let entry = |ty: &EntityType| (ty.id, ty.resource_name);
+        self.snapshot(
+            ContentKind::EntityType,
+            (0..EntityType::COUNT)
+                .filter_map(EntityType::from_raw)
+                .map(entry)
+                .chain(self.entity_types.iter().map(entry)),
+        )
+    }
+
+    /// Generated names are bare and parse into the `minecraft` namespace. Custom names passed
+    /// [`validate_name`] at registration, so the parsed name is a valid identifier.
+    fn snapshot(
+        &self,
+        kind: ContentKind,
+        entries: impl Iterator<Item = (u16, &'static str)>,
+    ) -> Vec<(i32, Identifier)> {
+        let placeholders = self.placeholders.get(&kind);
+        entries
+            .filter(|(_, name)| placeholders.is_none_or(|names| !names.contains(*name)))
+            .map(|(id, name)| (i32::from(id), Identifier::parse_static(name)))
+            .collect()
+    }
 }
 
 /// A registered block with its state layout.
@@ -1278,6 +1337,12 @@ pub fn freeze() -> Result<&'static ContentTables, RegistryError> {
         .ok_or(RegistryError::RegistryFrozen)?;
     let tables = builder.build()?;
     Ok(TABLES.get_or_init(|| tables))
+}
+
+/// The tables that [`freeze`] installed, or `None` before the freeze and after a failed freeze.
+#[must_use]
+pub fn tables() -> Option<&'static ContentTables> {
+    TABLES.get()
 }
 
 /// Returns the namespaced form of a block, item or entity type name. Generated content keeps the
@@ -2602,6 +2667,98 @@ mod tests {
         );
     }
 
+    fn snapshot_names(snapshot: &[(i32, Identifier)]) -> Vec<String> {
+        for (index, (id, _)) in snapshot.iter().enumerate() {
+            assert_eq!(*id, index as i32, "the snapshot has a gap");
+        }
+        snapshot.iter().map(|(_, name)| name.to_string()).collect()
+    }
+
+    #[test]
+    fn snapshots_without_custom_content_hold_the_generated_entries() {
+        let tables = ContentBuilder::new().build().unwrap();
+        // The lengths and the first and last names match the registry snapshots of a NeoForge
+        // 26.3.0.64-beta server: tools/pumpkin-neoforge-client/captures/neoforge-26.3.0.64-beta/.
+        let cases = [
+            (
+                tables.block_snapshot(),
+                1286,
+                BlockId::COUNT,
+                "minecraft:air",
+                "minecraft:firefly_bush",
+            ),
+            (
+                tables.item_snapshot(),
+                1658,
+                Item::COUNT,
+                "minecraft:air",
+                "minecraft:ominous_bottle",
+            ),
+            (
+                tables.entity_type_snapshot(),
+                161,
+                EntityType::COUNT,
+                "minecraft:acacia_boat",
+                "minecraft:fishing_bobber",
+            ),
+        ];
+        for (snapshot, len, count, first, last) in cases {
+            let names = snapshot_names(&snapshot);
+            assert_eq!(names.len(), len);
+            assert_eq!(names.len(), usize::from(count));
+            assert_eq!(names.first().map(String::as_str), Some(first));
+            assert_eq!(names.last().map(String::as_str), Some(last));
+            assert!(snapshot.iter().all(|(_, name)| name.is_vanilla()));
+        }
+    }
+
+    #[test]
+    fn block_snapshot_appends_custom_blocks_in_name_order() {
+        let mut builder = ContentBuilder::new();
+        builder
+            .register_block(block("test:beta", &Block::STONE))
+            .unwrap();
+        builder
+            .register_block(block("test:alpha", &Block::DIRT))
+            .unwrap();
+        let names = snapshot_names(&builder.build().unwrap().block_snapshot());
+
+        let count = usize::from(BlockId::COUNT);
+        assert_eq!(count, 1286);
+        assert_eq!(names.len(), count + 2);
+        assert_eq!(names[0], "minecraft:air");
+        assert_eq!(names[count - 1], "minecraft:firefly_bush");
+        assert_eq!(names[count], "test:alpha");
+        assert_eq!(names[count + 1], "test:beta");
+    }
+
+    #[test]
+    fn item_snapshot_skips_placeholders() {
+        let mut builder = ContentBuilder::new();
+        builder.register_item(item("test:gem", None)).unwrap();
+        builder.register_item(item("gone:widget", None)).unwrap();
+        builder.mark_placeholder(ContentKind::Item, "gone:widget".to_string());
+        let tables = builder.build().unwrap();
+        let snapshot = tables.item_snapshot();
+
+        // The placeholder sorts first and keeps its id, which is a gap in the snapshot.
+        let count = usize::from(Item::COUNT);
+        assert_eq!(snapshot.len(), count + 1);
+        assert_eq!(snapshot[count - 1].0, i32::from(Item::COUNT) - 1);
+        assert_eq!(
+            snapshot[count],
+            (
+                i32::from(Item::COUNT) + 1,
+                Identifier::from_static("test", "gem")
+            )
+        );
+        assert!(snapshot.iter().all(|(id, _)| *id != i32::from(Item::COUNT)));
+        assert_eq!(
+            (tables.items()[0].id, tables.items()[0].registry_key),
+            (Item::COUNT, "gone:widget")
+        );
+    }
+
     /// The only test that installs the global tables: they are process-wide and install once.
     #[test]
     fn frozen_registry_falls_through_and_rejects_registration() {
@@ -2630,7 +2787,11 @@ mod tests {
         })
         .unwrap();
 
-        let tables = freeze().unwrap();
+        assert!(tables().is_none());
+        let frozen = freeze().unwrap();
+        assert!(std::ptr::eq(tables().unwrap(), frozen));
+        assert!(std::ptr::eq(tables().unwrap(), frozen));
+        let tables = frozen;
         assert_eq!(tables.blocks().len(), 2);
 
         // Blocks and states.

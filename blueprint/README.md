@@ -21,7 +21,7 @@ repository. It holds this blueprint with an empty mod list.
    - `SHA256SUMS`, the SHA-256 checksums of the two binaries.
 
 Run the binary in the server directory, like the IronPumpkin binary. The log shows the mods that
-loaded, for example `[ironpumpkin] loaded 1 native mod: hello-mod`.
+loaded, for example `[ironpumpkin] loaded 1 native mod: hello-mod (client_required = true)`.
 
 ## `modpack.toml`
 
