@@ -593,8 +593,8 @@ impl PumpkinServer {
                                 PacketHandlerResult::Stop => {
                                      pending.close();
                                 },
-                                PacketHandlerResult::ReadyToPlay(profile, config) => {
-                                     let mut java_client = JavaClient::from_pending(pending, profile.clone(), config.clone());
+                                PacketHandlerResult::ReadyToPlay(profile, config, negotiated) => {
+                                     let mut java_client = JavaClient::from_pending(pending, profile.clone(), config.clone(), negotiated);
                                      java_client.start_outgoing_packet_task();
 
                                      if let Some((player, world, online_profile)) = server_clone
@@ -712,7 +712,7 @@ impl PumpkinServer {
                     client.close().await;
                     client.await_tasks().await;
                 }
-                PacketHandlerResult::ReadyToPlay(profile, config) => {
+                PacketHandlerResult::ReadyToPlay(profile, config, _) => {
                     if let Some((player, _world, online_profile)) = server.add_player(
                         Arc::new(ClientPlatform::Bedrock(client.clone())),
                         profile,

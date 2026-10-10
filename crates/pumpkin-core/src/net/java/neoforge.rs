@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use pumpkin_data::{packet::CURRENT_MC_VERSION, translation};
+use pumpkin_data::{dynamic::ContentIds, packet::CURRENT_MC_VERSION, translation};
 use pumpkin_protocol::{
     java::{
         client::config::CConfigPing,
@@ -495,7 +495,65 @@ const fn flow_name(flow: PacketFlow) -> &'static str {
     }
 }
 
+/// What a connection negotiated before play, and what the player of that connection keeps.
+///
+/// Only a Java connection that went through the `NeoForge` probe holds more than the default.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NegotiatedState {
+    pub connection_type: ConnectionType,
+    /// The channels negotiated with a `NeoForge` client. Empty for any other client.
+    pub payload_setup: NetworkPayloadSetup,
+    /// The `NeoForge` ad-hoc channels of the client: `minecraft:register` minus
+    /// `minecraft:unregister`.
+    pub ad_hoc_channels: BTreeSet<Identifier>,
+    pub content_ids: ContentIds,
+}
+
+impl NegotiatedState {
+    /// How many channels were negotiated on `protocol`.
+    #[must_use]
+    pub fn channel_count(&self, protocol: ConnectionProtocol) -> usize {
+        self.payload_setup
+            .channels
+            .get(&protocol)
+            .map_or(0, BTreeMap::len)
+    }
+
+    /// Logs the channels of a `NeoForge` connection when its player enters play. Any other
+    /// connection logs nothing.
+    pub fn log_entered_play(&self, player_name: &str) {
+        if self.connection_type == ConnectionType::NeoForge {
+            info!(
+                "{player_name} entered play as a NeoForge client: {} configuration and {} play channels",
+                self.channel_count(ConnectionProtocol::Configuration),
+                self.channel_count(ConnectionProtocol::Play),
+            );
+        }
+    }
+}
+
+/// The state of a connection that negotiated nothing, like every Bedrock connection.
+pub(crate) static NOT_NEGOTIATED: NegotiatedState = NegotiatedState {
+    connection_type: ConnectionType::Other,
+    payload_setup: NetworkPayloadSetup {
+        channels: BTreeMap::new(),
+    },
+    ad_hoc_channels: BTreeSet::new(),
+    content_ids: ContentIds::Display,
+};
+
 impl PendingConnection {
+    /// What this connection negotiated, moved out for the play phase: the connection ends right
+    /// after.
+    pub(super) fn take_negotiated_state(&mut self) -> NegotiatedState {
+        NegotiatedState {
+            connection_type: self.client_channels.connection_type,
+            payload_setup: std::mem::take(&mut self.payload_setup),
+            ad_hoc_channels: std::mem::take(&mut self.client_channels.ad_hoc),
+            content_ids: self.content_ids,
+        }
+    }
+
     /// The `NeoForge` part of `startConfiguration`. The vanilla part waits for the pong.
     pub async fn send_neoforge_probe(&mut self, server: &Server) {
         let mut channels = BTreeSet::from(INITIAL_UNREGISTER_CHANNELS);
@@ -693,6 +751,11 @@ impl PendingConnection {
 mod tests {
     use super::*;
     use pumpkin_protocol::java::neoforge::PacketFlow;
+
+    #[test]
+    fn a_connection_negotiates_nothing_by_default() {
+        assert_eq!(NOT_NEGOTIATED, NegotiatedState::default());
+    }
 
     fn component(
         id: &'static str,

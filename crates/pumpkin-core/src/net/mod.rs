@@ -1,6 +1,12 @@
 use crate::{
     entity::player::{ChatMode, ParticleStatus},
-    net::{bedrock::BedrockClient, java::JavaClient},
+    net::{
+        bedrock::BedrockClient,
+        java::{
+            JavaClient,
+            neoforge::{NOT_NEGOTIATED, NegotiatedState},
+        },
+    },
     server::Server,
 };
 use arc_swap::ArcSwap;
@@ -116,7 +122,7 @@ impl Default for PlayerConfig {
 
 pub enum PacketHandlerResult {
     Stop,
-    ReadyToPlay(GameProfile, PlayerConfig),
+    ReadyToPlay(GameProfile, PlayerConfig, NegotiatedState),
 }
 
 /// Maximum payload bytes that may be queued for a client before it is considered stalled/overflowing and disconnected.
@@ -184,6 +190,15 @@ impl ClientPlatform {
         match self {
             Self::Java(_) => BedrockMinecraftVersion::Unknown,
             Self::Bedrock(bedrock) => bedrock.version.load(),
+        }
+    }
+
+    /// What the connection negotiated before play.
+    #[must_use]
+    pub fn negotiated_state(&self) -> &NegotiatedState {
+        match self {
+            Self::Java(java) => java.negotiated_state(),
+            Self::Bedrock(_) => &NOT_NEGOTIATED,
         }
     }
 

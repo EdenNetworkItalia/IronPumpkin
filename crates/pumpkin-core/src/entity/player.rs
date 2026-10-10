@@ -3766,6 +3766,13 @@ impl Player {
         matches!(self.client.as_ref(), ClientPlatform::Bedrock(_)).then(|| BedrockPlayer(self))
     }
 
+    /// What the client negotiated in the configuration phase: the `NeoForge` connection type,
+    /// channels and content ids. The default for any other Java client and every Bedrock client.
+    #[must_use]
+    pub fn negotiated_state(&self) -> &crate::net::java::neoforge::NegotiatedState {
+        self.client.negotiated_state()
+    }
+
     pub fn reset_scoreboard(&self) {
         *self
             .custom_scoreboard

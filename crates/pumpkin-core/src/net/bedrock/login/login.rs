@@ -1,6 +1,6 @@
 use pumpkin_protocol::bedrock::client::PackIdVersion;
 
-use crate::net::can_not_join;
+use crate::net::{can_not_join, java::neoforge::NegotiatedState};
 
 #[allow(clippy::wildcard_imports)]
 use super::*;
@@ -158,7 +158,11 @@ impl BedrockClient {
         self.client_data
             .store(std::sync::Arc::new(Some(std::sync::Arc::new(client_data))));
 
-        Ok(PacketHandlerResult::ReadyToPlay(profile, new_config))
+        Ok(PacketHandlerResult::ReadyToPlay(
+            profile,
+            new_config,
+            NegotiatedState::default(),
+        ))
     }
 }
 

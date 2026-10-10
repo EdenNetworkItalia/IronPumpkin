@@ -70,7 +70,7 @@ use pending::PendingConnection;
 use crate::entity::player::Player;
 use crate::net::{
     ClientPlatform, GameProfile, MAX_PENDING_BYTES, PacketRateLimiter, PlayerConfig,
-    decrement_pending_bytes,
+    decrement_pending_bytes, java::neoforge::NegotiatedState,
 };
 use crate::plugin::api::events::world::chunk_send::ChunkSend;
 use crate::plugin::player::player_custom_payload::PlayerCustomPayloadEvent;
@@ -134,6 +134,8 @@ pub struct JavaClient {
     pub packet_limiter: PacketRateLimiter,
     /// Vanilla `suspendFlushingOnServerThread`.
     suspend_flushing: Arc<AtomicBool>,
+    /// What the connection negotiated in the configuration phase. It never changes in play.
+    negotiated: NegotiatedState,
 }
 
 impl JavaClient {
@@ -142,6 +144,7 @@ impl JavaClient {
         pending: PendingConnection,
         gameprofile: GameProfile,
         config: PlayerConfig,
+        negotiated: NegotiatedState,
     ) -> Self {
         let (send, recv) = tokio::sync::mpsc::unbounded_channel();
 
@@ -172,7 +175,14 @@ impl JavaClient {
             packet_sequence: AtomicI32::new(-1),
             packet_limiter: pending.packet_limiter,
             suspend_flushing: Arc::new(AtomicBool::new(false)),
+            negotiated,
         }
+    }
+
+    /// What the connection negotiated in the configuration phase.
+    #[must_use]
+    pub const fn negotiated_state(&self) -> &NegotiatedState {
+        &self.negotiated
     }
 
     /// Vanilla `ServerCommonPacketListenerImpl.suspendFlushing`.

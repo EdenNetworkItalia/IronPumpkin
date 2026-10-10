@@ -733,7 +733,9 @@ impl Server {
             'after: {
                 player.screen_handler_sync_handler.store_player(player.clone());
                 world.add_player(&player).is_ok().then(|| {
-                    if !online_profile.attach(&player) {
+                    if online_profile.attach(&player) {
+                        player.client.negotiated_state().log_entered_play(&player.gameprofile.name);
+                    } else {
                         player.kick(
                             DisconnectReason::LoggedInOtherLocation,
                             &duplicate_login_disconnect_message(),

@@ -185,6 +185,16 @@ impl fmt::Display for ContentKind {
     }
 }
 
+/// Which ids a client gets for custom content in play packets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ContentIds {
+    /// A custom id maps to the id of its display entry, which a vanilla client knows.
+    #[default]
+    Display,
+    /// Ids as allocated. Only a client that synced the registries of the server knows them.
+    Real,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegistryError {
     /// The registry is frozen and accepts no new content.

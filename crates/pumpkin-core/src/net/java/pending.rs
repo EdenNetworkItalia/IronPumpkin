@@ -94,6 +94,9 @@ pub struct PendingConnection {
     /// The channels negotiated with a `NeoForge` client, like `ChannelAttributes.setPayloadSetup`.
     /// Empty for any other client.
     pub payload_setup: NetworkPayloadSetup,
+    /// Which ids the client gets for custom content in play. `Real` only for a `NeoForge` client
+    /// that completed the registry sync.
+    pub content_ids: pumpkin_data::dynamic::ContentIds,
     /// For the connection packet events.
     server: Weak<Server>,
 }
@@ -126,6 +129,7 @@ impl PendingConnection {
             client_channels: ClientChannels::default(),
             neoforge_probe_pending: false,
             payload_setup: NetworkPayloadSetup::default(),
+            content_ids: pumpkin_data::dynamic::ContentIds::default(),
             server,
         }
     }
@@ -538,7 +542,11 @@ impl PendingConnection {
                     self.kick(reason).await;
                     Ok(Some(PacketHandlerResult::Stop))
                 } else {
-                    Ok(Some(PacketHandlerResult::ReadyToPlay(profile, config)))
+                    Ok(Some(PacketHandlerResult::ReadyToPlay(
+                        profile,
+                        config,
+                        self.take_negotiated_state(),
+                    )))
                 }
             }
             id if id == SKnownPacks::to_id(version) => {
