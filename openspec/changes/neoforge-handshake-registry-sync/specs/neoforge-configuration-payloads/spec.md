@@ -67,7 +67,7 @@ On a connection of type Other, the data map negotiation, the extensible enum che
 - **THEN** it receives no `neoforge:known_registry_data_maps`, `neoforge:extensible_enum_data` or `neoforge:feature_flags`
 
 ### Requirement: Codecs from the capture
-pumpkin-protocol SHALL decode and write `neoforge:known_registry_data_maps` and its reply, `neoforge:extensible_enum_data` and its acknowledgement, and `neoforge:feature_flags_ack`, with bounded counts and no trailing bytes. Status: planned (T2).
+pumpkin-protocol SHALL decode and write `neoforge:known_registry_data_maps` and its reply, `neoforge:extensible_enum_data` and its acknowledgement, and `neoforge:feature_flags_ack`, with bounded counts and no trailing bytes. Status: implemented (#87).
 
 #### Scenario: Captured bytes
 - **WHEN** the codecs decode the bodies of these payloads from the run (b) capture
@@ -96,14 +96,14 @@ For a client that declared `neoforge:split`, the server SHALL send an encoded pa
 - **THEN** the server sends it unsplit
 
 ### Requirement: Configuration disconnect component
-The configuration disconnect packet SHALL carry the reason as a text component in network NBT, as the decompiled vanilla 26.3 server writes it, so that a translatable reason keeps its key, fallback and arguments. Status: planned (T4).
+The configuration disconnect packet SHALL carry the reason as a text component in network NBT, as the decompiled vanilla 26.3 server writes it, so that a translatable reason keeps its key, fallback and arguments. Status: implemented (#89).
 
 #### Scenario: Translatable kick
 - **WHEN** the server kicks a client in configuration with a translatable reason and one argument
 - **THEN** the client decodes a component with that translate key and argument
 
 ### Requirement: Plain string arguments in components
-The text component NBT reader SHALL accept a `with` list of plain strings. Status: planned (T4).
+The text component NBT reader SHALL accept a `with` list of plain strings. Status: implemented (#89).
 
 #### Scenario: NeoForge incompatible reason
 - **WHEN** the headless client reads the run (c) disconnect `{translate:"multiplayer.disconnect.incompatible", with:["NeoForge 26.3.0.64-beta"]}`

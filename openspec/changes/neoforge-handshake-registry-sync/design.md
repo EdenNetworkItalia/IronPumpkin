@@ -195,13 +195,17 @@ Alternative rejected: more wait flags next to `neoforge_probe_pending`. Seven ta
 
 Alternative rejected: accept replies in any order. NeoForge finishes a task only through its own reply type, and a reply for another task points at a client bug or a hostile client.
 
+Two rules settled by the wave 1 review: a custom payload reply reaches its task with the payload data (`handle_task_reply(reply, data)`, called between the finish and the next start, as the known packs reply calls `handle_known_packs`), so the common version, common register and data map replies can be read without touching the dispatch; and a modded task whose wait depends on the connection type is not queued for an Other connection at all, the Other-side checks (mandatory data maps, extended clientbound enums, modded feature flags, all empty in M3) live in `initialize_other_connection`.
+
 ### D2. Registry sync for block, item and entity type only
 
-IronPumpkin sends `frozen_registry_sync_start` with exactly the registries it snapshots, one `frozen_registry` per registry, then `frozen_registry_sync_completed`, and waits for the echo. In M3 the synced registries are `minecraft:block`, `minecraft:item` and `minecraft:entity_type`. Each snapshot maps every id to a namespaced name: generated entries `0..COUNT` with `minecraft:` names, then custom entries in allocation order, placeholders included. The alias maps are empty. Block state ids are not synced: the client rebuilds them from the block order, which matches the M2 state layout.
+IronPumpkin sends `frozen_registry_sync_start` with exactly the registries it snapshots, one `frozen_registry` per registry, then `frozen_registry_sync_completed`, and waits for the echo. In M3 the synced registries are `minecraft:block`, `minecraft:item` and `minecraft:entity_type`. Each snapshot maps every id to a namespaced name: generated entries `0..COUNT` with `minecraft:` names, then custom entries in allocation order. Placeholders (content of a mod the server no longer has, restored from the manifest) are left out, so their ids are gaps; the NeoForge client accepts sparse ids. The alias maps are empty. Block state ids are not synced: the client rebuilds them from the block order, which matches the M2 state layout.
 
 The list of synced registries is a table (`SYNCED_REGISTRIES`), so M4 registration adds rows without touching the task. The snapshots come from a new public accessor of the frozen content tables in `pumpkin_data::dynamic` (`tables()`). Nothing is copied onto `Server`.
 
 Reason: the NeoForge client keeps its own ids for a synced registry that the server does not send (`RegistryManager.applySnapshot`). These three registries are the only ones where IronPumpkin ids can differ from the client's ids.
+
+Placeholders are left out because the client disconnects on a key it does not have (`server-with-unknown-keys`), and a placeholder is by definition content no client has: with placeholders in the snapshot every NeoForge client would be locked out of a world where a mod was removed, with no end date. The per-client encoding (D4) maps a placeholder id to its display id also in `Real` mode. The three encoded `frozen_registry` payloads are the same for every connection, so the sync task encodes them once after the freeze (`OnceLock`) instead of once per connection.
 
 Alternative rejected: sync all 35 registries of the capture. IronPumpkin has no numeric tables for recipe types, recipe serializers, position source types or any `neoforge:` registry, and the declaration order of `Sound`, `GameEvent` and `WindowType` is not verified against the vanilla registry order. A wrong row remaps vanilla ids on the client and breaks content that works today.
 

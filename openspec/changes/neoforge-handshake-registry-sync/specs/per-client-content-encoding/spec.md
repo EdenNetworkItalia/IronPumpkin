@@ -7,7 +7,7 @@ Defines how the server encodes custom content ids per client: real ids for NeoFo
 ## ADDED Requirements
 
 ### Requirement: Connection state in play
-The connection type, the negotiated channel setup and the content id mode of a connection SHALL stay available in play for the player of that connection. Status: planned (T5).
+The connection type, the negotiated channel setup and the content id mode of a connection SHALL stay available in play for the player of that connection. Status: implemented (#90).
 
 #### Scenario: NeoForge player
 - **WHEN** a NeoForge client finishes the configuration with the channel map `channels/neoforge-26.3.toml`

@@ -7,7 +7,7 @@ Defines which clients the server accepts at the configuration handshake when nat
 ## ADDED Requirements
 
 ### Requirement: Client-required by default
-A native mod SHALL be client-required unless it opts out. `NativeMod::client_required` SHALL return true when the mod does not override it. Status: planned (T3).
+A native mod SHALL be client-required unless it opts out. `NativeMod::client_required` SHALL return true when the mod does not override it. Status: implemented (#88).
 
 #### Scenario: Default
 - **WHEN** a native mod implements only `id`, `display_name`, `version` and `init`
@@ -18,7 +18,7 @@ A native mod SHALL be client-required unless it opts out. `NativeMod::client_req
 - **THEN** the native mod list marks it client-optional
 
 ### Requirement: Native mod list at runtime
-The server SHALL receive the native mod list at startup, before the content freeze, with the id, the display name, the version and the client-required flag of each mod, sorted by id. The list SHALL be readable while the server runs. Status: planned (T3).
+The server SHALL receive the native mod list at startup, before the content freeze, with the id, the display name, the version and the client-required flag of each mod, sorted by id. The list SHALL be readable while the server runs. Status: implemented (#88).
 
 #### Scenario: One native mod
 - **WHEN** a server boots with one native mod `test-mod` that does not override `client_required`

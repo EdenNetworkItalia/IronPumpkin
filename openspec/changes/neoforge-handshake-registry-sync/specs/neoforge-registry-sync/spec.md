@@ -14,7 +14,7 @@ The server SHALL sync exactly the registries `minecraft:block`, `minecraft:item`
 - **THEN** `neoforge:frozen_registry_sync_start` lists 3 registries, and the client receives 3 `neoforge:frozen_registry` payloads with the same names before `neoforge:frozen_registry_sync_completed`
 
 ### Requirement: Snapshot ids
-A snapshot SHALL map every id of the registry to its name: the generated entries with ids from 0 to the generated count minus one, then the custom entries in allocation order, placeholders included. The ids SHALL have no gaps. Status: planned (T6).
+A snapshot SHALL map every id of the registry to its name: the generated entries with ids from 0 to the generated count minus one, then the custom entries in allocation order. Placeholder entries (content of a mod the server no longer has) SHALL be left out, so their ids are gaps. Status: planned (T6).
 
 #### Scenario: Server without mods
 - **WHEN** no native mod registers content
@@ -26,7 +26,7 @@ A snapshot SHALL map every id of the registry to its name: the generated entries
 
 #### Scenario: Placeholder
 - **WHEN** the content manifest names a custom block whose mod is missing
-- **THEN** the block snapshot maps the placeholder's id to that name
+- **THEN** the block snapshot has no entry for the placeholder's id, and the ids before and after it are present
 
 ### Requirement: Namespaced names and empty aliases
 Every name in a snapshot SHALL be namespaced: generated entries carry the `minecraft` namespace. The alias map of every snapshot SHALL be empty. Status: planned (T6).
