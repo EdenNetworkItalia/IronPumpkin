@@ -326,6 +326,7 @@ impl PaletteEntry {
         // 26.3 renamed the palette keys from Name and Properties to id and properties
         let (name, properties) = state_compound_parts(entry_compound);
         let name = name
+            .or_else(|| entry_compound.get_string(""))
             .ok_or(TemplateError::MissingField("palette.id"))?
             .to_string();
 

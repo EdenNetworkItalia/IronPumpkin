@@ -112,6 +112,12 @@ pub struct PendingConnection {
     /// Whether the packet in hand was joined from `neoforge:split` parts, so its payload can end
     /// with padding.
     pub(super) packet_joined: bool,
+    /// Whether a login was started. Used to reject a second `SLoginStart`, which
+    /// would otherwise replace an already authenticated profile.
+    pub login_started: bool,
+    /// Whether `CLoginSuccess` has been sent, mirroring vanilla's
+    /// `State::PROTOCOL_SWITCHING`. Login acknowledgement is only valid after it.
+    pub login_success_sent: bool,
     /// For the connection packet events.
     server: Weak<Server>,
 }
@@ -139,6 +145,8 @@ impl PendingConnection {
             config: None,
             brand: None,
             packet_limiter,
+            login_started: false,
+            login_success_sent: false,
             verify_token: None,
             vine_challenge: None,
             client_channels: ClientChannels::default(),
