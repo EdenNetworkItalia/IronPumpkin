@@ -14,9 +14,9 @@ pub struct PotionBrewEventPost {
     pub block_pos: BlockPos,
 
     /// A copy of the brewing stand inventory after the brew: the three bottles, the ingredient
-    /// and the fuel. The vanilla brew already consumed the ingredient. `NeoForge` hands out the
-    /// live stacks, so the stand takes changed stacks when its inventory did not change while the
-    /// event fired.
+    /// and the fuel. As in `NeoForge`, the ingredient is not consumed yet: the stand consumes one
+    /// after the event. `NeoForge` hands out the live stacks, so the stand takes changed stacks
+    /// when its inventory did not change while the event fired.
     pub stacks: [ItemStack; 5],
 }
 

@@ -49,7 +49,9 @@ pub fn set_stat(player: &Player, category: StatisticCategory, stat: i32, value: 
 }
 
 /// Fires the event with the change and the new total that `change` returns for the current
-/// total. Like the upstream fire site, a statistic whose lock is taken drops the change.
+/// total. Like the upstream fire site, a statistic whose lock is taken drops the change. The
+/// stats lock is not held while the handlers run, so the stored `value` overwrites a change to
+/// the same statistic that another thread made during the fire.
 fn award(
     player: &Player,
     (server, player_arc): (Arc<Server>, Arc<Player>),

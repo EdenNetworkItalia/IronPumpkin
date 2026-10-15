@@ -1338,6 +1338,35 @@ fn enchanting_events_handler_closes_the_screen() {
     }
 }
 
+#[test]
+fn player_enchant_item_event_lapis_change_still_pays() {
+    let _serial = support::serial();
+    let player = support::player("LapisChanger");
+    player.experience_level.store(40, Ordering::Relaxed);
+    let (table, inventory) = enchanting_table(&player, ItemStack::new(1, &Item::DIAMOND_SWORD), 5);
+    let lapis_slot = inventory.clone();
+    support::server()
+        .plugin_manager
+        .register_with::<PlayerEnchantItemEvent, _>(
+            blocking(move |event: &mut PlayerEnchantItemEvent| {
+                if event.player.gameprofile.name == "LapisChanger" {
+                    lapis_slot.set_stack(1, ItemStack::new(4, &Item::LAPIS_LAZULI));
+                }
+            }),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+    click(&player, 0);
+    let rows = table.lock().unwrap().level_requirements;
+    assert!(rows[2] > 0, "{rows:?}");
+
+    // Row 2 costs 3 lapis lazuli, taken from the 4 the handler left.
+    enchant(&player, 2);
+    assert!(inventory.get_stack(0).has_enchantments());
+    assert_eq!(inventory.get_stack(1).item_count, 1);
+}
+
 /// Opens a grindstone for `player` with an enchanted sword in the top slot and a vanilla result.
 fn grindstone_with_result(
     player: &Arc<Player>,
@@ -1352,6 +1381,10 @@ fn grindstone_with_result(
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one handler mode per outcome of the take, and a grindstone per mode"
+)]
 fn one_event_per_fire_site_grindstone_event_on_take_item() {
     let _serial = support::serial();
     let player = support::player("Taker");
@@ -1384,6 +1417,23 @@ fn one_event_per_fire_site_grindstone_event_on_take_item() {
                     3 => {
                         event.new_top = ItemStack::new(1, &Item::STICK);
                         event.player.close_handled_screen();
+                    }
+                    mode @ (4 | 5) => {
+                        if mode == 4 {
+                            event.new_top = ItemStack::new(1, &Item::BLAZE_ROD);
+                        } else {
+                            event.set_cancelled(true);
+                        }
+                        // Another thread closes the grindstone during the fire and is between
+                        // `on_closed` and the replacement of `current_screen_handler`, as
+                        // `on_handled_screen_closed` is while `InventoryCloseEvent` fires.
+                        let screen = event.player.current_screen_handler.lock().unwrap().clone();
+                        let player = event.player.clone();
+                        std::thread::spawn(move || {
+                            screen.lock().unwrap().on_closed(player.as_ref());
+                        })
+                        .join()
+                        .unwrap();
                     }
                     _ => {}
                 }
@@ -1435,9 +1485,33 @@ fn one_event_per_fire_site_grindstone_event_on_take_item() {
     click(&player, 2);
     assert!(inventory.get_stack(0).is_empty());
     assert!(held(&player, &Item::STICK).is_some());
-    player.open_container_pos.store(None);
 
-    assert_eq!(entries(&seen), ["iron_sword true true Some(Grindstone)"; 4]);
+    // The grindstone closed on another thread during the event: the new top input goes to the
+    // player, and so do the inputs of a cancelled take.
+    mode.store(4, Ordering::Relaxed);
+    let (_handler, inventory) = grindstone_with_result(&player, BlockPos::new(88, 100, 88));
+    click(&player, 2);
+    assert!(inventory.get_stack(0).is_empty());
+    assert!(held(&player, &Item::BLAZE_ROD).is_some());
+    mode.store(5, Ordering::Relaxed);
+    let (_handler, inventory) = grindstone_with_result(&player, BlockPos::new(96, 100, 96));
+    click(&player, 2);
+    assert!(inventory.get_stack(0).is_empty());
+    assert!((0..36).any(|slot| {
+        let stack = player.inventory.get_stack(slot);
+        stack.item == &Item::IRON_SWORD && stack.has_enchantments()
+    }));
+
+    // No known grindstone position: the inputs change, and no orbs spawn at the origin.
+    mode.store(1, Ordering::Relaxed);
+    let orbs_at_origin = orbs_at(BlockPos::ZERO);
+    let (_handler, inventory) = grindstone_with_result(&player, BlockPos::new(104, 100, 104));
+    player.open_container_pos.store(None);
+    click(&player, 2);
+    assert_eq!(inventory.get_stack(0).item, &Item::STICK);
+    assert_eq!(orbs_at(BlockPos::ZERO), orbs_at_origin);
+
+    assert_eq!(entries(&seen), ["iron_sword true true Some(Grindstone)"; 7]);
 }
 
 #[test]
@@ -1497,10 +1571,12 @@ fn one_event_per_fire_site_potion_brew_event_post() {
             .and_then(|contents| contents.potion_id)
     };
 
-    // The vanilla brew: the event sees the brewed bottles and the consumed ingredient.
+    // The vanilla brew: the event sees the brewed bottles and the ingredient, which the stand
+    // consumes after the event, as `NeoForge` fires before the shrink.
     let items = brew(&brewing_stand(brewed));
     assert_eq!(potion(&items[0]), Some(i32::from(Potion::AWKWARD.id)));
     assert_eq!(items[1].item, &Item::GLASS_BOTTLE);
+    assert!(items[3].is_empty());
 
     // A cancelled `PotionBrewEvent.Pre`: the event sees the stacks of the Pre handler.
     let items = brew(&brewing_stand(cancelled));
@@ -1511,7 +1587,7 @@ fn one_event_per_fire_site_potion_brew_event_post() {
     assert_eq!(
         entries(&seen),
         [
-            "post potion air ingredient false",
+            "post potion air ingredient true",
             "post potion diamond ingredient true"
         ]
     );

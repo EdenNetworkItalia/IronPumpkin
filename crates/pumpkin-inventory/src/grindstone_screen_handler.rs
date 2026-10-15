@@ -225,6 +225,9 @@ pub struct GrindstoneScreenHandler {
     /// Shared with [`GrindstoneResultSlot::take`].
     pub take: Arc<Mutex<Option<GrindstoneTake>>>,
     update_event_pending: bool,
+    /// Set by [`ScreenHandler::on_closed`]. An event that fired while the player closed the
+    /// grindstone on another thread changes nothing in it.
+    closed: bool,
 }
 
 impl GrindstoneScreenHandler {
@@ -248,6 +251,7 @@ impl GrindstoneScreenHandler {
             xp: Arc::new(AtomicI32::new(-1)),
             take: Arc::new(Mutex::new(None)),
             update_event_pending: false,
+            closed: false,
         };
 
         // Slot 0: Input slot
@@ -304,16 +308,18 @@ impl GrindstoneScreenHandler {
     }
 
     /// Applies what the handlers of the grindstone place event decided for `inputs`. Returns
-    /// `false` and changes nothing when the inputs or the result changed while the event fired.
+    /// `false` and changes nothing when the grindstone closed or the inputs or the result changed
+    /// while the event fired.
     pub fn apply_update_event(
         &mut self,
         inputs: &GrindstoneInputs,
         place: GrindstonePlace,
     ) -> bool {
-        if !self
-            .inventory
-            .get_stack(Self::INPUT_SLOT)
-            .are_equal(&inputs.top)
+        if self.closed
+            || !self
+                .inventory
+                .get_stack(Self::INPUT_SLOT)
+                .are_equal(&inputs.top)
             || !self
                 .inventory
                 .get_stack(Self::ADDITIONAL_SLOT)
@@ -345,15 +351,17 @@ impl GrindstoneScreenHandler {
 
     /// Puts `top` and `bottom` into the empty input slots after the grindstone take event, and
     /// updates the result when `update_result` is set (a cancelled take restores the inputs and
-    /// leaves the result empty, as `NeoForge` does). Returns `false` and changes nothing when an
-    /// input slot is not empty.
+    /// leaves the result empty, as `NeoForge` does). Returns `false` and changes nothing when the
+    /// grindstone closed or an input slot is not empty: the caller then gives the stacks to the
+    /// player.
     pub fn apply_take_event(
         &mut self,
         top: ItemStack,
         bottom: ItemStack,
         update_result: bool,
     ) -> bool {
-        if !self.inventory.get_stack(Self::INPUT_SLOT).is_empty()
+        if self.closed
+            || !self.inventory.get_stack(Self::INPUT_SLOT).is_empty()
             || !self.inventory.get_stack(Self::ADDITIONAL_SLOT).is_empty()
         {
             return false;
@@ -523,6 +531,7 @@ impl ScreenHandler for GrindstoneScreenHandler {
     }
 
     fn on_closed(&mut self, player: &dyn InventoryPlayer) {
+        self.closed = true;
         self.default_on_closed(player);
         self.inventory.on_close();
         for i in 0..2 {

@@ -49,16 +49,6 @@ fn as_table<'a>(guard: &'a mut Guard<'_>) -> Option<&'a mut EnchantingTableScree
         .downcast_mut::<EnchantingTableScreenHandler>()
 }
 
-/// Whether `handler` is still the open screen of `player`.
-fn is_open(player: &Player, handler: &Handler) -> bool {
-    let current = player
-        .current_screen_handler
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone();
-    std::ptr::addr_eq(Arc::as_ptr(&current), std::ptr::from_ref(handler))
-}
-
 /// Whether a handler listens to the grindstone take event
 /// (`InventoryPlayer::listens_to_grindstone_take`).
 pub fn listens_to_grindstone_take(player: &Player) -> bool {
@@ -91,9 +81,7 @@ pub fn fire_pending<'a>(
     } else if let Some(table) = as_table(&mut guard)
         && table.take_prepare_event()
     {
-        let rows = table.prepare_rows();
-        let bookshelf_count = table.bookshelf_count;
-        return fire_prepare_item_enchant(player, handler, guard, &rows, bookshelf_count);
+        return fire_prepare_item_enchant(player, handler, guard);
     }
     guard
 }
@@ -197,34 +185,42 @@ fn fire_grindstone_take<'a>(
         return guard;
     };
     drop(guard);
-    let pos = player.open_container_pos.load().unwrap_or(BlockPos::ZERO);
-    let mut event =
-        GrindstoneEventOnTakeItem::new(player.clone(), pos, take.top, take.bottom, take.xp);
+    let pos = player.open_container_pos.load();
+    let mut event = GrindstoneEventOnTakeItem::new(
+        player.clone(),
+        pos.unwrap_or(BlockPos::ZERO),
+        take.top,
+        take.bottom,
+        take.xp,
+    );
     server.plugin_manager.fire_blocking(&server, &mut event);
     let cancelled = event.cancelled;
     let (top, bottom) = if cancelled {
         (event.top, event.bottom)
     } else {
-        let world = player.world();
-        if event.xp > 0 {
-            ExperienceOrbEntity::spawn(&world, pos.to_centered_f64(), event.xp.cast_unsigned());
+        // As `use_grindstone`: no orbs and no sound without a known grindstone position.
+        if let Some(pos) = pos {
+            let world = player.world();
+            if event.xp > 0 {
+                ExperienceOrbEntity::spawn(&world, pos.to_centered_f64(), event.xp.cast_unsigned());
+            }
+            world.sync_world_event(WorldEvent::SoundGrindstoneUsed, pos, 0);
         }
-        world.sync_world_event(WorldEvent::SoundGrindstoneUsed, pos, 0);
         (event.new_top, event.new_bottom)
     };
-    let open = is_open(player, handler);
+    // The close path empties the grindstone before it replaces `current_screen_handler`, so the
+    // open check is the closed flag of the grindstone, read under its lock.
     let mut guard = lock(handler);
-    let applied = open
-        && guard
-            .as_any_mut()
-            .downcast_mut::<GrindstoneScreenHandler>()
-            .is_some_and(|grindstone| {
-                if cancelled {
-                    // `NeoForge` leaves the result empty after a cancelled take.
-                    grindstone.take_update_event();
-                }
-                grindstone.apply_take_event(top.clone(), bottom.clone(), !cancelled)
-            });
+    let applied = guard
+        .as_any_mut()
+        .downcast_mut::<GrindstoneScreenHandler>()
+        .is_some_and(|grindstone| {
+            if cancelled {
+                // `NeoForge` leaves the result empty after a cancelled take.
+                grindstone.take_update_event();
+            }
+            grindstone.apply_take_event(top.clone(), bottom.clone(), !cancelled)
+        });
     if !applied {
         // The grindstone is closed or has new inputs: the player keeps the stacks.
         for stack in [top, bottom] {
@@ -236,38 +232,47 @@ fn fire_grindstone_take<'a>(
     guard
 }
 
-/// Fires [`PrepareItemEnchantEvent`] (`EnchantmentLevelSetEvent`) for `rows` with the screen
-/// handler unlocked, and applies the rows it decides.
+/// Fires [`PrepareItemEnchantEvent`] (`EnchantmentLevelSetEvent`) for the rows of the table with
+/// the screen handler unlocked, and applies the rows it decides. When the rows changed while the
+/// event fired, it fires once more for the new rows.
 fn fire_prepare_item_enchant<'a>(
     player: &Arc<Player>,
     handler: &'a Handler,
-    guard: Guard<'a>,
-    rows: &EnchantingRows,
-    bookshelf_count: i32,
+    mut guard: Guard<'a>,
 ) -> Guard<'a> {
     let Some(server) = listening::<PrepareItemEnchantEvent>(player) else {
         return guard;
     };
-    drop(guard);
-    let mut event = PrepareItemEnchantEvent::new(
-        player.clone(),
-        rows.item.clone(),
-        rows.level_requirements,
-        rows.enchantment_id,
-        rows.enchantment_level,
-        bookshelf_count,
-        player.open_container_pos.load().unwrap_or(BlockPos::ZERO),
-    );
-    server.plugin_manager.fire_blocking(&server, &mut event);
-    let result = (!event.cancelled).then(|| EnchantingRows {
-        item: event.item,
-        level_requirements: event.level_requirements,
-        enchantment_id: event.enchantment_id,
-        enchantment_level: event.enchantment_level,
-    });
-    let mut guard = lock(handler);
-    if let Some(table) = as_table(&mut guard) {
-        table.apply_prepare_event(rows, result);
+    for fire in 0..2 {
+        let Some(table) = as_table(&mut guard) else {
+            break;
+        };
+        if fire > 0 && !table.take_prepare_event() {
+            break;
+        }
+        let rows = table.prepare_rows();
+        let bookshelf_count = table.bookshelf_count;
+        drop(guard);
+        let mut event = PrepareItemEnchantEvent::new(
+            player.clone(),
+            rows.item.clone(),
+            rows.level_requirements,
+            rows.enchantment_id,
+            rows.enchantment_level,
+            bookshelf_count,
+            player.open_container_pos.load().unwrap_or(BlockPos::ZERO),
+        );
+        server.plugin_manager.fire_blocking(&server, &mut event);
+        let result = (!event.cancelled).then(|| EnchantingRows {
+            item: event.item,
+            level_requirements: event.level_requirements,
+            enchantment_id: event.enchantment_id,
+            enchantment_level: event.enchantment_level,
+        });
+        guard = lock(handler);
+        if let Some(table) = as_table(&mut guard) {
+            table.apply_prepare_event(&rows, result);
+        }
     }
     guard
 }

@@ -5,7 +5,7 @@
 //! only when its inventory is the same as when the event was created, so a change that a player
 //! made while the event fired is never lost.
 
-use std::sync::{Arc, PoisonError, atomic::Ordering};
+use std::sync::{Arc, PoisonError, RwLockWriteGuard, atomic::Ordering};
 
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_inventory::Inventory;
@@ -28,15 +28,18 @@ fn same_stacks(a: &[ItemStack], b: &[ItemStack]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.are_equal(b))
 }
 
-/// Writes `changed` into the stand when a handler changed the stacks of `before` and the stand
-/// still holds `before`.
-fn take_changed(stand: &BrewingStandBlockEntity, before: &Stacks, changed: Stacks) {
-    let mut items = stand.items.write().unwrap_or_else(PoisonError::into_inner);
-    if same_stacks(&items[..], before) && !same_stacks(&changed, before) {
+fn lock(stand: &BrewingStandBlockEntity) -> RwLockWriteGuard<'_, Stacks> {
+    stand.items.write().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Writes `changed` into `items` when a handler changed the stacks of `before` and `items` still
+/// holds `before`. Returns whether it wrote.
+fn take_changed(items: &mut Stacks, before: &Stacks, changed: Stacks) -> bool {
+    let take = same_stacks(&items[..], before) && !same_stacks(&changed, before);
+    if take {
         *items = changed;
-        drop(items);
-        stand.mark_dirty();
     }
+    take
 }
 
 /// Fires [`BrewEvent`] before the stand brews (`EventHooks.onPotionAttemptBrew`). Returns `true`
@@ -59,21 +62,37 @@ pub fn fire_brew_pre(stand: &BrewingStandBlockEntity, world: &Arc<World>) -> boo
     if !event.cancelled {
         return false;
     }
-    take_changed(stand, &before, event.stacks);
-    fire_brew_post(stand, world);
+    let mut items = lock(stand);
+    if take_changed(&mut items, &before, event.stacks) {
+        stand.mark_dirty();
+    }
+    fire_brew_post(stand, world, items, false);
     true
 }
 
-/// Fires [`PotionBrewEventPost`] after the stand brewed (`EventHooks.onPotionBrewed`).
-pub fn fire_brew_post(stand: &BrewingStandBlockEntity, world: &Arc<World>) {
-    let Some(server) = world.server.upgrade() else {
-        return;
-    };
-    if !server.plugin_manager.has_handlers::<PotionBrewEventPost>() {
-        return;
+/// Fires [`PotionBrewEventPost`] on the stacks of `items`, the locked stand inventory, after the
+/// stand brewed (`EventHooks.onPotionBrewed`). The lock is released while the handlers run. Then
+/// it consumes one ingredient when `consume` is set, as `doBrew` shrinks the ingredient after the
+/// event.
+pub fn fire_brew_post<'a>(
+    stand: &'a BrewingStandBlockEntity,
+    world: &Arc<World>,
+    mut items: RwLockWriteGuard<'a, Stacks>,
+    consume: bool,
+) {
+    if let Some(server) = world.server.upgrade()
+        && server.plugin_manager.has_handlers::<PotionBrewEventPost>()
+    {
+        let before = items.clone();
+        drop(items);
+        let mut event = PotionBrewEventPost::new(stand.position, before.clone());
+        server.plugin_manager.fire_blocking(&server, &mut event);
+        items = lock(stand);
+        if take_changed(&mut items, &before, event.stacks) {
+            stand.mark_dirty();
+        }
     }
-    let before = snapshot(stand);
-    let mut event = PotionBrewEventPost::new(stand.position, before.clone());
-    server.plugin_manager.fire_blocking(&server, &mut event);
-    take_changed(stand, &before, event.stacks);
+    if consume {
+        items[3].decrement(1);
+    }
 }

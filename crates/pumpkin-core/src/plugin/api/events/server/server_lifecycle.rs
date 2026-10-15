@@ -10,7 +10,8 @@ use pumpkin_macros::Event;
 /// `NeoForge`: `net.neoforged.neoforge.event.server.ServerAboutToStartEvent`, fired by
 /// `ServerLifecycleHooks.handleServerAboutToStart` in `DedicatedServer.initServer` before
 /// `loadLevel`, after the synced configs load. The Wasm plugins load later, so only native mods
-/// receive it.
+/// receive it. The datapack recipes and tags are not loaded yet: Pumpkin loads them after the
+/// worlds, while `NeoForge` has them in the `WorldStem` before this event.
 #[derive(Event, Clone, Copy, Default)]
 pub struct ServerAboutToStartEvent;
 

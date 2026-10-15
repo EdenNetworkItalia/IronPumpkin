@@ -137,7 +137,7 @@ impl BrewingStandBlockEntity {
 
         // Brew potion slots
         let mut ingredient_used = false;
-        {
+        let items = {
             let Ok(mut items) = self.items.write() else {
                 return;
             };
@@ -235,16 +235,15 @@ impl BrewingStandBlockEntity {
                 }
             }
 
-            // Consume one ingredient
-            if ingredient_used {
-                items[3].decrement(1);
-            }
-        }
+            items
+        };
 
         if !ingredient_used {
             return;
         }
-        crate::plugin::brewing_events::fire_brew_post(self, world);
+        // `NeoForge` fires `onPotionBrewed` before `ingredient.shrink(1)`: the event consumes one
+        // ingredient after the handlers.
+        crate::plugin::brewing_events::fire_brew_post(self, world, items, true);
 
         // Check if remaining ingredient matches or clear it
         if let Ok(items) = self.items.read() {

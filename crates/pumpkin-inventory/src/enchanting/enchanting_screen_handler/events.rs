@@ -144,11 +144,12 @@ impl EnchantingTableScreenHandler {
         item_stack
     }
 
-    /// Consumes the lapis of `request` when slot 1 still holds it, and updates the rows, as
-    /// `on_button_click` does last.
+    /// Consumes the lapis cost of `request` from slot 1, and updates the rows, as
+    /// `on_button_click` does last. A handler that changed the lapis count still pays: slot 1
+    /// gives what it holds, up to the cost. A table closed by a handler holds no lapis.
     pub fn finish_enchant(&mut self, player: &dyn InventoryPlayer, request: &EnchantRequest) {
         let mut lapis_stack = self.inventory.get_stack(1);
-        if !player.is_creative() && lapis_stack.are_equal(&request.lapis) {
+        if !player.is_creative() && is_lapis(&lapis_stack) {
             lapis_stack.decrement((request.id + 1) as u8);
             self.inventory.set_stack(1, lapis_stack);
         }
