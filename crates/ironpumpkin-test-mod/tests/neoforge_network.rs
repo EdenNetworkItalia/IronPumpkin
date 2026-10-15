@@ -28,6 +28,7 @@ use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use ironpumpkin_mods::{pumpkin_data::translation, text::TextComponent};
 use ironpumpkin_test_mod::{
     ECHO_CHANNEL, ECHO_LOG, ECHO_PING, ECHO_REPLY_CHANNEL, GREETING, GREETING_CHANNEL,
     LICENCE_CHALLENGE, LICENCE_CHANNEL, STRAY_PLAYER_PREFIX,
@@ -281,11 +282,19 @@ fn check_stray(port: u16, channels: &ChannelMap) {
     let Outcome::Kicked(reason) = outcome else {
         panic!("the stray answer did not kick: {outcome:?}\n{entries:#?}");
     };
-    assert_eq!(
-        reason.get_text(),
-        "Unexpected request for task finish, current task: test-mod:stray, requested: \
-         test-mod:licence"
+    // The exception of `finishCurrentTask`, as `Connection.exceptionCaught` reports it.
+    #[expect(
+        deprecated,
+        reason = "the server builds the reason with `TextComponent::translate`, not the cross macro"
+    )]
+    let expected = TextComponent::translate(
+        translation::java::DISCONNECT_GENERICREASON,
+        [TextComponent::text(
+            "Internal Exception: java.lang.IllegalStateException: Unexpected request for task \
+             finish, current task: test-mod:stray, requested: test-mod:licence",
+        )],
     );
+    assert_eq!(reason, expected);
     assert!(
         !entries
             .iter()
@@ -294,7 +303,9 @@ fn check_stray(port: u16, channels: &ChannelMap) {
 }
 
 fn check_echo(port: u16, channels: &ChannelMap, server: &Server) {
-    let script = Script::parse("steps = [\"join\", \"wait 2000\", \"leave\"]", false).unwrap();
+    // The client leaves once the reply arrived, or fails the run after `SESSION_TIMEOUT`.
+    let steps = format!("steps = [\"join\", \"await_payload {ECHO_REPLY_CHANNEL}\", \"leave\"]");
+    let script = Script::parse(&steps, false).unwrap();
     let mut entries = Vec::new();
     runtime()
         .block_on(session::play(

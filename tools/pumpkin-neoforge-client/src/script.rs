@@ -52,6 +52,9 @@ pub enum Action {
     Respawn,
     /// Only read, for this long. The step has no ping and no extra wait.
     Wait(Duration),
+    /// Only read, until the server has sent a play payload on this channel since the play state
+    /// began. The step has no ping and no extra wait, and fails the run after `timeout`.
+    AwaitPayload(String),
     /// Close the connection. Always the last step.
     Leave,
 }
@@ -71,6 +74,7 @@ impl Action {
             Self::UseItem => "use_item",
             Self::Respawn => "respawn",
             Self::Wait(_) => "wait",
+            Self::AwaitPayload(_) => "await_payload",
             Self::Leave => "leave",
         }
     }
@@ -123,6 +127,10 @@ impl Action {
                 let [ms] = numbers::<u64, 1>(&args)?;
                 Self::Wait(Duration::from_millis(ms))
             }
+            "await_payload" => match args.as_slice() {
+                [channel] => Self::AwaitPayload((*channel).to_owned()),
+                _ => return Err("await_payload needs one channel".to_owned()),
+            },
             _ => return Err(format!("unknown action {name:?}")),
         };
         let takes_args = matches!(
@@ -134,6 +142,7 @@ impl Action {
                 | Self::Place { .. }
                 | Self::Hold(_)
                 | Self::Wait(_)
+                | Self::AwaitPayload(_)
         );
         if !takes_args && !rest.is_empty() {
             return Err(format!("{name} takes no arguments"));
@@ -322,6 +331,7 @@ steps = [
     "use_item",
     "respawn",
     "wait 500",
+    "await_payload mod:reply",
     "leave",
 ]
 "#,
@@ -368,6 +378,7 @@ steps = [
         assert_eq!(actions[6], &Action::Hold(&Item::STONE));
         assert!(matches!(actions[7], Action::Place { face: Face::Up, .. }));
         assert_eq!(actions[10], &Action::Wait(Duration::from_millis(500)));
+        assert_eq!(actions[11], &Action::AwaitPayload("mod:reply".to_owned()));
         assert_eq!(script.steps[1].text, "chat hello  there");
     }
 
@@ -390,6 +401,7 @@ steps = [
                 "unknown item",
             ),
             (r#"["join", "use_item now", "leave"]"#, "no arguments"),
+            (r#"["join", "await_payload", "leave"]"#, "one channel"),
         ] {
             let text = format!("{{\"steps\": {steps}}}");
             let failure = Script::parse(&text, true).unwrap_err().to_string();

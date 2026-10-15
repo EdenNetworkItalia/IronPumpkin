@@ -7,7 +7,7 @@
 //! light data.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -186,6 +186,8 @@ struct Play<'a> {
     barrier: i64,
     /// The payload of the last `pong_response` from the server.
     pong: Option<i64>,
+    /// The channels of the play payloads that the server sent, for `await_payload`.
+    payload_channels: HashSet<String>,
     steps: Vec<StepReport>,
 }
 
@@ -235,6 +237,7 @@ impl<'a> Play<'a> {
             sequence: 0,
             barrier: 0,
             pong: None,
+            payload_channels: HashSet::new(),
             steps: Vec::new(),
         }
     }
@@ -362,6 +365,7 @@ impl<'a> Play<'a> {
                 .await?;
             }
             Action::Wait(duration) => return self.read_until(Instant::now() + *duration).await,
+            Action::AwaitPayload(channel) => return self.await_payload(channel).await,
             // Like the vanilla client, which closes the connection without a packet.
             Action::Leave => return Ok(None),
         }
@@ -391,6 +395,24 @@ impl<'a> Play<'a> {
             }
         }
         self.read_until(Instant::now() + wait).await
+    }
+
+    /// Reads until the server has sent a play payload on `channel`. A server that sends none
+    /// within `options.timeout` fails the run.
+    async fn await_payload(&mut self, channel: &str) -> Result<Option<PlayOutcome>, Error> {
+        let deadline = Instant::now() + self.options.timeout;
+        while !self.payload_channels.contains(channel) {
+            match self.read_one(deadline).await? {
+                Read::Handled => {}
+                Read::End(outcome) => return Ok(Some(outcome)),
+                Read::Deadline => {
+                    return Err(
+                        format!("no {channel} payload within {:?}", self.options.timeout).into(),
+                    );
+                }
+            }
+        }
+        Ok(None)
     }
 
     async fn destroy(&mut self, status: Status, position: BlockPos) -> Result<(), Error> {
@@ -470,6 +492,7 @@ impl<'a> Play<'a> {
         }
         if packet.id == play::CUSTOM_PAYLOAD {
             let (channel, data) = read_custom_payload(body)?;
+            self.payload_channels.insert(channel.to_owned());
             self.recorder.record_body(
                 Direction::Clientbound,
                 State::Play,

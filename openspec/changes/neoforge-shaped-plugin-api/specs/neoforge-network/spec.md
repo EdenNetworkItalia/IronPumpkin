@@ -13,6 +13,10 @@ A mod SHALL register its channels in a handler of the Pumpkin event `RegisterPay
 - **WHEN** a mod calls `play_to_server("examplemod:set_level", handler)` on a registrar for version "1"
 - **THEN** the channel takes part in the negotiation with version "1"
 
+#### Scenario: Common channel
+- **WHEN** a mod calls `common_bidirectional`, `common_to_server` or `common_to_client`
+- **THEN** the channel takes part in the negotiation of the configuration and play phases, and a `configuration_*` channel only in the configuration phase (test `common_channels_register_in_both_phases_and_configuration_channels_in_one`)
+
 ### Requirement: Negotiation decides availability
 The host SHALL offer every registered channel in the `neoforge:network` negotiation, SHALL disconnect a NeoForge client that lacks a required channel, and SHALL treat a channel the client did not negotiate as unavailable. Status: supported (task 2.11, #116, tests `a_neoforge_client_without_a_required_mod_channel_fails_the_negotiation`, `send_to_player_fails_for_a_vanilla_client_and_broadcasts_skip_it`).
 
@@ -21,7 +25,7 @@ The host SHALL offer every registered channel in the `neoforge:network` negotiat
 - **THEN** the server sends `neoforge:modded_network_setup_failed` and disconnects it
 
 ### Requirement: Receiving payloads
-A payload on a registered serverbound channel SHALL reach the handler of its channel once, with the raw bytes and a `PayloadContext`, on the world tick of the sender unless the channel uses `HandlerThread::Network`, which runs on the connection task. A configuration payload SHALL run on the connection task. Status: supported (task 2.11, #116, tests `a_play_payload_reaches_the_handler_of_its_channel_once`, `a_network_thread_handler_runs_on_the_connection_task`).
+A payload on a registered serverbound channel SHALL reach the handler of its channel once, with the raw bytes and a `PayloadContext`, on the world tick of the sender unless the channel uses `HandlerThread::Network`, which runs on the connection task. A configuration payload SHALL run on the connection task. Status: supported (task 2.11, #116, tests `a_play_payload_reaches_the_handler_of_its_channel_once`, `a_network_thread_handler_runs_on_the_read_loop_and_a_main_handler_waits_for_the_tick`).
 
 #### Scenario: Handler runs
 - **WHEN** a client sends a payload on `examplemod:set_level`
@@ -32,11 +36,19 @@ A payload on a required mod channel that the client did not negotiate SHALL disc
 
 #### Scenario: Payload on a required channel without negotiation
 - **WHEN** a vanilla client sends a payload on a required mod channel
-- **THEN** the handler does not run and the server disconnects the client
+- **THEN** the handler does not run and the server disconnects the client with "No Channel for" and the channel
 
 #### Scenario: Payload on an optional channel without negotiation
 - **WHEN** a vanilla client sends a payload on an optional mod channel
 - **THEN** the handler runs and the client stays connected
+
+#### Scenario: Payload before the negotiation
+- **WHEN** a client sends a payload on a mod channel before its `neoforge:register` reply or the probe pong
+- **THEN** the handler does not run and the server disconnects the client with "No Payload Setup" (test `a_mod_payload_before_the_negotiation_disconnects_with_no_payload_setup`)
+
+#### Scenario: Payload on a client-bound channel
+- **WHEN** a client sends a payload on a client-bound mod channel, also before the negotiation
+- **THEN** the server drops it: no handler, no plugin event and no disconnect (test `a_payload_on_a_client_bound_mod_channel_is_dropped`)
 
 ### Requirement: Sending payloads
 `send_to_player`, `send_to_all_players` and `send_to_players_in_dimension` SHALL send a payload to the players they name, and `send_to_player` SHALL fail with `NetworkError::ChannelNotNegotiated` for a client that did not negotiate the channel; the broadcasts SHALL skip such players. Status: supported (task 2.11, #116, test `send_to_player_fails_for_a_vanilla_client_and_broadcasts_skip_it`).
@@ -64,7 +76,7 @@ Tasks that a mod registers in a handler of the Pumpkin event `RegisterConfigurat
 - **THEN** the tasks run one after the other in registration order, and configuration continues after the second finishes
 
 ### Requirement: Mod channels are known to the reply check
-A finish request from the handler of a mod channel SHALL finish the running mod task of its type, and a request when the current task has another type SHALL disconnect the client with the message of `finishCurrentTask`. Status: supported (task 2.11, #116, tests `a_finish_request_while_no_mod_task_waits_disconnects_the_client`, `neoforge_network_with_the_headless_client`).
+A finish request from the handler of a mod channel SHALL finish the running mod task of its type, and a request when the current task has another type SHALL disconnect the client with `disconnect.genericReason` and the `IllegalStateException` of `finishCurrentTask`, as `Connection.exceptionCaught` reports it. Status: supported (task 2.11, #116, tests `a_finish_request_while_no_mod_task_waits_disconnects_the_client`, `neoforge_network_with_the_headless_client`).
 
 #### Scenario: Reply to a mod task
 - **WHEN** the client answers the challenge of a running mod task on the mod channel
@@ -72,7 +84,7 @@ A finish request from the handler of a mod channel SHALL finish the running mod 
 
 #### Scenario: Unexpected reply
 - **WHEN** a client sends a configuration reply on a mod channel while no task of that mod waits for it
-- **THEN** the server disconnects the client
+- **THEN** the server disconnects the client with "Internal Exception: java.lang.IllegalStateException: Unexpected request for task finish"
 
 ### Requirement: Raw configuration payloads stay in v0.2
 Configuration payloads before or outside the negotiation SHALL keep reaching the v0.2 `config-custom-payload-event`; this interface SHALL NOT define a second event for them. A payload on a mod channel SHALL reach only the handler of its channel. Status: supported (task 2.11, #116, test `a_configuration_payload_on_an_unregistered_channel_reaches_the_plugin_event`).

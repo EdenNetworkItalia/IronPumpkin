@@ -547,8 +547,9 @@ impl<'a> PayloadContext<'a> {
 /// A configuration task of a mod.
 ///
 /// It runs during the configuration phase, after the tasks of `NeoForge` and before the end of
-/// the configuration, and the next task waits until it finishes. A task finishes through [`TaskContext::finish`] in [`CustomConfigurationTask::run`], or later
-/// through [`PayloadContext::finish_current_task`] in the handler of the client's answer.
+/// the configuration, and the next task waits until it finishes. A task finishes through
+/// [`TaskContext::finish`] in [`CustomConfigurationTask::run`], or later through
+/// [`PayloadContext::finish_current_task`] in the handler of the client's answer.
 ///
 /// `NeoForge`: `ICustomConfigurationTask` (and `ConfigurationTask`).
 pub trait CustomConfigurationTask: Send + Sync {
@@ -607,9 +608,9 @@ impl<'a> TaskContext<'a> {
 
 /// Fires once for each Java connection, after the channel negotiation.
 ///
-/// The server fires it when it queues the configuration tasks. A handler adds the tasks of its mod with
-/// [`RegisterConfigurationTasksEvent::register`]; they run in registration order after the tasks
-/// of `NeoForge` and before the end of the configuration.
+/// The server fires it when it queues the configuration tasks. A handler adds the tasks of its mod
+/// with [`RegisterConfigurationTasksEvent::register`]; they run in registration order after the
+/// tasks of `NeoForge` and before the end of the configuration.
 ///
 /// `NeoForge`: `net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent`, posted on
 /// the mod bus by `ServerConfigurationPacketListenerImpl.runConfiguration`.

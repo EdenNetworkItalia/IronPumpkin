@@ -31,7 +31,7 @@ use crate::{
         java::{
             JavaClient,
             configuration_tasks::TaskReply,
-            neoforge::{EMULATED_NEOFORGE_VERSION, NegotiatedState},
+            neoforge::{ConnectionType, EMULATED_NEOFORGE_VERSION, NegotiatedState},
             pending::PendingConnection,
         },
     },
@@ -110,8 +110,13 @@ impl fmt::Debug for ModTasks {
 /// The payload registration step, once at startup.
 ///
 /// It fires [`RegisterPayloadHandlersEvent`] when a handler listens, then offers the registered
-/// channels in the negotiation and keeps their handlers. It runs before the synced configs load, as `NetworkRegistry.setup` does on `NeoForge`.
+/// channels in the negotiation and keeps their handlers. It runs before the synced configs load,
+/// as `NetworkRegistry.setup` does on `NeoForge`. A second call does nothing.
 pub async fn register_payload_handlers(server: &Arc<Server>) {
+    if server.network_registry.mod_payloads.0.get().is_some() {
+        error!("[ironpumpkin] the payload handlers are registered once");
+        return;
+    }
     let registrations = if server
         .plugin_manager
         .has_handlers::<RegisterPayloadHandlersEvent>()
@@ -202,7 +207,8 @@ enum Route<'a> {
 }
 
 /// `NetworkRegistry.getCodec` and `handleModdedPayload`: the channel must be negotiated, or be
-/// optional, which makes it readable ad hoc.
+/// optional, which makes it readable ad hoc. The checks run in the order of `handleModdedPayload`:
+/// the channel, then the handler.
 fn route<'a>(
     server: &'a Server,
     protocol: ConnectionProtocol,
@@ -215,9 +221,6 @@ fn route<'a>(
     if payload.flow == Some(PacketFlow::Clientbound) {
         return Route::Discarded;
     }
-    let Some(handler) = payload.handler.as_ref() else {
-        return Route::Refused(incompatible(&format!("No Handler for {channel}")));
-    };
     let is_negotiated = Identifier::parse(channel).is_ok_and(|id| {
         negotiated
             .payload_setup
@@ -228,6 +231,9 @@ fn route<'a>(
     if !is_negotiated && !payload.optional {
         return Route::Refused(incompatible(&format!("No Channel for {channel}")));
     }
+    let Some(handler) = payload.handler.as_ref() else {
+        return Route::Refused(incompatible(&format!("No Handler for {channel}")));
+    };
     Route::Handle(handler)
 }
 
@@ -260,22 +266,10 @@ pub(crate) async fn handle_configuration_payload(
     channel: &str,
     data: &[u8],
 ) -> bool {
-    if server
-        .network_registry
-        .mod_payloads
-        .get(ConnectionProtocol::Configuration, channel)
-        .is_none()
-    {
-        return false;
-    }
-    if connection.neoforge_probe_pending {
-        info!(
-            "Client {} sent the modded payload {channel} before the channel negotiation, disconnecting",
-            connection.id
-        );
-        connection.kick(incompatible("No Payload Setup")).await;
-        return true;
-    }
+    // `handleModdedPayload` finds no payload setup until the client's `neoforge:register` reply,
+    // or until the probe pong for a client that did not answer the probe.
+    let no_payload_setup = connection.neoforge_probe_pending
+        && connection.client_channels.connection_type != ConnectionType::NeoForge;
     let negotiated = configuring_channels(connection);
     let actions = match route(
         server,
@@ -284,11 +278,20 @@ pub(crate) async fn handle_configuration_payload(
         &negotiated,
     ) {
         Route::NotModded => return false,
+        // `getCodec` drops it at decode, before `handleModdedPayload` checks the payload setup.
         Route::Discarded => {
             debug!(
                 "Client {} sent a payload on the client-bound channel {channel}",
                 connection.id
             );
+            return true;
+        }
+        _ if no_payload_setup => {
+            info!(
+                "Client {} sent the modded payload {channel} before the channel negotiation, disconnecting",
+                connection.id
+            );
+            connection.kick(incompatible("No Payload Setup")).await;
             return true;
         }
         Route::Refused(reason) => {
@@ -371,9 +374,9 @@ fn apply_play_actions(player: &Player, actions: PayloadActions) {
 
 /// Hands a play payload to its mod handler on the connection task.
 ///
-/// Only a channel whose handler runs on [`HandlerThread::Network`] is handled here. Returns false for any other packet, which goes to the
-/// world tick of the player.
-pub fn handle_play_payload_on_network(
+/// Only a channel whose handler runs on [`HandlerThread::Network`] is handled here. Returns false
+/// for any other packet, which goes to the world tick of the player.
+pub(crate) fn handle_play_payload_on_network(
     client: &JavaClient,
     player: &Arc<Player>,
     server: &Server,
