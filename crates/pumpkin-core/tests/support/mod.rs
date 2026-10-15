@@ -1,6 +1,6 @@
 //! A server for the event tests and the dispatch bench: the vanilla data files and the world
-//! live in a directory under `CARGO_TARGET_TMPDIR`, and the server runs no ticker and binds no
-//! port. The first call creates it and changes the working directory of the process.
+//! live in a directory of the process under `CARGO_TARGET_TMPDIR`, and the server runs no ticker
+//! and binds no port. The first call creates it and changes the working directory of the process.
 #![allow(dead_code, reason = "each test binary uses a part of the support")]
 #![expect(
     clippy::unwrap_used,
@@ -8,9 +8,10 @@
 )]
 
 use std::{
+    fs::File,
     net::{Ipv4Addr, SocketAddr},
-    path::PathBuf,
-    sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError},
+    path::{Path, PathBuf},
+    sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, PoisonError},
 };
 
 use arc_swap::ArcSwap;
@@ -37,12 +38,64 @@ pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .unwrap()
 });
 
-static SERVER: LazyLock<Arc<Server>> = LazyLock::new(|| {
-    // One directory per test binary: the next run of the same binary replaces it.
+/// The lock that marks the directory of this process as in use. The OS releases it when the
+/// process ends, however it ends.
+static DIR_LOCK: OnceLock<File> = OnceLock::new();
+
+/// Creates the directory of this process and removes the directories of ended processes of the
+/// same binary. A test runner with one process per test (`cargo nextest`) starts many processes
+/// of one binary at once, so they cannot share a directory.
+fn process_dir() -> PathBuf {
     let binary = std::env::current_exe().unwrap();
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(binary.file_stem().unwrap());
+    let name = binary.file_stem().unwrap().to_string_lossy().into_owned();
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    std::fs::create_dir_all(&root).unwrap();
+    remove_ended_dirs(&root, &name);
+
+    let id = format!("{name}-{}", std::process::id());
+    // The lock comes before the directory, so the scan never finds a directory in creation.
+    let lock = File::create(root.join(format!("{id}.lock"))).unwrap();
+    lock.lock().unwrap();
+    DIR_LOCK.set(lock).unwrap();
+    let dir = root.join(id);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// Removes each `<name>-<pid>` directory in `root` whose lock nobody holds.
+fn remove_ended_dirs(root: &Path, name: &str) {
+    let prefix = format!("{name}-");
+    for entry in std::fs::read_dir(root).unwrap().flatten() {
+        let lock = entry.path();
+        let Some(id) = lock
+            .file_name()
+            .and_then(|file| file.to_str())
+            .and_then(|file| file.strip_suffix(".lock"))
+        else {
+            continue;
+        };
+        let Some(pid) = id.strip_prefix(&prefix) else {
+            continue;
+        };
+        if pid.is_empty() || !pid.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(file) = File::options().write(true).open(&lock) else {
+            continue;
+        };
+        if file.try_lock().is_err() {
+            continue;
+        }
+        // Windows refuses to delete a file that is open.
+        drop(file);
+        let _ = std::fs::remove_dir_all(root.join(id));
+        let _ = std::fs::remove_file(&lock);
+    }
+}
+
+static SERVER: LazyLock<Arc<Server>> = LazyLock::new(|| {
+    let dir = process_dir();
     // `VanillaData::load` and the plugin data folders use the working directory.
     std::env::set_current_dir(&dir).unwrap();
 
