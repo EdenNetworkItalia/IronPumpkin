@@ -144,6 +144,8 @@ The template has no mod and no patch. Its files are:
 
 ### 2. Check the template
 
+The template pins IronPumpkin commit `a2753a0ecd1c59e98dd00bc3a37f4db47923d690`. That commit has the content builders, the lifecycle, the config API and the events that this guide uses. A new pack keeps the pin. You change it only to [move to a newer IronPumpkin](#the-rules-of-a-pack).
+
 ```sh
 cargo xtask check
 ```
@@ -151,37 +153,11 @@ cargo xtask check
 The first run compiles the build tool. The tool then fetches IronPumpkin at the pinned commit into `.ironpumpkin/`, and it prints:
 
 ```text
-[xtask] fetching IronPumpkin dbb101727f85931f5e4c5c1dd1f2470570bbb562 from https://github.com/EdenNetworkItalia/IronPumpkin
-[xtask] my-pack: IronPumpkin dbb101727f85, 0 mod(s), 0 patch(es) applied
+[xtask] fetching IronPumpkin a2753a0ecd1c59e98dd00bc3a37f4db47923d690 from https://github.com/EdenNetworkItalia/IronPumpkin
+[xtask] my-pack: IronPumpkin a2753a0ecd1c, 0 mod(s), 0 patch(es) applied
 ```
 
-### 3. Pin an IronPumpkin commit
-
-The pinned commit must contain the API that your mod uses. The registration builders of [Registration](./registration.md) need a commit that has `crates/ironpumpkin-mods/src/content.rs`. For a new pack, pin the newest commit of `master`. Read its full hash:
-
-```sh
-git ls-remote https://github.com/EdenNetworkItalia/IronPumpkin master
-```
-
-```text
-68184bf421eed373f6f7dbfe25bcbfdbc6cc29a8	refs/heads/master
-```
-
-Put the hash in `modpack.toml`. It is a full 40-character hash.
-
-File `modpack.toml`:
-
-```toml
-[pack]
-name = "my-pack"
-
-[ironpumpkin]
-git = "https://github.com/EdenNetworkItalia/IronPumpkin"
-commit = "68184bf421eed373f6f7dbfe25bcbfdbc6cc29a8"
-allow-drift = false
-```
-
-### 4. Add the mod
+### 3. Add the mod
 
 Create `mods/greeter/Cargo.toml` and `mods/greeter/src/lib.rs` with the files of the Code Comparison above. Add the mod to `modpack.toml`. The key is the package name of the crate:
 
@@ -194,21 +170,19 @@ path = "mods/greeter"
 
 A mod has one source: `path`, `git` with `rev`, or `version` from crates.io. A `rev` is a commit hash or a tag, not a branch. A crates.io mod still depends on `ironpumpkin-mods` by git URL, because that crate is not on crates.io.
 
-### 5. Check the pack and commit the lock files
+### 4. Check the pack and commit the lock files
 
 ```sh
 cargo xtask check
 ```
 
 ```text
-[xtask] fetching IronPumpkin 68184bf421eed373f6f7dbfe25bcbfdbc6cc29a8 from https://github.com/EdenNetworkItalia/IronPumpkin
-[xtask] seeding bin/Cargo.lock from IronPumpkin 68184bf421eed373f6f7dbfe25bcbfdbc6cc29a8
      Locking 1 package to latest Rust 1.98.1 compatible version
       Adding greeter v0.1.0 (/path/to/my-pack/mods/greeter)
-[xtask] my-pack: IronPumpkin 68184bf421ee, 1 mod(s), 0 patch(es) applied
+[xtask] my-pack: IronPumpkin a2753a0ecd1c, 1 mod(s), 0 patch(es) applied
 ```
 
-The `Locking` line names your Rust version, and the `Adding` line shows your path. The tool seeds `bin/Cargo.lock` from the IronPumpkin lock file when the commit changes. It then adds the dependencies of the mods. The tool also writes `bin/Cargo.toml` and `bin/src/mods.rs`. Git ignores both files. `bin/src/mods.rs` holds one `use greeter as _;` for each mod, so the linker keeps the mod.
+The `Locking` line names your Rust version, and the `Adding` line shows your path. The template commits `bin/Cargo.lock`, seeded from the IronPumpkin lock file of the pinned commit. The tool adds the dependencies of the mods to it. The tool also writes `bin/Cargo.toml` and `bin/src/mods.rs`. Git ignores both files. `bin/src/mods.rs` holds one `use greeter as _;` for each mod, so the linker keeps the mod.
 
 Commit `bin/Cargo.lock` and `bin/Cargo.lock.commit` with `modpack.toml` and the mod:
 
@@ -217,7 +191,7 @@ git add modpack.toml mods bin/Cargo.lock bin/Cargo.lock.commit
 git commit -m "feat: add the greeter mod"
 ```
 
-### 6. Build
+### 5. Build
 
 Build a debug binary to test the pack:
 
@@ -229,6 +203,9 @@ The tool runs `cargo xtask check` first, then builds the pack binary. The first 
 
 ```text
 warning: pumpkin-data@0.2.0+26.3-26.51: Vanilla datapack missing at /path/to/my-pack/.ironpumpkin/assets/datapack/data/minecraft. Downloading Minecraft 26.3 server jar...
+warning: pumpkin-data@0.2.0+26.3-26.51: Fetching version manifest from https://piston-meta.mojang.com/mc/game/version_manifest_v2.json...
+warning: pumpkin-data@0.2.0+26.3-26.51: Fetching version package metadata from https://piston-meta.mojang.com/v1/packages/11f1aefe473eefba0af62e3286c33b692807b2eb/26.3.json...
+warning: pumpkin-data@0.2.0+26.3-26.51: Downloading server jar from https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar...
 warning: pumpkin-data@0.2.0+26.3-26.51: Extracting datapack from server jar...
 warning: pumpkin-data@0.2.0+26.3-26.51: Datapack extraction complete.
     Finished `dev` profile [unoptimized] target(s) in 8m 11s
@@ -250,7 +227,7 @@ The release build uses `--locked`. It fails when the committed `bin/Cargo.lock` 
 [xtask] built /path/to/my-pack/target/release/my-pack
 ```
 
-### 7. Run
+### 6. Run
 
 Run the binary in a server directory, as you run the IronPumpkin binary:
 
@@ -271,7 +248,7 @@ INFO Server is now running. Connect using port: Java Edition: 0.0.0.0:25565 | Be
 
 The line `[ironpumpkin] loaded 1 native mod` proves that the binary links the mod. The `[greeter] init` line comes from `NativeMod::init`. Press Ctrl+C to stop the server. The release binary starts the same way and logs the same two mod lines.
 
-### 8. Release
+### 7. Release
 
 A tag that starts with `v` starts the `Build modpack` workflow. It builds the release binary on Linux and on Windows and publishes a GitHub release. The release has `<pack>-<tag>-x86_64-linux`, `<pack>-<tag>-x86_64-windows.exe` and `SHA256SUMS`. A pull request runs `cargo xtask check` and a debug build, and it fails when the committed `bin/Cargo.lock` does not match `modpack.toml`.
 
@@ -317,7 +294,7 @@ The patches apply in the byte order of the keys of `modpack.toml`, which are the
 
 **Move to a newer IronPumpkin**
 
-Set `[ironpumpkin] commit` to a new full hash, run `cargo xtask check` and commit the two lock files. A patch is bound to one commit, so write it again for the new commit.
+Read the newest hash with `git ls-remote https://github.com/EdenNetworkItalia/IronPumpkin master`. Set `[ironpumpkin] commit` to a new full hash, run `cargo xtask check` and commit the two lock files. A patch is bound to one commit, so write it again for the new commit.
 
 **Licence**
 
@@ -335,7 +312,7 @@ The IronPumpkin server is GPL-3.0. A built binary links the server, so it is a G
 
 **Do**
 
-- Pin a full 40-character commit hash in `modpack.toml`, and pin a commit that has the API that the mod uses.
+- Keep the IronPumpkin commit of the template. When you move it, pin a full 40-character commit hash that has the API that the mod uses.
 - Run `cargo xtask check` after each change, and commit `bin/Cargo.lock` and `bin/Cargo.lock.commit`.
 - Depend on `ironpumpkin-mods` only.
 - Use the same key in `modpack.toml` as the package name of the mod crate.

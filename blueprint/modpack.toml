@@ -8,7 +8,7 @@ name = "example-pack"
 [ironpumpkin]
 git = "https://github.com/EdenNetworkItalia/IronPumpkin"
 # A full 40-character commit hash.
-commit = "64661ef1796a891ce586bd163097e3d49de0ed4a"
+commit = "a2753a0ecd1c59e98dd00bc3a37f4db47923d690"
 # Set to true to apply patches that a mod wrote for another IronPumpkin commit.
 allow-drift = false
 
