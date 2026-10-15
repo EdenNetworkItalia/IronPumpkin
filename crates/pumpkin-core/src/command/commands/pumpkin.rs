@@ -16,8 +16,16 @@ use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 
-const DESCRIPTION: &str = "Display information about Pumpkin.";
+const DESCRIPTION: &str = "Display information about IronPumpkin.";
 const PERMISSION: &str = "pumpkin:command.pumpkin";
+
+// IronPumpkin branding. `main.rs` keeps its own copy of the links.
+const REPO_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin";
+const CONTRIBUTORS_URL: &str =
+    "https://api.github.com/repos/EdenNetworkItalia/IronPumpkin/contributors?per_page=100";
+const UPSTREAM_URL: &str = "https://github.com/Pumpkin-MC/Pumpkin";
+const WEBSITE_URL: &str = "https://eden.network";
+const DISCORD_URL: &str = "https://discord.eden.network";
 
 const CACHE_DURATION: Duration = Duration::from_hours(24);
 
@@ -39,13 +47,6 @@ struct ContributorCache {
 
 static CONTRIBUTORS_CACHE: LazyLock<Mutex<Option<ContributorCache>>> =
     LazyLock::new(|| Mutex::new(None));
-
-struct DonatorCache {
-    fetched_at: Instant,
-    data: TextComponent,
-}
-
-static DONATORS_CACHE: LazyLock<Mutex<Option<DonatorCache>>> = LazyLock::new(|| Mutex::new(None));
 
 fn fetch_all_contributors_cached() -> Vec<Contributor> {
     if let Ok(guard) = CONTRIBUTORS_CACHE.lock()
@@ -81,14 +82,12 @@ fn fetch_all_contributors_cached() -> Vec<Contributor> {
 
 async fn fetch_all_contributors() -> Vec<Contributor> {
     let client = pumpkin_auth::client_builder()
-        .user_agent("Pumpkin-MC")
+        .user_agent("IronPumpkin")
         .build()
         .unwrap_or_default();
 
     let mut all_contributors = Vec::new();
-    let mut next_url = Some(
-        "https://api.github.com/repos/Pumpkin-MC/Pumpkin/contributors?per_page=100".to_string(),
-    );
+    let mut next_url = Some(CONTRIBUTORS_URL.to_string());
 
     while let Some(url) = next_url {
         let response = client.get(&url).send().await;
@@ -129,145 +128,6 @@ fn extract_next_url(header: &str) -> Option<String> {
             let end = part.find('>')?;
             Some(part[start..end].to_string())
         })
-}
-
-#[derive(Deserialize)]
-struct Donator {
-    name: String,
-    tier: String,
-    tier_slug: String,
-}
-
-#[derive(Deserialize)]
-struct DonatorResponse {
-    current: Vec<Donator>,
-    #[allow(dead_code)]
-    past: Vec<Donator>,
-}
-
-fn tier_priority(tier_slug: &str, tier_name: &str) -> u32 {
-    let s = format!("{tier_slug} {tier_name}").to_lowercase();
-
-    if s.contains("corporate platinum") || s.contains("corp platinum") {
-        1
-    } else if s.contains("corporate gold") || s.contains("corp gold") {
-        2
-    } else if s.contains("corporate silver") || s.contains("corp silver") {
-        3
-    } else if s.contains("corporate bronze") || s.contains("corp bronze") {
-        4
-    } else if s.contains("diamond") {
-        5
-    } else if s.contains("titanium") {
-        6
-    } else if s.contains("platinum") {
-        7
-    } else if s.contains("gold") {
-        8
-    } else if s.contains("silver") {
-        9
-    } else if s.contains("bronze") {
-        10
-    } else {
-        11
-    }
-}
-
-fn tier_color(tier_slug: &str, tier_name: &str) -> NamedColor {
-    let s = format!("{tier_slug} {tier_name}").to_lowercase();
-
-    if s.contains("diamond") {
-        NamedColor::Aqua
-    } else if s.contains("titanium") {
-        NamedColor::DarkAqua
-    } else if s.contains("platinum") {
-        NamedColor::LightPurple
-    } else if s.contains("gold") {
-        NamedColor::Gold
-    } else if s.contains("silver") {
-        NamedColor::Gray
-    } else if s.contains("bronze") {
-        NamedColor::DarkRed
-    } else {
-        NamedColor::White
-    }
-}
-
-async fn fetch_donators_hover() -> TextComponent {
-    let url = "https://market.pumpkinmc.org/api/v1/rest/donators";
-    let client = pumpkin_auth::client_builder()
-        .user_agent("Pumpkin-MC")
-        .build()
-        .unwrap_or_default();
-    let response = client.get(url).send().await;
-
-    let mut donators_text = TextComponent::text("Click to open Donate\n\nDonators:\n");
-
-    if let Ok(res) = response
-        && let Ok(data) = res.json::<DonatorResponse>().await
-    {
-        let mut current = data.current;
-        current.sort_by(|a, b| {
-            let prio_a = tier_priority(&a.tier_slug, &a.tier);
-            let prio_b = tier_priority(&b.tier_slug, &b.tier);
-            prio_a
-                .cmp(&prio_b)
-                .then_with(|| a.tier.cmp(&b.tier))
-                .then_with(|| a.name.cmp(&b.name))
-        });
-
-        if current.is_empty() {
-            donators_text = donators_text.add_child(TextComponent::text("No active donators"));
-        } else {
-            let mut current_tier = String::new();
-            for donator in current {
-                if donator.tier != current_tier {
-                    current_tier.clone_from(&donator.tier);
-                    let color = tier_color(&donator.tier_slug, &donator.tier);
-                    donators_text = donators_text.add_child(
-                        TextComponent::text(format!("\n{current_tier}:\n"))
-                            .color_named(color)
-                            .bold(),
-                    );
-                }
-                let color = tier_color(&donator.tier_slug, &donator.tier);
-                donators_text = donators_text.add_child(
-                    TextComponent::text(format!("  • {}\n", donator.name)).color_named(color),
-                );
-            }
-        }
-        return donators_text;
-    }
-
-    donators_text.add_child(TextComponent::text("Unable to load donators"))
-}
-
-fn fetch_donators_hover_cached() -> TextComponent {
-    if let Ok(guard) = DONATORS_CACHE.lock()
-        && let Some(cache) = guard.as_ref()
-        && cache.fetched_at.elapsed() < CACHE_DURATION
-    {
-        return cache.data.clone();
-    }
-
-    let donators = tokio::runtime::Handle::try_current().map_or_else(
-        |_| {
-            tokio::runtime::Runtime::new().map_or_else(
-                |_| TextComponent::text("Unable to load donators"),
-                |rt| rt.block_on(fetch_donators_hover()),
-            )
-        },
-        |handle| tokio::task::block_in_place(|| handle.block_on(fetch_donators_hover())),
-    );
-
-    if let Ok(mut guard) = DONATORS_CACHE.lock() {
-        *guard = Some(DonatorCache {
-            fetched_at: Instant::now(),
-            data: donators.clone(),
-        });
-    }
-
-    donators
 }
 
 #[expect(clippy::too_many_lines)]
@@ -354,6 +214,21 @@ impl CommandExecutor for Executor {
                 .color_named(NamedColor::Gold),
         );
 
+        let credit_translation =
+            get_translation_text("pumpkin:commands.pumpkin.credit", locale, vec![]);
+        let credit_hover_translation =
+            get_translation_text("pumpkin:commands.pumpkin.credit.hover", locale, vec![]);
+        msg = msg.add_child(
+            TextComponent::text(credit_translation)
+                .click_event(ClickEvent::OpenUrl {
+                    url: Cow::from(UPSTREAM_URL),
+                })
+                .hover_event(HoverEvent::show_text(TextComponent::text(
+                    credit_hover_translation,
+                )))
+                .color_named(NamedColor::Yellow),
+        );
+
         let github_translation =
             get_translation_text("pumpkin:commands.pumpkin.github", locale, vec![]);
         let github_hover_translation =
@@ -361,7 +236,7 @@ impl CommandExecutor for Executor {
         msg = msg.add_child(
             TextComponent::text(github_translation)
                 .click_event(ClickEvent::OpenUrl {
-                    url: Cow::from("https://github.com/Pumpkin-MC/Pumpkin"),
+                    url: Cow::from(REPO_URL),
                 })
                 .hover_event(HoverEvent::show_text(TextComponent::text(
                     github_hover_translation,
@@ -373,14 +248,19 @@ impl CommandExecutor for Executor {
 
         msg = msg.add_child(TextComponent::text("  "));
 
-        let donators_hover = fetch_donators_hover_cached();
+        let discord_translation =
+            get_translation_text("pumpkin:commands.pumpkin.discord", locale, vec![]);
+        let discord_hover_translation =
+            get_translation_text("pumpkin:commands.pumpkin.discord.hover", locale, vec![]);
         msg = msg.add_child(
-            TextComponent::text("[Donate]")
+            TextComponent::text(discord_translation)
                 .click_event(ClickEvent::OpenUrl {
-                    url: Cow::from("https://pumpkinmc.org/donate/"),
+                    url: Cow::from(DISCORD_URL),
                 })
-                .hover_event(HoverEvent::show_text(donators_hover))
-                .rainbow()
+                .hover_event(HoverEvent::show_text(TextComponent::text(
+                    discord_hover_translation,
+                )))
+                .color_named(NamedColor::Blue)
                 .bold()
                 .underlined(),
         );
@@ -394,7 +274,7 @@ impl CommandExecutor for Executor {
         msg = msg.add_child(
             TextComponent::text(website_translation)
                 .click_event(ClickEvent::OpenUrl {
-                    url: Cow::from("https://pumpkinmc.org/"),
+                    url: Cow::from(WEBSITE_URL),
                 })
                 .hover_event(HoverEvent::show_text(TextComponent::text(
                     website_hover_translation,
@@ -455,18 +335,24 @@ mod test {
     }
 
     #[test]
-    fn donator_cache_updates_and_retrieves() {
-        let expected = TextComponent::text("Cached Donator Test");
-        let mut guard = DONATORS_CACHE
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *guard = Some(DonatorCache {
-            fetched_at: Instant::now(),
-            data: expected.clone(),
-        });
-        drop(guard);
-
-        let cached = fetch_donators_hover_cached();
-        assert_eq!(cached, expected);
+    fn version_translation_names_ironpumpkin_in_every_language() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/translations");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let json = std::fs::read_to_string(&path).unwrap();
+            let map: std::collections::HashMap<String, String> =
+                serde_json::from_str(&json).unwrap();
+            if let Some(version) = map.get("commands.pumpkin.version") {
+                assert!(
+                    version.starts_with("IronPumpkin "),
+                    "{} has {version:?}",
+                    path.display()
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 0);
     }
 }

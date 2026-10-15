@@ -42,6 +42,13 @@ use tracing::{debug, info, warn};
 
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+// IronPumpkin branding. The `/pumpkin` command keeps its own copy of the links.
+const BRAND_NAME: &str = "IronPumpkin";
+const WEBSITE_URL: &str = "https://eden.network";
+const DISCORD_URL: &str = "https://discord.eden.network";
+const ISSUES_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin/issues";
+const UPSTREAM_URL: &str = "https://github.com/Pumpkin-MC/Pumpkin";
+
 static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
 
 // WARNING: All rayon calls from the tokio runtime must be non-blocking! This includes things
@@ -85,7 +92,7 @@ pub async fn run() {
         "{}",
         TextComponent::text(format!(
             "Starting {} {} Java Minecraft (Protocol {}) | {} Bedrock (Protocol {})",
-            TextComponent::text("Pumpkin")
+            TextComponent::text(BRAND_NAME)
                 .color_named(NamedColor::Gold)
                 .to_pretty_console(),
             TextComponent::text(CARGO_PKG_VERSION.to_string())
@@ -117,7 +124,7 @@ pub async fn run() {
     );
     if cfg!(debug_assertions) {
         warn!(
-            "Pumpkin is running an unoptimized debug build. Do not use this build for performance testing; run `cargo run --release` or use a release binary."
+            "{BRAND_NAME} is running an unoptimized debug build. Do not use this build for performance testing; run `cargo run --release` or use a release binary."
         );
     }
     print_support_links_and_warning();
@@ -209,13 +216,15 @@ pub async fn run() {
 fn print_support_links_and_warning() {
     warn!(
         "{}",
-        TextComponent::text("Pumpkin is currently under heavy development!")
-            .color_named(NamedColor::DarkRed)
-            .to_pretty_console(),
+        TextComponent::text(format!(
+            "{BRAND_NAME} is currently under heavy development!"
+        ))
+        .color_named(NamedColor::DarkRed)
+        .to_pretty_console(),
     );
     info!(
         "Report issues on {}",
-        TextComponent::text("https://github.com/Pumpkin-MC/Pumpkin/issues")
+        TextComponent::text(ISSUES_URL)
             .color_named(NamedColor::DarkAqua)
             .to_pretty_console()
     );
@@ -224,17 +233,26 @@ fn print_support_links_and_warning() {
         TextComponent::text("Discord")
             .color_named(NamedColor::DarkBlue)
             .to_pretty_console(),
-        TextComponent::text("https://discord.gg/wT8XjrjKkf")
+        TextComponent::text(DISCORD_URL)
             .color_named(NamedColor::Aqua)
             .to_pretty_console()
     );
     info!(
-        "Consider {} to {}",
-        TextComponent::text("Donating")
+        "Visit our {}: {}",
+        TextComponent::text("website")
             .color_named(NamedColor::DarkPurple)
             .to_pretty_console(),
-        TextComponent::text("https://pumpkinmc.org/donate/")
+        TextComponent::text(WEBSITE_URL)
             .color_named(NamedColor::Gold)
+            .to_pretty_console()
+    );
+    info!(
+        "{BRAND_NAME} is based on {}: {}",
+        TextComponent::text("Pumpkin")
+            .color_named(NamedColor::Gold)
+            .to_pretty_console(),
+        TextComponent::text(UPSTREAM_URL)
+            .color_named(NamedColor::Aqua)
             .to_pretty_console()
     );
 }
