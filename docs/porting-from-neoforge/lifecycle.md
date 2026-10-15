@@ -16,6 +16,7 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | **`FMLDedicatedServerSetupEvent`** | A listener on the mod bus | `NativeMod::dedicated_server_setup` |
 | **`InterModEnqueueEvent`, `InterModProcessEvent`** | Listeners that call `InterModComms` | `NativeMod::inter_mod_enqueue` and `inter_mod_process` |
 | **`FMLLoadCompleteEvent`** | A listener on the mod bus | `NativeMod::load_complete` |
+| **`RegisterPayloadHandlersEvent`** | A listener on the mod bus, after `FMLLoadCompleteEvent` | A Pumpkin event that fires once after `load_complete` and before the Synced configs load. See [Network](./network.md). |
 | **`RegisterEvent`** | One event for each registry | A Pumpkin event, once for each of the block, entity type and item registries, after `init`. Content also registers at once in `init`. See [Registration](./registration.md). |
 | **Client events** | `FMLClientSetupEvent` and the other client dist events | Never fire. The server has no client dist. |
 | **Mod descriptor** | `neoforge.mods.toml` in the jar | `NativeMod::mods_toml()`: optional text, usually `include_str!` of the file |
@@ -201,12 +202,13 @@ The server runs these steps once at startup. Each step calls the method of every
 7. It calls `inter_mod_enqueue`.
 8. It calls `inter_mod_process`.
 9. It calls `load_complete`.
-10. It loads the Synced configs and calls `config_loading` for each.
-11. It freezes the content registry.
-12. It fires `ServerAboutToStartEvent`. Only native mods receive it. The datapack recipes and tags are not loaded yet.
-13. It loads the worlds. The other server events, such as `ServerStartingEvent`, fire after this step.
+10. It fires `RegisterPayloadHandlersEvent`. The payload registration closes when the event returns.
+11. It loads the Synced configs and calls `config_loading` for each.
+12. It freezes the content registry.
+13. It fires `ServerAboutToStartEvent`. Only native mods receive it. The datapack recipes and tags are not loaded yet.
+14. It loads the worlds. The other server events, such as `ServerStartingEvent`, fire after this step.
 
-The order of steps 2 to 9 is the order of `CommonModLoader.begin` and `CommonModLoader.load` in NeoForge 26.3. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
+The order of steps 2 to 9 is the order of `CommonModLoader.begin` and `CommonModLoader.load` in NeoForge 26.3. The trace of a NeoForge 26.3.0.64-beta dedicated server fires `RegisterPayloadHandlersEvent` after `FMLLoadCompleteEvent` and before the load of the Synced config. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
 
 ## The registry freeze
 

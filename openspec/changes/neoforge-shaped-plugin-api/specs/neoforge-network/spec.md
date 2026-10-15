@@ -75,8 +75,12 @@ A finish request from the handler of a mod channel SHALL finish the running mod 
 - **THEN** the server disconnects the client
 
 ### Requirement: Raw configuration payloads stay in v0.2
-Configuration payloads before or outside the negotiation SHALL keep reaching the v0.2 `config-custom-payload-event`; this interface SHALL NOT define a second event for them. A payload on a mod channel SHALL reach only the handler of its channel. Status: supported (task 2.11, #116, test `a_configuration_payload_on_an_unregistered_channel_reaches_the_plugin_event`).
+A configuration payload on a channel that no mod registered SHALL keep reaching the v0.2 `config-custom-payload-event`; this interface SHALL NOT define a second event for them. A payload on a registered mod channel SHALL reach only the handler of its channel, and before the negotiation it SHALL disconnect the client and reach nothing. Status: supported (task 2.11, #116, test `a_configuration_payload_on_an_unregistered_channel_reaches_the_plugin_event`).
 
 #### Scenario: Unregistered channel
 - **WHEN** a client sends a configuration payload on a channel no mod registered here
 - **THEN** listeners of the v0.2 `config-custom-payload-event` receive it
+
+#### Scenario: Registered channel before the negotiation
+- **WHEN** a client sends a configuration payload on a registered mod channel before the negotiation
+- **THEN** the server disconnects the client, and no handler and no v0.2 event receives the payload

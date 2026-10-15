@@ -70,12 +70,15 @@ listens to it, and the captures and `diff.txt` are recorded again.
 ## Result of slice 1
 
 `captures/ironpumpkin/diff.txt` reports no differences. IronPumpkin fires the 16 events of the Java
-trace in the order of NeoForge and with the same fields: `FMLConstructModEvent`, the three
-`RegisterEvent` lines (`minecraft:block`, `minecraft:entity_type`, `minecraft:item`),
-`FMLCommonSetupEvent`, `FMLLoadCompleteEvent`, `RegisterPayloadHandlersEvent`,
-`ModConfigEvent.Loading`, `ServerAboutToStartEvent`, `ServerStartingEvent`, `ServerStartedEvent`,
-`ServerTickEvent.Pre`, `ServerTickEvent.Post`, `RegisterConfigurationTasksEvent`,
-`ServerStoppingEvent` and `ServerStoppedEvent`.
+trace in the order of NeoForge and with the same fields:
+
+- `FMLConstructModEvent` and the three `RegisterEvent` lines (`minecraft:block`,
+  `minecraft:entity_type`, `minecraft:item`).
+- `FMLCommonSetupEvent`, `FMLLoadCompleteEvent` and `RegisterPayloadHandlersEvent`.
+- `ModConfigEvent.Loading`, `ServerAboutToStartEvent`, `ServerStartingEvent` and
+  `ServerStartedEvent`.
+- `ServerTickEvent.Pre`, `ServerTickEvent.Post` and `RegisterConfigurationTasksEvent`.
+- `ServerStoppingEvent` and `ServerStoppedEvent`.
 
 On both servers, `RegisterPayloadHandlersEvent` fires at startup after `FMLLoadCompleteEvent` and
 before `ModConfigEvent.Loading` of the `SYNCED` config, and `RegisterConfigurationTasksEvent` fires
@@ -188,11 +191,12 @@ python3 -I tools/parity-probe/diff.py \
 ## Slice 2: play events
 
 Slice 2 compares the play events. The driver is the `play` mode of the headless client with
-`tools/pumpkin-neoforge-client/scripts/slice2.toml`: join, chat, break, hold, place and leave, with
-a ping barrier and a wait of 1000 ms after each step (the "Play state" section of the
-[client README](../pumpkin-neoforge-client/README.md)). Both servers run in creative mode without
-spawn protection and with the seed `parity`, so `break` breaks at once and `hold` takes the item
-from the creative slot packet.
+`tools/pumpkin-neoforge-client/scripts/slice2.toml`. The script has six steps: join, chat, break,
+hold, place and leave. After each step the client sends a ping barrier and waits 1000 ms (the
+"Play state" section of the [client README](../pumpkin-neoforge-client/README.md)).
+
+Both servers run in creative mode with the seed `parity` and without spawn protection. So `break`
+breaks at once, and `hold` takes the item from the creative slot packet.
 
 | Path | Contents |
 |:--|:--|
@@ -202,29 +206,35 @@ from the creative slot packet.
 
 ### Steps
 
-The trace format is the format of slice 1. Each play event has one more field, `step`: the index
-of the script step, 0 `join`, 1 `chat`, 2 `break`, 3 `hold`, 4 `place` and 5 `leave`.
+The trace format is the format of slice 1. Each play event has one more field, `step`, the index
+of the script step. The indexes are 0 `join`, 1 `chat`, 2 `break`, 3 `hold`, 4 `place` and 5
+`leave`.
 
 The server does not know the script, so each probe counts the play `ping_request` packets of the
 barriers. The step of an event is the number of pings that arrived at least 500 ms before it. A
-plain count does not work: NeoForge reads the ping on the network thread, before the main thread
-runs the action that the client sent just before it, so the events of an action would get the
-next step. An event fires a few ticks after its action, well before the 500 ms of its ping end,
-and the next action comes 1000 ms (`wait_ms`) after the pong. Keep `wait_ms` of the script above
-500 ms plus the slowest step. The Java probe counts the ping with a mixin on
-`ServerGamePacketListenerImpl.handlePingRequest`, because NeoForge has no event for it; the Rust
+plain count does not work. NeoForge reads the ping on the network thread. At that time the main
+thread has not run the action that the client sent before the ping. So the events of an action
+would get the next step.
+
+An event fires a few ticks after its action, well before the 500 ms of its ping end. The next
+action comes 1000 ms (`wait_ms`) after the pong. Keep `wait_ms` of the script above 500 ms plus
+the slowest step. The Java probe counts the ping with a mixin on
+`ServerGamePacketListenerImpl.handlePingRequest`, because NeoForge has no event for it. The Rust
 probe counts it with `PacketReceivedEvent`.
 
 The probes trace the play events from `PlayerLoggedInEvent` to `ServerStoppingEvent`. The events of
-the configuration phase (`PlayerNegotiationEvent`, and `PlayerEvent.LoadFromFile`, which NeoForge
-26.3 fires in `PrepareSpawnTask`) fire before this window and are not traced, so a `record` run of
-slice 1 gives the same trace as before. The tick events are traced once per step: the first
-`ServerTickEvent.Pre` and `.Post` and the first `PlayerTickEvent.Pre` and `.Post` of each step, with
-the step taken at `ServerTickEvent.Pre`, so the four events of one tick have the same step.
+the configuration phase fire before this window and are not traced. These are
+`PlayerNegotiationEvent` and `PlayerEvent.LoadFromFile`, which NeoForge 26.3 fires in
+`PrepareSpawnTask`. So the trace of slice 1 has none of them.
 
-Positions are relative to the block of the player's feet at the login, the origin of the `~`
-coordinates of the script: the two servers spawn the player at different blocks, and NeoForge at a
-random block around the world spawn. For the same reason no field names a block of the terrain.
+The tick events are traced once per step. The trace holds the first `ServerTickEvent.Pre` and
+`.Post` and the first `PlayerTickEvent.Pre` and `.Post` of each step. The step is taken at
+`ServerTickEvent.Pre`, so the four events of one tick have the same step.
+
+Positions are relative to the block of the player's feet at the login. That block is the origin of
+the `~` coordinates of the script. The two servers spawn the player at different blocks, and
+NeoForge uses a random block around the world spawn. For the same reason no field names a block
+of the terrain.
 Two NeoForge runs gave `grass_block` and `dirt` for the same broken block. Only the placed block,
 which comes from the script, is a field.
 
@@ -252,10 +262,12 @@ which comes from the script, is a field.
 | `PlayerTickEvent.Pre`, `.Post` | none, once per step | none: the row is planned |
 
 The Pumpkin `PlayerInteractEvent` has no hand, face, item, action or use phase, so the Rust probe
-writes only the position for the four interact events. Not traced: `PlayerEvent.StartTracking` and
-`StopTracking` (the entities around the spawn differ between the servers), the entity and living
-events such as `EntityJoinLevelEvent` (other families), and `ItemEntityPickupEvent` (a creative
-break drops nothing).
+writes only the position for the four interact events. These events are not traced:
+
+- `PlayerEvent.StartTracking` and `StopTracking`: the entities around the spawn differ between the
+  servers.
+- The entity and living events, such as `EntityJoinLevelEvent`: they belong to other families.
+- `ItemEntityPickupEvent`: a creative break drops nothing.
 
 ### Record slice 2
 
@@ -299,10 +311,12 @@ python3 -I tools/parity-probe/diff.py --slice2 \
 
 With `--slice2`, `diff.py` compares only the events that have the field `step`, step by step, and
 writes `step N` in each line. An event that both traces have with the same fields, but in
-different steps, is one `step` difference. The exit codes are those of slice 1. The self-test
-checks each kind on small traces, rejects a `step` that is not a non-negative integer, changes one
-field of the committed Java trace, and compares the diff of the committed slice 2 traces with
-`diff-slice2.txt`.
+different steps, is one `step` difference. The exit codes are those of slice 1. The self-test:
+
+- checks each kind on small traces;
+- rejects a `step` that is not a non-negative integer;
+- changes one field of the committed Java trace;
+- compares the diff of the committed slice 2 traces with `diff-slice2.txt`.
 
 ### Result of slice 2
 

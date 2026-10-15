@@ -1,6 +1,6 @@
 services:
   pumpkin:
-    # Make sure to change the tag to the IronPumpkin version you want to use.
+    # Only the master tag exists until a v* tag is pushed. Then change the tag to the IronPumpkin version you want to use.
     # https://github.com/EdenNetworkItalia/IronPumpkin/pkgs/container/ironpumpkin/versions?filters%5Bversion_type%5D=tagged
     image: ghcr.io/edennetworkitalia/ironpumpkin:master
     # To build the image from this checkout instead, replace the image line with:

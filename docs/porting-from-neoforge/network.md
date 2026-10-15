@@ -174,7 +174,7 @@ A payload reaches the handler of its channel once, with its bytes:
 - A payload on a required channel that the client did not negotiate disconnects the client with `multiplayer.disconnect.incompatible`, as NeoForge does. An optional channel can be read without the negotiation.
 - A payload on a client-bound channel is dropped.
 
-A handler on `HandlerThread::Main` runs in the world tick of the player, where the server handles the other play packets of the player. A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick, and the plugin events for the packet do not fire. In the configuration phase, every handler runs on the connection task.
+A handler on `HandlerThread::Main` runs in the world tick of the player, where the server handles the other play packets of the player. A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick. In the configuration phase, every handler runs on the connection task. The plugin events do not fire for a payload on a registered mod channel, whatever the handler thread.
 
 ## Configuration tasks
 
@@ -227,7 +227,7 @@ impl EventHandler<RegisterConfigurationTasksEvent> for Tasks {
 }
 ```
 
-The tasks of the mods run after the tasks of NeoForge, in registration order, and before the end of the configuration. Each task waits until it finishes. It finishes in `run` through `TaskContext::finish`, or later through `PayloadContext::finish_current_task` in the handler of the client's answer. A finish request for a task that is not the current task disconnects the client with `Unexpected request for task finish, current task: <current>, requested: <type>`.
+The tasks of the mods run after the tasks of NeoForge, in registration order, and before the end of the configuration. Each task waits until it finishes. It finishes in `run` through `TaskContext::finish`, or later through `PayloadContext::finish_current_task` in the handler of the client's answer. A finish request for a task that is not the current task disconnects the client with `disconnect.genericReason`. The text is `Internal Exception: java.lang.IllegalStateException: Unexpected request for task finish, current task: <current>, requested: <type>`. NeoForge disconnects with this text only for a handler on `HandlerThread::Network`. For the default `Main` thread, NeoForge logs the exception and the task keeps waiting.
 
 ---
 
@@ -249,5 +249,6 @@ The tasks of the mods run after the tasks of NeoForge, in registration order, an
 - Do not keep a registrar for later. A call after the event fails with `RegistrationClosed`.
 - Do not expect `context.player()` in the configuration phase. It is `None`: the player is not in a world yet.
 - Do not block in a handler on `HandlerThread::Main`: it runs in the world tick.
+- Do not panic on payload bytes. A panic in a handler on `HandlerThread::Main` happens inside the world tick. Reject bad bytes with `disconnect`.
 - Do not call `finish_current_task` in play. It fails with `NotConfiguration`.
 - Do not send to a client that did not negotiate the channel and ignore the error: the payload does not leave the server.

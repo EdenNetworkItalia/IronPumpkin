@@ -188,8 +188,9 @@ repository and build the server there: see [blueprint/README.md](blueprint/READM
 
 Contributions are welcome. Open issues and pull requests in this repository. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-CI does not run on every push. It runs on pull requests and every night on `master`.
+The Rust workflow (`rust.yml`) does not run on every push. It runs on pull requests and every night on `master`.
 To start it on demand, run `gh workflow run rust.yml --ref <branch>`.
+The typos check runs on every push. The Docker workflow builds the image on every push to `master`.
 
 A fix that is relevant to Pumpkin goes to [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin) first.
 It reaches IronPumpkin when we merge upstream.

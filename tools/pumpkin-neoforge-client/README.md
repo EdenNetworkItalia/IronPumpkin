@@ -104,9 +104,10 @@ In the play state the client answers these packets:
 - `login`: it sends nothing, as the vanilla 26.3 client. `ClientPacketListener.handleLogin` sends
   no client information. In play, only `ClientPacketListener.broadcastClientInformation` sends it,
   through `Options.broadcastOptions`, which every `Options.save` calls. The field
-  `remoteClientInformation` starts empty for each play connection, so the first save in play sends
-  the information even without a change: an option change, a tutorial step, or the first join to
-  any multiplayer server (`joinedFirstServer` in `Minecraft.tick`). The client acts as a vanilla
+  `remoteClientInformation` starts empty for each play connection. So the first save in play sends
+  the information even without a change. A save follows an option change, a tutorial step, or the
+  first join to any multiplayer server (`joinedFirstServer` in `Minecraft.tick`). The client acts as
+  a vanilla
   client that joined a server before and changes no option, so a join fires no
   `ClientInformationUpdatedEvent` on the server.
 - `player_position`: it applies the position and the relative flags, then sends
@@ -224,9 +225,10 @@ echo = true
 ```
 
 `echo = true` is not a NeoForge field. The client sends each payload of the server on that channel
-back unchanged, in the same phase: in configuration only when the channel was negotiated, as
-`NetworkRegistry.checkPacket` requires. A mod configuration task that waits for an answer
-finishes on the echo.
+back unchanged, in the same phase. In configuration the channel must be negotiated or ad hoc, as
+`NetworkRegistry.checkPacket` requires. Otherwise the client disconnects, as the real client
+throws there. In play the client does not check the channel. A mod configuration task that waits
+for an answer finishes on the echo.
 
 `channels/neoforge-26.3.toml` has the channels of a NeoForge 26.3 client without mods, plus the
 fake mod channel `probe:fake`. `channels/required-unknown.toml` has one required channel that no
@@ -295,8 +297,8 @@ With a channel map the client does what `ClientConfigurationPacketListenerImpl`,
 - Before it acknowledges `finish_configuration`, it sends `minecraft:unregister` and
   `minecraft:register` for the play phase.
 
-As a vanilla client it sends `minecraft:brand` and the client information after the login. It
-answers ping, keep-alive, cookie requests and the code of conduct. To `select_known_packs` it
+As a vanilla client it sends `minecraft:brand` and the client information in the configuration
+phase, after `login_finished`. It answers ping, keep-alive, cookie requests and the code of conduct. To `select_known_packs` it
 replies with the offered packs in the `minecraft` namespace.
 
 ## Test against a live server

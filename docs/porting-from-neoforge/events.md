@@ -261,6 +261,7 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 | `PlayerRespawnPositionEvent` | `PlayerSpawnLocationEvent` | Position, rotation, dimension and `copy_original_spawn_position` are settable. |
 | `AnvilCraftEvent.Pre` and `Post` | `AnvilCraftEventPre` and `AnvilCraftEventPost` | Fire outside the screen-handler lock. A cancel of the Pre event skips the cost and the use of the inputs. |
 | `TradeWithVillagerEvent` | the same name | Fires outside the screen-handler lock, for a villager and for a wandering trader. A villager sends the refreshed offers from its next tick, as vanilla does. |
+| `PlayerInteractEvent.LeftClickBlock` | `PlayerInteractEvent` with the action left click block | Fires at the dig start only, not on the arm swing. It has no action (start, stop or abort), face or hand. A cancel stops the break and sends the block back to the client. |
 | `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
 
 `PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
