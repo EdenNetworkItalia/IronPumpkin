@@ -39,7 +39,7 @@ Options for the `record`, `assert` and `play` modes:
 | `--username` | random `ProbeNNNNNN` | Offline player name. |
 | `--channels <file>` | none | Channel map. Without it the client is a vanilla client. |
 | `--brand <name>` | `neoforge` with a channel map, else `vanilla` | Value of `minecraft:brand`. |
-| `--timeout <s>` | `60` | Time limit for login and configuration, and in play for the first player position. |
+| `--timeout <s>` | `60` | Time limit for login and configuration, and in play for the first player position and for each pong. |
 | `--out <file>` | none | JSONL file with one line per recorded packet. |
 
 `record` stops at `finish_configuration` or at a disconnect, and then exits with 0.
@@ -101,12 +101,17 @@ cargo run -p pumpkin-neoforge-client -- play --port 25565 \
 
 In the play state the client answers these packets:
 
-- `login`: it sends the client information once more, with the play packet.
+- `login`: it sends the client information with the play packet. This second send, after the one
+  of the configuration phase, is unverified. A review doubts that vanilla sends the client
+  information in play on `login`: it may send it only in the configuration phase and when an
+  option changes. No decompiled 26.3 client was available to check it, so the behaviour stays. The
+  send makes IronPumpkin fire `ClientInformationUpdatedEvent` on every join.
 - `player_position`: it applies the position and the relative flags, then sends
   `accept_teleportation` and `move_player_pos_rot`. After the first position it sends
   `player_loaded`. The block of the player's feet at that position is the origin of the `~`
   coordinates of the script.
 - `keep_alive` and `ping`: it answers with `keep_alive` and `pong`.
+- `pong_response`: it ends the barrier of a step. See [Script format](#script-format).
 - `chunk_batch_finished`: it answers with `chunk_batch_received` and a rate of 64 chunks per tick.
 - `disconnect`: the run ends with the reason.
 - `custom_payload` on `neoforge:split`: it joins the slices as in the configuration phase.
@@ -117,8 +122,18 @@ The client records all other packets and does nothing with them.
 ### Script format
 
 A script is TOML, or JSON when the file name ends in `.json`. `steps` is the list of actions, in
-order. After each action the client keeps reading for `wait_ms` milliseconds (default 1000), and
-answers the packets above. The first step must be `join` and the last step must be `leave`.
+order. The first step must be `join` and the last step must be `leave`.
+
+Each action ends with a barrier. The client sends a `ping_request` and reads until the
+`pong_response` with the same payload, so the server has read the action. It then keeps reading
+for `wait_ms` milliseconds (default 1000) for the packets that trail the pong, and answers the
+packets above. A server that sends no pong within `--timeout` fails the run.
+
+The pong shows that the server read the action. It does not show that the server finished the
+action. On IronPumpkin, the `disguised_chat` echo of a `chat` step and the `block_changed_ack` of
+a `break` step arrive after the pong (measured in one run of `scripts/boot.toml`), so `wait_ms`
+still decides whether a step sees them. Set `wait_ms` for the slowest effect that the script
+needs.
 
 ```toml
 wait_ms = 1000
@@ -143,7 +158,7 @@ steps = [
 | `hold <item>` | `set_creative_mode_slot`, `set_carried_item` | Put one item in the first hotbar slot and select that slot. |
 | `use_item` | `use_item` | Use the item in the main hand. |
 | `respawn` | `client_command` | Ask to respawn after a death. |
-| `wait <ms>` | | Read for this long instead of `wait_ms`. |
+| `wait <ms>` | | Read for this long. It sends no ping and has no `wait_ms`. |
 | `leave` | | Close the connection, as the vanilla client does on a disconnect. |
 
 A coordinate is absolute, or relative to the origin with a `~` prefix: `~`, `~1`, `~-2`. The
@@ -160,15 +175,17 @@ login and configuration packets belong to step 0. The play packets have the stat
 directions. `level_chunk_with_light`, `light_update`, `chunks_biomes` and the
 `neoforge:auxiliary_light_data` payload are recorded with their length but without the body bytes.
 After each step the log lists the clientbound play packets of the step, with a count for repeated
-packets.
+packets. Each step except `wait` and `leave` records one serverbound `ping_request` and one
+clientbound `pong_response` from its barrier. The recordings under `captures/` come from a client
+without the barrier and have neither packet. A new recording has both on each server.
 
 `play --expected-file <file>` checks the run. The file has one line per step, `action: packets`:
 the action name of the step and the clientbound play packets that the step must receive, in any
 order. `#` starts a comment. The run fails with exit 1 when the script does not reach `leave`, the
 step actions differ from the file, a step does not receive a packet of its line, or a payload with
 a codec does not decode. Without the option, `play` exits with 0 whenever the run completes. It
-exits with 2 for the reasons of `record`, when no player position arrives within `--timeout`, and on
-`start_configuration`.
+exits with 2 for the reasons of `record`, when no player position or no pong arrives within
+`--timeout`, and on `start_configuration`.
 
 ### Limits
 

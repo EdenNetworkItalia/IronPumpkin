@@ -9,10 +9,11 @@ use serde::Deserialize;
 
 use crate::Error;
 
-/// The wait after each action when the script does not set `wait_ms`.
+/// The wait after the pong of each action when the script does not set `wait_ms`.
 const DEFAULT_WAIT: Duration = Duration::from_secs(1);
 
-/// The actions, in order, and the time the client keeps reading after each one.
+/// The actions, in order, and the extra time the client keeps reading after the barrier of each
+/// one: the `pong_response` to a `ping_request` that the client sends after the action.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Script {
     pub wait: Duration,
@@ -49,7 +50,7 @@ pub enum Action {
     UseItem,
     /// Ask to respawn after a death.
     Respawn,
-    /// Only read, for this long instead of the script's wait.
+    /// Only read, for this long. The step has no ping and no extra wait.
     Wait(Duration),
     /// Close the connection. Always the last step.
     Leave,

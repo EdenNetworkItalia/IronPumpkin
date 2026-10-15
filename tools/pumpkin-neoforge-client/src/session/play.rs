@@ -20,9 +20,9 @@ use pumpkin_protocol::{
     codec::item_stack_seralizer::ItemStackSerializer,
     java::server::play::{
         FLAG_ON_GROUND, SChatCommand, SChatMessage, SChunkBatch, SClientCommand,
-        SClientInformationPlay, SConfirmTeleport, SKeepAlive, SPlayPong, SPlayerAction,
-        SPlayerLoaded, SPlayerPosition, SPlayerPositionRotation, SSetCreativeSlot, SSetHeldItem,
-        SUseItem, SUseItemOn, Status,
+        SClientInformationPlay, SConfirmTeleport, SKeepAlive, SPlayPingRequest, SPlayPong,
+        SPlayerAction, SPlayerLoaded, SPlayerPosition, SPlayerPositionRotation, SSetCreativeSlot,
+        SSetHeldItem, SUseItem, SUseItemOn, Status,
     },
     ser::NetworkReadExt,
 };
@@ -182,6 +182,10 @@ struct Play<'a> {
     origin: Option<BlockPos>,
     /// The last prediction sequence number, as `BlockStatePredictionHandler` counts.
     sequence: i32,
+    /// The payload of the last `ping_request` that ended a step.
+    barrier: i64,
+    /// The payload of the last `pong_response` from the server.
+    pong: Option<i64>,
     steps: Vec<StepReport>,
 }
 
@@ -229,6 +233,8 @@ impl<'a> Play<'a> {
             pitch: 0.0,
             origin: None,
             sequence: 0,
+            barrier: 0,
+            pong: None,
             steps: Vec::new(),
         }
     }
@@ -261,7 +267,7 @@ impl<'a> Play<'a> {
         }
     }
 
-    /// Runs one action and reads for the wait after it.
+    /// Runs one action and ends the step with a barrier. See [`Play::settle`].
     async fn step(
         &mut self,
         action: &Action,
@@ -358,6 +364,31 @@ impl<'a> Play<'a> {
             Action::Wait(duration) => return self.read_until(Instant::now() + *duration).await,
             // Like the vanilla client, which closes the connection without a packet.
             Action::Leave => return Ok(None),
+        }
+        self.settle(wait).await
+    }
+
+    /// Ends a step. The client sends a `ping_request` and reads until the matching
+    /// `pong_response`, so the server has read the action. It then reads for `wait` more, for the
+    /// packets that trail the pong: `IronPumpkin` sends the chat echo and the block change ack after
+    /// the pong. A server that sends no pong within `options.timeout` fails the run.
+    async fn settle(&mut self, wait: Duration) -> Result<Option<PlayOutcome>, Error> {
+        self.barrier += 1;
+        let payload = self.barrier;
+        self.send(&SPlayPingRequest { payload }).await?;
+        let deadline = Instant::now() + self.options.timeout;
+        while self.pong != Some(payload) {
+            match self.read_one(deadline).await? {
+                Read::Handled => {}
+                Read::End(outcome) => return Ok(Some(outcome)),
+                Read::Deadline => {
+                    return Err(format!(
+                        "no pong_response within {:?} of the ping_request",
+                        self.options.timeout
+                    )
+                    .into());
+                }
+            }
         }
         self.read_until(Instant::now() + wait).await
     }
@@ -472,6 +503,8 @@ impl<'a> Play<'a> {
         } else if packet.id == play::PING {
             let id = body.get_i32_be()?;
             self.send(&SPlayPong { id }).await?;
+        } else if packet.id == play::PONG_RESPONSE {
+            self.pong = Some(body.get_i64_be()?);
         } else if packet.id == play::PLAYER_POSITION {
             self.on_position(body).await?;
         } else if packet.id == play::CHUNK_BATCH_FINISHED {
@@ -480,7 +513,8 @@ impl<'a> Play<'a> {
             })
             .await?;
         } else if packet.id == play::LOGIN {
-            // The play variant of the client information, sent once.
+            // The play variant of the client information, sent once. Unverified against a
+            // decompiled client: see the README.
             self.send(&SClientInformationPlay {
                 locale: "en_us",
                 view_distance: 2,

@@ -3,7 +3,8 @@
 //! block break in creative mode, leave. The steps must receive the packets of
 //! `expected/pumpkin-play.txt`, and the server log must show the join, the chat message and the
 //! leave. The child reruns this test binary with `SERVER_DIR` set and starts the server from that
-//! directory.
+//! directory. The test stops the server with the `stop` console command written to its piped
+//! stdin, which works on every platform, unlike a signal.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -11,9 +12,10 @@
 )]
 
 use std::fs::File;
+use std::io::Write;
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use ironpumpkin_test_mod::ID;
@@ -29,10 +31,14 @@ const TEST_NAME: &str = "neoforge_client_plays_a_script";
 const PLAYER: &str = "PlayProbe";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
 const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
-/// The server child process. Dropping it kills the server.
+/// The server child process.
 struct Server {
     child: Child,
+    /// The console of the server. Keep the pipe open until the server exits: an EOF ends the
+    /// console reader.
+    console: ChildStdin,
     log: std::path::PathBuf,
 }
 
@@ -49,7 +55,8 @@ spawn_protection = 0
 color = false
 
 [commands]
-use_console = false
+use_console = true
+use_tty = false
 
 [networking.java]
 address = "127.0.0.1:{port}"
@@ -72,16 +79,21 @@ enabled = false
         .unwrap();
         let log = dir.join("server.log");
         let out = File::create(&log).unwrap();
-        let child = Command::new(std::env::current_exe().unwrap())
+        let mut child = Command::new(std::env::current_exe().unwrap())
             .args([TEST_NAME, "--exact", "--nocapture", "--test-threads=1"])
             .env(SERVER_DIR, dir)
             .current_dir(dir)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(out.try_clone().unwrap())
             .stderr(out)
             .spawn()
             .unwrap();
-        let mut server = Self { child, log };
+        let console = child.stdin.take().unwrap();
+        let mut server = Self {
+            child,
+            console,
+            log,
+        };
         server.wait_for_port(port);
         server
     }
@@ -117,12 +129,33 @@ enabled = false
             std::thread::sleep(Duration::from_millis(200));
         }
     }
+
+    /// Stops the server with the `stop` console command and waits for it to exit. It kills the
+    /// server only when the exit takes longer than `STOP_TIMEOUT`.
+    fn stop(&mut self) {
+        self.console.write_all(b"stop\n").unwrap();
+        self.console.flush().unwrap();
+        let deadline = Instant::now() + STOP_TIMEOUT;
+        while self.child.try_wait().unwrap().is_none() {
+            if Instant::now() > deadline {
+                let _ = self.child.kill();
+                panic!(
+                    "the server did not stop within {STOP_TIMEOUT:?}:\n{}",
+                    self.log()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+    }
 }
 
 impl Drop for Server {
+    /// A server that is still running here belongs to a test that failed before `stop`.
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if self.child.try_wait().is_ok_and(|status| status.is_none()) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
     }
 }
 
@@ -155,7 +188,7 @@ fn neoforge_client_plays_a_script() {
     .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let port = free_port();
-    let server = Server::start(dir.path(), port);
+    let mut server = Server::start(dir.path(), port);
     // The test mod is client-required, so only a NeoForge client gets into play.
     server.wait_for_log(&format!("{ID} (client_required = true)"));
 
@@ -183,4 +216,5 @@ fn neoforge_client_plays_a_script() {
     server.wait_for_log(&format!("{PLAYER} joined the game"));
     server.wait_for_log(&format!("<chat> {PLAYER}: hello from the boot test"));
     server.wait_for_log(&format!("{PLAYER} left the game"));
+    server.stop();
 }
