@@ -2145,6 +2145,7 @@ dependencies = [
  "pumpkin-world",
  "tempfile",
  "tokio",
+ "toml",
  "tracing",
 ]
 

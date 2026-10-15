@@ -1,0 +1,26 @@
+license = "GPL-3.0"
+
+# The mod id of a NeoForge mod cannot contain "-". It is the id of the client mod, and the
+# namespace keeps the registry names of the content under "hello-mod:".
+[[mods]]
+modId = "hello_mod"
+namespace = "hello-mod"
+version = "${file.jarVersion}"
+displayName = "Hello Mod"
+description = '''
+Example native mod of IronPumpkin: /hello, a block, an item and an entity type.
+'''
+
+[[dependencies.hello_mod]]
+modId = "neoforge"
+type = "required"
+versionRange = "[26.3.0.64-beta,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.hello_mod]]
+modId = "minecraft"
+type = "required"
+versionRange = "[26.3]"
+ordering = "NONE"
+side = "BOTH"

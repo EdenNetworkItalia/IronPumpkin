@@ -7,8 +7,9 @@ is disconnected by its own registry check.
 
 ## Names
 
-NeoForge mod ids must match `[a-z][a-z0-9_]{1,63}`, so the mod id cannot be `hello-mod`. The mod id
-is `hello_mod`. The registry namespace is `hello-mod` (`HelloMod.NAMESPACE`), so the registry names
+NeoForge mod ids must match `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$` (FancyModLoader
+`ModInfo.VALID_MODID`), so the mod id cannot be `hello-mod`. The mod id is `hello_mod`, as in the
+`neoforge.mods.toml` of the native mod. The registry namespace is `hello-mod` (`HelloMod.NAMESPACE`), so the registry names
 match the server exactly.
 
 | Server (`hello-mod`)        | Client mod registry        | Client class              | Synced id |

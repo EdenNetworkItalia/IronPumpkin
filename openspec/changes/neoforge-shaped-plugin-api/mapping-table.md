@@ -33,7 +33,7 @@ How to read it:
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `RegisterPayloadHandlersEvent` | 170 | event class | `event-bus.event::register-payload-handlers-event` (resource `network.register-payload-handlers-event`) | planned |
-| `FMLCommonSetupEvent` | 148 | event class | `event-bus.event::fml-common-setup-event` | planned |
+| `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` | planned |
 | `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `event-bus.event::register-commands-event` | supported |
@@ -61,7 +61,7 @@ How to read it:
 | `PlayerTickEvent` | 36 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LevelTickEvent.Post` | 32 | event class | `event-bus.event::level-tick-event-post` | planned |
 | `LivingDropsEvent` | 31 | event class | `event-bus.event::living-drops-event` | supported |
-| `InterModEnqueueEvent` | 31 | event class | `event-bus.event::inter-mod-enqueue-event` | planned |
+| `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | planned |
 | `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
 | `LevelEvent.Unload` | 30 | event class | `event-bus.event::level-event-unload` | supported |
 | `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | planned |
@@ -79,7 +79,7 @@ How to read it:
 | `ServerAboutToStartEvent` | 24 | event class | `event-bus.event::server-about-to-start-event` | planned |
 | `ServerStoppingEvent` | 24 | event class | `event-bus.event::server-stopping-event` | planned |
 | `PlayerTickEvent.Post` | 24 | event class | `event-bus.event::player-tick-event-post` | planned |
-| `FMLLoadCompleteEvent` | 24 | event class | `event-bus.event::fml-load-complete-event` | planned |
+| `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` | planned |
 | `PlayerEvent.Clone` | 23 | event class | `event-bus.event::player-event-clone` | planned |
 | `PlayerInteractEvent.RightClickItem` | 23 | event class | `event-bus.event::player-interact-event-right-click-item` | supported |
 | `BlockEvent.EntityPlaceEvent` | 23 | event class | `event-bus.event::block-event-entity-place-event` | supported |
@@ -123,7 +123,7 @@ How to read it:
 | `PlayerContainerEvent` | 10 | event class | `event-bus.event::player-container-event` | supported |
 | `ChunkEvent.Load` | 10 | event class | `event-bus.event::chunk-event-load` | planned |
 | `ExplosionEvent.Detonate` | 10 | event class | `event-bus.event::explosion-event-detonate` | supported |
-| `InterModProcessEvent` | 10 | event class | `event-bus.event::inter-mod-process-event` | planned |
+| `InterModProcessEvent` | 10 | event class | `NativeMod::inter_mod_process` (`imc::InterModProcess::get_messages`, `imc::ImcMessage`) | planned |
 | `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | planned |
 | `AnvilUpdateEvent` | 9 | event class | `event-bus.event::anvil-update-event` | supported |
 | `EntityInvulnerabilityCheckEvent` | 9 | event class | `event-bus.event::entity-invulnerability-check-event` | planned |
@@ -185,7 +185,7 @@ How to read it:
 | `BlockEvent.EntityMultiPlaceEvent` | 4 | event class | `event-bus.event::block-event-entity-multi-place-event` | planned |
 | `BlockEvent.FarmlandTrampleEvent` | 4 | event class | `event-bus.event::block-event-farmland-trample-event` | planned |
 | `ChunkDataEvent.Save` | 4 | event class | `event-bus.event::chunk-data-event-save` | planned |
-| `FMLConstructModEvent` | 4 | event class | `event-bus.event::fml-construct-mod-event` | planned |
+| `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | planned |
 | `DataMapsUpdatedEvent` | 4 | event class | `event-bus.event::data-maps-updated-event` | planned |
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -229,7 +229,7 @@ How to read it:
 | `SleepFinishedTimeEvent` | 2 | event class | `event-bus.event::sleep-finished-time-event` | supported |
 | `CropGrowEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `CropGrowEvent.Post` | 2 | event class | `event-bus.event::crop-grow-event-post` | planned |
-| `FMLDedicatedServerSetupEvent` | 2 | event class | `event-bus.event::fml-dedicated-server-setup-event` | planned |
+| `FMLDedicatedServerSetupEvent` | 2 | event class | `NativeMod::dedicated_server_setup` | planned |
 | `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
@@ -307,7 +307,7 @@ How to read it:
 | `CreateFluidSourceEvent` | 0 | event class | `event-bus.event::create-fluid-source-event` | planned |
 | `RegisterRpcSchemaEvent` | 0 | event class | `event-bus.event::register-rpc-schema-event` (resource `lifecycle.register-rpc-schema-event`) | planned |
 | `ServerLifecycleEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `ModLifecycleEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ModLifecycleEvent` | 0 | event class | no method (abstract); the `NativeMod` lifecycle methods run in `lifecycle` order | planned |
 | `GatherDataEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `GatherDataEvent.Client` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `GatherDataEvent.Server` | 0 | event class | `event-bus` doc, not supported | not supported |
@@ -711,44 +711,44 @@ How to read it:
 | `file modLoader` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file loaderVersion` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file license` | 414 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.license` | planned |
-| `file mods` | 414 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.mods` | planned |
-| `[[mods]] modId` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-id` / `mod-dependency.mod-id` | supported |
-| `[[mods]] version` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.version` | supported |
-| `[[mods]] displayName` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.display-name` | planned |
-| `[[mods]] description` | 414 | `neoforge.mods.toml` keys | `lifecycle.mod-info.description` | supported |
-| `@Mod(value)` | 411 | Entry point annotations | mod registration (`register_mod!`), the mod's `init` and its embedded `neoforge.mods.toml` | planned |
-| `[[dependencies.<modid>]] modId` | 404 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-id` / `mod-dependency.mod-id` | supported |
-| `[[dependencies.<modid>]] versionRange` | 404 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.version-range` | planned |
-| `[[dependencies.<modid>]] side` | 398 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.side` | planned |
-| `[[mods]] authors` | 392 | `neoforge.mods.toml` keys | `lifecycle.mod-info.authors` | supported |
-| `[[dependencies.<modid>]] ordering` | 388 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.ordering` | planned |
-| `[[dependencies.<modid>]] type` | 361 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.type` | planned |
+| `file mods` | 414 | `neoforge.mods.toml` keys | `NativeMod::mods_toml`; the `[[mods]]` entry of the mod (`mods_toml::parse`) | planned |
+| `[[mods]] modId` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::mod_id` (`mods_toml::is_valid_mod_id`) | supported |
+| `[[mods]] version` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::version` (`version::ArtifactVersion`, `${file.jarVersion}` is `NativeMod::version`) | supported |
+| `[[mods]] displayName` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::display_name` | planned |
+| `[[mods]] description` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::description` | supported |
+| `@Mod(value)` | 411 | Entry point annotations | `register_mod!` and `NativeMod::init`; the mod id is `NativeMod::id` or the `modId` of `NativeMod::mods_toml` | planned |
+| `[[dependencies.<modid>]] modId` | 404 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::mod_id` | supported |
+| `[[dependencies.<modid>]] versionRange` | 404 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::version_range` (`version::VersionRange`) | planned |
+| `[[dependencies.<modid>]] side` | 398 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::side` (`DependencySide`, `CLIENT` is ignored) | planned |
+| `[[mods]] authors` | 392 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::authors` | supported |
+| `[[dependencies.<modid>]] ordering` | 388 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::ordering` (`Ordering`, the load order of `init` and the lifecycle methods) | planned |
+| `[[dependencies.<modid>]] type` | 361 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::dependency_type` (`DependencyType`) | planned |
 | `[[mixins]] config` | 291 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file mixins` | 278 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `IEventBus#addListener` | 263 | Event bus and mod container | `event-bus.add-listener` | planned |
 | `file issueTrackerURL` | 236 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.issue-tracker-url`, `mod-info.issue-tracker-url` | planned |
-| `ModList#get` | 200 | Event bus and mod container | `lifecycle` ModList functions | planned |
+| `ModList#get` | 200 | Event bus and mod container | `mod_list::ModList::get` | planned |
 | `@EventBusSubscriber(modid)` | 186 | Entry point annotations | `event-bus.add-listener` of the calling mod | planned |
-| `ModList#isLoaded` | 175 | Event bus and mod container | `lifecycle.is-loaded` | planned |
+| `ModList#isLoaded` | 175 | Event bus and mod container | `mod_list::ModList::is_loaded` | planned |
 | `ModContainer#registerConfig` | 159 | Event bus and mod container | `mod-config.register-config` | planned |
 | `@EventBusSubscriber(value)` | 151 | Entry point annotations | `event-bus.add-listener` (client-dist subscribers are not registered) | planned |
 | `IEventBus#register` | 112 | Event bus and mod container | `event-bus.add-listener` | planned |
 | `EventPriority` | 99 | Event bus and mod container | `pumpkin:plugin/event.event-priority` | supported |
 | `IEventBus#post` | 86 | Event bus and mod container | `event-bus.post` | planned |
-| `@Mod(dist)` | 77 | Entry point annotations | `types.dist` (always `dedicated-server`) | planned |
+| `@Mod(dist)` | 77 | Entry point annotations | `mod_list::dist()` (always `Dist::DedicatedServer`) | planned |
 | `@SubscribeEvent(priority)` | 76 | Entry point annotations | `event-bus.add-listener` `priority` (`pumpkin:plugin/event.event-priority`) | planned |
-| `ModList#getModContainerById` | 69 | Event bus and mod container | `lifecycle.get-mod-container-by-id` | planned |
-| `ModContainer#getModInfo` | 61 | Event bus and mod container | `lifecycle.mod-container.get-mod-info` | supported |
+| `ModList#getModContainerById` | 69 | Event bus and mod container | `mod_list::ModList::get_mod_container_by_id` | planned |
+| `ModContainer#getModInfo` | 61 | Event bus and mod container | `mod_list::ModList::get_mod_container_by_id` returns the `mods_toml::ModInfo` | supported |
 | `file accessTransformers` | 55 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[accessTransformers]] file` | 55 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[mods]] updateJSONURL` | 38 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `ModContainer#getEventBus` | 32 | Event bus and mod container | `event-bus.bus::mod` | planned |
-| `ModList#getMods` | 31 | Event bus and mod container | `lifecycle.get-mods` | planned |
+| `ModContainer#getEventBus` | 32 | Event bus and mod container | the `NativeMod` lifecycle methods, one set per mod; game events through `ModInit::register_event` | planned |
+| `ModList#getMods` | 31 | Event bus and mod container | `mod_list::ModList::get_mods` | planned |
 | `ModList#getModFileById` | 16 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#getAllScanData` | 16 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `IEventBus#start` | 15 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
-| `ModContainer#getModId` | 15 | Event bus and mod container | `lifecycle.mod-container.get-mod-id` | supported |
-| `[[dependencies.<modid>]] reason` | 14 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.reason` | planned |
+| `ModContainer#getModId` | 15 | Event bus and mod container | `mods_toml::ModInfo::mod_id` | supported |
+| `[[dependencies.<modid>]] reason` | 14 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::reason` | planned |
 | `[[mods]] enumExtensions` | 13 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `IEventBus#unregister` | 12 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `[[mods]] modUrl` | 10 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-url` | planned |
@@ -756,18 +756,18 @@ How to read it:
 | `@SubscribeEvent(receiveCanceled)` | 6 | Entry point annotations | `event-bus.add-listener` `receive-canceled` | planned |
 | `[[mods]] featureFlags` | 4 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `ModList#getModFiles` | 3 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
-| `ModList#forEachModInOrder` | 3 | Event bus and mod container | `lifecycle.get-sorted-mods` | planned |
+| `ModList#forEachModInOrder` | 3 | Event bus and mod container | `mod_list::ModList::get_sorted_mods` (iterate) | planned |
 | `[[dependencies.<modid>]] referralUrl` | 3 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.referral-url` | planned |
-| `ModList#size` | 2 | Event bus and mod container | `lifecycle.size` | planned |
+| `ModList#size` | 2 | Event bus and mod container | `mod_list::ModList::size` | planned |
 | `ModList#forEachModFile` | 2 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
-| `ModList#forEachModContainer` | 2 | Event bus and mod container | `lifecycle.get-mods` | planned |
-| `ModList#getSortedMods` | 2 | Event bus and mod container | `lifecycle.get-sorted-mods` | planned |
+| `ModList#forEachModContainer` | 2 | Event bus and mod container | `mod_list::ModList::get_mods` (iterate) | planned |
+| `ModList#getSortedMods` | 2 | Event bus and mod container | `mod_list::ModList::get_sorted_mods` | planned |
 | `[[mixins]] requiredMods` | 2 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `ModContainer#getNamespace` | 1 | Event bus and mod container | `lifecycle.mod-container.get-namespace` | planned |
+| `ModContainer#getNamespace` | 1 | Event bus and mod container | `mods_toml::ModInfo::namespace` | planned |
 | `ModContainer#acceptEvent` | 1 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
-| `ModList#applyForEachModContainer` | 1 | Event bus and mod container | `lifecycle.get-mods` | planned |
+| `ModList#applyForEachModContainer` | 1 | Event bus and mod container | `mod_list::ModList::get_mods` (iterate) | planned |
 | `file showAsResourcePack` | 1 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `@Mod(depends)` | 0 | Entry point annotations | `lifecycle.mod-dependency`; `pumpkin:plugin/metadata` dependencies | supported |
+| `@Mod(depends)` | 0 | Entry point annotations | `mods_toml::ModInfo::dependencies`; `pumpkin:plugin/metadata` dependencies | supported |
 | `ModList#of` | 0 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#applyForEachModFile` | 0 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#applyForEachModFileAlphabetical` | 0 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
@@ -776,8 +776,8 @@ How to read it:
 | `file services` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file properties` | 0 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.properties` | planned |
 | `[[mixins]] behaviorVersion` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `[[mods]] namespace` | 0 | `neoforge.mods.toml` keys | `lifecycle.mod-info.namespace` | planned |
-| `[[mods]] dependencies` | 0 | `neoforge.mods.toml` keys | `lifecycle.mod-info.dependencies` | supported |
+| `[[mods]] namespace` | 0 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::namespace` (`mods_toml::is_valid_namespace`) | planned |
+| `[[mods]] dependencies` | 0 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::dependencies` | supported |
 | `[[mods]] features` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[mods]] modproperties` | 0 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-properties` | planned |
 

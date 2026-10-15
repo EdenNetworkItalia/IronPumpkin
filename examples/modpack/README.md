@@ -2,7 +2,9 @@
 
 A Cargo workspace that compiles the IronPumpkin server with the native mods of the pack.
 `mods/hello-mod` registers `/hello`, which answers with the mod id, and three kinds of content
-through the builders of `ironpumpkin_mods::content`:
+through the builders of `ironpumpkin_mods::content`. Its `neoforge.mods.toml` gives the mod id
+`hello_mod` (a NeoForge mod id cannot contain `-`), the registry namespace `hello-mod` and the
+dependencies on `neoforge` and `minecraft`:
 
 | Name | Kind | Vanilla clients see |
 |:--|:--|:--|
@@ -33,6 +35,7 @@ cargo build
 cd /path/to/server/dir && /path/to/IronPumpkin/target/debug/example-modpack
 ```
 
-The log shows `[ironpumpkin] loaded 1 native mod: hello-mod (client_required = true)`. Type
-`hello` on the console to run the command. The content phase writes the block, the item and the
+The log shows `[hello_mod] common setup, mod list: hello_mod, minecraft, neoforge` and
+`[ironpumpkin] loaded 1 native mod: hello_mod (client_required = true)`. Type `hello` on the
+console to run the command. The content phase writes the block, the item and the
 entity type to `<world>/ironpumpkin/content_registry.json`.

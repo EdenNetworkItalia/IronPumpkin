@@ -1,8 +1,10 @@
 //! Native mods compiled into the server binary.
 //!
 //! A mod crate implements [`NativeMod`] and registers it with [`register_mod!`]. A modpack binary
-//! references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`. The server calls
-//! the [`NativeMod::init`] of every linked mod once, in id order, before the first world loads.
+//! references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`. Before the first
+//! world loads, the server reads the metadata of every linked mod, checks the dependencies, calls
+//! each [`NativeMod::init`] once in load order, and then calls the lifecycle methods
+//! ([`lifecycle`]).
 //!
 //! This crate is the only `IronPumpkin` dependency a mod needs. It re-exports the server types:
 //!
@@ -18,6 +20,9 @@
 //! | [`server`]      | `Server`                                                                  |
 //! | [`entity`]      | `Player` and the other entities                                           |
 //! | [`content`]     | builders for custom blocks, items, entity types, tags, `RegistryError`    |
+//! | [`mod_list`]    | `ModList`, `dist()`                                                       |
+//! | [`mods_toml`]   | `ModInfo`, `ModDependency`, the `neoforge.mods.toml` reader               |
+//! | [`imc`]         | inter-mod messages                                                        |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -26,6 +31,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 use std::{
+    collections::HashMap,
     fmt,
     path::{Path, PathBuf},
     sync::Arc,
@@ -56,6 +62,11 @@ pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
 
 pub mod content;
+pub mod imc;
+pub mod lifecycle;
+pub mod mod_list;
+pub mod mods_toml;
+pub mod version;
 
 /// The events a mod can listen to, and the traits to handle them.
 pub mod event {
@@ -82,8 +93,12 @@ macro_rules! __translate_cross {
 
 use content::{ContentKind, EntityFactory, RegistryError};
 use event::{EventHandler, EventPriority, Payload};
+use imc::{InterModEnqueue, InterModProcess};
+use mod_list::ModList;
+use mods_toml::ModInfo;
 use permission::Permission;
 use server::Server;
+use version::ArtifactVersion;
 
 // The Rust snippets of the porting guide are doc-tests of this crate, so an API change that breaks
 // a snippet fails `cargo test --doc -p ironpumpkin-mods`.
@@ -106,11 +121,24 @@ mod porting_guide {
 }
 
 /// A mod compiled into the server binary.
+///
+/// The lifecycle methods have a default that does nothing. The server calls them after the last
+/// `init`, in the order of [`lifecycle`], each on its own mod.
 pub trait NativeMod: Sync {
-    /// Unique id, also the namespace of the mod's commands and permissions.
+    /// Unique id, also the namespace of the mod's commands and permissions. Without a
+    /// [`NativeMod::mods_toml`], use only `a-z 0-9 _ . -`.
     fn id(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
     fn version(&self) -> &'static str;
+    /// The text of the mod's `neoforge.mods.toml`, usually `include_str!` of the file. When it is
+    /// present, its `[[mods]]` entry decides the mod id, namespace, version, display name,
+    /// description, authors and dependencies (see [`mods_toml`]), and `id`, `display_name` and
+    /// `version` are used only to pick the entry and for `${file.jarVersion}`. The mod id then
+    /// follows the `NeoForge` charset ([`mods_toml::is_valid_mod_id`]). A mod without one is
+    /// known by `id`, `display_name` and `version`, and has no dependencies.
+    fn mods_toml(&self) -> Option<&'static str> {
+        None
+    }
     /// Whether a client must have this mod to join. A client that cannot have it is disconnected
     /// at the configuration handshake. Override it to return `false` for a server-only mod.
     fn client_required(&self) -> bool {
@@ -122,6 +150,18 @@ pub trait NativeMod: Sync {
     /// stops after `init` returns, before the content phase. Do not panic or unwrap the `Result`
     /// of a content registration: the server panic hook writes a crash report and exits at once.
     fn init(&self, cx: &mut ModInit);
+    /// `FMLCommonSetupEvent`: runs after the `init` of every mod, so the content of every mod is
+    /// registered.
+    fn common_setup(&self) {}
+    /// `FMLDedicatedServerSetupEvent`: runs after the common setup of every mod.
+    fn dedicated_server_setup(&self) {}
+    /// `InterModEnqueueEvent`: send messages to other mods with [`InterModEnqueue::send`].
+    fn inter_mod_enqueue(&self, _imc: &mut InterModEnqueue) {}
+    /// `InterModProcessEvent`: read the messages sent to this mod with
+    /// [`InterModProcess::get_messages`].
+    fn inter_mod_process(&self, _imc: &mut InterModProcess) {}
+    /// `FMLLoadCompleteEvent`: the last lifecycle step before the first world loads.
+    fn load_complete(&self) {}
 }
 
 #[doc(hidden)]
@@ -408,37 +448,119 @@ impl ModInit {
     }
 }
 
-/// The linked mods in id order. Fails on an invalid or duplicate id.
-pub fn mods() -> Result<Vec<&'static dyn NativeMod>, String> {
-    sorted(
-        inventory::iter::<ModRegistration>
-            .into_iter()
-            .map(|registration| registration.0)
-            .collect(),
-    )
+/// A native mod with the id that the mod list knows it by.
+pub(crate) struct LoadedMod<'a> {
+    pub(crate) native_mod: &'static dyn NativeMod,
+    pub(crate) mod_id: &'a str,
 }
 
-fn sorted(mut mods: Vec<&'static dyn NativeMod>) -> Result<Vec<&'static dyn NativeMod>, String> {
-    if let Some(invalid) = mods.iter().find(|native_mod| !is_valid_id(native_mod.id())) {
+/// The linked mods by mod id, and the mod list in load order.
+type Loaded = (HashMap<String, &'static dyn NativeMod>, ModList);
+
+/// The native mods of `mod_list` in load order.
+fn in_order<'a>(
+    by_id: &HashMap<String, &'static dyn NativeMod>,
+    mod_list: &'a ModList,
+) -> Vec<LoadedMod<'a>> {
+    mod_list
+        .get_sorted_mods()
+        .iter()
+        .filter_map(|info| {
+            by_id.get(&info.mod_id).map(|native_mod| LoadedMod {
+                native_mod: *native_mod,
+                mod_id: &info.mod_id,
+            })
+        })
+        .collect()
+}
+
+/// The linked mods in load order. Fails on an invalid or duplicate id, an invalid
+/// `neoforge.mods.toml`, an unmet dependency or an ordering cycle.
+pub fn mods() -> Result<Vec<&'static dyn NativeMod>, String> {
+    let (by_id, mod_list) = load(linked_mods())?;
+    Ok(in_order(&by_id, &mod_list)
+        .into_iter()
+        .map(|loaded| loaded.native_mod)
+        .collect())
+}
+
+fn linked_mods() -> Vec<&'static dyn NativeMod> {
+    inventory::iter::<ModRegistration>
+        .into_iter()
+        .map(|registration| registration.0)
+        .collect()
+}
+
+/// Reads the metadata of `mods`, checks the ids and the dependencies, and orders the mods and
+/// the system mods ([`mod_list::sort`]).
+fn load(mods: Vec<&'static dyn NativeMod>) -> Result<Loaded, String> {
+    let mut infos = mod_list::system_mods();
+    let system_count = infos.len();
+    let mut by_id = HashMap::new();
+    for native_mod in mods {
+        let info = mod_info(native_mod)?;
+        by_id.insert(info.mod_id.clone(), native_mod);
+        infos.push(info);
+    }
+    let mut by_name: Vec<&ModInfo> = infos.iter().collect();
+    by_name.sort_by(|a, b| a.mod_id.cmp(&b.mod_id));
+    if let Some(pair) = by_name
+        .windows(2)
+        .find(|pair| pair[0].mod_id == pair[1].mod_id)
+    {
+        let kind = if infos[..system_count]
+            .iter()
+            .any(|system| system.mod_id == pair[0].mod_id)
+        {
+            "the system mod and the native mod"
+        } else {
+            "native mods"
+        };
         return Err(format!(
-            "native mod \"{} {}\" has the invalid id \"{}\": use only a-z 0-9 _ . -",
-            invalid.display_name(),
-            invalid.version(),
-            invalid.id()
+            "{kind} \"{} {}\" and \"{} {}\" share the id \"{}\"",
+            pair[0].display_name,
+            pair[0].version,
+            pair[1].display_name,
+            pair[1].version,
+            pair[0].mod_id
         ));
     }
-    mods.sort_by(|a, b| a.id().cmp(b.id()));
-    if let Some(pair) = mods.windows(2).find(|pair| pair[0].id() == pair[1].id()) {
+    mod_list::check_dependencies(&infos)?;
+    let order = mod_list::sort(&infos)?;
+    let mut slots: Vec<Option<ModInfo>> = infos.into_iter().map(Some).collect();
+    let sorted = order.into_iter().filter_map(|i| slots[i].take()).collect();
+    Ok((by_id, ModList::new(sorted)))
+}
+
+/// The metadata of a mod: its `neoforge.mods.toml`, or its trait methods.
+fn mod_info(native_mod: &dyn NativeMod) -> Result<ModInfo, String> {
+    let (id, display_name, version) = (
+        native_mod.id(),
+        native_mod.display_name(),
+        native_mod.version(),
+    );
+    if let Some(text) = native_mod.mods_toml() {
+        return mods_toml::parse(text, id, version).map_err(|err| {
+            format!(
+                "native mod \"{display_name} {version}\" has an invalid neoforge.mods.toml: {err}"
+            )
+        });
+    }
+    if !is_valid_id(id) {
         return Err(format!(
-            "native mods \"{} {}\" and \"{} {}\" share the id \"{}\"",
-            pair[0].display_name(),
-            pair[0].version(),
-            pair[1].display_name(),
-            pair[1].version(),
-            pair[0].id()
+            "native mod \"{display_name} {version}\" has the invalid id \"{id}\": use only a-z \
+             0-9 _ . -"
         ));
     }
-    Ok(mods)
+    Ok(ModInfo {
+        mod_id: id.to_owned(),
+        namespace: id.to_owned(),
+        version: ArtifactVersion::new(version),
+        display_name: display_name.to_owned(),
+        description: display_name.to_owned(),
+        authors: None,
+        dependencies: Vec::new(),
+    })
 }
 
 fn is_valid_id(id: &str) -> bool {
@@ -452,7 +574,14 @@ fn is_valid_id(id: &str) -> bool {
 /// registration error. [`init_mods`] stops the server on that error.
 #[doc(hidden)]
 pub fn init_mod(native_mod: &dyn NativeMod) -> Result<ModInit, ContentRegistrationError> {
-    let mut init = ModInit::new(native_mod.id());
+    init_mod_as(native_mod, native_mod.id())
+}
+
+fn init_mod_as(
+    native_mod: &dyn NativeMod,
+    mod_id: &'static str,
+) -> Result<ModInit, ContentRegistrationError> {
+    let mut init = ModInit::new(mod_id);
     native_mod.init(&mut init);
     init.content_error.take().map_or(Ok(init), Err)
 }
@@ -462,37 +591,50 @@ fn refuse_to_start(reason: &dyn fmt::Display) -> ! {
     std::process::exit(1);
 }
 
-fn native_mod_infos(mods: &[&dyn NativeMod]) -> Vec<NativeModInfo> {
+fn native_mod_infos(mods: &[LoadedMod], mod_list: &ModList) -> Vec<NativeModInfo> {
     mods.iter()
-        .map(|native_mod| NativeModInfo {
-            id: native_mod.id().to_owned(),
-            display_name: native_mod.display_name().to_owned(),
-            version: native_mod.version().to_owned(),
-            client_required: native_mod.client_required(),
+        .filter_map(|loaded| {
+            let info = mod_list.get_mod_container_by_id(loaded.mod_id)?;
+            Some(NativeModInfo {
+                id: info.mod_id.clone(),
+                display_name: info.display_name.clone(),
+                version: info.version.to_string(),
+                client_required: loaded.native_mod.client_required(),
+            })
         })
         .collect()
 }
 
-/// Initializes every linked mod against `server`, or stops the process if the mods conflict or a
-/// mod fails to register its content. Set as the startup hook of `pumpkin-core`.
+/// Initializes every linked mod against `server` in load order and then runs the [`lifecycle`].
+///
+/// It stops the process if the mods conflict, a dependency is unmet or a mod fails to register
+/// its content. Set as the startup hook of `pumpkin-core`.
 pub fn init_mods(server: &Arc<Server>) {
-    let mods = mods().unwrap_or_else(|err| refuse_to_start(&err));
-    startup::set_native_mods(native_mod_infos(&mods));
+    let (by_id, mod_list) = load(linked_mods()).unwrap_or_else(|err| refuse_to_start(&err));
+    mod_list.set();
+    let mod_list = ModList::get();
+    let mods = in_order(&by_id, mod_list);
+    startup::set_native_mods(native_mod_infos(&mods, mod_list));
     let mut synced_configs = Vec::new();
-    for native_mod in &mods {
-        let mut init = init_mod(*native_mod).unwrap_or_else(|err| refuse_to_start(&err));
+    for loaded in &mods {
+        let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
+            continue;
+        };
+        let mut init = init_mod_as(loaded.native_mod, loaded.mod_id)
+            .unwrap_or_else(|err| refuse_to_start(&err));
         synced_configs.append(&mut init.synced_configs);
         let metadata = PluginMetadata {
-            name: native_mod.id().to_owned(),
-            version: native_mod.version().to_owned(),
-            authors: Vec::new(),
-            description: native_mod.display_name().to_owned(),
+            name: info.mod_id.clone(),
+            version: info.version.to_string(),
+            authors: info.authors.iter().cloned().collect(),
+            description: info.description.clone(),
             dependencies: Vec::new(),
             permissions: Vec::new(),
         };
         init.apply(&startup::create_context(server, metadata));
     }
     startup::set_synced_configs(synced_configs).unwrap_or_else(|err| refuse_to_start(&err));
+    lifecycle::run(&mods, mod_list);
     let names: Vec<String> = startup::native_mods()
         .iter()
         .map(|native_mod| {
@@ -528,7 +670,7 @@ mod tests {
         command::argument_builder::command, event::Payload, permission::PermissionDefault,
     };
 
-    use super::{ModInit, NativeMod, mods, native_mod_infos, sorted};
+    use super::{ModInit, NativeMod, in_order, load, mods, native_mod_infos};
 
     static INITS: AtomicUsize = AtomicUsize::new(0);
 
@@ -584,8 +726,8 @@ mod tests {
 
     #[test]
     fn mods_are_client_required_unless_they_opt_out() {
-        let mods = sorted(vec![&SERVER_ONLY, &DEFAULT]).unwrap();
-        let infos: Vec<(String, bool)> = native_mod_infos(&mods)
+        let (by_id, mod_list) = load(vec![&SERVER_ONLY, &DEFAULT]).unwrap();
+        let infos: Vec<(String, bool)> = native_mod_infos(&in_order(&by_id, &mod_list), &mod_list)
             .into_iter()
             .map(|info| (info.id, info.client_required))
             .collect();
@@ -619,13 +761,99 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_and_invalid_ids() {
-        let duplicate = sorted(vec![&DUPLICATE_A, &DUPLICATE_B]).err().unwrap();
+        let duplicate = load(vec![&DUPLICATE_A, &DUPLICATE_B]).err().unwrap();
         assert!(
             duplicate.contains("share the id \"dup-mod\""),
             "{duplicate}"
         );
-        let invalid = sorted(vec![&INVALID]).err().unwrap();
+        let invalid = load(vec![&INVALID]).err().unwrap();
         assert!(invalid.contains("invalid id \"Bad Id\""), "{invalid}");
+        let system = load(vec![&MINECRAFT]).err().unwrap();
+        assert!(
+            system.contains("the system mod and the native mod"),
+            "{system}"
+        );
+    }
+
+    static MINECRAFT: TestMod = TestMod("minecraft");
+
+    /// A mod whose `neoforge.mods.toml` is authoritative over its trait methods.
+    struct TomlMod(&'static str, &'static str);
+
+    impl NativeMod for TomlMod {
+        fn id(&self) -> &'static str {
+            self.0
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Trait name"
+        }
+
+        fn version(&self) -> &'static str {
+            "3.1.4"
+        }
+
+        fn mods_toml(&self) -> Option<&'static str> {
+            Some(self.1)
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+    }
+
+    static EXAMPLE: TomlMod = TomlMod(
+        "example-mod",
+        "[[mods]]\nmodId = \"examplemod\"\nnamespace = \"example\"\n\
+         version = \"${file.jarVersion}\"\ndisplayName = \"Example Mod\"\n",
+    );
+    static BAD_ID: TomlMod = TomlMod("bad", "[[mods]]\nmodId = \"My-Mod\"\n");
+    static NEEDS_GECKOLIB: TomlMod = TomlMod(
+        "needy",
+        "[[mods]]\nmodId = \"needy\"\n[[dependencies.needy]]\nmodId = \"geckolib\"\n\
+         versionRange = \"[4.0,5.0)\"\n",
+    );
+    static ALPHA_AFTER_ZETA: TomlMod = TomlMod(
+        "alpha",
+        "[[mods]]\nmodId = \"alpha\"\n[[dependencies.alpha]]\nmodId = \"zeta\"\n\
+         ordering = \"AFTER\"\n",
+    );
+    static ZETA: TestMod = TestMod("zeta");
+
+    #[test]
+    fn the_mods_toml_decides_the_metadata() {
+        let (by_id, mod_list) = load(vec![&EXAMPLE, &DEFAULT]).unwrap();
+        let example = mod_list.get_mod_container_by_id("examplemod").unwrap();
+        assert_eq!(example.namespace, "example");
+        assert_eq!(example.display_name, "Example Mod");
+        assert_eq!(example.version.to_string(), "3.1.4");
+        assert!(!mod_list.is_loaded("example-mod"));
+        // A mod without a mods.toml is known by its trait methods.
+        let default = mod_list.get_mod_container_by_id("default-mod").unwrap();
+        assert_eq!(default.display_name, "Test mod");
+        assert_eq!(default.namespace, "default-mod");
+        let ids: Vec<&str> = in_order(&by_id, &mod_list)
+            .iter()
+            .map(|loaded| loaded.mod_id)
+            .collect();
+        assert_eq!(ids, ["default-mod", "examplemod"]);
+        assert_eq!(mod_list.size(), 4);
+    }
+
+    #[test]
+    fn a_bad_mods_toml_id_or_dependency_stops_the_load() {
+        let bad_id = load(vec![&BAD_ID]).err().unwrap();
+        assert!(bad_id.contains("invalid modId \"My-Mod\""), "{bad_id}");
+        let missing = load(vec![&NEEDS_GECKOLIB]).err().unwrap();
+        assert!(missing.contains("requires \"geckolib\""), "{missing}");
+    }
+
+    #[test]
+    fn init_runs_in_dependency_order() {
+        let (by_id, mod_list) = load(vec![&ALPHA_AFTER_ZETA, &ZETA]).unwrap();
+        let ids: Vec<&str> = in_order(&by_id, &mod_list)
+            .iter()
+            .map(|loaded| loaded.mod_id)
+            .collect();
+        assert_eq!(ids, ["zeta", "alpha"]);
     }
 
     struct TestService;

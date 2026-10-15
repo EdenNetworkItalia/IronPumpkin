@@ -15,6 +15,7 @@ pumpkin-world.workspace = true
 futures = { workspace = true, features = ["executor"] }
 inventory.workspace = true
 tokio = { workspace = true, features = ["rt"] }
+toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

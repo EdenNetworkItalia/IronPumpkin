@@ -1,5 +1,6 @@
 //! Example native mod. It registers `/hello`, which answers with the mod id, a block and an item
-//! whose behaviours log what the server runs, and an entity type.
+//! whose behaviours log what the server runs, and an entity type. Its `neoforge.mods.toml` gives
+//! the mod id `hello_mod`, the registry namespace `hello-mod` and the dependencies.
 
 use std::{any::Any, sync::Arc};
 
@@ -15,6 +16,7 @@ use ironpumpkin_mods::{
     },
     entity::{Entity, EntityBase, player::Player},
     math::{position::BlockPos, vector3::Vector3},
+    mod_list::ModList,
     permission::{Permission, PermissionDefault},
     pumpkin_core::block::{
         BrokenArgs, NormalUseArgs, OnStateReplacedArgs, PlacedArgs, registry::BlockActionResult,
@@ -29,7 +31,8 @@ use ironpumpkin_mods::{
     tracing::info,
 };
 
-const ID: &str = "hello-mod";
+/// The mod id of `neoforge.mods.toml`, also the namespace of the command and the permission.
+const MOD_ID: &str = "hello_mod";
 const DESCRIPTION: &str = "Answers with the id of the mod that registered it.";
 const LAMP: &str = "hello-mod:greeter_lamp";
 const GREETER: &str = "hello-mod:greeter";
@@ -38,7 +41,7 @@ struct HelloMod;
 
 impl NativeMod for HelloMod {
     fn id(&self) -> &'static str {
-        ID
+        MOD_ID
     }
 
     fn display_name(&self) -> &'static str {
@@ -49,9 +52,13 @@ impl NativeMod for HelloMod {
         env!("CARGO_PKG_VERSION")
     }
 
+    fn mods_toml(&self) -> Option<&'static str> {
+        Some(include_str!("../neoforge.mods.toml"))
+    }
+
     fn init(&self, cx: &mut ModInit) {
         cx.register_permission(Permission::new(
-            &format!("{ID}:command.hello"),
+            &format!("{MOD_ID}:command.hello"),
             DESCRIPTION,
             PermissionDefault::Allow,
         ));
@@ -62,6 +69,15 @@ impl NativeMod for HelloMod {
         // `ModInit` keeps the first content error: the server logs it with the mod id and stops
         // after `init` returns. Stop at the first error and do not panic.
         let _ = register_content(cx);
+    }
+
+    fn common_setup(&self) {
+        let mods: Vec<&str> = ModList::get()
+            .get_sorted_mods()
+            .iter()
+            .map(|info| info.mod_id.as_str())
+            .collect();
+        info!("[{MOD_ID}] common setup, mod list: {}", mods.join(", "));
     }
 }
 
@@ -93,23 +109,23 @@ struct GreeterLamp;
 
 impl BlockBehaviour for GreeterLamp {
     fn placed(&self, args: PlacedArgs<'_>) {
-        info!("[{ID}] {} placed at {}", args.block.name, args.position);
+        info!("[{MOD_ID}] {} placed at {}", args.block.name, args.position);
     }
 
     fn broken(&self, args: BrokenArgs<'_>) {
         info!(
-            "[{ID}] {} broken by {} at {}",
+            "[{MOD_ID}] {} broken by {} at {}",
             args.block.name, args.player.gameprofile.name, args.position
         );
     }
 
     fn on_state_replaced(&self, args: OnStateReplacedArgs<'_>) {
-        info!("[{ID}] {} replaced at {}", args.block.name, args.position);
+        info!("[{MOD_ID}] {} replaced at {}", args.block.name, args.position);
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         info!(
-            "[{ID}] {} used by {} at {}",
+            "[{MOD_ID}] {} used by {} at {}",
             args.block.name, args.player.gameprofile.name, args.position
         );
         BlockActionResult::Pass
@@ -122,7 +138,7 @@ struct GreeterLampItem;
 impl ItemBehaviour for GreeterLampItem {
     fn normal_use(&self, item: &Item, player: &Player) {
         info!(
-            "[{ID}] {} used in the air by {}",
+            "[{MOD_ID}] {} used in the air by {}",
             item.registry_key, player.gameprofile.name
         );
     }
@@ -138,7 +154,7 @@ impl ItemBehaviour for GreeterLampItem {
         _server: &Server,
     ) -> BlockActionResult {
         info!(
-            "[{ID}] {} used on {} at {location} by {}",
+            "[{MOD_ID}] {} used on {} at {location} by {}",
             item.item.registry_key, block.name, player.gameprofile.name
         );
         BlockActionResult::Pass
@@ -159,7 +175,7 @@ impl CommandExecutor for HelloExecutor {
             translate_cross!(
                 CHAT_SQUARE_BRACKETS,
                 CHAT_SQUARE_BRACKETS,
-                TextComponent::text(format!("Hello from {ID}"))
+                TextComponent::text(format!("Hello from {MOD_ID}"))
             ),
             false,
         );
