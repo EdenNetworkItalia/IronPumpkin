@@ -169,7 +169,7 @@ The mapping from the Java code to the Rust code:
 | `Local` | `config/<modid>-local.toml` | After the last `init` of every mod, before `common_setup` | Never get it |
 | `Synced` | `config/<modid>-synced.toml` | After `load_complete`, before the server starts | Get it in the configuration phase, as `neoforge:config_file` |
 
-The order is: `init` of every mod (Startup configs load inside it), the Local configs, `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process`, `load_complete`, the Synced configs.
+The order is: `init` of every mod (Startup configs load inside it), the Local configs, `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process`, `load_complete`, `RegisterPayloadHandlersEvent`, the Synced configs.
 
 `ModConfig::get` returns `ConfigError::NotLoaded` for a Local config in `init`, and for a Synced config until it loads after `load_complete`. A mod reads its Local config in `common_setup`. The hook `config_loading` runs once for each config when it loads. For a Startup config, it runs inside `register_config`, before the call returns.
 
