@@ -67,6 +67,7 @@ use pumpkin_protocol::{
     },
 };
 use pumpkin_util::{
+    GameMode,
     math::{position::BlockPos, vector3::Vector3},
     text::TextComponent,
 };
@@ -196,6 +197,7 @@ fn change_a_settable_field_critical_hit_event() {
     place(&victim, 1000.0);
     let seen = log();
     let seen_by_handler = seen.clone();
+    let victim_id = victim.living_entity.entity.entity_id;
     on::<CriticalHitEvent, _>(move |event| {
         if !named(&event.player, "CritAttacker") {
             return;
@@ -204,7 +206,7 @@ fn change_a_settable_field_critical_hit_event() {
             &seen_by_handler,
             format!(
                 "{} {} {}",
-                event.target.get_entity().entity_id == event.target.get_entity().entity_id,
+                event.target.get_entity().entity_id == victim_id,
                 event.vanilla_critical,
                 event.vanilla_multiplier
             ),
@@ -223,6 +225,52 @@ fn change_a_settable_field_critical_hit_event() {
         "{before} -> {}",
         health(&victim)
     );
+}
+
+#[test]
+fn forced_critical_hit_keeps_the_sprint_knockback_and_the_mace_smash() {
+    let _serial = support::serial();
+    let sprinter = support::player("CritSprinter");
+    let macer = support::player("CritMacer");
+    let victim = support::player("CritTarget");
+    let smashed = support::player("SmashTarget");
+    for player in [&sprinter, &macer, &victim, &smashed] {
+        place(player, 1500.0);
+    }
+    on::<CriticalHitEvent, _>(|event| {
+        if named(&event.player, "CritSprinter") || named(&event.player, "CritMacer") {
+            assert!(
+                !event.vanilla_critical,
+                "a sprint or mace hit is not critical"
+            );
+            event.critical_hit = true;
+            event.damage_multiplier = 2.0;
+        }
+    });
+
+    // A sprint hit pushes the victim (`combat::handle_knockback`), which slows the attacker.
+    let entity = &sprinter.living_entity.entity;
+    entity.set_sprinting(true);
+    entity.velocity.store(Vector3::new(1.0, 0.0, 1.0));
+    attack(&sprinter, &victim);
+    let velocity = entity.velocity.load();
+    assert!((velocity.x - 0.6).abs() < 1e-6, "{velocity:?}");
+
+    // A falling mace hit smashes: 1.5 damage per fallen block, and the fall distance resets.
+    macer
+        .inventory()
+        .set_held_item(ItemStack::new(1, &Item::MACE));
+    macer
+        .living_entity
+        .entity
+        .on_ground
+        .store(false, Ordering::Relaxed);
+    macer.living_entity.fall_distance.store(8.0);
+    let before = health(&smashed);
+    attack(&macer, &smashed);
+    let dealt = before - health(&smashed);
+    assert!(dealt >= 12.0, "{before} -> {}", health(&smashed));
+    assert!(macer.living_entity.fall_distance.load().abs() < 1e-6);
 }
 
 #[test]
@@ -409,13 +457,14 @@ fn one_event_per_fire_site_item_entity_pickup_events() {
     let player = support::player("Picker");
     let decision = Arc::new(Mutex::new(TriState::False));
     let decided = decision.clone();
+    let posts = log();
+    let (pre, posted) = (posts.clone(), posts.clone());
     on::<ItemEntityPickupEventPre, _>(move |event| {
         if named(&event.player, "Picker") {
+            push(&pre, "pre");
             event.can_pickup = *decided.lock().unwrap();
         }
     });
-    let posts = log();
-    let posted = posts.clone();
     on::<ItemEntityPickupEventPost, _>(move |event| {
         if named(&event.player, "Picker") {
             push(
@@ -430,8 +479,14 @@ fn one_event_per_fire_site_item_entity_pickup_events() {
         }
     });
 
-    // `False` refuses the pickup, `True` ignores the pickup delay of a new item entity.
+    // Vanilla calls `playerTouch` only for a living player that is not a spectator.
     let item = spawn_item(&player, ItemStack::new(5, &Item::EMERALD));
+    player.gamemode.store(GameMode::Spectator);
+    item.on_player_collision(&player);
+    player.gamemode.store(GameMode::Survival);
+    assert!(entries(&posts).is_empty());
+
+    // `False` refuses the pickup, `True` ignores the pickup delay of a new item entity.
     assert!(item.get_pickup_delay() > 0);
     item.on_player_collision(&player);
     assert_eq!(count_of(&player, &Item::EMERALD), 0);
@@ -439,7 +494,7 @@ fn one_event_per_fire_site_item_entity_pickup_events() {
     *decision.lock().unwrap() = TriState::True;
     item.on_player_collision(&player);
     assert_eq!(count_of(&player, &Item::EMERALD), 5);
-    assert_eq!(entries(&posts), ["emerald 5 0"]);
+    assert_eq!(entries(&posts), ["pre", "pre", "emerald 5 0"]);
 }
 
 #[test]
@@ -496,11 +551,14 @@ fn one_event_per_fire_site_switch_hotbar_slot_event_post() {
         }
     });
 
-    java_client(&player).handle_set_held_item(
-        support::server(),
-        &player,
-        &SSetHeldItem { slot: 5 },
-    );
+    // The second packet selects the selected slot: `NeoForge` fires only on a change.
+    for _ in 0..2 {
+        java_client(&player).handle_set_held_item(
+            support::server(),
+            &player,
+            &SSetHeldItem { slot: 5 },
+        );
+    }
 
     assert_eq!(entries(&seen), ["2 5 5"]);
 }
@@ -546,6 +604,83 @@ fn one_event_per_fire_site_tracking_events() {
             format!("stop {id}")
         ]
     );
+}
+
+#[test]
+fn tracking_events_fire_after_the_entity_map_iteration() {
+    let _serial = support::serial();
+    let viewer = support::player("TrackRepairer");
+    let world = support::world();
+    let item = spawn_item(&viewer, ItemStack::new(1, &Item::STICK));
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let stopped = seen.clone();
+    on::<PlayerEventStopTracking, _>(move |event| {
+        if named(&event.player, "TrackRepairer") {
+            let target = event.target.get_entity().entity_id;
+            // A write to the shard that the iteration of the entity map reads.
+            support::world().entity_tracker.entity_map.remove(&target);
+            push(&stopped, format!("stop {target}"));
+        }
+    });
+    world
+        .entity_tracker
+        .get_tracked_entity(id)
+        .unwrap()
+        .seen_by
+        .insert(viewer.gameprofile.id);
+
+    finish_within(&viewer, move |viewer| {
+        world.entity_tracker.repair_respawned_player(viewer, &world);
+    });
+
+    assert_eq!(entries(&seen), [format!("stop {id}")]);
+    assert!(
+        support::world()
+            .entity_tracker
+            .get_tracked_entity(id)
+            .is_none()
+    );
+}
+
+#[test]
+fn one_event_per_fire_site_logout_save_and_stop_tracking() {
+    let _serial = support::serial();
+    let leaver = support::player("Leaver");
+    let world = support::world();
+    let item = spawn_item(&leaver, ItemStack::new(1, &Item::STICK));
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let (saved, stopped) = (seen.clone(), seen.clone());
+    on::<PlayerEventSaveToFile, _>(move |event| {
+        if named(&event.player, "Leaver") {
+            push(&saved, "save");
+        }
+    });
+    on::<PlayerEventStopTracking, _>(move |event| {
+        if named(&event.player, "Leaver") {
+            push(
+                &stopped,
+                format!("stop {}", event.target.get_entity().entity_id),
+            );
+        }
+    });
+    world
+        .entity_tracker
+        .get_tracked_entity(id)
+        .unwrap()
+        .seen_by
+        .insert(leaver.gameprofile.id);
+
+    // The disconnect of `lib.rs`: the world drops the player, then the server saves its data.
+    support::RUNTIME.block_on(world.remove_player(&leaver, false));
+    assert!(world.get_player_by_uuid(leaver.gameprofile.id).is_none());
+    support::server()
+        .player_data_storage
+        .handle_player_leave(&leaver)
+        .unwrap();
+
+    assert_eq!(entries(&seen), [format!("stop {id}"), "save".to_owned()]);
 }
 
 #[test]
@@ -711,27 +846,102 @@ fn cancel_anvil_craft_event_pre() {
     assert_eq!(entries(&seen), ["pre diamond_sword 3 diamond_sword"]);
 }
 
+/// Whether the open screen of `player` is its inventory.
+fn inventory_screen_open(player: &Player) -> bool {
+    let current = player.current_screen_handler.lock().unwrap().clone();
+    let inventory: SharedScreenHandler = player.player_screen_handler.clone();
+    Arc::ptr_eq(&current, &inventory)
+}
+
+fn levels(player: &Player) -> i32 {
+    player.experience_level.load(Ordering::Relaxed)
+}
+
 #[test]
-fn one_event_per_fire_site_trade_with_villager_event() {
+fn anvil_craft_events_handler_closes_the_screen_or_changes_the_inputs() {
+    const NAMES: [&str; 3] = ["AnvilPreCloser", "AnvilPostCloser", "AnvilChanger"];
     let _serial = support::serial();
-    let player = support::player("Trader");
     let seen = log();
-    let seen_by_handler = seen.clone();
-    on::<TradeWithVillagerEvent, _>(move |event| {
-        if named(&event.player, "Trader") {
-            push(
-                &seen_by_handler,
-                format!(
-                    "{} {}",
-                    event.offer.output.0.item.registry_key,
-                    event.villager.get_entity().entity_type.resource_name
-                ),
-            );
+    let (pre, post) = (seen.clone(), seen.clone());
+    on::<AnvilCraftEventPre, _>(move |event| {
+        let name = event.player.gameprofile.name.clone();
+        if !NAMES.contains(&name.as_str()) {
+            return;
+        }
+        push(&pre, format!("pre {name}"));
+        if name == "AnvilPreCloser" {
+            // It locks the screen handler: the event fires outside that lock.
+            event.player.close_handled_screen();
+        } else if name == "AnvilChanger" {
+            let screen = event.player.current_screen_handler.lock().unwrap().clone();
+            let mut screen = screen.lock().unwrap();
+            let anvil = screen
+                .as_any_mut()
+                .downcast_mut::<AnvilScreenHandler>()
+                .unwrap();
+            anvil
+                .inventory
+                .set_stack(0, ItemStack::new(1, &Item::STICK));
         }
     });
+    on::<AnvilCraftEventPost, _>(move |event| {
+        let name = event.player.gameprofile.name.clone();
+        if NAMES.contains(&name.as_str()) {
+            push(&post, format!("post {name}"));
+            if name == "AnvilPostCloser" {
+                event.player.close_handled_screen();
+            }
+        }
+    });
+
+    // Closed during the Pre: the anvil gave the inputs back, and nothing was paid or used.
+    let player = support::player("AnvilPreCloser");
+    let inventory = anvil(&player);
+    click(&player, 1, 2);
+    let before = levels(&player);
+    click(&player, 1, 2);
+    assert!(inventory_screen_open(&player));
+    assert_eq!(levels(&player), before);
+    assert!(inventory.get_stack(0).is_empty() && inventory.get_stack(1).is_empty());
+    assert_eq!(count_of(&player, &Item::DIAMOND), 3);
+
+    // Closed during the Post: the take was paid and used the inputs first.
+    let player = support::player("AnvilPostCloser");
+    let inventory = anvil(&player);
+    click(&player, 1, 2);
+    let before = levels(&player);
+    click(&player, 1, 2);
+    assert!(inventory_screen_open(&player));
+    assert!(levels(&player) < before);
+    assert!(inventory.get_stack(0).is_empty() && inventory.get_stack(1).is_empty());
+    assert_eq!(count_of(&player, &Item::DIAMOND), 0);
+
+    // The handler changed an input: the anvil leaves the inputs to it and costs nothing.
+    let player = support::player("AnvilChanger");
+    let inventory = anvil(&player);
+    click(&player, 1, 2);
+    let before = levels(&player);
+    click(&player, 1, 2);
+    assert_eq!(levels(&player), before);
+    assert_eq!(inventory.get_stack(0).item, &Item::STICK);
+    assert_eq!(inventory.get_stack(1).item_count, 3);
+
+    assert_eq!(
+        entries(&seen),
+        [
+            "pre AnvilPreCloser",
+            "pre AnvilPostCloser",
+            "post AnvilPostCloser",
+            "pre AnvilChanger"
+        ]
+    );
+}
+
+/// Opens the trade screen of a new wandering trader with one offer and pays it, and returns the
+/// sync id. `VillagerEntity::complete_trade` locks the trade screen that the click holds (see
+/// `resend_offers_to_player`, issue #115), so the tests trade with a wandering trader.
+fn open_trade(player: &Arc<Player>) -> i32 {
     let world = player.world();
-    // `VillagerEntity::complete_trade` locks the trade screen that the click holds (see
-    // `resend_offers_to_player`), so the test trades with a wandering trader.
     let villager = WanderingTraderEntity::new(Entity::new(
         world.clone(),
         player.living_entity.entity.pos.load(),
@@ -766,9 +976,48 @@ fn one_event_per_fire_site_trade_with_villager_event() {
         .downcast_mut::<MerchantScreenHandler>()
         .unwrap()
         .update_result_slot();
-    click(&player, i32::from(sync_id), 2);
+    i32::from(sync_id)
+}
 
-    assert_eq!(entries(&seen), ["bread wandering_trader"]);
+#[test]
+fn one_event_per_fire_site_trade_with_villager_event() {
+    let _serial = support::serial();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<TradeWithVillagerEvent, _>(move |event| {
+        if named(&event.player, "Trader") || named(&event.player, "TradeCloser") {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {} {}",
+                    event.player.gameprofile.name,
+                    event.offer.output.0.item.registry_key,
+                    event.villager.get_entity().entity_type.resource_name
+                ),
+            );
+        }
+        if named(&event.player, "TradeCloser") {
+            // It locks the trade screen: the event fires after the click released it.
+            event.player.close_handled_screen();
+        }
+    });
+
+    let player = support::player("Trader");
+    let sync_id = open_trade(&player);
+    click(&player, sync_id, 2);
+
+    let closer = support::player("TradeCloser");
+    let sync_id = open_trade(&closer);
+    click(&closer, sync_id, 2);
+    assert!(inventory_screen_open(&closer));
+
+    assert_eq!(
+        entries(&seen),
+        [
+            "Trader bread wandering_trader",
+            "TradeCloser bread wandering_trader"
+        ]
+    );
 }
 
 #[test]

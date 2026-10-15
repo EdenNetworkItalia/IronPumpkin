@@ -3,11 +3,17 @@
 //! Each function checks `has_handlers` before it builds an event, so a fire site with no
 //! handler allocates nothing and returns the vanilla value. The upstream code calls these
 //! functions with one line.
+//!
+//! No event fires under the lock of a screen handler or of a shard of the entity tracker: the
+//! anvil craft events fire after the click released the screen handler, and the tracking and
+//! trade events wait for the [`Deferral`] of their scope.
 
-use std::sync::{Arc, Mutex, PoisonError};
+use std::cell::RefCell;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use dashmap::DashSet;
 use pumpkin_data::{BlockState, item_stack::ItemStack};
+use pumpkin_inventory::{anvil::AnvilScreenHandler, screen_handler::ScreenHandler};
 use pumpkin_protocol::java::client::play::MerchantOffer;
 use pumpkin_util::{Hand, math::position::BlockPos, math::vector3::Vector3, text::TextComponent};
 use uuid::Uuid;
@@ -45,9 +51,13 @@ fn listening<E: Payload + 'static>(player: &Player) -> Option<Arc<Server>> {
     server.plugin_manager.has_handlers::<E>().then_some(server)
 }
 
-/// The shared handle of `player`, for an event that owns its player.
+/// The shared handle of `player`, for an event that owns its player. A player that leaves its
+/// world is no longer in the player list: [`untrack_leaving_player`] provides it.
 fn shared(player: &Player) -> Option<Arc<Player>> {
-    player.world().get_player_by_uuid(player.gameprofile.id)
+    player
+        .world()
+        .get_player_by_uuid(player.gameprofile.id)
+        .or_else(|| leaving(player))
 }
 
 /// Fires `E` built by `make` when a handler listens, and returns it with the changes.
@@ -63,6 +73,117 @@ where
     Some(event)
 }
 
+/// Like [`fire`], for a caller that has the shared handle of `player`.
+fn fire_shared<E, F>(player: &Arc<Player>, make: F) -> Option<E>
+where
+    E: Payload + Send + Sync + 'static,
+    F: FnOnce(Arc<Player>) -> E,
+{
+    let server = listening::<E>(player)?;
+    let mut event = make(player.clone());
+    server.plugin_manager.fire_blocking(&server, &mut event);
+    Some(event)
+}
+
+/// Fires `event`, whose changes nobody reads.
+fn fire_event<E: Payload + Send + Sync + 'static>(server: &Arc<Server>, mut event: E) {
+    server.plugin_manager.fire_blocking(server, &mut event);
+}
+
+/// The events that the active [`Deferral`] of a thread holds back.
+#[derive(Default)]
+struct Pending {
+    events: Vec<Box<dyn FnOnce()>>,
+    /// The player that [`untrack_leaving_player`] removes from the trackers.
+    leaving: Option<Arc<Player>>,
+}
+
+thread_local! {
+    static PENDING: RefCell<Option<Pending>> = const { RefCell::new(None) };
+}
+
+/// Holds back the tracking and trade events while it lives. The outermost deferral of a thread
+/// fires them when it drops, after the locks of its scope: create it before the lock (the screen
+/// handler of a click, a shard of the entity map).
+#[must_use]
+pub struct Deferral {
+    outermost: bool,
+}
+
+impl Deferral {
+    pub fn start() -> Self {
+        let outermost = PENDING.with_borrow_mut(|pending| {
+            if pending.is_some() {
+                false
+            } else {
+                *pending = Some(Pending::default());
+                true
+            }
+        });
+        Self { outermost }
+    }
+}
+
+impl Drop for Deferral {
+    fn drop(&mut self) {
+        if !self.outermost {
+            return;
+        }
+        let Some(pending) = PENDING.with_borrow_mut(Option::take) else {
+            return;
+        };
+        if std::thread::panicking() {
+            return;
+        }
+        for fire in pending.events {
+            fire();
+        }
+    }
+}
+
+/// Runs `fire` after the active deferral of this thread, or now when there is none.
+fn defer(fire: impl FnOnce() + 'static) {
+    let now = PENDING.with_borrow_mut(|pending| match pending {
+        Some(pending) => {
+            pending.events.push(Box::new(fire));
+            None
+        }
+        None => Some(fire),
+    });
+    if let Some(fire) = now {
+        fire();
+    }
+}
+
+fn leaving(player: &Player) -> Option<Arc<Player>> {
+    PENDING.with_borrow(|pending| {
+        pending
+            .as_ref()?
+            .leaving
+            .as_ref()
+            .filter(|leaving| leaving.gameprofile.id == player.gameprofile.id)
+            .cloned()
+    })
+}
+
+/// Removes `player` from the entity tracker of `world` when it leaves the world
+/// (`World::remove_player`), and fires [`PlayerEventStopTracking`] for it although the player
+/// list no longer has it.
+pub fn untrack_leaving_player(world: &World, player: &Arc<Player>) {
+    let _deferral = Deferral::start();
+    let previous = PENDING.with_borrow_mut(|pending| {
+        pending
+            .as_mut()
+            .and_then(|pending| pending.leaving.replace(player.clone()))
+    });
+    world.entity_tracker.remove_entity(player.as_ref(), world);
+    PENDING.with_borrow_mut(|pending| {
+        if let Some(pending) = pending {
+            pending.leaving = previous;
+        }
+    });
+}
+
 /// The critical hit and the sweep of a player attack after [`CriticalHitEvent`] and
 /// [`SweepAttackEvent`].
 #[derive(Clone, Copy)]
@@ -75,7 +196,7 @@ pub struct AttackHit {
 
 /// Fires [`CriticalHitEvent`] and [`SweepAttackEvent`] for an attack of the vanilla type
 /// `attack_type`, as `Player#attack` of `NeoForge` does. Returns the attack type for the sound
-/// and the knockback, and the hit.
+/// and the particle, and the hit. The knockback and the mace smash keep `attack_type`.
 #[must_use]
 pub fn attack_hit(
     player: &Player,
@@ -101,7 +222,7 @@ pub fn attack_hit(
     }) {
         hit.sweep = event.sweeping;
     }
-    let attack_type = if hit.critical {
+    let effect_type = if hit.critical {
         AttackType::Critical
     } else if hit.sweep {
         AttackType::Sweeping
@@ -110,7 +231,7 @@ pub fn attack_hit(
     } else {
         attack_type
     };
-    (attack_type, hit)
+    (effect_type, hit)
 }
 
 /// Fires [`PlayerEventBreakSpeed`] for the mining speed `speed` and returns the speed to use.
@@ -219,25 +340,36 @@ pub fn pickup_xp_cancelled(player: &Player, orb_entity_id: i32, amount: u32) -> 
     .is_some_and(|event| event.cancelled)
 }
 
-/// Fires [`PlayerSwitchHotbarSlotEventPost`].
+/// Fires [`PlayerSwitchHotbarSlotEventPost`] when the selected slot changed, as `NeoForge`
+/// does.
 pub fn hotbar_post(player: &Player, old_slot: u8, new_slot: u8) {
+    if old_slot == new_slot {
+        return;
+    }
     let _ = fire(player, |player| {
         PlayerSwitchHotbarSlotEventPost::new(player, old_slot, new_slot)
     });
 }
 
-/// Fires [`PlayerEventStartTracking`].
+/// Fires [`PlayerEventStartTracking`] after the active [`Deferral`].
 pub fn start_tracking(player: &Arc<Player>, target: &Arc<dyn EntityBase>) {
-    let _ = fire(player, |player| {
-        PlayerEventStartTracking::new(player, target.clone())
-    });
+    let Some(server) = listening::<PlayerEventStartTracking>(player) else {
+        return;
+    };
+    let (player, target) = (player.clone(), target.clone());
+    defer(move || fire_event(&server, PlayerEventStartTracking::new(player, target)));
 }
 
-/// Fires [`PlayerEventStopTracking`].
+/// Fires [`PlayerEventStopTracking`] after the active [`Deferral`].
 pub fn stop_tracking(player: &Player, target: &Arc<dyn EntityBase>) {
-    let _ = fire(player, |player| {
-        PlayerEventStopTracking::new(player, target.clone())
-    });
+    let Some(server) = listening::<PlayerEventStopTracking>(player) else {
+        return;
+    };
+    let Some(player) = shared(player) else {
+        return;
+    };
+    let target = target.clone();
+    defer(move || fire_event(&server, PlayerEventStopTracking::new(player, target)));
 }
 
 /// Fires [`PlayerEventStopTracking`] for each player of `players` in `seen_by`.
@@ -291,7 +423,8 @@ pub struct RespawnPosition {
 
 /// Fires [`PlayerSpawnLocationEvent`] for a respawn and returns the position to use. When a
 /// handler sets `copy_original_spawn_position` to `false`, the player loses its respawn point.
-/// The flag starts as `true` when the player still has a respawn point.
+/// The flag starts as `true` when the player still has a respawn point. A cancel keeps the
+/// vanilla position and the respawn point.
 pub async fn respawn_position(
     server: Option<&Arc<Server>>,
     player: &Arc<Player>,
@@ -325,6 +458,9 @@ pub async fn respawn_position(
     else {
         return original;
     };
+    if event.cancelled {
+        return original;
+    }
     if !event.copy_original_spawn_position {
         *player
             .respawn_point
@@ -350,37 +486,96 @@ pub fn load_from_file(server: &Arc<Server>, player: &Arc<Player>) {
     });
 }
 
-/// Fires [`PlayerEventSaveToFile`] for a player whose data the server saves to `directory`.
-pub fn save_to_file(player: &Player, directory: &std::path::Path) {
-    let _ = fire(player, |player| {
+/// Fires [`PlayerEventSaveToFile`] for a player whose data the server saves to `directory`. The
+/// player of a disconnect is no longer in the player list, so the caller passes its handle.
+pub fn save_to_file(player: &Arc<Player>, directory: &std::path::Path) {
+    let _ = fire_shared(player, |player| {
         let uuid = player.gameprofile.id.to_string();
         PlayerEventSaveToFile::new(player, directory.to_path_buf(), uuid)
     });
 }
 
-/// Fires [`AnvilCraftEventPre`]. Returns `true` for a cancel.
-#[must_use]
-pub fn anvil_craft_pre(
-    player: &Player,
-    left: &ItemStack,
-    right: &ItemStack,
-    output: &ItemStack,
-) -> bool {
-    fire(player, |player| {
-        AnvilCraftEventPre::new(player, left.clone(), right.clone(), output.clone())
-    })
-    .is_some_and(|event| event.cancelled)
+type Guard<'a> = MutexGuard<'a, dyn ScreenHandler + 'static>;
+type Handler = Mutex<dyn ScreenHandler + 'static>;
+
+fn lock(handler: &Handler) -> Guard<'_> {
+    handler.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Fires [`AnvilCraftEventPost`].
-pub fn anvil_craft_post(player: &Player, left: &ItemStack, right: &ItemStack, output: &ItemStack) {
-    let _ = fire(player, |player| {
-        AnvilCraftEventPost::new(player, left.clone(), right.clone(), output.clone())
+/// Whether `handler` is still the open screen of `player`.
+fn is_open(player: &Player, handler: &Handler) -> bool {
+    let current = player
+        .current_screen_handler
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    std::ptr::addr_eq(Arc::as_ptr(&current), std::ptr::from_ref(handler))
+}
+
+/// Whether a handler listens to [`AnvilCraftEventPre`] or [`AnvilCraftEventPost`]
+/// (`InventoryPlayer::listens_to_anvil_craft`).
+pub fn listens_to_anvil_craft(player: &Player) -> bool {
+    player.world().server.upgrade().is_some_and(|server| {
+        server.plugin_manager.has_handlers::<AnvilCraftEventPre>()
+            || server.plugin_manager.has_handlers::<AnvilCraftEventPost>()
+    })
+}
+
+/// Fires [`AnvilCraftEventPre`] and [`AnvilCraftEventPost`] for the take of the anvil result
+/// that the last click on `handler` left pending (`AnvilMenu#onTake` of `NeoForge`). It
+/// releases `guard` while the handlers run and returns the guard it locks again.
+///
+/// After a Pre without a cancel, the anvil pays the levels and uses the inputs only when it is
+/// still the open screen of `player` and its inputs did not change; then the anvil update event
+/// of the new inputs and the Post fire. A cancel, a closed anvil or changed inputs leave the
+/// inputs to the handlers, and the Post does not fire.
+pub fn fire_anvil_take<'a>(
+    player: &Arc<Player>,
+    handler: &'a Handler,
+    guard: Guard<'a>,
+) -> Guard<'a> {
+    let Some(take) = guard
+        .as_any()
+        .downcast_ref::<AnvilScreenHandler>()
+        .and_then(AnvilScreenHandler::take_craft_event)
+    else {
+        return guard;
+    };
+    drop(guard);
+    let cancelled = fire_shared(player, |shared| {
+        AnvilCraftEventPre::new(
+            shared,
+            take.left.clone(),
+            take.right.clone(),
+            take.output.clone(),
+        )
+    })
+    .is_some_and(|event| event.cancelled);
+    let open = is_open(player, handler);
+    let mut guard = lock(handler);
+    let Some(anvil) = guard.as_any_mut().downcast_mut::<AnvilScreenHandler>() else {
+        return guard;
+    };
+    let applied = !cancelled && open && anvil.apply_craft_take(&take, player.as_ref());
+    if open {
+        anvil.update_result(player.as_ref());
+        anvil.send_content_updates();
+    }
+    if !applied {
+        return guard;
+    }
+    drop(crate::plugin::container_events::fire_pending(
+        player, handler, guard,
+    ));
+    let _ = fire_shared(player, |shared| {
+        AnvilCraftEventPost::new(shared, take.left, take.right, take.output)
     });
+    lock(handler)
 }
 
 /// Fires [`TradeWithVillagerEvent`] for the offer `offer_index` of the merchant
-/// `merchant_id`, which `player_uuid` used.
+/// `merchant_id`, which `player_uuid` used. The trade runs under the lock of the trade screen,
+/// so the event fires after the active [`Deferral`] (the slot click).
 pub fn trade_with_villager(
     world: &Arc<World>,
     player_uuid: Uuid,
@@ -388,12 +583,18 @@ pub fn trade_with_villager(
     offers: &Mutex<Vec<MerchantOffer>>,
     offer_index: usize,
 ) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    if !server
+        .plugin_manager
+        .has_handlers::<TradeWithVillagerEvent>()
+    {
+        return;
+    }
     let Some(player) = world.get_player_by_uuid(player_uuid) else {
         return;
     };
-    if listening::<TradeWithVillagerEvent>(&player).is_none() {
-        return;
-    }
     let Some(offer) = offers
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -405,8 +606,11 @@ pub fn trade_with_villager(
     let Some(merchant) = world.get_entity_by_id(merchant_id) else {
         return;
     };
-    let _ = fire(&player, |player| {
-        TradeWithVillagerEvent::new(player, offer, merchant)
+    defer(move || {
+        fire_event(
+            &server,
+            TradeWithVillagerEvent::new(player, offer, merchant),
+        );
     });
 }
 

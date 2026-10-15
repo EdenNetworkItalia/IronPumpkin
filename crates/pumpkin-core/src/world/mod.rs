@@ -4789,8 +4789,7 @@ impl World {
             new_list
         });
         if let Some(ref player) = removed_player {
-            self.entity_tracker
-                .remove_entity(player.as_ref() as &dyn EntityBase, self);
+            crate::plugin::player_events::untrack_leaving_player(self, player);
             let uuid = player.gameprofile.id;
             let entity_id = player.entity_id();
 

@@ -66,7 +66,7 @@ impl ServerPlayerData {
         self.storage.get_data_path()
     }
 
-    fn fire_save_to_file(&self, player: &Player) {
+    fn fire_save_to_file(&self, player: &Arc<Player>) {
         if self.storage.is_save_enabled() {
             crate::plugin::player_events::save_to_file(player, self.data_path());
         }
@@ -179,7 +179,10 @@ impl ServerPlayerData {
     /// # Returns
     ///
     /// A Result indicating success or the error that occurred.
-    pub fn extract_data_and_save_player(&self, player: &Player) -> Result<(), PlayerDataError> {
+    pub fn extract_data_and_save_player(
+        &self,
+        player: &Arc<Player>,
+    ) -> Result<(), PlayerDataError> {
         if !self.storage.is_save_enabled() {
             return Ok(());
         }

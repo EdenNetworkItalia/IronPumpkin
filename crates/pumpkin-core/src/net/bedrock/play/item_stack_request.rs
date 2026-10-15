@@ -14,6 +14,7 @@ impl BedrockClient {
         };
         use pumpkin_protocol::bedrock::server::item_stack_request::ItemStackRequestAction;
 
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let (responses, inventory_updated) = {
             let current_screen_handler = player
                 .current_screen_handler

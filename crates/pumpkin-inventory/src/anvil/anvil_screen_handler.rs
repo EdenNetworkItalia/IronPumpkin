@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::borrow::Cow;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::inventory::Inventory;
 use pumpkin_data::Enchantment;
@@ -25,6 +25,8 @@ pub struct AnvilResultSlot {
     pub cost: Arc<AtomicI32>,
     pub repair_item_count_cost: Arc<AtomicI32>,
     pub only_renaming: Arc<AtomicBool>,
+    /// The last take that waits for the anvil craft events.
+    pub take: Arc<Mutex<Option<AnvilTake>>>,
 }
 
 impl AnvilResultSlot {
@@ -43,8 +45,51 @@ impl AnvilResultSlot {
             cost,
             repair_item_count_cost,
             only_renaming,
+            take: Arc::new(Mutex::new(None)),
         }
     }
+}
+
+/// A take of the anvil result: the inputs before the take, the output and the vanilla costs.
+/// The anvil craft events fire with it after the player released the screen-handler lock.
+#[derive(Clone)]
+pub struct AnvilTake {
+    pub left: ItemStack,
+    pub right: ItemStack,
+    pub output: ItemStack,
+    pub cost: i32,
+    pub repair_item_count_cost: i32,
+    pub only_renaming: bool,
+}
+
+/// The vanilla end of a take (`AnvilMenu#onTake`): pays the levels, uses the inputs and damages
+/// the anvil.
+fn finish_take(
+    inventory: &dyn Inventory,
+    player: &dyn InventoryPlayer,
+    cost: i32,
+    repair_item_count_cost: i32,
+    only_renaming: bool,
+) {
+    if !player.has_infinite_materials() {
+        player.add_experience_levels(-cost);
+    }
+
+    if repair_item_count_cost > 0 {
+        let mut addition = inventory.get_stack(1);
+        if !addition.is_empty() && addition.item_count > repair_item_count_cost as u8 {
+            addition.decrement(repair_item_count_cost as u8);
+            inventory.set_stack(1, addition);
+        } else {
+            inventory.set_stack(1, ItemStack::EMPTY.clone());
+        }
+    } else if !only_renaming {
+        inventory.set_stack(1, ItemStack::EMPTY.clone());
+    }
+
+    inventory.set_stack(0, ItemStack::EMPTY.clone());
+    player.use_anvil();
+    inventory.mark_dirty();
 }
 
 impl Slot for AnvilResultSlot {
@@ -70,33 +115,29 @@ impl Slot for AnvilResultSlot {
     }
 
     fn on_take_item(&self, player: &dyn InventoryPlayer, stack: &ItemStack) {
-        let (left, right) = (self.inventory.get_stack(0), self.inventory.get_stack(1));
-        if player.fire_anvil_craft_pre(&left, &right, stack) {
+        let cost = self.cost.load(Ordering::Relaxed);
+        let repair_item_count_cost = self.repair_item_count_cost.load(Ordering::Relaxed);
+        let only_renaming = self.only_renaming.load(Ordering::Relaxed);
+        if player.listens_to_anvil_craft() {
+            // The inputs stay until the anvil craft events fired after the lock.
+            *self.take.lock().unwrap_or_else(PoisonError::into_inner) = Some(AnvilTake {
+                left: self.inventory.get_stack(0),
+                right: self.inventory.get_stack(1),
+                output: stack.clone(),
+                cost,
+                repair_item_count_cost,
+                only_renaming,
+            });
             return;
         }
-        let cost = self.cost.load(Ordering::Relaxed);
-        if !player.has_infinite_materials() {
-            player.add_experience_levels(-cost);
-        }
-
-        let repair_item_count_cost = self.repair_item_count_cost.load(Ordering::Relaxed);
-        if repair_item_count_cost > 0 {
-            let mut addition = self.inventory.get_stack(1);
-            if !addition.is_empty() && addition.item_count > repair_item_count_cost as u8 {
-                addition.decrement(repair_item_count_cost as u8);
-                self.inventory.set_stack(1, addition);
-            } else {
-                self.inventory.set_stack(1, ItemStack::EMPTY.clone());
-            }
-        } else if !self.only_renaming.load(Ordering::Relaxed) {
-            self.inventory.set_stack(1, ItemStack::EMPTY.clone());
-        }
-
         self.cost.store(0, Ordering::Relaxed);
-        self.inventory.set_stack(0, ItemStack::EMPTY.clone());
-        player.use_anvil();
-        self.mark_dirty();
-        player.fire_anvil_craft_post(&left, &right, stack);
+        finish_take(
+            self.inventory.as_ref(),
+            player,
+            cost,
+            repair_item_count_cost,
+            only_renaming,
+        );
     }
 
     fn mark_dirty(&self) {
@@ -136,6 +177,8 @@ pub struct AnvilScreenHandler {
     pub repair_cost: Arc<AtomicI32>,
     pub repair_item_count_cost: Arc<AtomicI32>,
     pub only_renaming: Arc<AtomicBool>,
+    /// Shared with [`AnvilResultSlot::take`].
+    pub craft_take: Arc<Mutex<Option<AnvilTake>>>,
     update_event_pending: bool,
 }
 
@@ -230,6 +273,7 @@ impl AnvilScreenHandler {
             repair_cost: cost.clone(),
             repair_item_count_cost: repair_item_count_cost.clone(),
             only_renaming: only_renaming.clone(),
+            craft_take: Arc::new(Mutex::new(None)),
             update_event_pending: false,
         };
 
@@ -238,13 +282,15 @@ impl AnvilScreenHandler {
         // Slot 1: Additional slot
         handler.add_slot(Arc::new(NormalSlot::new(inventory.clone(), 1)));
         // Slot 2: Result slot
-        handler.add_slot(Arc::new(AnvilResultSlot::new(
+        let result_slot = AnvilResultSlot::new(
             inventory.clone(),
             2,
             cost,
             repair_item_count_cost,
             only_renaming,
-        )));
+        );
+        handler.craft_take = result_slot.take.clone();
+        handler.add_slot(Arc::new(result_slot));
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
         handler.add_player_slots(&player_inventory);
@@ -304,7 +350,20 @@ impl AnvilScreenHandler {
     /// Computes the vanilla result with [`Self::create_result`] and marks the anvil update event
     /// as pending, like the `createResult` wrapper of `NeoForge`'s `AnvilMenu`. The player fires
     /// it with [`Self::take_update_event`] after it releases the screen-handler lock.
+    ///
+    /// While a take waits for the anvil craft events, the inputs are still in place: the result
+    /// stays empty, so a quick move takes the result once.
     pub fn update_result(&mut self, player: &dyn InventoryPlayer) {
+        if self
+            .craft_take
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .is_some()
+        {
+            self.inventory.set_stack(2, ItemStack::EMPTY.clone());
+            self.set_repair_cost(0);
+            return;
+        }
         self.create_result(player.has_infinite_materials());
         self.update_event_pending = true;
     }
@@ -312,6 +371,34 @@ impl AnvilScreenHandler {
     /// Whether an anvil update event is pending, and clears it.
     pub const fn take_update_event(&mut self) -> bool {
         std::mem::replace(&mut self.update_event_pending, false)
+    }
+
+    /// The take that waits for the anvil craft events, and clears it.
+    pub fn take_craft_event(&self) -> Option<AnvilTake> {
+        self.craft_take
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    /// Ends `take` as vanilla does after an `AnvilCraftEvent.Pre` without a cancel: pays the
+    /// levels, uses the inputs and damages the anvil. Returns `false` and changes nothing when an
+    /// input changed while the event fired.
+    pub fn apply_craft_take(&mut self, take: &AnvilTake, player: &dyn InventoryPlayer) -> bool {
+        if !self.inventory.get_stack(0).are_equal(&take.left)
+            || !self.inventory.get_stack(1).are_equal(&take.right)
+        {
+            return false;
+        }
+        self.repair_cost.store(0, Ordering::Relaxed);
+        finish_take(
+            self.inventory.as_ref(),
+            player,
+            take.cost,
+            take.repair_item_count_cost,
+            take.only_renaming,
+        );
+        true
     }
 
     /// The current inputs and result for the anvil update event. `None` when the left input is

@@ -9,8 +9,9 @@ use crate::entity::{EntityBase, player::Player};
 /// `NeoForge` `TradeWithVillagerEvent`: a player completed a trade with a villager or a
 /// wandering trader.
 ///
-/// Fires in `complete_trade` of the merchant after the offer use is counted, under the
-/// screen-handler lock of the trade screen.
+/// Fires for each trade of a slot click after the click released the screen-handler lock of the
+/// trade screen. The merchant counted the offer use in `complete_trade`, and `offer` is a copy
+/// made then.
 #[derive(Event, Clone)]
 pub struct TradeWithVillagerEvent {
     pub player: Arc<Player>,

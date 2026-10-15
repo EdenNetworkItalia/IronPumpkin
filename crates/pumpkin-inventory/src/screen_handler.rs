@@ -197,19 +197,12 @@ pub trait InventoryPlayer: Send + Sync {
     /// Performs anvil block damage and plays anvil sound events.
     fn use_anvil(&self) {}
 
-    /// Fires the event before the player pays for the anvil `output`. Returns true if
-    /// cancelled.
-    fn fire_anvil_craft_pre(
-        &self,
-        _left: &ItemStack,
-        _right: &ItemStack,
-        _output: &ItemStack,
-    ) -> bool {
+    /// Whether a handler listens to the anvil craft events. The anvil result slot then leaves the
+    /// cost and the use of the inputs to those events, which fire after the screen-handler lock
+    /// is released.
+    fn listens_to_anvil_craft(&self) -> bool {
         false
     }
-
-    /// Fires the event after the player took the anvil `output`, with the inputs before the take.
-    fn fire_anvil_craft_post(&self, _left: &ItemStack, _right: &ItemStack, _output: &ItemStack) {}
 
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}

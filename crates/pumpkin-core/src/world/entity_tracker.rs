@@ -861,6 +861,7 @@ impl EntityTracker {
 
     /// Must only be called after the player's own `CLogin` packet has been sent.
     pub fn pair_new_player_with_tracked_entities(&self, player_arc: &Arc<Player>, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let entity_id = player_arc.get_entity().entity_id;
         for entry in &self.entity_map {
             if *entry.key() != entity_id {
@@ -879,6 +880,7 @@ impl EntityTracker {
 
     /// Vanilla `PlayerList.respawn` recreates the player -> forget and re-pair it as a viewer.
     pub fn repair_respawned_player(&self, player: &Arc<Player>, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let entity_id = player.get_entity().entity_id;
         for entry in &self.entity_map {
             if *entry.key() != entity_id {
@@ -895,6 +897,7 @@ impl EntityTracker {
         world: &World,
         chunks: &[Vector2<i32>],
     ) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let chunks: FxHashSet<_> = chunks.iter().copied().collect();
         let entity_id = player.get_entity().entity_id;
         for entry in &self.entity_map {
@@ -907,6 +910,7 @@ impl EntityTracker {
     }
 
     pub fn remove_entity(&self, entity: &dyn EntityBase, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let entity_id = entity.get_entity().entity_id;
         if let Some(player) = entity.get_player() {
             for entry in &self.entity_map {
@@ -920,6 +924,7 @@ impl EntityTracker {
     }
 
     pub fn update_player_position(&self, player: &Arc<Player>, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let pos = player.get_entity().pos.load();
         let new_pos = Vector3::new(
             get_section_cord(pos.x.floor() as i32),
@@ -940,6 +945,7 @@ impl EntityTracker {
     }
 
     pub fn update_entity_position(&self, entity: &dyn EntityBase, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         if let Some(tracked) = self.entity_map.get(&entity.get_entity().entity_id) {
             let pos = entity.get_entity().pos.load();
             let new_pos = Vector3::new(
@@ -954,6 +960,7 @@ impl EntityTracker {
     }
 
     pub fn update_all(&self, world: &World) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let players = world.players.load();
         let mut moved_players = Vec::new();
 

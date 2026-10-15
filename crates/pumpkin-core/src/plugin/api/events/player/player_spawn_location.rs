@@ -8,7 +8,8 @@ use std::sync::Arc;
 /// An event that occurs when determining player spawn position.
 ///
 /// `NeoForge` `PlayerRespawnPositionEvent`: `spawn_pos`, `yaw`, `pitch`, `dimension` and
-/// `copy_original_spawn_position` are read back.
+/// `copy_original_spawn_position` are read back. A cancel keeps the vanilla position and the
+/// respawn point (`NeoForge` has no cancel).
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PlayerSpawnLocationEvent {

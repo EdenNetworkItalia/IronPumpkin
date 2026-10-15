@@ -64,22 +64,21 @@ pub fn event(item: TokenStream) -> TokenStream {
     .into()
 }
 
-/// The `get_parent_names_static` of `#[event_parents(..)]`, which also checks that each parent
-/// type exists.
+/// The `get_parent_names_static` of `#[event_parents(..)]`: the event names of the parents, which
+/// must be `Payload` types.
 fn event_parents(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
     let attr = attrs.iter().find(|a| a.path().is_ident("event_parents"))?;
     let paths = attr
         .parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
         .expect("#[event_parents] takes a list of event type paths");
-    let names = paths.iter().map(|p| {
-        let last = &p.segments.last().unwrap().ident;
-        quote! { stringify!(#last) }
-    });
-    let checks = paths.iter();
+    let count = paths.len();
+    let paths = paths.iter();
     Some(quote! {
         fn get_parent_names_static() -> &'static [&'static str] {
-            #(let _ = std::marker::PhantomData::<#checks>;)*
-            &[#(#names),*]
+            static NAMES: std::sync::OnceLock<[&'static str; #count]> = std::sync::OnceLock::new();
+            NAMES.get_or_init(|| {
+                [#(<#paths as crate::plugin::Payload>::get_name_static()),*]
+            })
         }
     })
 }

@@ -1413,11 +1413,9 @@ impl Player {
         damage = damage.max(0.0);
 
         let pos = victim_entity.pos.load();
-        let (attack_type, hit) = crate::plugin::player_events::attack_hit(
-            self,
-            victim,
-            AttackType::new(self, attack_cooldown_progress as f32),
-        );
+        let attack_type = AttackType::new(self, attack_cooldown_progress as f32);
+        let (effect_type, hit) =
+            crate::plugin::player_events::attack_hit(self, victim, attack_type);
 
         if hit.critical {
             damage *= f64::from(hit.multiplier);
@@ -1501,9 +1499,9 @@ impl Player {
             );
         }
 
-        player_attack_sound(&pos, &world, attack_type);
+        player_attack_sound(&pos, &world, effect_type);
 
-        if matches!(attack_type, AttackType::Critical) {
+        if matches!(effect_type, AttackType::Critical) {
             let je_packet =
                 CEntityAnimation::new(victim_entity.entity_id.into(), Animation::CriticalEffect);
             let be_packet = pumpkin_protocol::bedrock::server::animate::SAnimate {
@@ -1533,43 +1531,41 @@ impl Player {
             // knockback the victim's damage handling applies. A plain hit adds nothing.
             // `handle_knockback` halves `strength`, so these are twice the vanilla amount.
             let mut knockback_strength = f64::from(knockback_level);
-            match attack_type {
-                AttackType::Knockback => knockback_strength += 1.0,
-                _ if hit.sweep => {
-                    combat::spawn_sweep_particle(attacker_entity, &world, &pos);
+            if matches!(attack_type, AttackType::Knockback) {
+                knockback_strength += 1.0;
+            }
+            // `SweepAttackEvent` can make a sprint hit sweep too, as in `NeoForge`.
+            if hit.sweep {
+                combat::spawn_sweep_particle(attacker_entity, &world, &pos);
 
-                    let mut sweep_damage = 1.0;
-                    if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>()
-                    {
-                        for (enchantment, level) in enchantments.enchantment.iter() {
-                            if **enchantment == Enchantment::SWEEPING_EDGE {
-                                sweep_damage +=
-                                    damage as f32 * (*level as f32 / (*level as f32 + 1.0));
-                            }
-                        }
-                    }
-
-                    let search_box = BoundingBox::new(
-                        Vector3::new(pos.x - 1.0, pos.y - 0.5, pos.z - 1.0),
-                        Vector3::new(pos.x + 1.0, pos.y + 0.5, pos.z + 1.0),
-                    );
-                    let victims = world.get_all_at_box(&search_box);
-                    for other_victim in victims {
-                        if other_victim.get_entity().entity_id != victim_entity.entity_id
-                            && other_victim.get_entity().entity_id != attacker_entity.entity_id
-                        {
-                            other_victim.damage_with_context(
-                                other_victim.as_ref(),
-                                sweep_damage,
-                                DamageType::PLAYER_ATTACK,
-                                None,
-                                Some(self),
-                                Some(self),
-                            );
+                let mut sweep_damage = 1.0;
+                if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+                    for (enchantment, level) in enchantments.enchantment.iter() {
+                        if **enchantment == Enchantment::SWEEPING_EDGE {
+                            sweep_damage += damage as f32 * (*level as f32 / (*level as f32 + 1.0));
                         }
                     }
                 }
-                _ => {}
+
+                let search_box = BoundingBox::new(
+                    Vector3::new(pos.x - 1.0, pos.y - 0.5, pos.z - 1.0),
+                    Vector3::new(pos.x + 1.0, pos.y + 0.5, pos.z + 1.0),
+                );
+                let victims = world.get_all_at_box(&search_box);
+                for other_victim in victims {
+                    if other_victim.get_entity().entity_id != victim_entity.entity_id
+                        && other_victim.get_entity().entity_id != attacker_entity.entity_id
+                    {
+                        other_victim.damage_with_context(
+                            other_victim.as_ref(),
+                            sweep_damage,
+                            DamageType::PLAYER_ATTACK,
+                            None,
+                            Some(self),
+                            Some(self),
+                        );
+                    }
+                }
             }
             // Vanilla only pushes the victim when the extra knockback is non-zero;
             // `Entity::knockback` halves the current velocity, so calling it with 0.0
@@ -5923,6 +5919,7 @@ impl Player {
 
     #[allow(clippy::too_many_lines)]
     pub fn on_slot_click(self: &Arc<Self>, packet: SClickSlot, server: &Arc<Server>) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         self.update_last_action_time();
 
         let (
@@ -6301,6 +6298,11 @@ impl Player {
         }
 
         screen_handler.set_received_cursor_hash(packet.carried_item);
+        let screen_handler = crate::plugin::player_events::fire_anvil_take(
+            self,
+            &screen_handler_arc,
+            screen_handler,
+        );
         let mut screen_handler = crate::plugin::container_events::fire_pending(
             self,
             &screen_handler_arc,
@@ -7980,17 +7982,8 @@ impl InventoryPlayer for Player {
         self.close_handled_screen();
     }
 
-    fn fire_anvil_craft_pre(
-        &self,
-        left: &ItemStack,
-        right: &ItemStack,
-        output: &ItemStack,
-    ) -> bool {
-        crate::plugin::player_events::anvil_craft_pre(self, left, right, output)
-    }
-
-    fn fire_anvil_craft_post(&self, left: &ItemStack, right: &ItemStack, output: &ItemStack) {
-        crate::plugin::player_events::anvil_craft_post(self, left, right, output);
+    fn listens_to_anvil_craft(&self) -> bool {
+        crate::plugin::player_events::listens_to_anvil_craft(self)
     }
 
     fn use_anvil(&self) {

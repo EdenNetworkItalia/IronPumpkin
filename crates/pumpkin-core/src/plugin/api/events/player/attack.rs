@@ -10,7 +10,9 @@ use crate::entity::{EntityBase, player::Player};
 /// Fires in `Player::attack` before the damage is dealt. `critical_hit`, `damage_multiplier`
 /// and `disable_sweep` are read back: a critical hit multiplies the damage by
 /// `damage_multiplier` (a negative value counts as 0), and with `disable_sweep` it stops the
-/// sweep, as in vanilla.
+/// sweep, as in vanilla. A forced critical hit keeps the sprint knockback and the mace smash.
+/// `vanilla_critical` is `false` for a falling mace hit: Pumpkin's `AttackType::new` makes it a
+/// mace smash, never a critical hit.
 #[derive(Event, Clone)]
 pub struct CriticalHitEvent {
     pub player: Arc<Player>,
