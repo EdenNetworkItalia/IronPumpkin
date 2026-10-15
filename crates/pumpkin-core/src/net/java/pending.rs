@@ -228,6 +228,11 @@ impl PendingConnection {
         }
     }
 
+    /// The server of the connection, when it still runs.
+    pub(crate) fn server_arc(&self) -> Option<Arc<Server>> {
+        self.server.upgrade()
+    }
+
     /// Server for the connection packet events, only for clients below 26.3 after handshake.
     fn translating_server(&self) -> Option<Arc<Server>> {
         if self.version.load() == CURRENT_MC_VERSION
@@ -697,6 +702,17 @@ impl PendingConnection {
                 && self
                     .handle_neoforge_payload(server, plugin_message.channel, plugin_message.data)
                     .await?;
+            if !handled
+                && crate::plugin::network_events::handle_configuration_payload(
+                    self,
+                    server,
+                    plugin_message.channel,
+                    plugin_message.data,
+                )
+                .await
+            {
+                return Ok(());
+            }
             if !handled {
                 debug!(
                     "Client {} sent a payload on unknown configuration channel {}",

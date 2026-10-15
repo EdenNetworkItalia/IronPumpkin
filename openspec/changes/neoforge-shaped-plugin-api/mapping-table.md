@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 208 | 208 | 0 | 0 | 0 | 179 | 52 |
-| Inventory, planned | 527 | 482 | 43 | 2 | 0 | 374 | 71 |
+| Inventory, supported | 233 | 233 | 0 | 0 | 0 | 203 | 58 |
+| Inventory, planned | 502 | 457 | 43 | 2 | 0 | 350 | 65 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -32,7 +32,7 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `RegisterPayloadHandlersEvent` | 170 | event class | `event-bus.event::register-payload-handlers-event` (resource `network.register-payload-handlers-event`) | planned |
+| `RegisterPayloadHandlersEvent` | 170 | event class | `ironpumpkin_mods::network::RegisterPayloadHandlersEvent` (a Pumpkin event; `registrar` gives a `PayloadRegistrar`) | supported |
 | `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` (runs after the last `init`, with the Local configs loaded) | supported |
 | `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -145,7 +145,7 @@ How to read it:
 | `PlayerInteractEvent.LeftClickEmpty` | 7 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerXpEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BlockEvent.BlockToolModificationEvent` | 7 | event class | `event-bus.event::block-event-block-tool-modification-event` | planned |
-| `RegisterConfigurationTasksEvent` | 7 | event class | `event-bus.event::register-configuration-tasks-event` (resource `network.register-configuration-tasks-event`) | planned |
+| `RegisterConfigurationTasksEvent` | 7 | event class | `ironpumpkin_mods::network::RegisterConfigurationTasksEvent` (a Pumpkin event; `register` takes a `CustomConfigurationTask`) | supported |
 | `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | planned |
 | `ServerChatEvent` | 6 | event class | `pumpkin_core::plugin::player::PlayerChatEvent` (`raw_text` is filled only when a handler was registered at creation) | supported |
 | `EntityTeleportEvent.TeleportCommand` | 6 | event class | `event-bus.event::entity-teleport-event-teleport-command` | supported |
@@ -615,43 +615,43 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `IPayloadHandler` | 166 | Configuration tasks and other network types | `callbacks.handle-payload` | planned |
-| `IPayloadContext#player` | 154 | Payload registration and sending | `network.payload-context.player` | planned |
-| `IPayloadContext#enqueueWork` | 151 | Payload registration and sending | `pumpkin:plugin/scheduler` (handlers on `handler-thread::main` run on the tick thread) | planned |
-| `PayloadRegistrar#playToClient` | 125 | Payload registration and sending | `network.payload-registrar.play-to-client` | planned |
-| `PayloadRegistrar#playToServer` | 123 | Payload registration and sending | `network.payload-registrar.play-to-server` | planned |
-| `PacketDistributor#sendToPlayer` | 121 | Payload registration and sending | `network.send-to-player` | supported |
+| `IPayloadHandler` | 166 | Configuration tasks and other network types | `ironpumpkin_mods::network::PayloadHandler` (a closure `Fn(&[u8], &mut PayloadContext)`) | supported |
+| `IPayloadContext#player` | 154 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::player` | supported |
+| `IPayloadContext#enqueueWork` | 151 | Payload registration and sending | `pumpkin:plugin/scheduler`; a handler on `HandlerThread::Main` already runs on the world tick | planned |
+| `PayloadRegistrar#playToClient` | 125 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_client` | supported |
+| `PayloadRegistrar#playToServer` | 123 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_server` | supported |
+| `PacketDistributor#sendToPlayer` | 121 | Payload registration and sending | `ironpumpkin_mods::network::send_to_player` | supported |
 | `IContainerFactory` | 84 | Configuration tasks and other network types | `registration.menu-type-definition.extra-data`, `menus.menu-definition.extra-data` | planned |
-| `PayloadRegistrar#versioned` | 54 | Payload registration and sending | `network.payload-registrar.versioned` | planned |
+| `PayloadRegistrar#versioned` | 54 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::versioned` | supported |
 | `PacketDistributor#sendToPlayersTrackingChunk` | 43 | Payload registration and sending | `network.send-to-players-tracking-chunk` | planned |
-| `PayloadRegistrar#optional` | 42 | Payload registration and sending | `network.payload-registrar.optional` | planned |
-| `IPayloadContext#flow` | 41 | Payload registration and sending | `network.payload-context.flow` | planned |
-| `PacketDistributor#sendToAllPlayers` | 39 | Payload registration and sending | `network.send-to-all-players` | planned |
+| `PayloadRegistrar#optional` | 42 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::optional` | supported |
+| `IPayloadContext#flow` | 41 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::flow` | supported |
+| `PacketDistributor#sendToAllPlayers` | 39 | Payload registration and sending | `ironpumpkin_mods::network::send_to_all_players` | supported |
 | `network.codec` | 34 | Other network packages | `network` doc, not supported | not supported |
-| `PayloadRegistrar#playBidirectional` | 32 | Payload registration and sending | `network.payload-registrar.play-bidirectional` | planned |
+| `PayloadRegistrar#playBidirectional` | 32 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_bidirectional` | supported |
 | `PacketDistributor#sendToPlayersTrackingEntity` | 27 | Payload registration and sending | `network.send-to-players-tracking-entity` | planned |
 | `PacketDistributor#sendToPlayersNear` | 20 | Payload registration and sending | `network.send-to-players-near` | planned |
 | `PacketDistributor#sendToPlayersTrackingEntityAndSelf` | 19 | Payload registration and sending | `network.send-to-players-tracking-entity-and-self` | planned |
-| `IPayloadContext#disconnect` | 17 | Payload registration and sending | `network.payload-context.disconnect` | planned |
-| `HandlerThread` | 12 | Configuration tasks and other network types | `network.handler-thread` | planned |
-| `PacketDistributor#sendToPlayersInDimension` | 11 | Payload registration and sending | `network.send-to-players-in-dimension` | planned |
-| `PayloadRegistrar#executesOn` | 10 | Payload registration and sending | `network.payload-registrar.executes-on` | planned |
+| `IPayloadContext#disconnect` | 17 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::disconnect` | supported |
+| `HandlerThread` | 12 | Configuration tasks and other network types | `ironpumpkin_mods::network::HandlerThread` | supported |
+| `PacketDistributor#sendToPlayersInDimension` | 11 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_in_dimension` | supported |
+| `PayloadRegistrar#executesOn` | 10 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::executes_on` | supported |
 | `network.connection` | 8 | Other network packages | `network` doc, not supported | not supported |
-| `PayloadRegistrar#configurationToClient` | 7 | Payload registration and sending | `network.payload-registrar.configuration-to-client` | planned |
+| `PayloadRegistrar#configurationToClient` | 7 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::configuration_to_client` | supported |
 | `NetworkRegistry` | 7 | Configuration tasks and other network types | `network` doc, not supported | not supported |
-| `IPayloadContext#finishCurrentTask` | 6 | Payload registration and sending | `network.payload-context.finish-current-task` | planned |
+| `IPayloadContext#finishCurrentTask` | 6 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::finish_current_task` | supported |
 | `IPayloadContext#connection` | 5 | Payload registration and sending | `network` doc, not supported | not supported |
-| `IPayloadContext#reply` | 5 | Payload registration and sending | `network.payload-context.reply` | supported |
-| `ICustomConfigurationTask` | 5 | Configuration tasks and other network types | `network.configuration-task`, `callbacks.run-configuration-task` | planned |
-| `PayloadRegistrar#commonBidirectional` | 3 | Payload registration and sending | `network.payload-registrar.common-bidirectional` | planned |
-| `MainThreadPayloadHandler` | 3 | Configuration tasks and other network types | `network.handler-thread::main` | planned |
-| `PayloadRegistrar#configurationToServer` | 2 | Payload registration and sending | `network.payload-registrar.configuration-to-server` | planned |
-| `PayloadRegistrar#commonToServer` | 2 | Payload registration and sending | `network.payload-registrar.common-to-server` | planned |
-| `IPayloadContext#protocol` | 2 | Payload registration and sending | `network.payload-context.protocol` | planned |
-| `PayloadRegistrar#commonToClient` | 1 | Payload registration and sending | `network.payload-registrar.common-to-client` | planned |
+| `IPayloadContext#reply` | 5 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::reply` | supported |
+| `ICustomConfigurationTask` | 5 | Configuration tasks and other network types | `ironpumpkin_mods::network::CustomConfigurationTask`, `ironpumpkin_mods::network::TaskContext` | supported |
+| `PayloadRegistrar#commonBidirectional` | 3 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::common_bidirectional` | supported |
+| `MainThreadPayloadHandler` | 3 | Configuration tasks and other network types | `ironpumpkin_mods::network::HandlerThread::Main` | supported |
+| `PayloadRegistrar#configurationToServer` | 2 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::configuration_to_server` | supported |
+| `PayloadRegistrar#commonToServer` | 2 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::common_to_server` | supported |
+| `IPayloadContext#protocol` | 2 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::protocol` | supported |
+| `PayloadRegistrar#commonToClient` | 1 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::common_to_client` | supported |
 | `IPayloadContext#listener` | 1 | Payload registration and sending | `network` doc, not supported | not supported |
 | `network.bundle` | 1 | Other network packages | `network` doc, not supported | not supported |
-| `PayloadRegistrar#configurationBidirectional` | 0 | Payload registration and sending | `network.payload-registrar.configuration-bidirectional` | planned |
+| `PayloadRegistrar#configurationBidirectional` | 0 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::configuration_bidirectional` | supported |
 | `IPayloadContext#handle` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
 | `IPayloadContext#channelHandlerContext` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
 | `neoforge:advanced_add_entity` | 0 | Payloads | `registration.entity-type-builder` (host payload, M3) | planned |
@@ -1040,7 +1040,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 |:--|--:|:--|:--|
 | `net.neoforged.bus.api.IEventBus` | 342 | same | `event-bus.add-listener`, `event-bus.post` |
 | `net.neoforged.bus.api.SubscribeEvent` | 207 | same | `event-bus.add-listener` |
-| `net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent` | 170 | same | `event-bus.event::register-payload-handlers-event` |
+| `net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent` | 170 | same | `ironpumpkin_mods::network::RegisterPayloadHandlersEvent` |
 | `net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent` | 148 | same | `event-bus.event::fml-common-setup-event` |
 | `net.neoforged.fml.common.EventBusSubscriber` | 126 | same | `event-bus.add-listener` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent` | 96 | same | fields in the subclass records of `event-bus` (abstract) |
@@ -1085,7 +1085,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.entity.living.LivingShieldBlockEvent` | 8 | same | `event-bus.event::living-shield-block-event` |
 | `net.neoforged.neoforge.event.entity.living.MobEffectEvent$Applicable` | 7 | same | `event-bus.event::mob-effect-event-applicable` |
 | `net.neoforged.neoforge.event.entity.living.MobEffectEvent$Applicable$Result` | 7 | same | `event-bus.mob-effect-applicable-result` |
-| `net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent` | 7 | same | `event-bus.event::register-configuration-tasks-event` |
+| `net.neoforged.neoforge.network.event.RegisterConfigurationTasksEvent` | 7 | same | `ironpumpkin_mods::network::RegisterConfigurationTasksEvent` |
 | `net.neoforged.neoforge.event.entity.EntityTravelToDimensionEvent` | 6 | same | `event-bus.event::entity-travel-to-dimension-event` |
 | `net.neoforged.neoforge.event.entity.player.CriticalHitEvent` | 5 | same | `pumpkin_core::plugin::player::CriticalHitEvent` |
 
@@ -1115,12 +1115,12 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.neoforged.neoforge.network.handling.IPayloadContext` | 183 | same | `network.payload-context` |
-| `net.neoforged.neoforge.network.registration.PayloadRegistrar` | 167 | same | `network.payload-registrar` |
-| `net.neoforged.neoforge.network.handling.IPayloadHandler` | 166 | same | `callbacks.handle-payload` |
+| `net.neoforged.neoforge.network.handling.IPayloadContext` | 183 | same | `ironpumpkin_mods::network::PayloadContext` |
+| `net.neoforged.neoforge.network.registration.PayloadRegistrar` | 167 | same | `ironpumpkin_mods::network::PayloadRegistrar` |
+| `net.neoforged.neoforge.network.handling.IPayloadHandler` | 166 | same | `ironpumpkin_mods::network::PayloadHandler` |
 | `net.neoforged.neoforge.network.PacketDistributor` | 157 | same | `network.send-to-*` |
 | `net.neoforged.neoforge.network.IContainerFactory` | 84 | same | `menus.menu-definition.extra-data` |
-| `net.neoforged.neoforge.network.configuration.ICustomConfigurationTask` | 5 | same | `network.configuration-task`, `callbacks.run-configuration-task` |
+| `net.neoforged.neoforge.network.configuration.ICustomConfigurationTask` | 5 | same | `ironpumpkin_mods::network::CustomConfigurationTask` |
 
 #### NeoForge fluids
 
@@ -1522,8 +1522,8 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.minecraft.server.packs.repository.Pack$Position` | 14 | same | `lifecycle.pack-position` |
 | `net.minecraft.stats.ServerStatsCounter` | 12 | same | `pumpkin:plugin/statistics` |
 | `net.minecraft.commands.arguments.ResourceArgument` | 9 | same | `pumpkin:plugin/command` |
-| `net.minecraft.server.network.ConfigurationTask` | 7 | same | `network.configuration-task` |
-| `net.minecraft.server.network.ConfigurationTask$Type` | 7 | same | `network.configuration-task.type` |
+| `net.minecraft.server.network.ConfigurationTask` | 7 | same | `ironpumpkin_mods::network::CustomConfigurationTask` |
+| `net.minecraft.server.network.ConfigurationTask$Type` | 7 | same | `ironpumpkin_mods::network::CustomConfigurationTask::task_type` |
 
 #### Minecraft network and chat
 

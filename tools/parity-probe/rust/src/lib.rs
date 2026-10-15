@@ -4,8 +4,9 @@
 //! the format of the Java probe (`tools/parity-probe/README.md`). Like the Java probe, it
 //! registers the synced config `parityprobe-synced.toml` with one value, `enabled = true`.
 //!
-//! It traces a `NeoForge` event only where `IronPumpkin` fires it today. `diff.py` lists the other
-//! events of the Java trace as differences.
+//! Like the Java probe, it registers the configuration channel `parityprobe:ping`. It traces a
+//! `NeoForge` event only where `IronPumpkin` fires it today. `diff.py` lists the other events of
+//! the Java trace as differences.
 
 use std::{
     fs::File,
@@ -22,6 +23,7 @@ use ironpumpkin_mods::{
     config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
+        network::{ConnectionType, RegisterConfigurationTasksEvent, RegisterPayloadHandlersEvent},
         registries::RegisterEvent,
         server::{
             LoadType, ServerAboutToStartEvent, ServerLoadEvent, ServerStartingEvent,
@@ -137,6 +139,18 @@ impl NativeMod for ParityProbe {
             false,
             false,
         );
+        cx.register_event::<RegisterPayloadHandlersEvent, _>(
+            Arc::new(Payloads),
+            EventPriority::Normal,
+            false,
+            false,
+        );
+        cx.register_event::<RegisterConfigurationTasksEvent, _>(
+            Arc::new(Tasks),
+            EventPriority::Normal,
+            false,
+            false,
+        );
         trace_first::<ServerAboutToStartEvent>(cx, "ServerAboutToStartEvent");
         trace_first::<ServerStartingEvent>(cx, "ServerStartingEvent");
         trace_first::<ServerTickStartEvent>(cx, "ServerTickEvent.Pre");
@@ -212,6 +226,58 @@ impl EventHandler<ServerLoadEvent> for Started {
             if matches!(event.load_type, LoadType::Startup) {
                 trace("ServerStartedEvent", &[]);
             }
+        })
+    }
+}
+
+/// The channel of the Java probe's `Ping` payload.
+const PING_CHANNEL: &str = "parityprobe:ping";
+
+/// `RegisterPayloadHandlersEvent`: registers `parityprobe:ping` like the Java probe, optional and
+/// in both directions of the configuration phase, with a handler that does nothing.
+struct Payloads;
+
+impl EventHandler<RegisterPayloadHandlersEvent> for Payloads {
+    fn handle<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a RegisterPayloadHandlersEvent,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            trace("RegisterPayloadHandlersEvent", &[]);
+            if let Err(err) = event
+                .registrar("1")
+                .optional()
+                .configuration_bidirectional(PING_CHANNEL, |_, _| {})
+            {
+                error!("[{ID}] cannot register {PING_CHANNEL}: {err}");
+            }
+        })
+    }
+}
+
+/// `RegisterConfigurationTasksEvent` with the connection type and whether the client negotiated
+/// `parityprobe:ping`.
+struct Tasks;
+
+impl EventHandler<RegisterConfigurationTasksEvent> for Tasks {
+    fn handle<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a RegisterConfigurationTasksEvent,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            let connection_type = match event.connection_type() {
+                ConnectionType::NeoForge => "NEOFORGE",
+                ConnectionType::Other => "OTHER",
+            };
+            trace(
+                "RegisterConfigurationTasksEvent",
+                &[
+                    ("connection_type", Value::Text(connection_type.to_owned())),
+                    ("ping_channel", Value::Bool(event.has_channel(PING_CHANNEL))),
+                ],
+            );
         })
     }
 }

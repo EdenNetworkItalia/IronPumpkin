@@ -217,11 +217,19 @@ optional = true
 id = "mymod:data"
 version = "1"
 optional = true
+echo = true
 ```
+
+`echo = true` is not a NeoForge field. The client sends each payload of the server on that channel
+back unchanged, in the same phase: in configuration only when the channel was negotiated, as
+`NetworkRegistry.checkPacket` requires. A mod configuration task that waits for an answer
+finishes on the echo.
 
 `channels/neoforge-26.3.toml` has the channels of a NeoForge 26.3 client without mods, plus the
 fake mod channel `probe:fake`. `channels/required-unknown.toml` has one required channel that no
-server has, so the negotiation fails.
+server has, so the negotiation fails. `channels/test-mod.toml` has the channels of
+`ironpumpkin-test-mod`, to append to `neoforge-26.3.toml`; the boot test `neoforge_network` of that
+crate uses it.
 
 ## Registry expectations
 

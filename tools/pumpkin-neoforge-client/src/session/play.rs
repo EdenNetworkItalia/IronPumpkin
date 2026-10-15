@@ -20,9 +20,9 @@ use pumpkin_protocol::{
     codec::item_stack_seralizer::ItemStackSerializer,
     java::server::play::{
         FLAG_ON_GROUND, SChatCommand, SChatMessage, SChunkBatch, SClientCommand,
-        SClientInformationPlay, SConfirmTeleport, SKeepAlive, SPlayPingRequest, SPlayPong,
-        SPlayerAction, SPlayerLoaded, SPlayerPosition, SPlayerPositionRotation, SSetCreativeSlot,
-        SSetHeldItem, SUseItem, SUseItemOn, Status,
+        SClientInformationPlay, SConfirmTeleport, SCustomPayload, SKeepAlive, SPlayPingRequest,
+        SPlayPong, SPlayerAction, SPlayerLoaded, SPlayerPosition, SPlayerPositionRotation,
+        SSetCreativeSlot, SSetHeldItem, SUseItem, SUseItemOn, Status,
     },
     ser::NetworkReadExt,
 };
@@ -483,6 +483,14 @@ impl<'a> Play<'a> {
                 && let Some(joined) = join_split(&mut self.split_buffer, data)?
             {
                 self.pending.push_back(joined);
+            }
+            if self.options.channels.as_ref().is_some_and(|channels| {
+                channels.echoes(
+                    pumpkin_protocol::java::neoforge::ConnectionProtocol::Play,
+                    channel,
+                )
+            }) {
+                self.send(&SCustomPayload { channel, data }).await?;
             }
             return Ok(None);
         }

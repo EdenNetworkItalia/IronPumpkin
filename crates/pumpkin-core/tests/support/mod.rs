@@ -141,23 +141,36 @@ pub fn world() -> Arc<World> {
 
 /// Joins a player named `name` to the overworld, over a loopback socket that nobody reads.
 pub fn player(name: &str) -> Arc<Player> {
-    join(name, false)
+    join(name, false, NegotiatedState::default()).0
 }
 
 /// Joins a player like [`player`], with a packet writer, so a packet that waits for the writer
 /// returns once the write to the closed socket fails.
 pub fn player_with_writer(name: &str) -> Arc<Player> {
-    join(name, true)
+    join(name, true, NegotiatedState::default()).0
 }
 
-fn join(name: &str, writer: bool) -> Arc<Player> {
+/// Joins a player like [`player_with_writer`], whose connection negotiated `negotiated`, and
+/// returns the client end of its socket, where the packets of the player arrive.
+pub fn player_with_peer(
+    name: &str,
+    negotiated: NegotiatedState,
+) -> (Arc<Player>, tokio::net::TcpStream) {
+    join(name, true, negotiated)
+}
+
+fn join(
+    name: &str,
+    writer: bool,
+    negotiated: NegotiatedState,
+) -> (Arc<Player>, tokio::net::TcpStream) {
     let server = server();
     RUNTIME.block_on(async {
         let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
             .await
             .unwrap();
         let address: SocketAddr = listener.local_addr().unwrap();
-        let (stream, _) = tokio::join!(tokio::net::TcpStream::connect(address), async {
+        let (stream, (peer, _)) = tokio::join!(tokio::net::TcpStream::connect(address), async {
             listener.accept().await.unwrap()
         });
         let stream = stream.unwrap();
@@ -178,7 +191,7 @@ fn join(name: &str, writer: bool) -> Arc<Player> {
             pending,
             profile.clone(),
             PlayerConfig::default(),
-            NegotiatedState::default(),
+            negotiated,
         );
         if writer {
             client.start_outgoing_packet_task();
@@ -192,6 +205,6 @@ fn join(name: &str, writer: bool) -> Arc<Player> {
             GameMode::Survival,
         ));
         world.add_player(&player).unwrap();
-        player
+        (player, peer)
     })
 }

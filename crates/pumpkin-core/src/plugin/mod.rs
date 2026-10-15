@@ -25,6 +25,7 @@ pub(crate) mod container_events;
 mod context_events;
 pub mod dispatch;
 pub mod loader;
+pub mod network_events;
 /// Constants for plugin permissions.
 ///
 /// Plugins can request these permissions in their metadata to access specific
