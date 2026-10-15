@@ -1,9 +1,11 @@
 # pumpkin-neoforge-client
 
-A headless Minecraft Java client for the configuration phase. It connects to a server, logs in
-in offline mode and answers the configuration phase like the vanilla client. With a channel map it
-also answers like a NeoForge 26.3 client. It records every clientbound configuration packet and
-decodes each custom payload with the codecs in `pumpkin-protocol/src/java/neoforge`.
+A headless Minecraft Java client for the configuration phase and a scripted play state. It
+connects to a server, logs in in offline mode and answers the configuration phase like the vanilla
+client. With a channel map it also answers like a NeoForge 26.3 client. It records every
+clientbound configuration packet and decodes each custom payload with the codecs in
+`pumpkin-protocol/src/java/neoforge`. The `play` mode then enters the play state and runs a script
+of player actions (see [Play state](#play-state)).
 
 The server must run with online mode off. The client handles compression, and encryption without
 the session server join, because Pumpkin asks for encryption in offline mode too.
@@ -29,7 +31,7 @@ cargo run -p pumpkin-neoforge-client -- compare \
     modded.jsonl
 ```
 
-Options for both modes:
+Options for the `record`, `assert` and `play` modes:
 
 | Option | Default | Meaning |
 |:--|:--|:--|
@@ -37,7 +39,7 @@ Options for both modes:
 | `--username` | random `ProbeNNNNNN` | Offline player name. |
 | `--channels <file>` | none | Channel map. Without it the client is a vanilla client. |
 | `--brand <name>` | `neoforge` with a channel map, else `vanilla` | Value of `minecraft:brand`. |
-| `--timeout <s>` | `60` | Time limit for login and configuration. |
+| `--timeout <s>` | `60` | Time limit for login and configuration, and in play for the first player position. |
 | `--out <file>` | none | JSONL file with one line per recorded packet. |
 
 `record` stops at `finish_configuration` or at a disconnect, and then exits with 0.
@@ -81,6 +83,106 @@ act on, such as a disconnect reason that is not exactly one text component.
 Each recorded packet goes to stdout as one line and, with `--out`, to the JSONL file. A JSONL line
 has the direction, the state, the packet name, the channel, the body length, the decode result, a
 summary, and the body bytes in hex. The client also records the custom payloads it sends.
+
+## Play state
+
+`play` runs the login and the configuration phase like `record`, acknowledges
+`finish_configuration`, and then runs a script in the play state:
+
+```bash
+cargo run -p pumpkin-neoforge-client -- play --port 25565 \
+    --channels tools/pumpkin-neoforge-client/channels/neoforge-26.3.toml \
+    --script tools/pumpkin-neoforge-client/scripts/slice2.toml --out play.jsonl
+cargo run -p pumpkin-neoforge-client -- play --port 25565 \
+    --channels tools/pumpkin-neoforge-client/channels/neoforge-26.3.toml \
+    --script tools/pumpkin-neoforge-client/scripts/boot.toml \
+    --expected-file tools/pumpkin-neoforge-client/expected/pumpkin-play.txt
+```
+
+In the play state the client answers these packets:
+
+- `login`: it sends the client information once more, with the play packet.
+- `player_position`: it applies the position and the relative flags, then sends
+  `accept_teleportation` and `move_player_pos_rot`. After the first position it sends
+  `player_loaded`. The block of the player's feet at that position is the origin of the `~`
+  coordinates of the script.
+- `keep_alive` and `ping`: it answers with `keep_alive` and `pong`.
+- `chunk_batch_finished`: it answers with `chunk_batch_received` and a rate of 64 chunks per tick.
+- `disconnect`: the run ends with the reason.
+- `custom_payload` on `neoforge:split`: it joins the slices as in the configuration phase.
+- `start_configuration`: the run fails, because the client has no second configuration phase.
+
+The client records all other packets and does nothing with them.
+
+### Script format
+
+A script is TOML, or JSON when the file name ends in `.json`. `steps` is the list of actions, in
+order. After each action the client keeps reading for `wait_ms` milliseconds (default 1000), and
+answers the packets above. The first step must be `join` and the last step must be `leave`.
+
+```toml
+wait_ms = 1000
+steps = [
+    "join",
+    "chat hello from the parity script",
+    "break ~1 ~-1 ~0",
+    "hold minecraft:stone",
+    "place ~1 ~-2 ~0 up",
+    "leave",
+]
+```
+
+| Action | Packets | Meaning |
+|:--|:--|:--|
+| `join` | | Log in, configure, and wait for the first player position. |
+| `chat <text>` | `chat` | An unsigned chat message. |
+| `command <text>` | `chat_command` | A command, with or without the leading `/`. |
+| `move <dx> <dy> <dz>` | `move_player_pos` | Move by this offset in one packet, with the on-ground flag set. |
+| `break <x> <y> <z> [ticks]` | `player_action` | Start to destroy the block on its top face. With `ticks`, stop to destroy it after that many ticks. |
+| `place <x> <y> <z> <face>` | `use_item_on` | Use the main hand on a face of the block: `down`, `up`, `north`, `south`, `west` or `east`. A block item places a block on that side. |
+| `hold <item>` | `set_creative_mode_slot`, `set_carried_item` | Put one item in the first hotbar slot and select that slot. |
+| `use_item` | `use_item` | Use the item in the main hand. |
+| `respawn` | `client_command` | Ask to respawn after a death. |
+| `wait <ms>` | | Read for this long instead of `wait_ms`. |
+| `leave` | | Close the connection, as the vanilla client does on a disconnect. |
+
+A coordinate is absolute, or relative to the origin with a `~` prefix: `~`, `~1`, `~-2`. The
+actions that predict a block change count a sequence number from 1, like
+`BlockStatePredictionHandler`.
+
+`scripts/slice2.toml` is the script of slice 2 of the parity harness. `scripts/boot.toml` is the
+script of the boot test.
+
+### Recording and expectations
+
+Each entry of a play run has the field `step`, the index of the script step that was running. The
+login and configuration packets belong to step 0. The play packets have the state `play`, in both
+directions. `level_chunk_with_light`, `light_update`, `chunks_biomes` and the
+`neoforge:auxiliary_light_data` payload are recorded with their length but without the body bytes.
+After each step the log lists the clientbound play packets of the step, with a count for repeated
+packets.
+
+`play --expected-file <file>` checks the run. The file has one line per step, `action: packets`:
+the action name of the step and the clientbound play packets that the step must receive, in any
+order. `#` starts a comment. The run fails with exit 1 when the script does not reach `leave`, the
+step actions differ from the file, a step does not receive a packet of its line, or a payload with
+a codec does not decode. Without the option, `play` exits with 0 whenever the run completes. It
+exits with 2 for the reasons of `record`, when no player position arrives within `--timeout`, and on
+`start_configuration`.
+
+### Limits
+
+- No rendering and no world: the client discards chunk and light data and does not know the
+  blocks. A `~` coordinate is relative to the first position, whatever block is there.
+- No physics beyond the position sync: the position changes only by a teleport of the server and
+  by `move`. The server checks a move like any other, so a long move or a move into a block fails.
+- No inventory model: `hold` works only in creative mode, where the server takes the item from
+  `set_creative_mode_slot`. `place` and `use_item` use the main hand.
+- `break` without ticks breaks a block only in creative mode. In survival mode, the stop must come
+  after the destroy time of the block, which the script gives in ticks.
+- Chat is unsigned, so the server must not enforce secure chat. Online mode off turns it off on
+  vanilla and NeoForge.
+- No second configuration phase, no automatic respawn, no entity or container interaction.
 
 ## Channel map
 
@@ -133,6 +235,10 @@ at = { 1285 = "minecraft:firefly_bush" }  # optional: more names by id
   to `minecraft:fishing_bobber`.
 - `expected/pumpkin-neoforge-test-mod-registries.toml`: the same registries with the content of
   `ironpumpkin-test-mod` at the first free ids, 1286, 1658 and 161. The boot test reads it.
+- `expected/pumpkin-play.txt`: the play expectation of `scripts/boot.toml` against IronPumpkin in
+  creative mode without spawn protection. The play boot test of `ironpumpkin-test-mod`
+  (`tests/neoforge_play.rs`) reads it, and checks the join, the chat message and the leave in the
+  server log.
 
 ## NeoForge behaviour
 

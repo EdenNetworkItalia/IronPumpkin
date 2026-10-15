@@ -30,6 +30,7 @@ pub enum Direction {
 pub enum State {
     Login,
     Configuration,
+    Play,
 }
 
 /// Result of decoding a custom payload body.
@@ -50,6 +51,9 @@ pub enum Decode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub seq: usize,
+    /// The index of the script step that was running, for a recording of the play state.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub step: Option<usize>,
     pub direction: Direction,
     pub state: State,
     /// Packet name, such as `custom_payload` or `select_known_packs`.
@@ -79,7 +83,10 @@ impl Entry {
             Direction::Clientbound => "S->C",
             Direction::Serverbound => "C->S",
         };
-        let mut line = format!("{:>4} {arrow} {}", self.seq, self.packet);
+        let mut line = self
+            .step
+            .map_or_else(String::new, |step| format!("[{step}] "));
+        let _ = write!(line, "{:>4} {arrow} {}", self.seq, self.packet);
         if let Some(channel) = &self.channel {
             let _ = write!(line, " {channel}");
         }

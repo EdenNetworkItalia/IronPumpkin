@@ -1,0 +1,13 @@
+# The player actions of slice 2 of the parity harness. The server must run in creative mode
+# without spawn protection: `break` without ticks breaks at once, and `hold` sets a hotbar slot.
+# The block one step east of the spawn and one down is broken, then placed again on the block
+# under it.
+wait_ms = 1000
+steps = [
+    "join",
+    "chat hello from the parity script",
+    "break ~1 ~-1 ~0",
+    "hold minecraft:stone",
+    "place ~1 ~-2 ~0 up",
+    "leave",
+]

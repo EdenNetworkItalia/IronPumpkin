@@ -2,7 +2,10 @@
 //!
 //! The configuration phase answers like the vanilla client, plus the `NeoForge` client behaviour of
 //! `ClientConfigurationPacketListenerImpl`, `ClientCommonPacketListenerImpl` and
-//! `ClientNetworkRegistry` when a channel map is set.
+//! `ClientNetworkRegistry` when a channel map is set. The `play` module continues into the play
+//! state and runs a script.
+
+mod play;
 
 use std::collections::{BTreeSet, VecDeque};
 use std::time::Duration;
@@ -55,6 +58,8 @@ use tokio::{
     },
 };
 use tracing::{debug, info, warn};
+
+pub use play::{PlayOutcome, PlayReport, StepReport, play};
 
 use crate::{
     Error,
@@ -205,34 +210,83 @@ async fn connect_and_drive(
     options: &Options,
     sink: &mut dyn FnMut(&Entry),
 ) -> Result<Outcome, Error> {
-    let stream = TcpStream::connect((options.host.as_str(), options.port))
+    Session::connect(options, Recorder::new(sink, None))
+        .await?
+        .drive()
         .await
-        .map_err(|e| format!("cannot connect to {}:{}: {e}", options.host, options.port))?;
-    stream.set_nodelay(true)?;
-    let (read, write) = stream.into_split();
-    Session {
-        options,
-        sink,
-        seq: 0,
-        decoder: TCPNetworkDecoder::new(BufReader::new(read)),
-        encoder: TCPNetworkEncoder::new(BufWriter::new(write)),
-        connection_type: ConnectionType::Other,
-        setup: None,
-        adhoc_channels: BTreeSet::new(),
-        to_synchronize: BTreeSet::new(),
-        split_buffer: Vec::new(),
-        pending: VecDeque::new(),
-    }
-    .drive()
-    .await
 }
+
+/// Numbers the recorded packets and passes them to the sink.
+struct Recorder<'a> {
+    sink: &'a mut dyn FnMut(&Entry),
+    seq: usize,
+    /// The script step that is running, in a play run.
+    step: Option<usize>,
+}
+
+impl<'a> Recorder<'a> {
+    fn new(sink: &'a mut dyn FnMut(&Entry), step: Option<usize>) -> Self {
+        Self { sink, seq: 0, step }
+    }
+
+    fn record(
+        &mut self,
+        direction: Direction,
+        state: State,
+        packet: String,
+        channel: Option<&str>,
+        data: &[u8],
+        reassembled: bool,
+    ) {
+        self.record_body(direction, state, packet, channel, data, reassembled, true);
+    }
+
+    /// Like `record`; without `keep_body`, the entry has the length but not the bytes.
+    #[expect(clippy::too_many_arguments, reason = "the fields of the entry")]
+    fn record_body(
+        &mut self,
+        direction: Direction,
+        state: State,
+        packet: String,
+        channel: Option<&str>,
+        data: &[u8],
+        reassembled: bool,
+        keep_body: bool,
+    ) {
+        let (decode, summary, error) = channel.map_or((Decode::NotPayload, None, None), |c| {
+            describe_payload(c, data, reassembled)
+        });
+        let entry = Entry {
+            seq: self.seq,
+            step: self.step,
+            direction,
+            state,
+            packet,
+            channel: channel.map(str::to_owned),
+            length: data.len(),
+            reassembled,
+            decode,
+            summary,
+            error,
+            data: if keep_body {
+                hex::encode(data)
+            } else {
+                String::new()
+            },
+        };
+        self.seq += 1;
+        (self.sink)(&entry);
+    }
+}
+
+type Decoder = TCPNetworkDecoder<BufReader<OwnedReadHalf>>;
+type Encoder = TCPNetworkEncoder<BufWriter<OwnedWriteHalf>>;
 
 struct Session<'a> {
     options: &'a Options,
-    sink: &'a mut dyn FnMut(&Entry),
-    seq: usize,
-    decoder: TCPNetworkDecoder<BufReader<OwnedReadHalf>>,
-    encoder: TCPNetworkEncoder<BufWriter<OwnedWriteHalf>>,
+    recorder: Recorder<'a>,
+    decoder: Decoder,
+    encoder: Encoder,
     connection_type: ConnectionType,
     /// Configuration channels of the `NetworkPayloadSetup`. `None` until the connection is
     /// initialized (`ClientNetworkRegistry.isConnectionInitialized`); empty for a non-`NeoForge`
@@ -248,7 +302,27 @@ struct Session<'a> {
     pending: VecDeque<RawPacket>,
 }
 
-impl Session<'_> {
+impl<'a> Session<'a> {
+    async fn connect(options: &'a Options, recorder: Recorder<'a>) -> Result<Self, Error> {
+        let stream = TcpStream::connect((options.host.as_str(), options.port))
+            .await
+            .map_err(|e| format!("cannot connect to {}:{}: {e}", options.host, options.port))?;
+        stream.set_nodelay(true)?;
+        let (read, write) = stream.into_split();
+        Ok(Self {
+            options,
+            recorder,
+            decoder: TCPNetworkDecoder::new(BufReader::new(read)),
+            encoder: TCPNetworkEncoder::new(BufWriter::new(write)),
+            connection_type: ConnectionType::Other,
+            setup: None,
+            adhoc_channels: BTreeSet::new(),
+            to_synchronize: BTreeSet::new(),
+            split_buffer: Vec::new(),
+            pending: VecDeque::new(),
+        })
+    }
+
     async fn drive(&mut self) -> Result<Outcome, Error> {
         if let Some(outcome) = self.login().await? {
             return Ok(outcome);
@@ -312,24 +386,8 @@ impl Session<'_> {
         data: &[u8],
         reassembled: bool,
     ) {
-        let (decode, summary, error) = channel.map_or((Decode::NotPayload, None, None), |c| {
-            describe_payload(c, data, reassembled)
-        });
-        let entry = Entry {
-            seq: self.seq,
-            direction,
-            state,
-            packet,
-            channel: channel.map(str::to_owned),
-            length: data.len(),
-            reassembled,
-            decode,
-            summary,
-            error,
-            data: hex::encode(data),
-        };
-        self.seq += 1;
-        (self.sink)(&entry);
+        self.recorder
+            .record(direction, state, packet, channel, data, reassembled);
     }
 
     async fn login(&mut self) -> Result<Option<Outcome>, Error> {

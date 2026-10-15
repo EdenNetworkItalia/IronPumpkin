@@ -1,0 +1,6 @@
+# scripts/boot.toml against IronPumpkin in creative mode without spawn protection: the clientbound
+# play packets that each step must receive, in any order.
+join: login player_position
+chat: disguised_chat # IronPumpkin echoes unsigned chat as disguised chat; NeoForge sends player_chat
+break: block_update block_changed_ack
+leave:

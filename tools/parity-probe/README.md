@@ -187,24 +187,31 @@ python3 -I tools/parity-probe/diff.py \
     > tools/parity-probe/captures/ironpumpkin/diff.txt
 ```
 
-## Slice 2: what the headless client needs
+## Slice 2: the play state of the headless client
 
 Slice 2 (task 2.21 in `tasks.md`) compares player, level and entity events. The headless client
-must then grow a play state:
+has a play state: `play` mode, described in `tools/pumpkin-neoforge-client/README.md`. It enters
+play, confirms the first teleport, sends the player-loaded packet, answers keep-alive, ping and
+chunk batches, and runs a script with a fixed wait after each action, so both servers get the same
+actions in the same order. It records the play packets of each step in the `--out` format.
 
-- Acknowledge `finish_configuration` and enter the play phase: handle the login packet, answer
-  keep-alive and ping, confirm the first teleport, and send the player-loaded packet.
-- Read a scripted action list, so both servers get the same actions in the same order, with a
-  wait between actions that the server can observe (for example a keep-alive round trip).
-- Chat: send a chat message or a command (`ServerChatEvent`, `CommandEvent`).
-- Block break: send the player action start and stop digging with a sequence number and wait for
-  the block change acknowledgement (`BreakBlockEvent`).
-- Block place: send use-item-on for a block in the hotbar, which needs a creative mode switch or
-  an item given by the server (`EntityPlaceEvent`).
-- Logout: close the connection with a clean disconnect (`PlayerLoggedOutEvent`). The join itself
-  gives `PlayerLoggedInEvent`.
-- Record the clientbound play packets in the `--out` format, so a difference in the trace can be
-  checked against the wire.
+The play state enables these slice 2 scenarios:
 
-The probes then listen to the player events of these actions, with fields such as the block, the
-position relative to the spawn and the cancel result.
+| Scenario | Script action | Events |
+|:--|:--|:--|
+| Login | `join` | `PlayerLoggedInEvent` |
+| Chat | `chat <text>` | `ServerChatEvent` |
+| Command | `command <text>` | `CommandEvent` |
+| Block break | `break <x y z>` | `BreakBlockEvent` |
+| Block place | `hold <item>`, then `place <x y z> <face>` | `PlayerInteractEvent.RightClickBlock`, `EntityPlaceEvent` |
+| Item use | `use_item` | `PlayerInteractEvent.RightClickItem` |
+| Logout | `leave` | `PlayerLoggedOutEvent` |
+
+Both servers run in creative mode without spawn protection: `break` breaks at once and `hold` takes
+the item from the creative slot packet. `respawn` sends the respawn request, but no action of the
+script kills the player yet. `scripts/slice2.toml` of the client runs join, chat, break, hold, place
+and leave; its recordings on both servers are `captures/neoforge-26.3.0.64-beta/play-slice2.jsonl.gz`
+and `captures/ironpumpkin/play-slice2.jsonl.gz` in the client directory. With `seed = "parity"` on
+IronPumpkin and `level-seed=parity` on NeoForge, the spawn blocks still differ (0 118 0 and 8 120 5),
+so the probes trace positions relative to the spawn, with fields such as the block and the cancel
+result.

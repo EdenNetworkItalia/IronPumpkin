@@ -1,0 +1,9 @@
+# The script of the play boot test of `ironpumpkin-test-mod`: one chat message and one block
+# break in creative mode.
+wait_ms = 500
+steps = [
+    "join",
+    "chat hello from the boot test",
+    "break ~1 ~-1 ~0",
+    "leave",
+]

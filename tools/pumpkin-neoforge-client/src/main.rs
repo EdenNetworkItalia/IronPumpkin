@@ -7,17 +7,21 @@ use clap::{Args, Parser, Subcommand};
 use pumpkin_neoforge_client::{
     Error,
     channels::ChannelMap,
-    check,
+    check, check_play,
     compare::compare_with_reference,
-    parse_expected,
+    parse_expected, parse_play_expected,
     record::{Entry, read_jsonl},
     registries::{RegistryExpectations, check_registries},
+    script::Script,
     session,
 };
 use tracing::{error, info};
 
 #[derive(Parser)]
-#[command(about = "Headless client that records or asserts the configuration phase of a server")]
+#[command(
+    about = "Headless client that records or asserts the configuration phase of a server, or runs \
+             a script of player actions in the play state"
+)]
 struct Cli {
     #[command(subcommand)]
     mode: Mode,
@@ -54,6 +58,18 @@ enum Mode {
         #[arg(long)]
         registries: Option<PathBuf>,
     },
+    /// Join, run a script of player actions in the play state, and leave. With an expectation
+    /// file, fail when the script does not reach its `leave` or a step misses a packet.
+    Play {
+        #[command(flatten)]
+        connection: Connection,
+        /// The script, TOML or JSON by extension.
+        #[arg(long)]
+        script: PathBuf,
+        /// File with one `action: packet packet ...` line per step; `#` starts a comment.
+        #[arg(long)]
+        expected_file: Option<PathBuf>,
+    },
     /// Compare a recording with a capture of a real `NeoForge` server: the clientbound channel
     /// order from `neoforge:frozen_registry_sync_start` to `finish_configuration`, with the
     /// registries limited to block, item and entity type, and the bodies of the modded task
@@ -83,7 +99,7 @@ struct Connection {
     /// Brand sent in minecraft:brand. Defaults to "neoforge" with a channel map, else "vanilla".
     #[arg(long)]
     brand: Option<String>,
-    /// Seconds to wait for the configuration phase to end.
+    /// Seconds to wait for the configuration phase to end, and in play for the first position.
     #[arg(long, default_value_t = 60)]
     timeout: u64,
     /// JSONL file that receives one line per recorded packet.
@@ -126,23 +142,45 @@ fn write_jsonl(path: &Path, entries: &[Entry]) -> Result<(), Error> {
     Ok(())
 }
 
-async fn record(connection: &Connection) -> Result<(Vec<Entry>, session::Outcome), Error> {
-    let options = connection.options()?;
-    let mut entries = Vec::new();
+/// Prints each entry and keeps it.
+fn keep_and_print(entries: &mut Vec<Entry>) -> impl FnMut(&Entry) + '_ {
     let mut stdout = std::io::stdout().lock();
-    let result = session::run(&options, &mut |entry| {
+    move |entry| {
         // A closed stdout must not stop the recording.
         let _ = writeln!(stdout, "{}", entry.line());
         entries.push(entry.clone());
-    })
-    .await;
+    }
+}
+
+fn save(connection: &Connection, entries: &[Entry]) -> Result<(), Error> {
     if let Some(path) = &connection.out {
-        write_jsonl(path, &entries)?;
+        write_jsonl(path, entries)?;
         info!("wrote {} entries to {}", entries.len(), path.display());
     }
+    Ok(())
+}
+
+async fn record(connection: &Connection) -> Result<(Vec<Entry>, session::Outcome), Error> {
+    let options = connection.options()?;
+    let mut entries = Vec::new();
+    let result = session::run(&options, &mut keep_and_print(&mut entries)).await;
+    save(connection, &entries)?;
     let outcome = result?;
     info!("configuration phase ended: {outcome}");
     Ok((entries, outcome))
+}
+
+async fn play(
+    connection: &Connection,
+    script: &Script,
+) -> Result<(Vec<Entry>, session::PlayReport), Error> {
+    let options = connection.options()?;
+    let mut entries = Vec::new();
+    let result = session::play(&options, script, &mut keep_and_print(&mut entries)).await;
+    save(connection, &entries)?;
+    let report = result?;
+    info!("play ended: {}", report.outcome);
+    Ok((entries, report))
 }
 
 async fn run(cli: Cli) -> Result<bool, Error> {
@@ -186,6 +224,28 @@ async fn run(cli: Cli) -> Result<bool, Error> {
                     expected.as_ref().map_or(0, Vec::len),
                     registries.as_ref().map_or(0, |r| r.0.len())
                 );
+            }
+            Ok(failures.is_empty())
+        }
+        Mode::Play {
+            connection,
+            script,
+            expected_file,
+        } => {
+            let script = Script::load(&script)?;
+            let expected = expected_file
+                .map(|path| parse_play_expected(&std::fs::read_to_string(path)?))
+                .transpose()?;
+            let (entries, report) = play(&connection, &script).await?;
+            let Some(expected) = expected else {
+                return Ok(true);
+            };
+            let failures = check_play(&entries, &report, &expected);
+            for failure in &failures {
+                error!("{failure}");
+            }
+            if failures.is_empty() {
+                info!("assert passed: {} steps matched", expected.len());
             }
             Ok(failures.is_empty())
         }
