@@ -1,9 +1,10 @@
 services:
   pumpkin:
-    # Make sure to change the tag to the pumpkin version you want to use.
-    # https://github.com/Pumpkin-MC/Pumpkin/pkgs/container/pumpkin/versions?filters%5Bversion_type%5D=tagged
-    #image: ghcr.io/pumpkin-mc/pumpkin:master
-    build: .
+    # Make sure to change the tag to the IronPumpkin version you want to use.
+    # https://github.com/EdenNetworkItalia/IronPumpkin/pkgs/container/ironpumpkin/versions?filters%5Bversion_type%5D=tagged
+    image: ghcr.io/edennetworkitalia/ironpumpkin:master
+    # To build the image from this checkout instead, replace the image line with:
+    #build: .
     ports:
       - "25565:25565"
       - "19132:19132/udp"

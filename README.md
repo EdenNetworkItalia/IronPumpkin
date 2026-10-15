@@ -176,6 +176,9 @@ and customizable experience. It prioritizes performance and player enjoyment whi
 ## How to run
 
 Without mods, IronPumpkin runs like Pumpkin: see the [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide.
+To run it in a container, use the image `ghcr.io/edennetworkitalia/ironpumpkin:master` with the
+included [docker-compose.yml](docker-compose.yml).
+A `docker build .` in a checkout builds the same image from source; the build needs network access.
 With mods, create a modpack repository from the
 [ironpumpkin-pack-template](https://github.com/EdenNetworkItalia/ironpumpkin-pack-template) template
 repository and build the server there: see [blueprint/README.md](blueprint/README.md) and the guide
