@@ -35,6 +35,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 FROM alpine:${ALPINE_VERSION}
 
+# Online-mode authentication reads the system root certificates through the platform verifier of reqwest.
+RUN apk add --no-cache ca-certificates
+
 COPY --from=builder /pumpkin-release /usr/local/bin/pumpkin
 
 RUN addgroup -g 2613 pumpkin && \

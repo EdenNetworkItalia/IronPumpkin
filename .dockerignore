@@ -1,5 +1,5 @@
 # A whitelist of files that should be included into Docker.
-# Put an exclaimation mark before everything to include.
+# Put an exclamation mark before everything to include.
 
 # Ignore everything
 *
@@ -8,7 +8,8 @@
 !/crates/
 !/tools/
 !/assets/
-!/pumpkin.toml
+# The pumpkin-data build script downloads the vanilla datapack when it is missing, as in CI.
+/assets/datapack
 
 # Allow build.rs to read git commit sha
 !/.git
