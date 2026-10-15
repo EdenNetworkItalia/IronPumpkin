@@ -2,7 +2,7 @@
 
 A NeoForge mod is a Java archive. The NeoForge loader reads it when the server starts. An IronPumpkin mod is a Rust crate. Cargo compiles it into the server binary of one modpack.
 
-IronPumpkin takes the semantics and the catalogue of NeoForge and gives them a Rust shape. There is no Java, no mod bus object, no `DeferredRegister` and no mixin. This guide shows what replaces each of them. Some of the API has landed. The rest is planned. A planned item names its task in [`tasks.md`](../../openspec/changes/neoforge-shaped-plugin-api/tasks.md).
+IronPumpkin takes the semantics and the catalogue of NeoForge and gives them a Rust shape. There is no Java, no mod bus object, no `DeferredRegister` and no mixin. This guide shows what replaces each of them. Some of the API has landed. The rest is planned. A planned item names its task in `tasks.md` of the change folder (see [Look up a NeoForge class](#look-up-a-neoforge-class)).
 
 ---
 
@@ -12,11 +12,11 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 | :--- | :--- | :--- |
 | **Language** | Java (JVM) | Rust |
 | **Binary output** | `.jar` file in the `mods/` folder | One server binary per modpack. The mod crate is compiled into it. |
-| **Mod descriptor** | `neoforge.mods.toml` and a `@Mod` class | The `NativeMod` trait (`id`, `display_name`, `version`, `client_required`) and `register_mod!`. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` is planned (task 2.2). |
-| **Lifecycle hooks** | `FMLCommonSetupEvent` and the other FML events | `NativeMod::init`, called once before the first world loads. The other lifecycle events as `NativeMod` methods are planned (task 2.2). |
-| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler. NeoForge event names, fire sites and fields are planned (tasks 2.3, 2.12, 2.13 and 2.15). |
+| **Mod descriptor** | `neoforge.mods.toml` and a `@Mod` class | The `NativeMod` trait (`id`, `display_name`, `version`, `client_required`) and `register_mod!`. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` gives the mod id, the namespace and the dependencies. See [Lifecycle](./lifecycle.md). |
+| **Lifecycle hooks** | `FMLCommonSetupEvent` and the other FML events | `NativeMod::init`, then `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process` and `load_complete`, in load order. See [Lifecycle](./lifecycle.md). |
+| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing and enchanting events have NeoForge fire sites and fields. The player, level and entity families are planned (tasks 2.12, 2.13 and 2.15). See [Events](./events.md). |
 | **Registration** | `DeferredRegister`, `DeferredHolder` | `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag` with builders. See [Registration](./registration.md). |
-| **Config** | `ModConfigSpec` | Planned (task 2.8). Today a mod reads its own files in `ModInit::get_data_folder()` and sends a synced file with `ModInit::synced_config`. |
+| **Config** | `ModConfigSpec` | `ModInit::register_config` with a `ConfigSpec` and a `ConfigType`: `Local`, `Synced` or `Startup`. The file is `config/<modid>-<type>.toml`. A `Synced` config goes to NeoForge clients as `neoforge:config_file`. See [Configuration](./configuration.md). |
 | **Network** | `PayloadRegistrar` | Payload registration is planned (task 2.11). The server already negotiates the NeoForge channels with the client. |
 | **Mixins and reflection** | Mixin configs, access transformers, reflection | Source patches that the pack build applies. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
 | **Build and distribution** | Gradle, a jar on a mod site | `cargo xtask build` and a GitHub Action. A release has one binary per platform. See [Setup and build](./setup-and-build.md). |
@@ -30,14 +30,18 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 
 1. Create a pack from the template and build it once. See [Setup and build](./setup-and-build.md).
 2. Port the content: blocks, items, entity types and tags. See [Registration](./registration.md).
-3. Port each mixin, access transformer and reflection call. Use a NeoForge event or an `ironpumpkin-mods` function when one exists. Use a source patch when none exists. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
-4. Check the rest of the mod against [What is unsupported](./unsupported.md).
-5. Keep the Java client half of the mod, with the same registry names, for NeoForge clients.
+3. Port the lifecycle, the config and the event listeners. See [Lifecycle](./lifecycle.md), [Configuration](./configuration.md) and [Events](./events.md).
+4. Port each mixin, access transformer and reflection call. Use a NeoForge event or an `ironpumpkin-mods` function when one exists. Use a source patch when none exists. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
+5. Check the rest of the mod against [What is unsupported](./unsupported.md).
+6. Keep the Java client half of the mod, with the same registry names, for NeoForge clients.
 
 ## Topic pages
 
 - [Setup and build](./setup-and-build.md): from a Gradle project to a Rust crate in a pack, and from the template repository to a running binary.
 - [Registration](./registration.md): `DeferredRegister` and `DeferredHolder` against the `ModInit::register_*` builders.
+- [Lifecycle](./lifecycle.md): `@Mod`, the FML lifecycle events, `neoforge.mods.toml` and `ModList` against `NativeMod`.
+- [Configuration](./configuration.md): `ModConfigSpec` and the config types against `ConfigSpec` and `ConfigType`.
+- [Events](./events.md): `@SubscribeEvent` and `IEventBus` against `ModInit::register_event`.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
 
@@ -47,14 +51,18 @@ A page for an API that does not exist yet is written when its task lands.
 
 | Page | NeoForge subject | Task |
 | :--- | :--- | :--- |
-| Events | `@SubscribeEvent`, `IEventBus`, event priority and cancel | 2.3, 2.12, 2.13, 2.15 |
-| Lifecycle | `FMLCommonSetupEvent`, `neoforge.mods.toml`, `ModList` | 2.2 |
-| Configuration | `ModConfigSpec`, config types Local, Synced and Startup | 2.8 |
+| Player events | The `PlayerEvent` family | 2.12 |
+| Level and block events | `BlockEvent` and the level events | 2.13 |
+| Entity events | `EntityJoinLevelEvent`, the living and item entity events | 2.15 |
 | Network payloads | `PayloadRegistrar`, `RegisterPayloadHandlersEvent` | 2.11 |
 
 ## Look up a NeoForge class
 
-[`mapping-table.md`](../../openspec/changes/neoforge-shaped-plugin-api/mapping-table.md) lists the NeoForge class or member and its counterpart in `ironpumpkin-mods` or Pumpkin. Its status column says `supported`, `planned` or `not supported`. The inventory in [`design.md`](../../openspec/changes/neoforge-shaped-plugin-api/design.md) is the contract: where the two files differ, `design.md` is right.
+The folder [`openspec/changes/neoforge-shaped-plugin-api/`](../../openspec/changes/neoforge-shaped-plugin-api/) holds the contract of the API. When the change is archived, the folder moves to `openspec/changes/archive/`. The files are:
+
+- `mapping-table.md` lists the NeoForge class or member and its counterpart in `ironpumpkin-mods` or Pumpkin. Its status column says `supported`, `planned` or `not supported`.
+- `design.md` has the inventory that is the contract. Where the two files differ, `design.md` is right.
+- `tasks.md` names the task of each planned item.
 
 ## Worked example
 

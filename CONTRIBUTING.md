@@ -1,10 +1,12 @@
-# Contributing to Pumpkin
+# Contributing to IronPumpkin
 
-We appreciate your interest in contributing to Pumpkin! This document outlines the guidelines for submitting bug reports, feature suggestions, and code changes.
+We appreciate your interest in contributing to IronPumpkin! This document outlines the guidelines for submitting bug reports, feature suggestions, and code changes.
 
 ## Getting Started
 
-The easiest way to get started is by asking for help in [our Discord server](https://discord.gg/wT8XjrjKkf).
+The easiest way to get started is by asking for help in the [EdenNetwork Discord server](https://discord.eden.network).
+
+This repository is IronPumpkin. A fix that is relevant to Pumpkin itself goes to [Pumpkin-MC/Pumpkin](https://github.com/Pumpkin-MC/Pumpkin), under the rules of that project.
 
 ### How to Contribute
 
@@ -58,7 +60,7 @@ Maintainers may close a PR without a full review if any of these apply:
 
 ### Docs
 
-The Documentation of Pumpkin can be found at <https://pumpkinmc.org/>
+The documentation of IronPumpkin is in the [IronPumpkin repository](https://github.com/EdenNetworkItalia/IronPumpkin): the [README](README.md) and the [porting guide](docs/porting-from-neoforge/index.md). The documentation of Pumpkin is at <https://pumpkinmc.org/>.
 
 **Tip: [typos](https://github.com/crate-ci/typos) is a great Project to detect and automatically fix typos**
 

@@ -32,6 +32,39 @@ members = [
     "tools/parity-probe/rust",
 ]
 
+# `cargo build` at the root skips `parity-probe-server`, a second server link that the release jobs
+# do not need. Build it with `-p parity-probe-rust`.
+default-members = [
+    "crates/pumpkin",
+    "crates/pumpkin-core",
+    "crates/pumpkin-api-macros",
+    "crates/pumpkin-auth",
+    "crates/pumpkin-codecs",
+    "crates/pumpkin-command",
+    "crates/pumpkin-config",
+    "crates/pumpkin-data",
+    "crates/pumpkin-scheduler",
+    "crates/pumpkin-gametest",
+    "crates/pumpkin-inventory",
+    "crates/pumpkin-macros",
+    "crates/pumpkin-nbt",
+    "crates/pumpkin-plugin-api",
+    "crates/pumpkin-plugin-runtime",
+    "crates/pumpkin-plugin-utils",
+    "crates/pumpkin-protocol",
+    "crates/pumpkin-util",
+    "crates/pumpkin-wasm-host",
+    "crates/pumpkin-wasm-host-common",
+    "crates/pumpkin-wasm-host-v0_1",
+    "crates/pumpkin-wasm-host-v0_2",
+    "crates/pumpkin-world",
+    "crates/ironpumpkin-mods",
+    "crates/ironpumpkin-test-mod",
+    "tools/pumpkin-codegen",
+    "tools/pumpkin-fuzzer",
+    "tools/pumpkin-neoforge-client",
+]
+
 # [workspace.lints.rust]
 # missing_docs = "warn"
 

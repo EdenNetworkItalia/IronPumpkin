@@ -13,7 +13,7 @@ driver is the headless client `tools/pumpkin-neoforge-client`, which stops at
 | Path | Contents |
 |:--|:--|
 | `java/` | The Java probe: a NeoForge 26.3 mod, Gradle setup of `examples/modpack/client-mod`. |
-| `rust/` | The Rust probe: the native mod `parityprobe` and the server binary `parity-probe-server`. |
+| `rust/` | The Rust probe: the native mod `parityprobe` and the server binary `parity-probe-server`. A plain `cargo build` at the repository root does not build it. Use `-p parity-probe-rust`. |
 | `diff.py` | Compares two traces. Python 3 standard library only. |
 | `probe-channel.toml` | The channel of the Java probe, for the channel map of the client. |
 | `captures/neoforge-26.3.0.64-beta/probe-trace.jsonl` | The Java trace, recorded on 2026-10-15. |
@@ -31,8 +31,10 @@ object with three keys, in this order:
 
 - `ordinal`: the position of the event in the trace, from 0 without gaps.
 - `name`: the NeoForge class name. A nested class keeps its parent: `ServerTickEvent.Pre`.
-- `fields`: the stable fields of the event, sorted by name. Values are strings or booleans. A
-  trace never has timestamps, ids, player names, paths or counts that change from run to run.
+- `fields`: the stable fields of the event, sorted by name. Values are strings, booleans or
+  integers. A trace never has timestamps, ids, player names, paths or counts that change from run
+  to run. `diff.py` compares the values by their JSON text, so `true` and `1` are different, and it
+  rejects any other value type.
 
 The tick events are counted and only the first `ServerTickEvent.Pre` and the first
 `ServerTickEvent.Post` are traced. The Java probe logs the counts when the server stops.
@@ -92,10 +94,11 @@ does) and compares the fields of each aligned pair. It prints one line per diffe
 - `moved`: an event that both traces have with the same fields, at another place in the order.
 - `fields`: an aligned pair with different fields. One line per pair, with each differing field.
 
-It exits with 0 without differences, 1 with differences, and 2 on an unreadable or invalid trace.
-The self-test checks each kind of difference, rejects malformed traces, changes one field in a
-copy of the Java trace and expects exactly one `fields` difference, and compares the diff of the
-committed traces with `captures/ironpumpkin/diff.txt`.
+It exits with 0 without differences, 1 with differences, and 2 on an unreadable, non-UTF-8 or
+invalid trace. The self-test checks each kind of difference, `true` against `1`, malformed traces
+(wrong ordinal type, field value types, a trace that is not UTF-8), changes one field in a copy of
+the Java trace and expects exactly one `fields` difference, and compares the diff of the committed
+traces with `captures/ironpumpkin/diff.txt`.
 
 ## Record the traces
 

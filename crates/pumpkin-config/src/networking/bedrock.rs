@@ -91,7 +91,7 @@ impl Default for BedrockAuthenticationConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::NetherNetConfig;
+    use super::{BedrockConfig, NetherNetConfig};
 
     #[test]
     fn empty_external_ip_uses_automatic_detection() {
@@ -108,6 +108,14 @@ mod tests {
     fn explicit_external_ip_is_preserved() {
         let config: NetherNetConfig = toml::from_str("external_ip = \"203.0.113.7\"").unwrap();
         assert_eq!(config.external_ip.unwrap().to_string(), "203.0.113.7");
+    }
+
+    #[test]
+    fn default_motd_names_ironpumpkin() {
+        assert_eq!(
+            BedrockConfig::default().motd,
+            "A blazingly fast IronPumpkin server!"
+        );
     }
 }
 
@@ -156,7 +164,7 @@ impl Default for BedrockConfig {
             view_distance,
             simulation_distance,
             compression: CompressionConfig::default(),
-            motd: "A blazingly fast Pumpkin server!".to_string(),
+            motd: "A blazingly fast IronPumpkin server!".to_string(),
             username_prefix: String::new(),
             replace_username_spaces: true,
             authentication: BedrockAuthenticationConfig::default(),

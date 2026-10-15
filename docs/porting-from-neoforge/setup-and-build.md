@@ -11,24 +11,26 @@ An IronPumpkin mod is a Rust crate. A modpack is a repository that you create fr
 | Feature | NeoForge | IronPumpkin |
 | :--- | :--- | :--- |
 | **Project** | A Gradle project with `net.neoforged.moddev` | A Rust crate in a Cargo workspace, in a pack repository |
-| **Mod descriptor** | `neoforge.mods.toml` | The methods of the `NativeMod` trait. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` is planned (task 2.2). |
+| **Mod descriptor** | `neoforge.mods.toml` | The methods of the `NativeMod` trait. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` replaces them. See [Lifecycle](./lifecycle.md). |
 | **Entry point** | A class with `@Mod` | A type that implements `NativeMod`, and `register_mod!` |
 | **Dependency on the game** | `neoforge` at a version range | `ironpumpkin-mods`, and one pinned IronPumpkin commit in `modpack.toml` |
 | **Build tool** | `./gradlew build` | `cargo xtask check` and `cargo xtask build` |
 | **Output** | A jar for each mod | One server binary for the whole pack |
 | **Distribution** | A mod site, and the jar in `mods/` | A GitHub release of the pack, with one binary for each platform |
-| **Init order** | Dependency order from `ordering` and `versionRange` | The order of the mod ids. Dependency order is planned (task 2.2). |
+| **Init order** | Dependency order from the `ordering` of the dependencies | The load order: dependency order from `ordering`, with the mod id as tie-break. See [Lifecycle](./lifecycle.md). |
 | **Licence** | The author chooses | GPL-3.0-compatible, because the binary links the server |
 
-`NativeMod` replaces these keys of `neoforge.mods.toml`:
+`NativeMod` and `mods_toml()` replace these keys of `neoforge.mods.toml`:
 
 | `neoforge.mods.toml` | `NativeMod` | Notes |
 | :--- | :--- | :--- |
-| `modId` | `id()` | Today the id uses `a-z`, `0-9`, `_`, `.` and `-`. Two mods with the same id stop the server. A mod with a `neoforge.mods.toml` will use the NeoForge charset `[a-z][a-z0-9_]{1,63}` (task 2.2). |
-| `displayName` | `display_name()` | |
-| `version` | `version()` | |
+| `modId` | `id()`, or the `modId` of `mods_toml()` | Without a `mods_toml()`, the id uses `a-z`, `0-9`, `_`, `.` and `-`. With one, the `modId` matches the FML 12.0.8 pattern `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`. Two mods with the same id stop the server. |
+| `namespace` | The `namespace` of `mods_toml()` | The registry namespace. The default is the mod id. |
+| `displayName` | `display_name()`, or the key of `mods_toml()` | |
+| `version` | `version()`, or the key of `mods_toml()` | `${file.jarVersion}` in the file becomes `version()`. |
 | A mod that clients need | `client_required()` | The default is `true`. A client without the mod is disconnected at the configuration handshake. |
-| `description`, `authors`, `[[dependencies]]`, `license` | None today | Planned with `mods_toml()` (task 2.2) |
+| `description`, `authors`, `[[dependencies.<modId>]]` | The same keys of `mods_toml()` | A mod without a `mods_toml()` has no dependencies. |
+| `license` | `license` in the `Cargo.toml` of the crate | The server does not read the key of the file. |
 
 ---
 
@@ -261,7 +263,7 @@ cd ../my-pack-server
 The first start writes `pumpkin.toml`, `world/`, `plugins/`, `data/` and `logs/` in the server directory. The log shows the mod. Timestamps and colours are left out here:
 
 ```text
-INFO Starting Pumpkin 0.2.0+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)
+INFO Starting IronPumpkin 0.2.0+26.3-26.51 Java Minecraft (Protocol 777) | 1.26.51 Bedrock (Protocol 2193)
 INFO [greeter] init
 INFO [ironpumpkin] loaded 1 native mod: greeter (client_required = false)
 INFO Server is now running. Connect using port: Java Edition: 0.0.0.0:25565 | Bedrock Edition: 0.0.0.0:19132
@@ -307,7 +309,7 @@ error: cargo metadata failed: exit status: 101
 
 **Two orders**
 
-The patches apply in the byte order of the keys of `modpack.toml`, which are the package names of the mod crates. The server calls `init` in the order of `NativeMod::id`. The two orders are independent. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
+The patches apply in the byte order of the keys of `modpack.toml`, which are the package names of the mod crates. The server calls `init` in the load order: dependency order, with the mod id as tie-break. The two orders are independent. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
 
 **The lock files**
 
@@ -338,7 +340,7 @@ The IronPumpkin server is GPL-3.0. A built binary links the server, so it is a G
 - Depend on `ironpumpkin-mods` only.
 - Use the same key in `modpack.toml` as the package name of the mod crate.
 - Keep `exclude = [".ironpumpkin"]` in the root `Cargo.toml`.
-- Use the registry namespace of the Java mod as the `NativeMod::id`, when the id charset allows it.
+- Give the mod a `neoforge.mods.toml` with the `modId` and the registry `namespace` of the Java mod. Without a file, use the registry namespace as the `NativeMod::id`, when the id charset allows it.
 - Set `client_required` to `false` for a mod with only server logic.
 - Give the source of the pack, of each mod and of each patch to whoever gets the binary.
 

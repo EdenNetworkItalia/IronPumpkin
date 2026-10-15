@@ -19,6 +19,8 @@ use tracing::error;
 
 pub const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
 
+const ISSUES_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin/issues";
+
 /// Writes to a string which cannot fail.
 macro_rules! writeln_output {
     ($dst:expr $(,)?) => {
@@ -108,7 +110,7 @@ impl CrashReport {
 
         error!(
             "{}",
-            TextComponent::text("Pumpkin has encountered a panic!")
+            TextComponent::text("IronPumpkin has encountered a panic!")
                 .color(RED)
                 .bold()
                 .to_pretty_console()
@@ -163,6 +165,9 @@ impl CrashReport {
                 error!("{}", RED.console_color("Backtrace status is unknown, so no backtrace will be generated for the crash report."));
             }
         }
+
+        error!("");
+        error!("Report this crash at {ISSUES_URL}");
     }
 
     /// Generates the file content of the crash report file
@@ -170,7 +175,8 @@ impl CrashReport {
     pub fn generate_file_content(&self) -> String {
         let mut output = String::new();
 
-        writeln_output!(&mut output, "====== Pumpkin Crash Report ======");
+        writeln_output!(&mut output, "====== IronPumpkin Crash Report ======");
+        writeln_output!(&mut output, "Report this crash at {ISSUES_URL}");
         writeln_output!(&mut output);
         writeln_output!(&mut output, "Time: {}", self.utc_time);
         writeln_output!(
@@ -196,7 +202,7 @@ impl CrashReport {
 
         writeln_output!(
             &mut output,
-            "Pumpkin Version: {}",
+            "IronPumpkin Version: {}",
             Self::get_pumpkin_version()
         );
         writeln_output!(&mut output, "Minecraft Version: {}", CURRENT_MC_VERSION);

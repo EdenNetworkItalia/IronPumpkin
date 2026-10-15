@@ -22,7 +22,9 @@ Exit codes:
 - `0`: the files agree and nothing is unmatched.
 - `1`: with `--check`, the run would change `mapping-table.md`. In every mode, an unmatched row or a
   `problem:` line (see "Coverage") remains.
-- `2`: a file cannot be read or parsed. The message is on stderr.
+- `2`: a file cannot be read or parsed. Examples: a table row with a wrong number of cells, a table
+  without a `Mods`, `Counterpart` or `Status` column, a non-numeric cell in the Total row. The
+  message names the line or the table and is on stderr.
 
 The output lists the status changes, the number of matched rows, the unmatched rows with their reason
 and the three computed Coverage rows. Two runs in a row give the same file: the second run writes
@@ -53,8 +55,9 @@ names with `$`. They have no Status column and the script does not read them.
 
 ## What the script writes
 
-- **Status column**: a matched row takes the status of design.md. Only the last cell of the line
-  changes. The other cells stay byte for byte as they are.
+- **Status column**: a matched row takes the status of design.md. The script finds the column by
+  the header name `Status`. Only that cell of the line changes. The other cells stay byte for byte
+  as they are.
 - **Coverage table, rows "Inventory, supported", "Inventory, planned" and "Inventory, not
   supported"**: computed from the final statuses of the inventory rows of the mapping table. A row
   goes to the first column of the next table whose rule applies. The Rows column counts every row of

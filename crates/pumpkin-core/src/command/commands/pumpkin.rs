@@ -28,6 +28,11 @@ const WEBSITE_URL: &str = "https://eden.network";
 const DISCORD_URL: &str = "https://discord.eden.network";
 
 const CACHE_DURATION: Duration = Duration::from_hours(24);
+/// How long an empty result stays cached, so a server without network does not retry at each call.
+const EMPTY_CACHE_DURATION: Duration = Duration::from_mins(5);
+/// The limit of one request. `pumpkin_auth::client_builder` sets none, and the command blocks a
+/// runtime thread while the fetch runs.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
 
 struct Executor;
 
@@ -42,21 +47,44 @@ struct Contributor {
 
 struct ContributorCache {
     fetched_at: Instant,
+    /// How long the entry is valid after `fetched_at`.
+    ttl: Duration,
     data: Vec<Contributor>,
 }
 
 static CONTRIBUTORS_CACHE: LazyLock<Mutex<Option<ContributorCache>>> =
     LazyLock::new(|| Mutex::new(None));
 
+/// The cache entry after a fetch. An empty result means that the fetch failed or found nobody:
+/// the entry keeps the previous list and expires after `EMPTY_CACHE_DURATION`.
+fn cache_after_fetch(
+    previous: Option<ContributorCache>,
+    fetched: Vec<Contributor>,
+) -> ContributorCache {
+    let (data, ttl) = if fetched.is_empty() {
+        (
+            previous.map_or_else(Vec::new, |cache| cache.data),
+            EMPTY_CACHE_DURATION,
+        )
+    } else {
+        (fetched, CACHE_DURATION)
+    };
+    ContributorCache {
+        fetched_at: Instant::now(),
+        ttl,
+        data,
+    }
+}
+
 fn fetch_all_contributors_cached() -> Vec<Contributor> {
     if let Ok(guard) = CONTRIBUTORS_CACHE.lock()
         && let Some(cache) = guard.as_ref()
-        && cache.fetched_at.elapsed() < CACHE_DURATION
+        && cache.fetched_at.elapsed() < cache.ttl
     {
         return cache.data.clone();
     }
 
-    let contributors = tokio::runtime::Handle::try_current().map_or_else(
+    let fetched = tokio::runtime::Handle::try_current().map_or_else(
         |_| {
             tokio::runtime::Runtime::new()
                 .map_or_else(|_| Vec::new(), |rt| rt.block_on(fetch_all_contributors()))
@@ -64,27 +92,24 @@ fn fetch_all_contributors_cached() -> Vec<Contributor> {
         |handle| tokio::task::block_in_place(|| handle.block_on(fetch_all_contributors())),
     );
 
-    if !contributors.is_empty() {
-        if let Ok(mut guard) = CONTRIBUTORS_CACHE.lock() {
-            *guard = Some(ContributorCache {
-                fetched_at: Instant::now(),
-                data: contributors.clone(),
-            });
-        }
-    } else if let Ok(guard) = CONTRIBUTORS_CACHE.lock()
-        && let Some(cache) = guard.as_ref()
-    {
-        return cache.data.clone();
-    }
-
-    contributors
+    let Ok(mut guard) = CONTRIBUTORS_CACHE.lock() else {
+        return fetched;
+    };
+    let cache = cache_after_fetch(guard.take(), fetched);
+    let data = cache.data.clone();
+    *guard = Some(cache);
+    data
 }
 
 async fn fetch_all_contributors() -> Vec<Contributor> {
-    let client = pumpkin_auth::client_builder()
+    // No fallback to a default client: it has no timeout.
+    let Ok(client) = pumpkin_auth::client_builder()
         .user_agent("IronPumpkin")
+        .timeout(FETCH_TIMEOUT)
         .build()
-        .unwrap_or_default();
+    else {
+        return Vec::new();
+    };
 
     let mut all_contributors = Vec::new();
     let mut next_url = Some(CONTRIBUTORS_URL.to_string());
@@ -323,6 +348,7 @@ mod test {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *guard = Some(ContributorCache {
             fetched_at: Instant::now(),
+            ttl: CACHE_DURATION,
             data: vec![Contributor {
                 login: "test_user".to_string(),
             }],
@@ -332,6 +358,37 @@ mod test {
         let contributors = fetch_all_contributors_cached();
         assert_eq!(contributors.len(), 1);
         assert_eq!(contributors[0].login, "test_user");
+    }
+
+    #[test]
+    fn empty_result_is_cached_for_a_few_minutes() {
+        assert_eq!(EMPTY_CACHE_DURATION, Duration::from_mins(5));
+        let cache = cache_after_fetch(None, Vec::new());
+        assert!(cache.data.is_empty());
+        assert_eq!(cache.ttl, EMPTY_CACHE_DURATION);
+    }
+
+    #[test]
+    fn empty_result_keeps_the_previous_list() {
+        let previous = ContributorCache {
+            fetched_at: Instant::now(),
+            ttl: CACHE_DURATION,
+            data: vec![Contributor {
+                login: "test_user".to_string(),
+            }],
+        };
+        let cache = cache_after_fetch(Some(previous), Vec::new());
+        assert_eq!(cache.data.len(), 1);
+        assert_eq!(cache.ttl, EMPTY_CACHE_DURATION);
+
+        let fresh = cache_after_fetch(
+            Some(cache),
+            vec![Contributor {
+                login: "other".to_string(),
+            }],
+        );
+        assert_eq!(fresh.data[0].login, "other");
+        assert_eq!(fresh.ttl, CACHE_DURATION);
     }
 
     #[test]

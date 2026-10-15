@@ -27,7 +27,7 @@ IronPumpkin replaces all three with a source patch. A source patch is a unified 
 
 Go down the list. Stop at the first line that fits.
 
-1. A NeoForge event of the inventory fires at the point that the mixin changes. Handle the event. The event pages of this guide are planned (tasks 2.3, 2.12, 2.13 and 2.15). `mapping-table.md` lists the Pumpkin event for each NeoForge event.
+1. A NeoForge event of the inventory fires at the point that the mixin changes. Handle the event. See [Events](./events.md). `mapping-table.md` lists the Pumpkin event for each NeoForge event.
 2. An `ironpumpkin-mods` function, or a Pumpkin function that the crate re-exports, does the work. Call it.
 3. The mixin only adds state to a vanilla class. Use an attachment. Planned (task 2.14).
 4. None of the above. Write a source patch.
@@ -128,7 +128,7 @@ The files are in the `ironpumpkin-pack-test` repository, in commit `958190c64`, 
 
 ### 3. When an API replaces the patch
 
-The "Candidate API" line of the justification file came true. IronPumpkin now has `World::structure_starts_at`, so the current WITS port has no patch and no `[package.metadata.ironpumpkin]` table. This is the intended life of a patch: it proves a need, and the API absorbs it.
+IronPumpkin has `World::structure_starts_at`, the "Candidate API" of the justification file. The WITS port uses it, so it has no patch and no `[package.metadata.ironpumpkin]` table. A patch proves a need, and an API absorbs it. When a function like this exists, call it instead of the patch:
 
 ```rust
 use ironpumpkin_mods::{math::position::BlockPos, world::World};
@@ -174,7 +174,7 @@ mods/my-mod/
 - The build checks out IronPumpkin at the pinned commit, with no local change.
 - It applies the patches of the mods in the byte order of the keys of `modpack.toml`. The keys are the package names of the mod crates. Inside a mod, it applies them in file name order.
 - It uses `git apply`. There is no fuzz, no whitespace leniency and no three-way merge.
-- The `init` order of the mods is separate. It follows `NativeMod::id`.
+- The `init` order of the mods is separate. It is the load order: dependency order, with the mod id as tie-break. See [Lifecycle](./lifecycle.md).
 
 **Conflicts**
 

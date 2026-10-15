@@ -4,7 +4,7 @@ import io
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -118,6 +118,41 @@ class MappingStatusTest(unittest.TestCase):
         again, report = ms.sync(lines(DESIGN), new)
         self.assertEqual(again, new)
         self.assertEqual(report["changes"], {})
+
+    def test_status_cell_is_found_by_its_header_not_by_its_position(self):
+        mapping = MAPPING.replace(
+            "| NeoForge item | Mods | Section | Counterpart | Status |\n|:--|--:|:--|:--|:--|",
+            "| NeoForge item | Mods | Status | Section | Counterpart |\n|:--|--:|:--|:--|:--|",
+        )
+        mapping = mapping.replace("| event class | no case (abstract) | supported |",
+                                  "| supported | event class | no case (abstract) |")
+        mapping = mapping.replace("| event class | `x` | not supported |", "| not supported | event class | `x` |")
+        mapping = mapping.replace("| event class | `y` (contract only) | not supported |",
+                                  "| not supported | event class | `y` (contract only) |")
+        mapping = mapping.replace("| `neoforge.mods.toml` keys | `lifecycle` doc, not supported | planned |",
+                                  "| planned | `neoforge.mods.toml` keys | `lifecycle` doc, not supported |")
+        new, report = ms.sync(lines(DESIGN), lines(mapping))
+        self.assertEqual(report["unmatched"], [])
+        self.assertEqual(report["problems"], [])
+        self.assertIn("| `AlphaEvent.Beta` | 52 (21.1 `Old`) | supported | event class | `x` |", new)
+        self.assertIn("| `file modLoader` | 414 | not supported | `neoforge.mods.toml` keys | "
+                      "`lifecycle` doc, not supported |", new)
+
+    def test_a_non_numeric_total_cell_is_a_parse_error_with_its_line(self):
+        design = DESIGN.replace("| Total | 5 |", "| Total | five |")
+        with self.assertRaisesRegex(ms.ParseError, r"design\.md line 7: .*not a number"):
+            ms.sync(lines(design), lines(MAPPING))
+
+    def test_a_table_without_a_status_column_is_a_parse_error(self):
+        mapping = MAPPING.replace("| Counterpart | Status |", "| Counterpart | State |")
+        with self.assertRaisesRegex(ms.ParseError, "no Status column"):
+            ms.sync(lines(DESIGN), lines(mapping))
+
+    def test_main_reports_a_parse_error_with_exit_code_2(self):
+        with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            Path(tmp, "design.md").write_text(DESIGN.replace("| Total | 5 |", "| Total | five |"), encoding="utf-8")
+            Path(tmp, "mapping-table.md").write_text(MAPPING, encoding="utf-8")
+            self.assertEqual(ms.main(["--dir", tmp]), 2)
 
     def test_check_fails_on_a_stale_status_and_passes_after_the_write(self):
         with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):

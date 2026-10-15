@@ -2,7 +2,7 @@
 
 IronPumpkin runs the server side of a mod, as Rust code in the server process. It does not run Java, it has no client code, and it has the parts of Minecraft that Pumpkin has. A mod that needs more must wait for a task of the plan, use a source patch, or leave that part out.
 
-The inventory in `openspec/changes/neoforge-shaped-plugin-api/design.md` has one row for each element of the NeoForge 26.3.x API. Each row has a status and a reason. `mapping-table.md` in the same folder gives the counterpart of each row. Read both before you port a class.
+The inventory in `design.md` of the change folder has one row for each element of the NeoForge 26.3.x API. Each row has a status and a reason. `mapping-table.md` in the same folder gives the counterpart of each row. Read both before you port a class. The [index](./index.md) names the folder.
 
 ---
 
@@ -15,7 +15,7 @@ The inventory in `openspec/changes/neoforge-shaped-plugin-api/design.md` has one
 | **Mod loading** | The loader scans `mods/` and loads each jar | No loading. Cargo compiles the mod into the binary. A change needs a new build. |
 | **Mixins and access transformers** | Mixin configs and `accesstransformer.cfg` | Source patches. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
 | **Registries** | Any registry, with a `DeferredRegister` | Block, item, entity type and tag. Sound events, mob effects, data components and attributes are planned (task 2.6). The rest waits for M5 or is not supported. |
-| **Events** | The NeoForge event catalogue | Pumpkin events. Many NeoForge events are planned (tasks 2.3, 2.12, 2.13 and 2.15). |
+| **Events** | The NeoForge event catalogue | Pumpkin events. The server, tick, chat, statistic, anvil, grindstone, brewing and enchanting events have NeoForge fire sites and fields. See [Events](./events.md). The player, level and entity families are planned (tasks 2.12, 2.13 and 2.15). |
 | **Data generation and game tests** | `runData`, `RegisterGameTestsEvent` | Not supported |
 | **Mod version records of a world** | `ModMismatchEvent` | Not supported. Pumpkin does not keep them. |
 | **Creative tabs** | `creative_mode_tab` registry, `BuildCreativeModeTabContentsEvent` | The server never reads them. Accept-and-ignore for the registry is planned (task 2.5). |
@@ -26,11 +26,9 @@ The inventory in `openspec/changes/neoforge-shaped-plugin-api/design.md` has one
 
 **Planned, with a task.** The API has a task in `tasks.md` of the change. The page of this guide for that API is written when the task lands. These are the tasks for the families that mods use most:
 
-- 2.2: lifecycle methods and `neoforge.mods.toml`.
-- 2.3, 2.12, 2.13 and 2.15: events with NeoForge names, fire sites and fields.
+- 2.12, 2.13 and 2.15: the player, level and block, and entity families of events.
 - 2.5 and 2.6: the rest of registration, and sound events, mob effects, data components and attributes.
 - 2.7: capabilities.
-- 2.8: mod config.
 - 2.9: menus.
 - 2.10: shapes.
 - 2.11: network payloads.
@@ -78,11 +76,18 @@ The pack has no client code. The Rust crate is the server half. The Java mod abo
 ```rust
 use ironpumpkin_mods::{ModInit, NativeMod, register_mod};
 
+const MODS_TOML: &str = r#"
+[[mods]]
+modId = "hello_mod"
+namespace = "hello-mod"
+displayName = "Hello Mod"
+"#;
+
 struct HelloMod;
 
 impl NativeMod for HelloMod {
     fn id(&self) -> &'static str {
-        "hello-mod"
+        "hello_mod"
     }
 
     fn display_name(&self) -> &'static str {
@@ -91,6 +96,10 @@ impl NativeMod for HelloMod {
 
     fn version(&self) -> &'static str {
         "1.0.0"
+    }
+
+    fn mods_toml(&self) -> Option<&'static str> {
+        Some(MODS_TOML)
     }
 
     // The mod registers content, so a client needs the Java half. This is the default.
@@ -104,7 +113,7 @@ impl NativeMod for HelloMod {
 register_mod!(HelloMod);
 ```
 
-A NeoForge client without the Java half is disconnected by its own registry check. The mod id of the Java half must match `[a-z][a-z0-9_]{1,63}`, so `hello-mod` becomes `hello_mod`. The registry namespace stays `hello-mod`, so the registry names match the server.
+A NeoForge client without the Java half is disconnected by its own registry check. The mod id of the Java half must match the FML 12.0.8 pattern `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`, so `hello-mod` becomes `hello_mod`. The `namespace` key of the `neoforge.mods.toml` of the Rust mod keeps the registry namespace `hello-mod`, so the registry names match the server.
 
 ### A registry without a function
 
@@ -126,7 +135,7 @@ public static final DeferredRegister<RecipeType<?>> RECIPE_TYPES =
 - Look up each class of the mod in `mapping-table.md` before you port it. Read the status and the task id.
 - Split the mod in two: a Rust server half and a Java client half. Keep the registry names equal.
 - Set `client_required` to `false` for a mod that has only server logic.
-- Read the reason column of an inventory row that is not supported. It says if M5 adds the feature.
+- Read the reason column of an inventory row. A `planned` row with the reason prefix `M5 engine extension:` waits for M5. A `not supported` row has no plan.
 - Open an issue in `EdenNetworkItalia/IronPumpkin` for a gap that blocks a port. An accepted patch is a candidate for an event.
 
 **Don't**

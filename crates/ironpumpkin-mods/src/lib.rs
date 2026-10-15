@@ -115,6 +115,15 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/registration.md")]
     struct Registration;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/lifecycle.md")]
+    struct Lifecycle;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/configuration.md")]
+    struct Configuration;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/events.md")]
+    struct Events;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;
 

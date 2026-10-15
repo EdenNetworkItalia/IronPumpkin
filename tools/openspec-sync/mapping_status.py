@@ -27,7 +27,8 @@ COVERAGE = (
 SUMMARY_COLUMN = {"supported": "Supported", "planned": "Planned", "client-only": "Client-only",
                   "not supported": "Not supported"}
 
-Row = collections.namedtuple("Row", "line family key status cells")
+# cols holds the column numbers of Mods, Counterpart and Status of a mapping-table.md row.
+Row = collections.namedtuple("Row", "line family key status cells cols", defaults=(None,))
 
 
 class ParseError(Exception):
@@ -79,6 +80,19 @@ def section(lines, heading):
     return start, end
 
 
+def column(header, name, where):
+    if name not in header:
+        raise ParseError(f"{where}: the table has no {name} column")
+    return header.index(name)
+
+
+def set_cell(line, index, text):
+    """Return line with the cell at index replaced by text. The other cells stay byte for byte."""
+    line = line.rstrip()
+    bars = [m.start() for m in re.finditer(r"(?<!\\)\|", line)]
+    return line[: bars[index] + 1] + f" {text} " + line[bars[index + 1]:]
+
+
 def clean_key(cell):
     """Strip backticks, a trailing "(abstract)" and a trailing package suffix "(`pkg`)"."""
     key = re.sub(r"^`(.*)`$", r"\1", cell.strip())
@@ -90,13 +104,20 @@ def check_status(status, where):
         raise ParseError(f"{where}: unknown status {status!r}")
 
 
+def summary_total(header, line, cells):
+    try:
+        return dict(zip(header[1:], (int(v) for v in cells[1:])))
+    except ValueError as e:
+        raise ParseError(f"design.md line {line}: the Total row has a cell that is not a number") from e
+
+
 def design_rows(lines):
     """Return every inventory row of design.md and the Total row of Summary per family."""
     start, end = section(lines, "## Inventory")
     rows, total = [], None
     for family, _h4, header, body in tables(lines, start, end):
         if header[:2] == ["Family", "Rows"]:
-            total = next((dict(zip(header[1:], (int(v) for v in c[1:]))) for _, c in body if c[0] == "Total"), None)
+            total = next((summary_total(header, line, c) for line, c in body if c[0] == "Total"), None)
         elif "Status" in header:
             status_col = header.index("Status")
             for line, cells in body:
@@ -107,17 +128,18 @@ def design_rows(lines):
 
 
 def mapping_rows(lines):
-    """Return every inventory row of mapping-table.md and the column numbers of Mods and Counterpart."""
+    """Return every inventory row of mapping-table.md."""
     start, end = section(lines, "## Inventory rows")
-    rows, cols = [], None
+    rows = []
     for family, _h4, header, body in tables(lines, start, end):
         if header[0] != "NeoForge item":
             continue
-        cols = (header.index("Mods"), header.index("Counterpart"), header.index("Status"))
+        where = f"mapping-table.md, table [{family}]"
+        cols = tuple(column(header, name, where) for name in ("Mods", "Counterpart", "Status"))
         for line, cells in body:
             check_status(cells[cols[2]], f"mapping-table.md line {line}")
-            rows.append(Row(line, family, clean_key(cells[0]), cells[cols[2]], cells))
-    return rows, cols
+            rows.append(Row(line, family, clean_key(cells[0]), cells[cols[2]], cells, cols))
+    return rows
 
 
 def coverage_cells(rows):
@@ -150,7 +172,7 @@ def coverage_cells(rows):
 def sync(design_lines, mapping_lines):
     """Return (new mapping-table.md lines, report)."""
     drows, total = design_rows(design_lines)
-    mrows, (mods_col, counterpart_col, _) = mapping_rows(mapping_lines)
+    mrows = mapping_rows(mapping_lines)
 
     design = collections.defaultdict(list)
     for r in drows:
@@ -177,9 +199,8 @@ def sync(design_lines, mapping_lines):
         elif found[0].status != m.status:
             status = found[0].status
             changes[(m.status, status)] += 1
-            head = mapping_lines[m.line - 1].rstrip()[:-1].rstrip()
-            new_lines[m.line - 1] = head[: head.rfind("|") + 1] + f" {status} |"
-        final[status].append((status, m.cells[counterpart_col], m.cells[mods_col]))
+            new_lines[m.line - 1] = set_cell(mapping_lines[m.line - 1], m.cols[2], status)
+        final[status].append((status, m.cells[m.cols[1]], m.cells[m.cols[0]]))
 
     client_only = 0
     for key, rows in design.items():

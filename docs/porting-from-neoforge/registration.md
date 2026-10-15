@@ -2,7 +2,7 @@
 
 In NeoForge, a mod creates one `DeferredRegister` for each registry. It adds entries as lambdas and registers the `DeferredRegister` on the mod bus. The game calls the lambdas when the registry opens. The mod keeps a `DeferredHolder` for each entry and calls `get()` later.
 
-In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `register_entity_type` or `register_tag` from `NativeMod::init`. Each call takes a builder and checks the definition at once. The server freezes the registry after the `init` of the last mod. The freeze gives each entry its numeric id.
+In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `register_entity_type` or `register_tag` from `NativeMod::init`. Each call takes a builder and checks the definition at once. The server freezes the registry after the lifecycle steps of all mods. The freeze gives each entry its numeric id.
 
 ---
 
@@ -55,7 +55,7 @@ public final class HelloMod {
 
 ### 2. IronPumpkin implementation (Rust)
 
-The snippet is a doc-test of `ironpumpkin-mods`: `cargo test --doc -p ironpumpkin-mods` compiles it. It follows `examples/modpack/mods/hello-mod`.
+The snippet is a doc-test of `ironpumpkin-mods`: `cargo test --doc -p ironpumpkin-mods` compiles it. It follows `examples/modpack/mods/hello-mod`. That mod keeps the text of `MODS_TOML` in the file `neoforge.mods.toml` and reads it with `include_str!`. The mod id is `hello_mod`, as in Java. The `namespace` key gives the registry namespace `hello-mod`.
 
 ```rust
 use std::sync::Arc;
@@ -70,12 +70,19 @@ use ironpumpkin_mods::{
 
 const LAMP: &str = "hello-mod:greeter_lamp";
 const GREETER: &str = "hello-mod:greeter";
+const MODS_TOML: &str = r#"
+[[mods]]
+modId = "hello_mod"
+namespace = "hello-mod"
+version = "${file.jarVersion}"
+displayName = "Hello Mod"
+"#;
 
 struct HelloMod;
 
 impl NativeMod for HelloMod {
     fn id(&self) -> &'static str {
-        "hello-mod"
+        "hello_mod"
     }
 
     fn display_name(&self) -> &'static str {
@@ -84,6 +91,10 @@ impl NativeMod for HelloMod {
 
     fn version(&self) -> &'static str {
         "1.0.0"
+    }
+
+    fn mods_toml(&self) -> Option<&'static str> {
+        Some(MODS_TOML)
     }
 
     fn init(&self, cx: &mut ModInit) {
@@ -114,7 +125,7 @@ The mapping from the Java code to the Rust code:
 
 | Java | Rust |
 | :--- | :--- |
-| `DeferredRegister.createBlocks(NAMESPACE)` | No object. The name carries the namespace: `"hello-mod:greeter_lamp"`. |
+| `DeferredRegister.createBlocks(NAMESPACE)` | No object. The name carries the namespace: `"hello-mod:greeter_lamp"`. The `namespace` key of `neoforge.mods.toml` names it too. |
 | `BLOCKS.registerBlock(..)` | `cx.register_block(BlockBuilder::new(..))` |
 | `BlockBehaviour.Properties.ofFullCopy(Blocks.REDSTONE_LAMP)` | `Block::REDSTONE_LAMP.default_state.id` as the `display` state |
 | `RedstoneLampBlock`, the `lit` state property | `.bool_property("lit", false)` |
@@ -179,10 +190,11 @@ Content does not inherit the behaviour of its `display` entry. Without `.behavio
 
 The server runs the registration in this order:
 
-1. It calls `init` of each mod, in the order of the mod ids. Each `register_*` call applies at once.
-2. It freezes the registry after the last `init`. A mod tag that no mod registers fails here. An item that places an unknown block fails here.
-3. The freeze gives numeric ids to the custom entries, after the ids of the vanilla entries. The order is the order of the names, so the mod load order does not change an id.
-4. The first world loads.
+1. It calls `init` of each mod, in load order: dependency order, with the mod id as tie-break. Each `register_*` call applies at once.
+2. It runs the other lifecycle steps and loads the configs. See [Lifecycle](./lifecycle.md). A mod has no `ModInit` there, so it registers no content.
+3. It freezes the registry. A mod tag that no mod registers fails here. An item that places an unknown block fails here.
+4. The freeze gives numeric ids to the custom entries, after the ids of the vanilla entries. The order is the order of the names, so the mod load order does not change an id.
+5. The first world loads. Look up custom content from this point, for example in a `ServerStartingEvent` handler.
 
 After the freeze, the generated lookups of Pumpkin answer for custom entries too. A mod looks up an entry by name. It does not hold a handle.
 
@@ -228,6 +240,7 @@ ERROR [ironpumpkin] native mod "greeter" cannot register the block "greeter:lamp
 | `UnknownTag` | A `.tag(..)` names a tag that the registry does not have. | At the call for a vanilla tag. At the freeze for a mod tag. |
 | `InvalidTagName`, `DuplicateTag`, `UnknownTagMember` | A `TagBuilder` has a wrong name, a taken name, or a vanilla member that does not exist. | At the call |
 | `UnknownBlock`, `BlockAlreadyHasItem` | An item places a block that is not registered, or that has an item already. | At the freeze |
+| `RangeExceeded` | The custom entries of a registry do not fit in the free id range. | At the freeze |
 
 ---
 

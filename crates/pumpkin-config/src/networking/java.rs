@@ -55,7 +55,7 @@ impl Default for JavaConfig {
             simulation_distance,
             keep_alive_time: 15,
             compression: CompressionConfig::default(),
-            motd: "A blazingly fast Pumpkin server!".to_string(),
+            motd: "A blazingly fast IronPumpkin server!".to_string(),
             authentication: AuthenticationConfig::default(),
             packet_limiter: PacketLimiterConfig::default(),
         }
@@ -70,6 +70,14 @@ mod tests {
     fn default_keep_alive_time() {
         let config = JavaConfig::default();
         assert_eq!(config.keep_alive_time, 15);
+    }
+
+    #[test]
+    fn default_motd_names_ironpumpkin() {
+        assert_eq!(
+            JavaConfig::default().motd,
+            "A blazingly fast IronPumpkin server!"
+        );
     }
 
     #[test]
