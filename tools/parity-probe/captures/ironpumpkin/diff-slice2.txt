@@ -1,0 +1,21 @@
+missing  step 0 reference #16 PlayerTickEvent.Pre {}
+missing  step 0 reference #17 PlayerTickEvent.Post {}
+missing  step 1 reference #20 PlayerTickEvent.Pre {}
+missing  step 1 reference #21 PlayerTickEvent.Post {}
+missing  step 2 reference #25 PlayerTickEvent.Pre {}
+missing  step 2 reference #26 PlayerTickEvent.Post {}
+fields   step 2 PlayerInteractEvent.LeftClickBlock: reference #28, candidate #20: action: "start" != null; face: "up" != null; hand: "main_hand" != null
+missing  step 2 reference #29 BreakBlockEvent {"pos":"1 -1 0"}
+missing  step 3 reference #31 PlayerTickEvent.Pre {}
+missing  step 3 reference #32 PlayerTickEvent.Post {}
+extra    step 3 candidate #23 PlayerEvent.NameFormat {}
+missing  step 4 reference #35 PlayerTickEvent.Pre {}
+missing  step 4 reference #36 PlayerTickEvent.Post {}
+fields   step 4 PlayerInteractEvent.RightClickBlock: reference #38, candidate #26: face: "up" != null; hand: "main_hand" != null; item: "minecraft:stone" != null
+fields   step 4 UseItemOnBlockEvent: reference #39, candidate #27: face: "up" != null; hand: "main_hand" != null; item: "minecraft:stone" != null; phase: "item_before_block" != null
+missing  step 4 reference #40 UseItemOnBlockEvent {"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"block","pos":"1 -2 0"}
+missing  step 4 reference #41 UseItemOnBlockEvent {"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_after_block","pos":"1 -2 0"}
+missing  step 4 reference #42 BlockEvent.EntityPlaceEvent {"block":"minecraft:stone","pos":"1 -1 0"}
+missing  step 5 reference #44 PlayerTickEvent.Pre {}
+missing  step 5 reference #45 PlayerTickEvent.Post {}
+20 differences (missing 16, fields 3, extra 1)

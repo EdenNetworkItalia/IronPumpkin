@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "it.edennetworkitalia.parityprobe.mixin",
+  "mixins": [
+    "PingMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "minVersion": "0.8"
+}

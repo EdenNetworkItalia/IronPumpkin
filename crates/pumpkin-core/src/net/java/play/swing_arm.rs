@@ -36,17 +36,14 @@ impl JavaClient {
             pumpkin_world::clip::ClipFluid::None,
         ));
 
-        let event = if hit.is_miss {
-            PlayerInteractEvent::new(player, InteractAction::LeftClickAir, &Block::AIR, None)
-        } else {
-            let hit_pos = hit.block_pos;
-            PlayerInteractEvent::new(
-                player,
-                InteractAction::LeftClickBlock,
-                player.world().get_block(&hit_pos),
-                Some(hit_pos),
-            )
-        };
+        // A swing that hits a block fires nothing: `LeftClickBlock` fires at the dig start in
+        // `handle_player_action`, as in `NeoForge` and Bukkit.
+        if !hit.is_miss {
+            player.swing_hand(hand, false);
+            return;
+        }
+        let event =
+            PlayerInteractEvent::new(player, InteractAction::LeftClickAir, &Block::AIR, None);
 
         send_cancellable_blocking! {{
             &server;

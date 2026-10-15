@@ -3,6 +3,7 @@
 
 Usage:
     python3 -I tools/parity-probe/diff.py REFERENCE CANDIDATE
+    python3 -I tools/parity-probe/diff.py --slice2 REFERENCE CANDIDATE
     python3 -I tools/parity-probe/diff.py --self-test
 
 REFERENCE is the trace of the Java probe on NeoForge, CANDIDATE the trace of the Rust probe on
@@ -13,6 +14,11 @@ and ordinal, then compares the fields of each aligned pair. It prints one line p
     extra    an event of the candidate that the reference does not have
     moved    an event that both have with the same fields, at a different place in the order
     fields   an aligned pair whose fields differ
+
+With --slice2, only the events with the field `step` (the index of the script step) count. The
+script compares them step by step, and adds one kind:
+
+    step     an event that both have with the same fields, in another step
 
 Exit status: 0 without differences, 1 with differences, 2 on an unreadable or invalid trace.
 """
@@ -80,12 +86,16 @@ def show(fields):
     return json.dumps(fields, sort_keys=True, separators=(",", ":"))
 
 
-def place(events, ordinal):
-    return f"after {events[ordinal - 1][1]}" if ordinal else "first"
+def place(events, event):
+    """The place of `event` in `events`: the name of the event before it, or "first". In a slice 2
+    comparison `events` holds the events of one step, so the place is inside the step."""
+    index = events.index(event)
+    return f"after {events[index - 1][1]}" if index else "first"
 
 
-def compare(reference, candidate):
-    """Return the differences as (kind, text) tuples, in the order of the reference."""
+def compare(reference, candidate, prefix=""):
+    """Return the differences as (kind, text) tuples, in the order of the reference. `prefix`
+    starts each text."""
     matcher = difflib.SequenceMatcher(
         None, [e[1] for e in reference], [e[1] for e in candidate], autojunk=False
     )
@@ -109,14 +119,14 @@ def compare(reference, candidate):
 
     found = []
     for ref in missing:
-        found.append((ref[0], "missing", f"reference #{ref[0]} {ref[1]} {show(ref[2])}"))
+        found.append((ref[0], "missing", f"{prefix}reference #{ref[0]} {ref[1]} {show(ref[2])}"))
     for ref, cand in moved:
         found.append(
             (
                 ref[0],
                 "moved",
-                f"{ref[1]}: reference #{ref[0]} {place(reference, ref[0])}, "
-                f"candidate #{cand[0]} {place(candidate, cand[0])}",
+                f"{prefix}{ref[1]}: reference #{ref[0]} {place(reference, ref)}, "
+                f"candidate #{cand[0]} {place(candidate, cand)}",
             )
         )
     for ref, cand in changed:
@@ -128,12 +138,55 @@ def compare(reference, candidate):
             (
                 ref[0],
                 "fields",
-                f"{ref[1]}: reference #{ref[0]}, candidate #{cand[0]}: " + "; ".join(parts),
+                f"{prefix}{ref[1]}: reference #{ref[0]}, candidate #{cand[0]}: "
+                + "; ".join(parts),
             )
         )
     found.sort(key=lambda item: item[0])
-    found += [(None, "extra", f"candidate #{c[0]} {c[1]} {show(c[2])}") for c in extra]
+    found += [(None, "extra", f"{prefix}candidate #{c[0]} {c[1]} {show(c[2])}") for c in extra]
     return [(kind, text) for _, kind, text in found]
+
+
+def steps(events, source):
+    """Group the events that have the field `step` by its value, without the field. The other
+    events belong to slice 1 and are left out."""
+    groups = {}
+    for ordinal, name, fields in events:
+        if "step" not in fields:
+            continue
+        step = fields["step"]
+        if type(step) is not int or step < 0:
+            raise TraceError(f"{source}: event #{ordinal}: step must be a non-negative integer")
+        rest = {key: value for key, value in fields.items() if key != "step"}
+        groups.setdefault(step, []).append((ordinal, name, rest))
+    return groups
+
+
+def compare_steps(reference, candidate):
+    """Compare two slice 2 traces step by step. An event that one step misses and another step
+    has with the same name and fields is one `step` difference instead of a missing and an extra."""
+    found = []
+    for step in sorted(set(reference) | set(candidate)):
+        ref, cand = reference.get(step, []), candidate.get(step, [])
+        for kind, text in compare(ref, cand, f"step {step} "):
+            found.append([step, kind, text])
+        # compare() writes the event of a missing or extra line as "<name> <fields>" at the end.
+        for entry in found:
+            if entry[0] == step and entry[1] in ("missing", "extra"):
+                entry.append(entry[2].split(" ", 4)[4])
+
+    for entry in found:
+        if entry[1] != "missing":
+            continue
+        match = next(
+            (o for o in found if o[1] == "extra" and o[0] != entry[0] and o[3] == entry[3]),
+            None,
+        )
+        if match is not None:
+            name = entry[3].split(" ", 1)[0]
+            entry[1:] = ["step", f"{name}: reference step {entry[0]}, candidate step {match[0]}"]
+            match[1] = None
+    return [(entry[1], entry[2]) for entry in found if entry[1] is not None]
 
 
 def report(differences, out):
@@ -263,6 +316,8 @@ def self_test():
         print("FAIL committed captures: the diff differs from captures/ironpumpkin/diff.txt")
         failures += 1
 
+    failures += self_test_slice2()
+
     if failures:
         print(f"self-test: {failures} failures")
         return 1
@@ -270,18 +325,100 @@ def self_test():
     return 0
 
 
+def self_test_slice2():
+    """The slice 2 comparison: per step, a `step` difference, the events without a step left
+    out, an invalid step, a changed field in the committed Java trace, and the committed slice 2
+    captures against diff-slice2.txt."""
+
+    def at(step, name, **fields):
+        return (name, dict(fields, step=step))
+
+    join = at(0, "PlayerEvent.PlayerLoggedInEvent")
+    chat = at(1, "ServerChatEvent", raw_text="hello")
+    leave = at(2, "PlayerEvent.PlayerLoggedOutEvent")
+    start = ("ServerStartedEvent", {})
+    cases = [
+        ("identical slice 2 traces", trace(start, join, chat, leave), trace(join, chat, leave), []),
+        ("event in another step", trace(join, chat, leave),
+         trace(join, at(2, "ServerChatEvent", raw_text="hello"), leave), ["step"]),
+        ("event a step lacks", trace(join, chat, leave), trace(join, leave), ["missing"]),
+        ("changed field in a step", trace(join, chat, leave),
+         trace(join, at(1, "ServerChatEvent", raw_text="other"), leave), ["fields"]),
+        ("order inside a step", trace(join, chat, at(1, "X"), leave),
+         trace(join, at(1, "X"), chat, leave), ["moved"]),
+    ]
+    failures = 0
+    for title, ref, cand, expected in cases:
+        differences = compare_steps(
+            steps(parse(ref, "reference"), "reference"),
+            steps(parse(cand, "candidate"), "candidate"),
+        )
+        if [kind for kind, _ in differences] != expected:
+            print(f"FAIL {title}: {differences} != {expected}")
+            failures += 1
+
+    for title, bad in [
+        ("text step", trace(("A", {"step": "1"}))),
+        ("negative step", trace(("A", {"step": -1}))),
+        ("boolean step", trace(("A", {"step": True}))),
+    ]:
+        try:
+            steps(parse(bad, "bad"), "bad")
+        except TraceError:
+            continue
+        print(f"FAIL {title}: accepted")
+        failures += 1
+
+    # A changed field of one play event of the committed Java trace is exactly one difference.
+    captures = HERE / "captures"
+    java = captures / "neoforge-26.3.0.64-beta" / "probe-trace-slice2.jsonl"
+    events = load(java)
+    index = next(i for i, event in enumerate(events) if len(event[2]) > 1 and "step" in event[2])
+    ordinal, name, fields = events[index]
+    key = min(key for key in fields if key != "step")
+    changed = list(events)
+    changed[index] = (ordinal, name, dict(fields, **{key: "changed"}))
+    differences = compare_steps(steps(events, java), steps(changed, java))
+    if [kind for kind, _ in differences] != ["fields"]:
+        print(f"FAIL changed field against {java.name}: {differences}")
+        failures += 1
+
+    expected = (captures / "ironpumpkin" / "diff-slice2.txt").read_text(encoding="utf-8")
+    out = io.StringIO()
+    report(
+        compare_slice2(
+            captures / "neoforge-26.3.0.64-beta" / "probe-trace-slice2.jsonl",
+            captures / "ironpumpkin" / "probe-trace-slice2.jsonl",
+        ),
+        out,
+    )
+    if out.getvalue() != expected:
+        print("FAIL committed slice 2 captures: the diff differs from diff-slice2.txt")
+        failures += 1
+    return failures
+
+
+def compare_slice2(reference, candidate):
+    return compare_steps(steps(load(reference), reference), steps(load(candidate), candidate))
+
+
 def main(argv):
     if argv == ["--self-test"]:
         return self_test()
+    slice2 = argv[:1] == ["--slice2"]
+    if slice2:
+        argv = argv[1:]
     if len(argv) != 2:
         print(__doc__.strip(), file=sys.stderr)
         return 2
     try:
-        reference, candidate = load(argv[0]), load(argv[1])
+        if slice2:
+            differences = compare_slice2(argv[0], argv[1])
+        else:
+            differences = compare(load(argv[0]), load(argv[1]))
     except TraceError as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
-    differences = compare(reference, candidate)
     report(differences, sys.stdout)
     return 1 if differences else 0
 

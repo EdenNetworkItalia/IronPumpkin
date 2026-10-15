@@ -16,6 +16,10 @@ impl JavaClient {
         match Status::try_from(player_action.status.0) {
             Ok(status) => match status {
                 Status::StartedDigging => {
+                    if !Self::fire_left_click_block(player, player_action) {
+                        self.update_sequence(player_action.sequence.0);
+                        return;
+                    }
                     if !player.can_interact_with_block_at(&player_action.position, 1.0) {
                         warn!(
                             "Player {0} tried to interact with block out of reach at {1}",
@@ -271,6 +275,34 @@ impl JavaClient {
             self.packet_sequence.load(Ordering::Relaxed).max(sequence),
             Ordering::Relaxed,
         );
+    }
+
+    /// Fires `PlayerInteractEvent.LeftClickBlock` for the start of a dig, first, as
+    /// `ServerPlayerGameMode.handleBlockBreakAction` does in `NeoForge` 26.3 (and Bukkit on the
+    /// dig start). Returns `false` when a handler cancelled it: the dig does not start and the
+    /// client gets the block back.
+    fn fire_left_click_block(player: &Arc<Player>, player_action: &SPlayerAction) -> bool {
+        let world = player.get_entity().world.load_full();
+        let Some(server) = world.server.upgrade() else {
+            return true;
+        };
+        let position = player_action.position;
+        let mut event = PlayerInteractEvent::new(
+            player,
+            InteractAction::LeftClickBlock,
+            world.get_block(&position),
+            Some(position),
+        );
+        server.plugin_manager.fire_blocking(&server, &mut event);
+        if event.cancelled {
+            let state_id = world.get_block_state_id(&position);
+            player.try_send_client_packet(&CBlockUpdate::new(
+                position,
+                VarInt(i32::from(state_id.as_u16())),
+            ));
+            return false;
+        }
+        true
     }
 
     fn sync_block_state_to_client(&self, world: &World, position: BlockPos) {

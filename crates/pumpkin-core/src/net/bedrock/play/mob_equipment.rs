@@ -14,15 +14,18 @@ impl BedrockClient {
             return;
         }
         let previous_slot = player.inventory.get_selected_slot();
-        let mut event = PlayerItemHeldEvent::new(player.clone(), previous_slot, slot);
-        server.plugin_manager.fire_blocking(server, &mut event);
-        if event.cancelled {
-            self.try_enqueue_client_packet(&CPlayerHotbar {
-                selected_slot: VarUInt(previous_slot as u32),
-                container_id: 0,
-                should_select_slot: true,
-            });
-            return;
+        // `NeoForge` fires `PlayerSwitchHotbarSlotEvent.Pre` only when the slot changes.
+        if previous_slot != slot {
+            let mut event = PlayerItemHeldEvent::new(player.clone(), previous_slot, slot);
+            server.plugin_manager.fire_blocking(server, &mut event);
+            if event.cancelled {
+                self.try_enqueue_client_packet(&CPlayerHotbar {
+                    selected_slot: VarUInt(previous_slot as u32),
+                    container_id: 0,
+                    should_select_slot: true,
+                });
+                return;
+            }
         }
 
         let inv = player.inventory();
