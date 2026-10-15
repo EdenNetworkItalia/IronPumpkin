@@ -201,7 +201,7 @@ breaks at once, and `hold` takes the item from the creative slot packet.
 | Path | Contents |
 |:--|:--|
 | `captures/neoforge-26.3.0.64-beta/probe-trace-slice2.jsonl` | The Java trace of a `play` run, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace of the same day. |
+| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-16 on the wave 3 tree. |
 | `captures/ironpumpkin/diff-slice2.txt` | The output of `diff.py --slice2` for the two traces. |
 
 ### Steps
@@ -329,7 +329,7 @@ recordings per server, each from an empty server directory, are byte-identical.
 | `ServerChatEvent` | step 1, `raw_text` | step 1, `raw_text` | same | |
 | `PlayerEvent.PlayerLoggedOutEvent`, `PlayerEvent.SaveToFile` | step 5 | step 5 | same | |
 | `ServerTickEvent.Pre`, `.Post` | each step | each step | same | |
-| `PlayerInteractEvent.LeftClickBlock` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | step 2: `1 -1 0` | fields | Pumpkin's `PlayerInteractEvent` has no action, face or hand (gap in the design.md row). It fires at the dig start, as NeoForge, not on the arm swing: test `left_click_block_fires_at_the_dig_start`. |
+| `PlayerInteractEvent.LeftClickBlock` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | step 2: `1 -1 0` | fields | Pumpkin's `PlayerInteractEvent` has no action, face or hand (gap in the design.md row). It fires at the dig start, as NeoForge, not on the arm swing, and a cancel stops the break and re-syncs the block: tests `left_click_block_fires_at_the_dig_start` and `finished_digging_breaks_only_the_started_dig`. |
 | `BreakBlockEvent` | step 2: `1 -1 0` | not traced | missing | The level and block events task (2.13). |
 | `PlayerSwitchHotbarSlotEvent.Pre` | none: the slot does not change | none | same | Both fire it only when the slot changes: test `switch_hotbar_slot_event_pre_fires_only_on_a_change`. |
 | `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | step 3 | extra | Documented: Pumpkin does not cache the name and fires on every read (design.md row). |

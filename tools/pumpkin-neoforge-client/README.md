@@ -162,6 +162,7 @@ steps = [
 | `hold <item>` | `set_creative_mode_slot`, `set_carried_item` | Put one item in the first hotbar slot and select that slot. |
 | `use_item` | `use_item` | Use the item in the main hand. |
 | `respawn` | `client_command` | Ask to respawn after a death. |
+| `await_payload <channel>` | | Read until the server sends a play payload on that channel. The run fails after `--timeout`. |
 | `wait <ms>` | | Read for this long. It sends no ping and has no `wait_ms`. |
 | `leave` | | Close the connection, as the vanilla client does on a disconnect. |
 
