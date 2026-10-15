@@ -14,7 +14,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 | **Binary output** | `.jar` file in the `mods/` folder | One server binary per modpack. The mod crate is compiled into it. |
 | **Mod descriptor** | `neoforge.mods.toml` and a `@Mod` class | The `NativeMod` trait (`id`, `display_name`, `version`, `client_required`) and `register_mod!`. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` gives the mod id, the namespace and the dependencies. See [Lifecycle](./lifecycle.md). |
 | **Lifecycle hooks** | `FMLCommonSetupEvent` and the other FML events | `NativeMod::init`, then `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process` and `load_complete`, in load order. See [Lifecycle](./lifecycle.md). |
-| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing and enchanting events have NeoForge fire sites and fields. The player, level and entity families are planned (tasks 2.12, 2.13 and 2.15). See [Events](./events.md). |
+| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting and player events have NeoForge fire sites and fields. Five player rows and the abstract classes stay planned, and the level and entity families are planned (tasks 2.13 and 2.15). See [Events](./events.md) and [What is unsupported](./unsupported.md). |
 | **Registration** | `DeferredRegister`, `DeferredHolder` | `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag` with builders. See [Registration](./registration.md). |
 | **Config** | `ModConfigSpec` | `ModInit::register_config` with a `ConfigSpec` and a `ConfigType`: `Local`, `Synced` or `Startup`. The file is `config/<modid>-<type>.toml`. A `Synced` config goes to NeoForge clients as `neoforge:config_file`. See [Configuration](./configuration.md). |
 | **Network** | `PayloadRegistrar` | Payload registration is planned (task 2.11). The server already negotiates the NeoForge channels with the client. |
@@ -51,7 +51,6 @@ A page for an API that does not exist yet is written when its task lands.
 
 | Page | NeoForge subject | Task |
 | :--- | :--- | :--- |
-| Player events | The `PlayerEvent` family | 2.12 |
 | Level and block events | `BlockEvent` and the level events | 2.13 |
 | Entity events | `EntityJoinLevelEvent`, the living and item entity events | 2.15 |
 | Network payloads | `PayloadRegistrar`, `RegisterPayloadHandlersEvent` | 2.11 |

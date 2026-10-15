@@ -221,6 +221,7 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 | NeoForge event | IronPumpkin event | Notes |
 | :--- | :--- | :--- |
 | `RegisterEvent` | `registries::RegisterEvent` | Once for `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, after the last `init` and before `common_setup`. Register content with `content::RegisterEventExt`. See [Registration](./registration.md). |
+| `ServerAboutToStartEvent` | `server::ServerAboutToStartEvent` | After the synced configs load and the content freeze, before the worlds load. Only native mods get it. The datapack recipes and tags are not loaded yet. See [Lifecycle](./lifecycle.md). |
 | `ServerStartingEvent` | `server::ServerStartingEvent` | After the worlds load, before the first tick and the first connection |
 | `ServerStartedEvent` | `server::ServerLoadEvent` | Before the first tick |
 | `ServerStoppingEvent` | `server::ServerStoppingEvent` | After the ticker thread exits (bound 30 s), before the server saves the players and the worlds |
@@ -229,16 +230,18 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 | `LevelTickEvent.Pre` and `Post` | `world::LevelTickEventPre` and `LevelTickEventPost` | Once for each world and tick, also while the game is frozen. In a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time. |
 | `VanillaGameEvent` | `world::GenericGameEvent` | Fires from a few call sites |
 | `ServerChatEvent` | `player::PlayerChatEvent` | A cancel sends the message to nobody. `message` is plain text. `raw_text` is filled only when a chat handler was registered when the event is created. |
-| `StatAwardEvent` | `player::PlayerStatisticIncrementEvent` | `stat` and `amount` are settable. A cancel adds nothing. `amount` is a delta, and `set_stat` fires no event, so a listener for the new total or for a reset does not work yet. |
+| `StatAwardEvent` | `player::PlayerStatisticIncrementEvent` | Fires on an increment and on `set_stat`, also for a reset to 0. `value` is the new total. `category`, `stat` and `value` are settable. A cancel stores nothing. See the contract note below the table. |
 | `AnvilUpdateEvent` | `inventory::PrepareAnvilEvent` | Fires on every result update, outside the screen-handler lock. `output`, `repair_cost` and `material_cost` are settable. A cancel clears the output and the cost. The result applies only if the inputs did not change meanwhile. |
 | `GrindstoneEvent.OnPlaceItem` | `inventory::PrepareGrindstoneEvent` | Fires on every result update, outside the screen-handler lock. `result_item` is the vanilla result. `output` and `xp` are settable, and `xp` applies when it is 0 or more. A cancel clears the result. |
+| `GrindstoneEvent.OnTakeItem` | `inventory::GrindstoneEventOnTakeItem` | Fires on every take of the result, outside the screen-handler lock. `xp` is settable. `new_top` and `new_bottom` are the inputs after the take and are empty by default. `pos` is the grindstone. A cancel gives no experience, puts the inputs back and leaves the result empty. The player keeps the taken item. |
 | `PotionBrewEvent.Pre` | `inventory::BrewEvent` | A cancel skips the vanilla brewing. It takes `stacks` only if the stand inventory did not change meanwhile. |
+| `PotionBrewEvent.Post` | `inventory::PotionBrewEventPost` | Fires after the stand brewed the bottles and before it consumes the ingredient. It also fires after a cancelled `PotionBrewEvent.Pre`. `stacks` is a copy of the stand inventory. The stand takes changed `stacks` only if its inventory did not change meanwhile. Cannot be cancelled. Only native mods get it. |
 | `EnchantmentLevelSetEvent` | `enchantment::PrepareItemEnchantEvent` | One event for the three rows of the table. `pos` is the open container. `original_level_requirements()` returns the vanilla levels. |
 | `PlayerEnchantItemEvent` | `enchantment::PlayerEnchantItemEvent` | Fires before the lapis is consumed. The table writes `enchanted_item` back. Cannot be cancelled. |
 
-The anvil and grindstone events fire outside the screen-handler lock, so a handler can close the screen or lock a screen handler. The enchanting events (`EnchantmentLevelSetEvent`, `EnchantItemEvent` and `PlayerEnchantItemEvent`) still fire under that lock.
+No event of the table fires under the screen-handler lock. The anvil, grindstone, enchanting and trade events fire outside it, so a handler can close the screen or lock a screen handler. For the events that compute a result (anvil, grindstone and enchanting), the server applies the result only if the inputs did not change while the event fired.
 
-`StatAwardEvent` has the status `planned` in `mapping-table.md`, because of the delta and the missing fire on `set_stat`.
+The contract of `StatAwardEvent`: `value` is the new total, and the server stores it in the statistic that `category` and `stat` name. `amount` is the change, that is the new total minus the total before the event. A handler that changes only `amount` has no effect, because `value` wins. To change the result, set `value`.
 
 `mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The pages for the level and block, and the entity families are planned (tasks 2.13 and 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
 
@@ -256,7 +259,8 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 | `PlayerXpEvent.PickupXp` | `PlayerXpEventPickupXp` | A cancel leaves the orb. |
 | `PlayerEvent.NameFormat` and `TabListNameFormat` | `PlayerEventNameFormat` and `PlayerEventTabListNameFormat` | Fire only when no name was set with `set_display_name` or `set_tab_list_name`. The display name is not cached: the event fires on every read. |
 | `PlayerRespawnPositionEvent` | `PlayerSpawnLocationEvent` | Position, rotation, dimension and `copy_original_spawn_position` are settable. |
-| `AnvilCraftEvent.Pre`, `TradeWithVillagerEvent` | the same names (`AnvilCraftEventPre`) | Fire under the screen-handler lock. |
+| `AnvilCraftEvent.Pre` and `Post` | `AnvilCraftEventPre` and `AnvilCraftEventPost` | Fire outside the screen-handler lock. A cancel of the Pre event skips the cost and the use of the inputs. |
+| `TradeWithVillagerEvent` | the same name | Fires outside the screen-handler lock. A trade with a villager hangs today: Pumpkin locks the screen handler twice (issue #115, to be fixed upstream). A trade with a wandering trader works. |
 | `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
 
 `PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
@@ -278,7 +282,7 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 
 - Do not implement `handle` for a handler that you register as blocking. The server never calls it.
 - Do not hold a lock of your own state while you fire an event from a handler.
-- Do not close the enchanting, anvil or trade screen from a handler of an enchanting event, `AnvilCraftEventPre`, `AnvilCraftEventPost` or `TradeWithVillagerEvent`. These events fire under the screen-handler lock.
+- Do not rely on a trade with a villager. The click blocks forever today (issue #115). A wandering trader works.
 - Do not change a field that the server does not read back. The change has no effect.
 - Do not wait for a result setter. Events with a result are planned, except `ItemEntityPickupEventPre` (`TriState`) and `ArrowNockEvent` (`InteractionResult`).
 - Do not expect a handler to run for an event that no fire site fires.

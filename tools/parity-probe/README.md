@@ -7,8 +7,9 @@ performs the same actions on both servers, and `diff.py` reports the differences
 
 Slice 1 covers the events that fire before the play phase: lifecycle, registration, config,
 payload registration, the configuration phase of one client and the server start and stop. The
-driver is the headless client `tools/pumpkin-neoforge-client`, which stops at
-`finish_configuration`.
+driver is the headless client `tools/pumpkin-neoforge-client` in `record` mode, which ends at
+`finish_configuration`. The client also has a play state (`play` mode, used by slice 2): see the
+[client README](../pumpkin-neoforge-client/README.md).
 
 | Path | Contents |
 |:--|:--|
@@ -192,8 +193,8 @@ python3 -I tools/parity-probe/diff.py \
 Slice 2 (task 2.21 in `tasks.md`) compares player, level and entity events. The headless client
 has a play state: `play` mode, described in `tools/pumpkin-neoforge-client/README.md`. It enters
 play, confirms the first teleport, sends the player-loaded packet, answers keep-alive, ping and
-chunk batches, and runs a script with a fixed wait after each action, so both servers get the same
-actions in the same order. It records the play packets of each step in the `--out` format.
+chunk batches, and runs a script with a ping and pong barrier and an extra wait after each
+action, so both servers get the same actions in the same order. It records the play packets of each step in the `--out` format.
 
 The play state enables these slice 2 scenarios:
 

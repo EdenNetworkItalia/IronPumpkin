@@ -209,7 +209,7 @@ After the freeze, the lookups answer for custom entries too. A mod looks up an e
 | `Holder#is(TagKey)`, `ItemStack#is(TagKey)` | `is_in_tag(kind, name, tag)` |
 | `Registry#get(TagKey)`, a `HolderSet.Named` | `tag_entries(kind, tag)`, `None` for an unknown tag |
 
-The generated lookups of Pumpkin, such as `Block::from_name`, answer for custom entries too.
+The generated lookups of Pumpkin, such as `Block::from_name`, answer for custom entries too. `Block::from_name` also returns a placeholder entry, which stands in for the content of a mod that the world has and the server lacks. `registry::contains` excludes placeholders, so use it to test that an entry exists.
 
 ```rust
 use ironpumpkin_mods::{
@@ -276,7 +276,7 @@ fn init(cx: &mut ModInit) {
 }
 ```
 
-`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three.
+`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three. The other registration events of NeoForge, such as `EntityAttributeCreationEvent`, are planned (task 2.25).
 
 ## Errors
 

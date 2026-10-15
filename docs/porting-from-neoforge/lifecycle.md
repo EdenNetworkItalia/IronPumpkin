@@ -24,6 +24,8 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | **Dependencies** | `type`, `versionRange` and `side` of `[[dependencies.<modId>]]` | The same keys. The server refuses to start on an unmet dependency. |
 | **Dist** | `FMLEnvironment.getDist()` and `@Mod(dist = ..)` | `mod_list::dist()` is always `Dist::DedicatedServer` |
 | **Server lifecycle events** | `ServerStartingEvent` and the others, on the game bus | Pumpkin events. See [Events](./events.md). |
+| **`ServerAboutToStartEvent`** | Fires before the worlds load, on the game bus | A Pumpkin event with the same position. Only native mods receive it. |
+| **Registry freeze** | Right after `RegisterEvent`, before `FMLCommonSetupEvent` | After `load_complete` and the Synced configs. See "The registry freeze". |
 | **Config loading** | A Local config loads before common setup. A Synced config loads when the server is about to start. | A Local config loads after every `init` and before `common_setup`. A Synced config loads after `load_complete`. See [Configuration](./configuration.md). |
 
 ---
@@ -201,9 +203,14 @@ The server runs these steps once at startup. Each step calls the method of every
 9. It calls `load_complete`.
 10. It loads the Synced configs and calls `config_loading` for each.
 11. It freezes the content registry.
-12. It loads the worlds. The server events, such as `ServerStartingEvent`, fire after this step.
+12. It fires `ServerAboutToStartEvent`. Only native mods receive it. The datapack recipes and tags are not loaded yet.
+13. It loads the worlds. The other server events, such as `ServerStartingEvent`, fire after this step.
 
 The order of steps 2 to 9 is the order of `CommonModLoader.begin` and `CommonModLoader.load` in NeoForge 26.3. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
+
+## The registry freeze
+
+NeoForge freezes the registries right after `RegisterEvent`. IronPumpkin freezes the content registry after `load_complete` and the Synced configs. So a registration after `RegisterEvent` has a different result on the two servers. A `register_block` call from `common_setup` throws on NeoForge, and it succeeds here until the freeze. `ironpumpkin-mods` gives `common_setup` no `ModInit`, so only a direct call of a `pumpkin_core` registry function can make that registration. Do not rely on it: register in `init` or in a `RegisterEvent` handler.
 
 ## Load order
 

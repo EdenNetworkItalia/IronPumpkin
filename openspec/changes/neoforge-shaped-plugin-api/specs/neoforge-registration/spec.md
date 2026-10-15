@@ -36,7 +36,7 @@ The registry SHALL reject a definition with a `RegistryError` when a field is ou
 - **THEN** the registration fails with `RegistryError::DisplayNotVanilla`
 
 ### Requirement: Behaviour by type
-A custom block SHALL run the `BlockBehaviour` implementation that the mod sets on its builder or else the Pumpkin behaviour of the `minecraft:block_type` id in its definition, and a custom item the `ItemBehaviour` implementation that the mod sets or else the Pumpkin item behaviour it names, backed by the M2 (Content registry) content registry. Status: planned (task 2.5).
+A custom block SHALL run the `BlockBehaviour` implementation that the mod sets on its builder or else the Pumpkin behaviour of the `minecraft:block_type` id in its definition, and a custom item the `ItemBehaviour` implementation that the mod sets or else the Pumpkin item behaviour it names, backed by the M2 (Content registry) content registry. Status: planned (task 2.25).
 
 #### Scenario: Stair block
 - **WHEN** a mod registers a block with `block-type` `minecraft:stair`
@@ -65,7 +65,7 @@ A second entry with the same id in one registry SHALL fail with `RegistryError::
 - **THEN** the second call fails with `RegistryError::Duplicate`
 
 ### Requirement: Registration events
-The NeoForge events `EntityAttributeCreationEvent`, `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent`, `BlockEntityTypeAddBlocksEvent` and `ExtendPoiTypesEvent` SHALL be `NativeMod` methods that receive a registration handle, and the host SHALL apply what the mod registered through the handle when the method returns. Status: planned (task 2.5).
+The NeoForge events `EntityAttributeCreationEvent`, `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent`, `BlockEntityTypeAddBlocksEvent` and `ExtendPoiTypesEvent` SHALL be `NativeMod` methods that receive a registration handle, and the host SHALL apply what the mod registered through the handle when the method returns. Status: planned (task 2.25).
 
 #### Scenario: Attributes of a mod entity
 - **WHEN** the attribute creation method of a mod calls `put` for a mod entity type with a max health of 40
