@@ -20,7 +20,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use pumpkin_core::{
@@ -35,7 +35,7 @@ use pumpkin_core::{
         player::Player,
     },
     item::{ItemBehaviour, items::bow::BowItem},
-    net::ClientPlatform,
+    net::{ClientPlatform, java::neoforge::NegotiatedState},
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, ParentEventHandler, Payload,
         block::block_damage::BlockDamageEvent,
@@ -58,7 +58,9 @@ use pumpkin_core::{
     server::Server,
     world::entity_tracker::TrackedEntity,
 };
-use pumpkin_data::{Block, entity::EntityType, item::Item, item_stack::ItemStack};
+use pumpkin_data::{
+    Block, entity::EntityType, item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION,
+};
 use pumpkin_inventory::{
     SimpleInventory,
     anvil::AnvilScreenHandler,
@@ -72,17 +74,22 @@ use pumpkin_protocol::{
         var_int::VarInt,
     },
     java::{
-        client::play::MerchantOffer,
+        client::play::{CAcknowledgeBlockChange, CBlockUpdate, MerchantOffer},
+        packet_decoder::TCPNetworkDecoder,
         server::play::{
             SClickSlot, SClientInformationPlay, SPlayerAction, SSetHeldItem, SlotActionType, Status,
         },
     },
+    packet::MultiVersionJavaPacket,
+    ser::NetworkReadExt,
 };
 use pumpkin_util::{
     GameMode,
     math::{position::BlockPos, vector3::Vector3},
+    permission::PermissionLvl,
     text::TextComponent,
 };
+use pumpkin_world::world::BlockFlags;
 
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -575,19 +582,83 @@ fn one_event_per_fire_site_switch_hotbar_slot_event_post() {
     assert_eq!(entries(&seen), ["2 5 5"]);
 }
 
+/// Loads the chunk of `pos` for the rest of the process and sets `pos` to stone, so a dig has
+/// a block to break.
+fn stone_at(pos: BlockPos) {
+    let world = support::world();
+    let chunk = pos.chunk_position();
+    {
+        let mut loading = world.level.chunk_loading.lock().unwrap();
+        loading.add_force_ticket(chunk);
+        loading.send_change();
+    };
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !world.level.is_chunk_loaded(&chunk) {
+        assert!(Instant::now() < deadline, "the chunk of {pos} did not load");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    world.set_block_state(&pos, Block::STONE.default_state.id, BlockFlags::empty());
+    assert!(is_stone(pos));
+}
+
+fn is_stone(pos: BlockPos) -> bool {
+    support::world().get_block_state_id(&pos) == Block::STONE.default_state.id
+}
+
+type Peer = TCPNetworkDecoder<tokio::io::BufReader<tokio::net::TcpStream>>;
+
+/// Sends the block change ack of `player` and reads its packets until the ack. Returns the
+/// state ids of the block updates at `pos` before the ack, and the acked sequence.
+fn block_updates_until_ack(player: &Player, peer: &mut Peer, pos: BlockPos) -> (Vec<u16>, i32) {
+    player.process_inbound_packets();
+    support::RUNTIME.block_on(async {
+        let mut updates = Vec::new();
+        loop {
+            let packet = tokio::time::timeout(Duration::from_secs(10), peer.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            let mut body = &packet.payload[..];
+            if packet.id == CBlockUpdate::to_id(CURRENT_MC_VERSION) {
+                if BlockPos::from_i64(body.get_i64_be().unwrap()) == pos {
+                    let state = body.get_var_int().unwrap().0;
+                    updates.push(u16::try_from(state).unwrap());
+                }
+            } else if packet.id == CAcknowledgeBlockChange::to_id(CURRENT_MC_VERSION) {
+                return (updates, body.get_var_int().unwrap().0);
+            }
+        }
+    })
+}
+
+/// A survival dig action of `status` at `pos`.
+const fn dig(status: Status, pos: BlockPos, sequence: i32) -> SPlayerAction {
+    SPlayerAction {
+        status: VarInt(status as i32),
+        position: pos,
+        face: 1,
+        sequence: VarInt(sequence),
+    }
+}
+
 /// `PlayerInteractEvent.LeftClickBlock` fires first at the start of a dig, as in
 /// `ServerPlayerGameMode.handleBlockBreakAction` of `NeoForge` 26.3, and a cancel stops the dig
-/// before `BlockDamageEvent`. The stop of a dig fires nothing.
+/// before `BlockDamageEvent`. The stop of a dig fires nothing. After a cancelled start, the
+/// finish of the dig that the client still sends breaks nothing and re-syncs the block.
 #[test]
 fn left_click_block_fires_at_the_dig_start() {
     let _serial = support::serial();
-    let player = support::player("Digger");
+    let (player, peer) = support::player_with_peer("Digger", NegotiatedState::default());
     player.set_client_loaded(true);
+    // The block is next to the spawn.
+    player.permission_lvl.store(PermissionLvl::Four);
     let pos = player
         .get_entity()
         .block_pos
         .load()
         .offset(Vector3::new(1, -1, 0));
+    stone_at(pos);
+    let mut peer = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
     let cancel = Arc::new(AtomicBool::new(false));
     let seen = log();
     let (clicks, cancel_flag) = (seen.clone(), cancel.clone());
@@ -605,20 +676,70 @@ fn left_click_block_fires_at_the_dig_start() {
         }
     });
 
-    let dig = |status: Status| SPlayerAction {
-        status: VarInt(status as i32),
-        position: pos,
-        face: 1,
-        sequence: VarInt(1),
-    };
     let client = java_client(&player);
-    client.handle_player_action(&player, &dig(Status::StartedDigging), support::server());
-    client.handle_player_action(&player, &dig(Status::CancelledDigging), support::server());
+    let server = support::server();
+    client.handle_player_action(&player, &dig(Status::StartedDigging, pos, 1), server);
+    client.handle_player_action(&player, &dig(Status::CancelledDigging, pos, 1), server);
     cancel.store(true, Ordering::Relaxed);
-    client.handle_player_action(&player, &dig(Status::StartedDigging), support::server());
-
+    client.handle_player_action(&player, &dig(Status::StartedDigging, pos, 1), server);
     let click = format!("click {pos}");
     assert_eq!(entries(&seen), [click.as_str(), "damage", click.as_str()]);
+    let stone = Block::STONE.default_state.id.as_u16();
+    let (updates, acked) = block_updates_until_ack(&player, &mut peer, pos);
+    assert_eq!(
+        (updates.last(), acked),
+        (Some(&stone), 1),
+        "the cancel re-syncs the block"
+    );
+
+    client.handle_player_action(&player, &dig(Status::FinishedDigging, pos, 2), server);
+    assert!(
+        is_stone(pos),
+        "the finish after a cancelled start broke the block"
+    );
+    assert_eq!(
+        block_updates_until_ack(&player, &mut peer, pos),
+        (vec![stone], 2),
+        "the finish re-syncs the block and acks"
+    );
+}
+
+/// A finish breaks only the block of the started dig, as `STOP_DESTROY_BLOCK` breaks only at
+/// `destroyPos` in `ServerPlayerGameMode.handleBlockBreakAction`.
+#[test]
+fn finished_digging_breaks_only_the_started_dig() {
+    let _serial = support::serial();
+    let player = support::player("Finisher");
+    player.set_client_loaded(true);
+    player.permission_lvl.store(PermissionLvl::Four);
+    let feet = player.get_entity().block_pos.load();
+    let (started, other) = (
+        feet.offset(Vector3::new(0, -1, 1)),
+        feet.offset(Vector3::new(-1, -1, 0)),
+    );
+    stone_at(started);
+    stone_at(other);
+
+    let client = java_client(&player);
+    let server = support::server();
+    client.handle_player_action(&player, &dig(Status::FinishedDigging, other, 1), server);
+    assert!(
+        is_stone(other),
+        "a finish with no started dig broke the block"
+    );
+
+    client.handle_player_action(&player, &dig(Status::StartedDigging, started, 2), server);
+    client.handle_player_action(&player, &dig(Status::FinishedDigging, other, 3), server);
+    assert!(
+        is_stone(other),
+        "a finish away from the started dig broke the block"
+    );
+
+    client.handle_player_action(&player, &dig(Status::FinishedDigging, started, 4), server);
+    assert!(
+        !is_stone(started),
+        "the finish of the started dig kept the block"
+    );
 }
 
 /// `PlayerSwitchHotbarSlotEvent.Pre` (`PlayerItemHeldEvent`) fires only when the slot changes,
@@ -1042,7 +1163,7 @@ fn open_trade(player: &Arc<Player>, villager: bool) -> (i32, Option<Arc<Villager
         max_uses: 12,
         xp: 1,
         special_price: 0,
-        price_multiplier: 0.05,
+        price_multiplier: 0.5,
         demand: 0,
     };
     let (sync_id, inventory, villager) = if villager {
@@ -1117,6 +1238,21 @@ fn one_event_per_fire_site_trade_with_villager_event() {
     assert_eq!(
         villager.gossips.lock().unwrap()[&player.gameprofile.id][&GossipType::Trading],
         2
+    );
+    // The gossip of 2 makes the special price -floor(2 x 0.5), and only the resend of the
+    // offers brings it to the open trade screen.
+    let screen = player.current_screen_handler.lock().unwrap().clone();
+    let special_price = screen
+        .lock()
+        .unwrap()
+        .as_any_mut()
+        .downcast_mut::<MerchantScreenHandler>()
+        .unwrap()
+        .offers[0]
+        .special_price;
+    assert_eq!(
+        special_price, -1,
+        "the tick did not resend the refreshed offers"
     );
 
     let closer = support::player("TradeCloser");
