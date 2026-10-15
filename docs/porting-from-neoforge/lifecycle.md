@@ -24,7 +24,7 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | **Dependencies** | `type`, `versionRange` and `side` of `[[dependencies.<modId>]]` | The same keys. The server refuses to start on an unmet dependency. |
 | **Dist** | `FMLEnvironment.getDist()` and `@Mod(dist = ..)` | `mod_list::dist()` is always `Dist::DedicatedServer` |
 | **Server lifecycle events** | `ServerStartingEvent` and the others, on the game bus | Pumpkin events. See [Events](./events.md). |
-| **Config loading** | A Local config loads after the load complete step. A Synced config loads when the server is about to start. | Both load after `load_complete`, before the server starts. See [Configuration](./configuration.md). |
+| **Config loading** | A Local config loads before common setup. A Synced config loads when the server is about to start. | A Local config loads after every `init` and before `common_setup`. A Synced config loads after `load_complete`. See [Configuration](./configuration.md). |
 
 ---
 
@@ -267,7 +267,7 @@ The mod id is the namespace of the commands and permissions of the mod. It names
 
 - Do not call `ModList::get()` from a static initializer. The list is empty until the server sets it.
 - Do not register content in `common_setup` or in a later step. Those methods have no `ModInit`.
-- Do not read a Local or Synced config in `init` or in a lifecycle step. Those configs load after `load_complete`. Use `config_loading`.
+- Do not read a Local config in `init`, and do not read a Synced config in a lifecycle step. A Local config is ready from `common_setup` on. A Synced config loads after `load_complete`. Use `config_loading` for the earliest access.
 - Do not rely on the order of two mods that have no `ordering` rule. Only the mod id decides there.
 - Do not port a client setup event. It never fires.
 - Do not panic in a lifecycle method. The panic hook of the server writes a crash report and exits at once.

@@ -21,6 +21,13 @@ A mod MAY return a `neoforge.mods.toml` text from `NativeMod::mods_toml()`, whos
 - **WHEN** a mod returns `None` from `mods_toml`
 - **THEN** the mod is known by its `id`, `display_name` and `version` methods
 
+### Requirement: Licence key is required
+A `neoforge.mods.toml` SHALL carry a non-blank `license` key, as FancyModLoader requires. A missing or blank `license` SHALL stop the server with an error that names the mod and the key. Status: supported (task 2.2, #103, test `a_missing_or_blank_license_is_rejected`).
+
+#### Scenario: Missing licence
+- **WHEN** a mod returns a `neoforge.mods.toml` without a `license` key
+- **THEN** the server refuses to start and the error names the mod and "Missing license"
+
 ### Requirement: Mod id charset and namespace
 A mod that has a `neoforge.mods.toml` SHALL use the mod id pattern of FancyModLoader 12.0.8 `ModInfo.VALID_MODID`, `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`, and the host SHALL NOT load a mod whose id does not match. The registry namespace of a mod MAY differ from its mod id, through the `namespace` key, which follows `ModInfo.VALID_NAMESPACE`, `^[a-z][a-z0-9_.-]{1,63}$`. Status: supported (task 2.2, #103).
 
