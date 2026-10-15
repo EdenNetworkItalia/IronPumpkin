@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 204 | 204 | 0 | 0 | 0 | 176 | 52 |
-| Inventory, planned | 531 | 486 | 43 | 2 | 0 | 377 | 71 |
+| Inventory, supported | 208 | 208 | 0 | 0 | 0 | 179 | 52 |
+| Inventory, planned | 527 | 482 | 43 | 2 | 0 | 374 | 71 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -76,7 +76,7 @@ How to read it:
 | `ServerStartingEvent` | 26 | event class | `pumpkin_core::plugin::server::ServerStartingEvent` | supported |
 | `LivingDamageEvent.Post` | 25 | event class | `event-bus.event::living-damage-event-post` | planned |
 | `PlayerEvent.PlayerRespawnEvent` | 24 | event class | `event-bus.event::player-event-player-respawn-event` | supported |
-| `ServerAboutToStartEvent` | 24 | event class | `event-bus.event::server-about-to-start-event` | planned |
+| `ServerAboutToStartEvent` | 24 | event class | `pumpkin_core::plugin::server::ServerAboutToStartEvent` | supported |
 | `ServerStoppingEvent` | 24 | event class | `pumpkin_core::plugin::server::ServerStoppingEvent` (fires after the ticker thread exits, with a 30 s bound) | supported |
 | `PlayerTickEvent.Post` | 24 | event class | `event-bus.event::player-tick-event-post` | planned |
 | `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` (the Synced configs load right after it) | supported |
@@ -190,7 +190,7 @@ How to read it:
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
-| `GrindstoneEvent.OnTakeItem` | 3 | event class | `event-bus.event::grindstone-event-on-take-item` | planned |
+| `GrindstoneEvent.OnTakeItem` | 3 | event class | `pumpkin_core::plugin::inventory::GrindstoneEventOnTakeItem` (fires outside the screen lock on every take; a cancel gives no experience and puts the inputs back) | supported |
 | `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
 | `EntityMobGriefingEvent` | 3 | event class | `event-bus.event::entity-mob-griefing-event` | planned |
 | `ArmorHurtEvent` | 3 | event class | `event-bus.event::armor-hurt-event` | supported |
@@ -234,7 +234,7 @@ How to read it:
 | `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
-| `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` (`amount` is a delta and `set_stat` fires nothing: gap) | planned |
+| `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` (`value` is the new total; fires on `increment_stat` and `set_stat`) | supported |
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
 | `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingUseTotemEvent` | 1 | event class | `event-bus.event::living-use-totem-event` | supported |
@@ -269,14 +269,14 @@ How to read it:
 | `RegisterTooltipAppendersEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `SortedReloadListenerEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | planned |
-| `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` | planned |
+| `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (8 of the 61 vanilla game events from 10 sites, no vibration dispatch: gap) | planned |
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `PotionBrewEvent.Post` | 0 | event class | `event-bus.event::potion-brew-event-post` | planned |
-| `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` (a cancel takes `stacks` only if the stand did not change) | supported |
+| `PotionBrewEvent.Post` | 0 | event class | `pumpkin_core::plugin::inventory::PotionBrewEventPost` (after the brew and after a cancelled Pre; changed stacks apply if the stand did not change) | supported |
+| `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` (a cancel takes `stacks` only if the stand did not change, then Post fires) | supported |
 | `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | planned |
 | `EnchantedEntityLootEvent` | 0 | event class | `event-bus.event::enchanted-entity-loot-event` | planned |
-| `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` (has `pos`; `original_level_requirements()` returns the vanilla levels; fires under the screen lock) | supported |
+| `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` (has `pos`; `original_level_requirements()` returns the vanilla levels; fires outside the screen lock) | supported |
 | `EntityTeleportEvent.ItemConsumption` | 0 | event class | `event-bus.event::entity-teleport-event-item-consumption` | supported |
 | `EffectParticleModificationEvent` | 0 | event class | `event-bus.event::effect-particle-modification-event` | planned |
 | `LivingDrownEvent` | 0 | event class | `event-bus.event::living-drown-event` | planned |
@@ -288,7 +288,7 @@ How to read it:
 | `CustomClickActionEvent` | 0 | event class | `event-bus.event::custom-click-action-event` | supported |
 | `FluidTooltipEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | planned |
-| `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` (fires before the lapis is consumed; `enchanted_item` is written back; fires under the screen lock) | supported |
+| `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` (fires before the lapis is consumed; `enchanted_item` is written back; fires outside the screen lock) | supported |
 | `PlayerEvent.PlayerChangeGameModeEvent` | 0 | event class | `event-bus.event::player-event-player-change-game-mode-event` | supported |
 | `PlayerEvent.TabListNameFormat` | 0 | event class | `pumpkin_core::plugin::player::PlayerEventTabListNameFormat` | supported |
 | `PlayerFlyableFallEvent` | 0 | event class | `pumpkin_core::plugin::player::PlayerFlyableFallEvent` | supported |

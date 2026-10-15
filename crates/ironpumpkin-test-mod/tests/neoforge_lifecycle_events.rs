@@ -24,15 +24,16 @@ const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
 const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// The events in the order `NeoForge` 26.3 fires them: the local configs load before the common
-/// setup, the synced configs after the load complete, `ServerStartedEvent` before the first tick,
-/// and the level tick inside the server tick.
-const EVENTS: [&str; 14] = [
+/// setup, the synced configs after the load complete and before `ServerAboutToStartEvent`,
+/// `ServerStartedEvent` before the first tick, and the level tick inside the server tick.
+const EVENTS: [&str; 15] = [
     "FMLConstructModEvent",
     "ModConfigEvent.Loading STARTUP",
     "ModConfigEvent.Loading LOCAL",
     "FMLCommonSetupEvent",
     "FMLLoadCompleteEvent",
     "ModConfigEvent.Loading SYNCED",
+    "ServerAboutToStartEvent",
     "ServerStartingEvent",
     "ServerStartedEvent",
     "ServerTickEventPre",

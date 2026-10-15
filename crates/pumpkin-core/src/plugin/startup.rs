@@ -8,7 +8,7 @@ use std::{
 use crate::{
     LOGGER_IMPL,
     net::java::configuration_payloads::NEOFORGE_SYNCED_CONFIG_NAME,
-    plugin::{Context, PluginMetadata},
+    plugin::{Context, PluginMetadata, server::server_lifecycle::ServerAboutToStartEvent},
     server::Server,
 };
 
@@ -121,6 +121,15 @@ pub(crate) fn run(server: &Arc<Server>) {
         hook(server);
     }
     crate::net::java::neoforge::warn_if_detection_forced(&server.basic_config);
+}
+
+/// Fires `ServerAboutToStartEvent` after the mod lifecycle (with the synced configs) and before
+/// the worlds load, as `ServerLifecycleHooks.handleServerAboutToStart` does before `loadLevel`.
+pub(crate) async fn fire_about_to_start(server: &Arc<Server>) {
+    server
+        .plugin_manager
+        .fire_with(server, || ServerAboutToStartEvent)
+        .await;
 }
 
 /// Creates the context of a plugin that no loader manages, such as a native mod.

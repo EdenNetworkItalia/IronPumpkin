@@ -7,8 +7,6 @@ use pumpkin_data::data_component_impl::EnchantableImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::screen::WindowType;
-use pumpkin_data::sound::Sound;
-use pumpkin_data::statistic::{CustomStatistic, StatisticCategory};
 use pumpkin_data::tag::{Enchantment as EnchantmentTag, Taggable};
 use pumpkin_util::random::{RandomImpl, legacy_rand::LegacyRand};
 
@@ -18,6 +16,10 @@ use crate::{
     slot::{NormalSlot, Slot},
     window_property::{EnchantmentTable, WindowProperty},
 };
+
+mod events;
+
+pub use events::{EnchantRequest, EnchantingRows};
 
 struct LapisSlot(NormalSlot);
 
@@ -61,6 +63,7 @@ pub struct EnchantingTableScreenHandler {
     pub enchantment_level: [i32; 3],
     pub enchantment_seed: i32,
     pub bookshelf_count: i32,
+    prepare_event_pending: bool,
 }
 
 impl EnchantingTableScreenHandler {
@@ -79,6 +82,7 @@ impl EnchantingTableScreenHandler {
             enchantment_level: [-1; 3],
             enchantment_seed,
             bookshelf_count,
+            prepare_event_pending: false,
         };
 
         // Enchanting slots: 0 is item, 1 is lapis
@@ -91,7 +95,9 @@ impl EnchantingTableScreenHandler {
         handler
     }
 
-    pub fn update_enchantments(&mut self, player: &dyn InventoryPlayer) {
+    /// Computes the vanilla rows and marks the enchantment level event as pending. The player
+    /// fires it with [`Self::take_prepare_event`] after it releases the screen-handler lock.
+    pub fn update_enchantments(&mut self, _player: &dyn InventoryPlayer) {
         let item = self.inventory.get_stack(0);
 
         if item.is_empty() || item.has_enchantments() {
@@ -142,20 +148,7 @@ impl EnchantingTableScreenHandler {
                         self.enchantment_level[i] = -1;
                     }
                 }
-
-                if player.fire_prepare_item_enchant_event(
-                    &item,
-                    &mut self.level_requirements,
-                    &mut self.enchantment_id,
-                    &mut self.enchantment_level,
-                    self.bookshelf_count,
-                ) {
-                    for i in 0..3 {
-                        self.level_requirements[i] = 0;
-                        self.enchantment_id[i] = -1;
-                        self.enchantment_level[i] = -1;
-                    }
-                }
+                self.prepare_event_pending = true;
             }
         }
         self.send_property_updates();
@@ -329,79 +322,11 @@ impl ScreenHandler for EnchantingTableScreenHandler {
     }
 
     fn on_button_click(&mut self, player: &dyn InventoryPlayer, id: i32) -> bool {
-        if !(0..3).contains(&id) {
+        let Some(request) = self.enchant_request(player, id) else {
             return false;
-        }
-
-        let level_req = self.level_requirements[id as usize];
-        if player.experience_level() < level_req && !player.is_creative() {
-            return false;
-        }
-
-        let mut lapis_stack = self.inventory.get_stack(1);
-        let lapis_cost = (id + 1) as u8;
-
-        if !player.is_creative()
-            && (lapis_stack.is_empty()
-                || !is_lapis(&lapis_stack)
-                || lapis_stack.item_count < lapis_cost)
-        {
-            return false;
-        }
-
-        // Perform enchantment
-        let mut item_stack = self.inventory.get_stack(0);
-
-        if item_stack.is_empty() || item_stack.has_enchantments() {
-            return false;
-        }
-
-        let mut random = self.create_enchantment_random(id as usize);
-        let mut enchantments = Self::get_enchantment_list(&mut random, &item_stack, level_req);
-
-        if enchantments.is_empty() {
-            return false;
-        }
-
-        if player.fire_enchant_item_event(&item_stack, id, level_req, &mut enchantments)
-            || enchantments.is_empty()
-        {
-            return false;
-        }
-
-        if !player.is_creative() {
-            player.add_experience_levels(-(id + 1));
-        }
-
-        for &(enchant, level) in &enchantments {
-            item_stack.add_enchantment(enchant, level as u16);
-        }
-        // `NeoForge` fires `onPlayerEnchantItem` on the live stack, before the lapis is consumed.
-        player.fire_player_enchant_item_event(&mut item_stack, &enchantments);
-        self.inventory.set_stack(0, item_stack);
-
-        if !player.is_creative() {
-            lapis_stack.decrement(lapis_cost);
-            self.inventory.set_stack(1, lapis_stack);
-        }
-
-        // Update seed
-        player.set_enchantment_seed(rand::random());
-        self.enchantment_seed = player.enchantment_seed();
-
-        self.update_enchantments(player);
-        self.send_content_updates();
-
-        // Vanilla plays the table use sound at a random pitch in [0.9, 1.0)
-        let pitch = rand::random::<f32>().mul_add(0.1, 0.9);
-        player.play_block_sound(Sound::BlockEnchantmentTableUse, pitch);
-
-        player.increment_stat(
-            StatisticCategory::Custom,
-            CustomStatistic::EnchantItem as i32,
-            1,
-        );
-
+        };
+        self.enchant_item(player, &request);
+        self.finish_enchant(player, &request);
         true
     }
 

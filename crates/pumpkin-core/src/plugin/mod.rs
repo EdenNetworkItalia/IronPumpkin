@@ -19,6 +19,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 pub mod api;
+pub(crate) mod brewing_events;
 pub mod cache;
 pub(crate) mod container_events;
 mod context_events;
@@ -31,6 +32,7 @@ pub mod loader;
 pub mod permissions;
 pub(crate) mod player_events;
 pub mod startup;
+pub(crate) mod stat_events;
 
 use crate::{LOGGER_IMPL, server::Server};
 pub use api::*;
@@ -40,7 +42,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Bump this whenever the public plugin API or any event layout changes in a way
 /// that makes old binary plugins incompatible.
-pub const PLUGIN_API_VERSION: u32 = 3;
+pub const PLUGIN_API_VERSION: u32 = 4;
 
 const PLUGIN_DIR: &str = "./plugins";
 

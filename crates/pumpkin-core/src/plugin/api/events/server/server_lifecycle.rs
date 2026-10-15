@@ -5,6 +5,15 @@
 
 use pumpkin_macros::Event;
 
+/// Fires after the mod lifecycle and before the worlds load, as the first event of the server.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.server.ServerAboutToStartEvent`, fired by
+/// `ServerLifecycleHooks.handleServerAboutToStart` in `DedicatedServer.initServer` before
+/// `loadLevel`, after the synced configs load. The Wasm plugins load later, so only native mods
+/// receive it.
+#[derive(Event, Clone, Copy, Default)]
+pub struct ServerAboutToStartEvent;
+
 /// Fires after the worlds load and before the first tick and the first connection.
 ///
 /// `NeoForge`: `net.neoforged.neoforge.event.server.ServerStartingEvent`, fired by

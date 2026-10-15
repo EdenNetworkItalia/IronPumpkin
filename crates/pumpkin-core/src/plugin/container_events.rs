@@ -1,23 +1,34 @@
 //! The `IronPumpkin` events of the anvil, the grindstone and the enchanting table.
 //!
-//! The anvil and grindstone events fire after the player released the lock of its screen
-//! handler, so a handler can use the screen handler (close it, change the ender chest). The
-//! result changes only when the inputs are the same after the event.
+//! The events fire after the player released the lock of its screen handler, so a handler can
+//! use the screen handler (close it, change the ender chest). The result changes only when the
+//! inputs are the same after the event.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use pumpkin_data::{Enchantment, item_stack::ItemStack};
+use pumpkin_data::world::WorldEvent;
 use pumpkin_inventory::{
     anvil::{AnvilInputs, AnvilScreenHandler, AnvilUpdate},
-    grindstone_screen_handler::{GrindstoneInputs, GrindstonePlace, GrindstoneScreenHandler},
-    screen_handler::ScreenHandler,
+    enchanting::enchanting_screen_handler::{
+        EnchantRequest, EnchantingRows, EnchantingTableScreenHandler,
+    },
+    grindstone_screen_handler::{
+        GrindstoneInputs, GrindstonePlace, GrindstoneScreenHandler, GrindstoneTake,
+    },
+    screen_handler::{ScreenHandler, offer_or_drop_stack},
 };
+use pumpkin_util::math::position::BlockPos;
 
-use crate::entity::player::Player;
+use crate::entity::{experience_orb::ExperienceOrbEntity, player::Player};
 use crate::plugin::{
-    enchantment::PlayerEnchantItemEvent,
-    inventory::{prepare_anvil::PrepareAnvilEvent, prepare_grindstone::PrepareGrindstoneEvent},
+    Payload,
+    enchantment::{EnchantItemEvent, PlayerEnchantItemEvent, PrepareItemEnchantEvent},
+    inventory::{
+        grindstone_take::GrindstoneEventOnTakeItem, prepare_anvil::PrepareAnvilEvent,
+        prepare_grindstone::PrepareGrindstoneEvent,
+    },
 };
+use crate::server::Server;
 
 type Guard<'a> = MutexGuard<'a, dyn ScreenHandler + 'static>;
 type Handler = Mutex<dyn ScreenHandler + 'static>;
@@ -26,8 +37,36 @@ fn lock(handler: &Handler) -> Guard<'_> {
     handler.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Fires the anvil or grindstone event that the last action on `handler` left pending. It
-/// releases `guard` while the handlers run and returns the guard it locks again.
+/// The server of `player` when a handler of `E` listens.
+fn listening<E: Payload + 'static>(player: &Player) -> Option<Arc<Server>> {
+    let server = player.world().server.upgrade()?;
+    server.plugin_manager.has_handlers::<E>().then_some(server)
+}
+
+fn as_table<'a>(guard: &'a mut Guard<'_>) -> Option<&'a mut EnchantingTableScreenHandler> {
+    guard
+        .as_any_mut()
+        .downcast_mut::<EnchantingTableScreenHandler>()
+}
+
+/// Whether `handler` is still the open screen of `player`.
+fn is_open(player: &Player, handler: &Handler) -> bool {
+    let current = player
+        .current_screen_handler
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    std::ptr::addr_eq(Arc::as_ptr(&current), std::ptr::from_ref(handler))
+}
+
+/// Whether a handler listens to the grindstone take event
+/// (`InventoryPlayer::listens_to_grindstone_take`).
+pub fn listens_to_grindstone_take(player: &Player) -> bool {
+    listening::<GrindstoneEventOnTakeItem>(player).is_some()
+}
+
+/// Fires the anvil, grindstone or enchanting table events that the last action on `handler` left
+/// pending. It releases `guard` while the handlers run and returns the guard it locks again.
 pub fn fire_pending<'a>(
     player: &Arc<Player>,
     handler: &'a Handler,
@@ -39,11 +78,22 @@ pub fn fire_pending<'a>(
         {
             return fire_anvil(player, handler, guard, &inputs);
         }
-    } else if let Some(grindstone) = guard.as_any_mut().downcast_mut::<GrindstoneScreenHandler>()
-        && grindstone.take_update_event()
+    } else if let Some(grindstone) = guard.as_any_mut().downcast_mut::<GrindstoneScreenHandler>() {
+        if let Some(take) = grindstone.take_take_event() {
+            guard = fire_grindstone_take(player, handler, guard, take);
+        }
+        if let Some(grindstone) = guard.as_any_mut().downcast_mut::<GrindstoneScreenHandler>()
+            && grindstone.take_update_event()
+        {
+            let inputs = grindstone.update_inputs();
+            return fire_grindstone(player, handler, guard, &inputs);
+        }
+    } else if let Some(table) = as_table(&mut guard)
+        && table.take_prepare_event()
     {
-        let inputs = grindstone.update_inputs();
-        return fire_grindstone(player, handler, guard, &inputs);
+        let rows = table.prepare_rows();
+        let bookshelf_count = table.bookshelf_count;
+        return fire_prepare_item_enchant(player, handler, guard, &rows, bookshelf_count);
     }
     guard
 }
@@ -135,28 +185,162 @@ fn fire_grindstone<'a>(
     guard
 }
 
-/// Fires [`PlayerEnchantItemEvent`] for the item an enchanting table enchanted, and takes the
-/// item back as the handlers left it.
-pub fn fire_player_enchant_item(
-    player: &Player,
-    enchanted_item: &mut ItemStack,
-    enchantments: &[(&'static Enchantment, i32)],
-) {
-    let world = player.world();
-    let Some(server) = world.server.upgrade() else {
-        return;
+/// Fires the grindstone take event for `take` with the screen handler unlocked
+/// (`CommonHooks.onGrindstoneTake`), and gives the experience and the inputs it decides.
+fn fire_grindstone_take<'a>(
+    player: &Arc<Player>,
+    handler: &'a Handler,
+    guard: Guard<'a>,
+    take: GrindstoneTake,
+) -> Guard<'a> {
+    let Some(server) = player.world().server.upgrade() else {
+        return guard;
     };
-    if !server
-        .plugin_manager
-        .has_handlers::<PlayerEnchantItemEvent>()
-    {
-        return;
-    }
-    let Some(player) = world.get_player_by_uuid(player.gameprofile.id) else {
-        return;
-    };
-    let item = std::mem::replace(enchanted_item, ItemStack::EMPTY.clone());
-    let mut event = PlayerEnchantItemEvent::new(player, item, enchantments.to_vec());
+    drop(guard);
+    let pos = player.open_container_pos.load().unwrap_or(BlockPos::ZERO);
+    let mut event =
+        GrindstoneEventOnTakeItem::new(player.clone(), pos, take.top, take.bottom, take.xp);
     server.plugin_manager.fire_blocking(&server, &mut event);
-    *enchanted_item = event.enchanted_item;
+    let cancelled = event.cancelled;
+    let (top, bottom) = if cancelled {
+        (event.top, event.bottom)
+    } else {
+        let world = player.world();
+        if event.xp > 0 {
+            ExperienceOrbEntity::spawn(&world, pos.to_centered_f64(), event.xp.cast_unsigned());
+        }
+        world.sync_world_event(WorldEvent::SoundGrindstoneUsed, pos, 0);
+        (event.new_top, event.new_bottom)
+    };
+    let open = is_open(player, handler);
+    let mut guard = lock(handler);
+    let applied = open
+        && guard
+            .as_any_mut()
+            .downcast_mut::<GrindstoneScreenHandler>()
+            .is_some_and(|grindstone| {
+                if cancelled {
+                    // `NeoForge` leaves the result empty after a cancelled take.
+                    grindstone.take_update_event();
+                }
+                grindstone.apply_take_event(top.clone(), bottom.clone(), !cancelled)
+            });
+    if !applied {
+        // The grindstone is closed or has new inputs: the player keeps the stacks.
+        for stack in [top, bottom] {
+            if !stack.is_empty() {
+                offer_or_drop_stack(player.as_ref(), stack);
+            }
+        }
+    }
+    guard
+}
+
+/// Fires [`PrepareItemEnchantEvent`] (`EnchantmentLevelSetEvent`) for `rows` with the screen
+/// handler unlocked, and applies the rows it decides.
+fn fire_prepare_item_enchant<'a>(
+    player: &Arc<Player>,
+    handler: &'a Handler,
+    guard: Guard<'a>,
+    rows: &EnchantingRows,
+    bookshelf_count: i32,
+) -> Guard<'a> {
+    let Some(server) = listening::<PrepareItemEnchantEvent>(player) else {
+        return guard;
+    };
+    drop(guard);
+    let mut event = PrepareItemEnchantEvent::new(
+        player.clone(),
+        rows.item.clone(),
+        rows.level_requirements,
+        rows.enchantment_id,
+        rows.enchantment_level,
+        bookshelf_count,
+        player.open_container_pos.load().unwrap_or(BlockPos::ZERO),
+    );
+    server.plugin_manager.fire_blocking(&server, &mut event);
+    let result = (!event.cancelled).then(|| EnchantingRows {
+        item: event.item,
+        level_requirements: event.level_requirements,
+        enchantment_id: event.enchantment_id,
+        enchantment_level: event.enchantment_level,
+    });
+    let mut guard = lock(handler);
+    if let Some(table) = as_table(&mut guard) {
+        table.apply_prepare_event(rows, result);
+    }
+    guard
+}
+
+/// Whether `current` is the click of `request` on an unchanged table.
+fn same_request(current: &EnchantRequest, request: &EnchantRequest) -> bool {
+    current.level_requirement == request.level_requirement
+        && current.seed == request.seed
+        && current.item.are_equal(&request.item)
+        && current.lapis.are_equal(&request.lapis)
+}
+
+/// Handles a click on button `id` of the open screen (`Player::on_container_button_click`).
+///
+/// An enchanting table fires [`EnchantItemEvent`], [`PlayerEnchantItemEvent`] and the
+/// enchantment level event with the screen handler unlocked. The click goes on after
+/// [`EnchantItemEvent`] only when the table did not change, and the table takes the item of
+/// [`PlayerEnchantItemEvent`] only when slot 0 still holds the enchanted item.
+pub fn on_button_click<'a>(
+    player: &Arc<Player>,
+    handler: &'a Handler,
+    mut guard: Guard<'a>,
+    id: i32,
+) -> Guard<'a> {
+    let Some(table) = as_table(&mut guard) else {
+        guard.on_button_click(player.as_ref(), id);
+        return guard;
+    };
+    let Some(mut request) = table.enchant_request(player.as_ref(), id) else {
+        return guard;
+    };
+    if let Some(server) = listening::<EnchantItemEvent>(player) {
+        drop(guard);
+        let mut event = EnchantItemEvent::new(
+            player.clone(),
+            request.item.clone(),
+            id,
+            request.level_requirement,
+            request.enchantments.clone(),
+        );
+        server.plugin_manager.fire_blocking(&server, &mut event);
+        guard = lock(handler);
+        let unchanged = as_table(&mut guard)
+            .and_then(|table| table.enchant_request(player.as_ref(), id))
+            .is_some_and(|current| same_request(&current, &request));
+        if !unchanged || event.cancelled || event.enchantments_to_add.is_empty() {
+            return guard;
+        }
+        request.enchantments = event.enchantments_to_add;
+    }
+    let Some(table) = as_table(&mut guard) else {
+        return guard;
+    };
+    let enchanted = table.enchant_item(player.as_ref(), &request);
+    // `NeoForge` fires `onPlayerEnchantItem` on the item in the table, before the lapis is
+    // consumed.
+    if let Some(server) = listening::<PlayerEnchantItemEvent>(player) {
+        drop(guard);
+        let mut event = PlayerEnchantItemEvent::new(
+            player.clone(),
+            enchanted.clone(),
+            request.enchantments.clone(),
+        );
+        server.plugin_manager.fire_blocking(&server, &mut event);
+        guard = lock(handler);
+        if let Some(table) = as_table(&mut guard)
+            && table.inventory.get_stack(0).are_equal(&enchanted)
+        {
+            table.inventory.set_stack(0, event.enchanted_item);
+        }
+    }
+    if let Some(table) = as_table(&mut guard) {
+        table.finish_enchant(player.as_ref(), &request);
+    }
+    fire_pending(player, handler, guard)
 }

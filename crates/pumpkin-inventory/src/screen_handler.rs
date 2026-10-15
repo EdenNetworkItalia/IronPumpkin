@@ -37,7 +37,6 @@ use crate::{
 };
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::{
-    Enchantment,
     data_component_impl::{EquipmentSlot, EquipmentType, EquippableImpl},
     screen::WindowType,
     sound::Sound,
@@ -192,38 +191,6 @@ pub trait InventoryPlayer: Send + Sync {
     /// Plays a block sound at the open container position.
     fn play_block_sound(&self, sound: Sound, pitch: f32);
 
-    /// Fires a prepare item enchant event. Returns true if cancelled.
-    fn fire_prepare_item_enchant_event(
-        &self,
-        _item: &ItemStack,
-        _level_requirements: &mut [i32; 3],
-        _enchantment_id: &mut [i32; 3],
-        _enchantment_level: &mut [i32; 3],
-        _bookshelf_count: i32,
-    ) -> bool {
-        false
-    }
-
-    /// Fires an enchant item event. Returns true if cancelled.
-    fn fire_enchant_item_event(
-        &self,
-        _item: &ItemStack,
-        _option: i32,
-        _exp_level_cost: i32,
-        _enchantments_to_add: &mut Vec<(&'static Enchantment, i32)>,
-    ) -> bool {
-        false
-    }
-
-    /// Fires the event that announces the enchantments applied to `enchanted_item` at an
-    /// enchanting table. Handlers can change `enchanted_item`.
-    fn fire_player_enchant_item_event(
-        &self,
-        _enchanted_item: &mut ItemStack,
-        _enchantments: &[(&'static Enchantment, i32)],
-    ) {
-    }
-
     /// Closes the player's current handled screen.
     fn close_screen_handler(&self) {}
 
@@ -246,6 +213,13 @@ pub trait InventoryPlayer: Send + Sync {
 
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}
+
+    /// Whether a handler listens to the grindstone take event. The grindstone result slot then
+    /// leaves the experience and the inputs to that event, which fires after the screen-handler
+    /// lock is released.
+    fn listens_to_grindstone_take(&self) -> bool {
+        false
+    }
 }
 
 /// Gives a stack to the player or drops it if inventory is full.

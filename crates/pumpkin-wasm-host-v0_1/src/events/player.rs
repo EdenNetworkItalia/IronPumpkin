@@ -2096,19 +2096,24 @@ impl ToFromWasmEvent for PlayerStatisticIncrementEvent {
         cleanup_event(&event, state);
         if let Event::PlayerStatisticIncrementEvent(data) = event {
             self.cancelled = data.cancelled;
+            // The WIT record has no total: a changed `amount` moves the total by the same step.
+            self.value = self
+                .value
+                .saturating_add(data.amount.saturating_sub(self.amount));
             self.amount = data.amount;
         }
     }
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            // `apply_wasm_event` keeps the category and the stat of the native event.
+            // `apply_wasm_event` keeps the category, the stat and the total of the native event.
             Event::PlayerStatisticIncrementEvent(data) => Self {
                 player: consume_player(state, &data.player),
                 statistic_id: data.statistic_id,
                 amount: data.amount,
                 category: pumpkin_data::statistic::StatisticCategory::Custom,
                 stat: 0,
+                value: data.amount,
                 cancelled: data.cancelled,
             },
             _ => panic!("unexpected event type"),

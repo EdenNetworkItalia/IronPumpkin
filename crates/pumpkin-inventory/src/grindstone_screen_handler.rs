@@ -1,7 +1,7 @@
 use std::any::Any;
 use std::borrow::Cow;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::inventory::Inventory;
 use pumpkin_data::data_component::DataComponent;
@@ -67,6 +67,8 @@ pub struct GrindstoneResultSlot {
     /// The experience a handler of the grindstone place event set for the current result, or -1
     /// for the vanilla amount (the `xp` field that `NeoForge` adds to `GrindstoneMenu`).
     pub xp: Arc<AtomicI32>,
+    /// The last take that waits for the grindstone take event.
+    pub take: Arc<Mutex<Option<GrindstoneTake>>>,
 }
 
 impl GrindstoneResultSlot {
@@ -77,6 +79,7 @@ impl GrindstoneResultSlot {
             index,
             id: AtomicU8::new(0),
             xp: Arc::new(AtomicI32::new(-1)),
+            take: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -97,6 +100,15 @@ pub enum GrindstonePlace {
     Cancelled,
     /// The output of a handler, and the experience it gives, or -1 for the vanilla amount.
     Output { output: ItemStack, xp: i32 },
+}
+
+/// The inputs and the experience of a take of the result. The grindstone take event fires with
+/// them after the player released the screen-handler lock.
+#[derive(Clone)]
+pub struct GrindstoneTake {
+    pub top: ItemStack,
+    pub bottom: ItemStack,
+    pub xp: i32,
 }
 
 impl Slot for GrindstoneResultSlot {
@@ -128,7 +140,15 @@ impl Slot for GrindstoneResultSlot {
             _ => GrindstoneScreenHandler::calculate_experience_amount(&input, &additional),
         };
 
-        player.use_grindstone(xp_amount);
+        if player.listens_to_grindstone_take() {
+            *self.take.lock().unwrap_or_else(PoisonError::into_inner) = Some(GrindstoneTake {
+                top: input,
+                bottom: additional,
+                xp: xp_amount,
+            });
+        } else {
+            player.use_grindstone(xp_amount);
+        }
 
         self.inventory.set_stack(
             GrindstoneScreenHandler::INPUT_SLOT,
@@ -202,6 +222,8 @@ pub struct GrindstoneScreenHandler {
     behaviour: ScreenHandlerBehaviour,
     /// Shared with [`GrindstoneResultSlot::xp`].
     pub xp: Arc<AtomicI32>,
+    /// Shared with [`GrindstoneResultSlot::take`].
+    pub take: Arc<Mutex<Option<GrindstoneTake>>>,
     update_event_pending: bool,
 }
 
@@ -224,6 +246,7 @@ impl GrindstoneScreenHandler {
             inventory: inventory.clone(),
             behaviour: ScreenHandlerBehaviour::new(sync_id, Some(WindowType::Grindstone)),
             xp: Arc::new(AtomicI32::new(-1)),
+            take: Arc::new(Mutex::new(None)),
             update_event_pending: false,
         };
 
@@ -240,6 +263,7 @@ impl GrindstoneScreenHandler {
         // Slot 2: Result slot
         let result_slot = Arc::new(GrindstoneResultSlot::new(inventory, Self::RESULT_SLOT));
         handler.xp = result_slot.xp.clone();
+        handler.take = result_slot.take.clone();
         handler.add_slot(result_slot);
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
@@ -307,6 +331,41 @@ impl GrindstoneScreenHandler {
         };
         self.xp.store(xp, Ordering::Relaxed);
         self.inventory.set_stack(Self::RESULT_SLOT, output);
+        self.send_content_updates();
+        true
+    }
+
+    /// The take that waits for the grindstone take event, and clears it.
+    pub fn take_take_event(&self) -> Option<GrindstoneTake> {
+        self.take
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    /// Puts `top` and `bottom` into the empty input slots after the grindstone take event, and
+    /// updates the result when `update_result` is set (a cancelled take restores the inputs and
+    /// leaves the result empty, as `NeoForge` does). Returns `false` and changes nothing when an
+    /// input slot is not empty.
+    pub fn apply_take_event(
+        &mut self,
+        top: ItemStack,
+        bottom: ItemStack,
+        update_result: bool,
+    ) -> bool {
+        if !self.inventory.get_stack(Self::INPUT_SLOT).is_empty()
+            || !self.inventory.get_stack(Self::ADDITIONAL_SLOT).is_empty()
+        {
+            return false;
+        }
+        if top.is_empty() && bottom.is_empty() {
+            return true;
+        }
+        self.inventory.set_stack(Self::INPUT_SLOT, top);
+        self.inventory.set_stack(Self::ADDITIONAL_SLOT, bottom);
+        if update_result {
+            self.update_result();
+        }
         self.send_content_updates();
         true
     }

@@ -130,11 +130,13 @@ There is no hook catalogue, no generated accessor API and no service-seam API of
   - `LevelTickEvent` fires while the game is frozen too. In a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time.
   - `ServerStoppingEvent` fires after the ticker thread exits, with a 30 s bound. A tick that runs longer logs a warning and the shutdown continues.
   - `PrepareAnvilEvent` and `PrepareGrindstoneEvent` fire outside the screen-handler lock on every result update. The result applies only if the inputs did not change while the event fired.
-  - `PlayerEnchantItemEvent` fires before the lapis is consumed, and the table writes the item back. `EnchantmentLevelSetEvent` has `pos` and a getter for the original levels. Both events and `EnchantItemEvent` fire under the enchanting-table screen-handler lock, so a handler that closes the screen can deadlock.
-  - A cancel of `PotionBrewEvent.Pre` takes the stacks only if the stand inventory did not change meanwhile.
+  - `PlayerEnchantItemEvent` fires before the lapis is consumed, and the table writes the item back. `EnchantmentLevelSetEvent` has `pos` and a getter for the original levels. Both events and `EnchantItemEvent` fire outside the enchanting-table screen-handler lock. The click goes on only when the table did not change while an event fired.
+  - `GrindstoneEvent.OnTakeItem` fires outside the screen-handler lock. The grindstone defers the vanilla experience and the input change to it only when a handler listens.
+  - A cancel of `PotionBrewEvent.Pre` takes the stacks only if the stand inventory did not change meanwhile. `PotionBrewEvent.Post` takes changed stacks under the same rule.
   - `ServerChatEvent` fills `raw_text` only when a handler was registered when the event is created.
   - `AnvilCraftEventPre`, `AnvilCraftEventPost` and `TradeWithVillagerEvent` fire under the screen-handler lock of the anvil or the trade screen. `PlayerEventNameFormat` is not cached and fires on every read of the display name. `PlayerEvent` and the other abstract classes have no struct: EventBus 8.0.5 rejects a listener on an abstract event. The concrete parent `PlayerContainerEvent` is named by `#[event_parents(..)]` on `InventoryOpenEvent` and `InventoryCloseEvent`.
-  - `StatAwardEvent` stays `planned`. The Rust `amount` is a delta, and `set_stat` fires no event. NeoForge fires on `setValue` with the new total, resets to 0 included.
+  - `StatAwardEvent` fires on `increment_stat` and `set_stat` with `value`, the new total, resets to 0 included, as NeoForge fires on `setValue`.
+  - `ServerAboutToStartEvent` fires before the worlds load, after the synced configs load. Only native mods receive it.
 - Priority. `PluginManager` (`crates/pumpkin-core/src/plugin/mod.rs`, `dispatch.rs`) keeps each handler list in dispatch order at registration: blocking handlers before non-blocking handlers, each from `Highest` to `Lowest`, in registration order inside one priority. Upstream Pumpkin stores `EventPriority` and never reads it, so this is an IronPumpkin change and an upstream parity candidate. The registration has the NeoForge `receiveCanceled` flag: a handler does not run for a cancelled event unless it sets the flag. `Context::register_event` (Wasm hosts) always receives cancelled events. Priority between v0.2 Wasm plugins and native mods follows from the single dispatch. The reentry depth of 64 of `pumpkin-plugin-runtime` is a limit of Wasm plugins and is not part of the native API.
 - Parent events. A concrete NeoForge class with concrete subclasses is a struct, and each subclass struct names it in `Payload::get_parent_names_static`. A handler on the parent is a `ParentEventHandler` that a mod registers with `ModInit::register_parent_event`: it gets the parent struct and every subclass struct as `dyn Payload` and downcasts it. The dispatch merges the handlers of the subclass and of its parents in one priority order, the subclass handlers first inside one rank. An abstract NeoForge class has no struct, so nobody can listen to it.
 - Guardrail helpers. `PluginManager::fire_with` and `fire_blocking_with` take a closure that builds the event, and call it only when `has_handlers` finds a handler of the event or of a parent.
@@ -150,12 +152,14 @@ There is no hook catalogue, no generated accessor API and no service-seam API of
 
 ### Contract changes to existing Pumpkin events
 
-Two Pumpkin events that upstream already has get a new contract here. A plugin or mod that handles them sees the new behaviour.
+Four Pumpkin events that upstream already has get a new contract here. A plugin or mod that handles them sees the new behaviour.
 
 - `PrepareAnvilEvent` fires on every anvil result update when the left input is not empty: a click on the input or result slots, a quick move or a rename. It fires after the screen-handler lock is released. It carries the vanilla result, cost and material cost. `output`, `repair_cost` and `material_cost` apply. A cancel clears the output and the cost. The result applies only if the inputs, the name and the result did not change while the event fired.
 - `PrepareGrindstoneEvent` fires on every grindstone result update (an input change or a take), outside the lock. `result_item` is the id of the vanilla result. A set `output` replaces the result, with `xp` used when it is 0 or more. A cancel clears the result. The same guard on unchanged inputs applies.
+- `PlayerStatisticIncrementEvent` fires on `increment_stat` and on `set_stat`. `value` is the new total, which the server stores in the stat that `category` and `stat` name after the handlers. `amount` is the change.
+- `PrepareItemEnchantEvent` and `EnchantItemEvent` fire after the enchanting-table screen-handler lock is released. The rows and the enchantments apply only if the table did not change while the event fired.
 
-The event layouts changed, so `PLUGIN_API_VERSION` is 3 and a native plugin built for version 2 does not load. The WIT v0.2 records do not change: the Wasm hosts keep the native-only fields on write-back.
+The event layouts changed, so `PLUGIN_API_VERSION` is 4 and a native plugin built for an older version does not load. The WIT v0.2 records do not change: the Wasm hosts keep the native-only fields on write-back.
 
 ### Source patches
 
@@ -258,7 +262,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 119 | 143 | 0 | 20 |
+| Events, server and common | 282 | 123 | 139 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 21 | 116 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
@@ -271,7 +275,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 7 | 39 | 0 | 41 |
-| Total | 1093 | 204 | 531 | 210 | 148 |
+| Total | 1093 | 208 | 527 | 210 | 148 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -279,7 +283,7 @@ Method: each family row counts the Status cells of the tables in one section of 
 
 Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or common: 282. Client: 189. Abstract classes: 71.
 
-#### `event` (38: 4 supported, 25 planned, 9 not supported)
+#### `event` (38: 6 supported, 23 planned, 9 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
@@ -294,9 +298,9 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | DifficultyChangeEvent | game | both | no | - | planned | `Server::set_difficulty` | no event fires on a difficulty change |
 | GameShuttingDownEvent | game | both | no | - | planned | plugin `on-unload` | Pumpkin calls on-unload; no event |
 | GatherSkippedAttributeTooltipsEvent | game | both | no | - | not supported | - | tooltip display only, see AddAttributeTooltipsEvent |
-| GrindstoneEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
+| GrindstoneEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
 | GrindstoneEvent.OnPlaceItem | game | both | yes | - | supported | `PrepareGrindstoneEvent` | fires on every grindstone result update (input change or take), after the screen-handler lock is released; `result_item` is the id of the vanilla result; a set `output` replaces the result and `xp` applies when it is 0 or more; a cancel clears the result; the result applies only if the inputs did not change meanwhile; tests `one_event_per_fire_site_grindstone_event_on_place_item`, `update_result_without_handler_is_vanilla`; WIT v0.2 |
-| GrindstoneEvent.OnTakeItem | game | both | yes | - | planned | grindstone screen handler (pumpkin-inventory) | no event when the result is taken |
+| GrindstoneEvent.OnTakeItem | game | both | yes | - | supported | `GrindstoneEventOnTakeItem` | fired on every take of the grindstone result, after the screen-handler lock is released (`plugin/container_events.rs`); `xp` is the amount of a place handler or the vanilla amount; the player keeps the result; a cancel gives no experience, puts the inputs back and leaves the result empty; otherwise the grindstone gives `xp` and its inputs become `new_top` and `new_bottom`; a stack that cannot go back into a closed grindstone or onto new inputs goes to the player; test `one_event_per_fire_site_grindstone_event_on_take_item` |
 | ItemAttributeModifierEvent | game | both | no | - | planned | attribute modifiers data component | needs a hook where Pumpkin reads item attribute modifiers |
 | ItemStackedOnOtherEvent | game | both | yes | - | planned | slot click handling (pumpkin-inventory) | no event for stacking one item onto another in a slot |
 | LootTableLoadEvent | game | both | yes | - | planned | loot table loader (`data/datapack/loot_table_loader.rs`) | no hook between load and freeze |
@@ -317,19 +321,19 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | RegisterTooltipAppendersEvent | mod | both | no | - | not supported | - | tooltip display only |
 | ServerChatEvent | game | server | yes | - | supported | `PlayerChatEvent` | fired in `net/bedrock/play/chat_message.rs`, `net/java/play/chat_message.rs`; `message` is plain text, not a component; `raw_text` is filled only when a chat handler was registered when the event is created; test `cancel_server_chat_event`; WIT v0.2 |
 | SortedReloadListenerEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 planned, 1 client-only |
-| StatAwardEvent | game | both | yes | - | planned | `PlayerStatisticIncrementEvent` | fired in `entity/player.rs` on `increment_stat`, with stat and amount write-back and cancel; gap: the Rust `amount` is a delta and `set_stat` fires no event, while NeoForge fires on `setValue` with the new total, resets to 0 included; test `one_event_per_fire_site_stat_award_event`; WIT v0.2 |
+| StatAwardEvent | game | both | yes | - | supported | `PlayerStatisticIncrementEvent` | fired by `increment_stat` and `set_stat` (`plugin/stat_events.rs`), as `StatsCounter.setValue`, with `value` the new total, resets to 0 included; the server stores `value` in the stat that `category` and `stat` name after the handlers, and a cancel stores nothing; `amount` is the change; a Wasm handler that changes `amount` moves `value` by the same step; test `one_event_per_fire_site_stat_award_event`; WIT v0.2 |
 | TagsUpdatedEvent | game | both | no | - | planned | datapack reload | concrete parent of the two tag update events |
 | TagsUpdatedEvent.ServerDataLoad | game | server | no | - | planned | datapack reload (`datapack-manager.reload`) | no event after tags reload |
-| VanillaGameEvent | game | both | yes | - | planned | `GenericGameEvent` | Pumpkin has no vanilla game event dispatch: `World::emit_game_event` fires it from a few call sites and a cancel stops no listener; test `one_event_per_fire_site_vanilla_game_event`; WIT v0.2 |
+| VanillaGameEvent | game | both | yes | - | planned | `GenericGameEvent` | Pumpkin has no vanilla game event dispatch: `World::emit_game_event` fires it from 10 call sites for 8 of the 61 vanilla game events (`prime_fuse` of TNT, `shriek`, `entity_place` of the dispenser, `block_activate` and `block_deactivate` of the lever, `block_change` of the daylight detector, `teleport` of a living entity, `entity_damage` of an item entity) and the datapack events of 3 enchantment effects, and no vibration listener receives a game event, so a cancel stops nothing; missing sites: `block_place`, `block_destroy`, `step`, `hit_ground`, `entity_die`, `entity_damage` of living entities, `entity_action`, `container_open`, `container_close`, `block_open`, `block_close`, `block_attach`, `block_detach`, `projectile_shoot`, `projectile_land`, `eat`, `drink`, `explode`, `fluid_pickup`, `fluid_place`, `equip`, `unequip`, `swim`, `splash`, `flap`, `bounce`, `elytra_glide`, `entity_mount`, `entity_dismount`, `entity_interact`, `item_interact_start`, `item_interact_finish`, `jukebox_play`, `jukebox_stop_play`, `note_block_play`, `instrument_play`, `lightning_strike`, `shear`, `sculk_sensor_tendrils_clicking` and `resonate_1` to `resonate_15`; test `one_event_per_fire_site_vanilla_game_event`; WIT v0.2 |
 
-#### `event.brewing` (4: 1 supported, 3 planned)
+#### `event.brewing` (4: 2 supported, 2 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | PlayerBrewedPotionEvent | game | both | no | - | planned | brewing stand screen handler | no event when the potion is taken |
-| PotionBrewEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| PotionBrewEvent.Post | game | both | no | - | planned | brewing stand block entity | no post-brew event |
-| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `block/entities/brewing_stand.rs`; a cancel applies `stacks` only if the stand inventory did not change meanwhile; test `one_event_per_fire_site_potion_brew_event_pre`; WIT v0.2 |
+| PotionBrewEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| PotionBrewEvent.Post | game | both | no | - | supported | `PotionBrewEventPost` | fired in `plugin/brewing_events.rs` after the vanilla brew and after a cancelled `PotionBrewEvent.Pre`; `stacks` is a copy of the stand inventory, and the stand takes changed stacks when its inventory did not change meanwhile, as NeoForge hands out the live stacks; gaps: the ingredient is already consumed (NeoForge fires before the shrink), and it fires after every cancelled Pre (NeoForge skips it when the Pre handler changed all five stacks); native mods only; test `one_event_per_fire_site_potion_brew_event_post` |
+| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `plugin/brewing_events.rs`; a cancel applies `stacks` only if the stand inventory did not change meanwhile, then `PotionBrewEvent.Post` fires; test `one_event_per_fire_site_potion_brew_event_pre`; WIT v0.2 |
 
 #### `event.enchanting` (4: 1 supported, 3 planned)
 
@@ -337,7 +341,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | EnchantedBlockLootEvent | game | server | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
 | EnchantedEntityLootEvent | game | both | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
-| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired in `entity/player.rs` once for the three rows, after the clues are chosen, under the enchanting-table screen-handler lock; `pos` is the open container position (the zero position with no container) and `original_level_requirements()` returns the vanilla levels; test `one_event_per_fire_site_enchantment_events`; WIT v0.2 |
+| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired once for the three rows, after the clues are chosen, after the enchanting-table screen-handler lock is released (`plugin/container_events.rs`); the rows apply only if the item and the rows did not change meanwhile; `pos` is the open container position (the zero position with no container) and `original_level_requirements()` returns the vanilla levels; tests `one_event_per_fire_site_enchantment_events`, `enchanting_events_handler_closes_the_screen`; WIT v0.2 |
 | GetEnchantmentLevelEvent | game | both | no | - | planned | enchantment level lookup on `ItemStack` | no hook |
 
 #### `event.entity` (21: 8 supported, 13 planned)
@@ -457,7 +461,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerContainerEvent.Close | game | both | no | - | supported | `InventoryCloseEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerContainerEvent.Open | game | both | no | - | supported | `InventoryOpenEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerDestroyItemEvent | game | both | no | - | supported | `PlayerItemBreakEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `EnchantingTableScreenHandler::on_button_click` after the enchantments apply and before the lapis is consumed, under the screen-handler lock; the table writes `enchanted_item` back to slot 0; test `one_event_per_fire_site_enchantment_events` |
+| PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `container_events::on_button_click` after the enchantments apply and before the lapis is consumed, after the screen-handler lock is released; the table writes `enchanted_item` back to slot 0 when slot 0 still holds the enchanted item, and consumes the lapis only when slot 1 is unchanged, so a handler that closes the table keeps the lapis; tests `one_event_per_fire_site_enchantment_events`, `enchanting_events_handler_closes_the_screen` |
 | PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events (EventBus 8.0.5 `addToListeners`); subclasses: 46 supported, 6 planned, 5 not supported, 2 client-only |
 | PlayerEvent.BreakSpeed | game | both | yes | - | supported | `PlayerEventBreakSpeed` | fired in `block::calc_block_breaking` on every mining step; `new_speed` written back, a cancel gives -1; the client also predicts break speed; test `one_event_per_fire_site_break_speed_and_harvest_check` |
 | PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | `World::respawn_player` keeps the same `Arc<Player>` across death and the End exit, so there is no old player to pair with a new one; the copy-on-death rule belongs to attachments (task 2.14) |
@@ -555,12 +559,12 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | CropGrowEvent.Post | game | both | no | - | planned | crop random tick | no post-growth event |
 | CropGrowEvent.Pre | game | both | no | setResult(Result) | supported | `BlockGrowEvent` | fired in `block/blocks/plant/crop/mod.rs`; WIT v0.2; NeoForge uses a result; Pumpkin uses cancel |
 
-#### `event.server` (7: 4 supported, 3 planned)
+#### `event.server` (7: 5 supported, 2 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | RegisterRpcSchemaEvent | game | server | no | - | planned | management JSON-RPC server (`net/management/rpc.rs`) | the method set is fixed; no plugin hook adds methods |
-| ServerAboutToStartEvent | game | server | no | - | planned | plugin `on-load` | plugins load before worlds; no separate event |
+| ServerAboutToStartEvent | game | server | no | - | supported | `ServerAboutToStartEvent` | fired in `Server::new` after the mod lifecycle and the synced config load, after the content freeze and before the worlds load, as `ServerLifecycleHooks.handleServerAboutToStart` before `loadLevel`; native mods only, because the Wasm plugins load later; boot test `neoforge_lifecycle_events`; parity trace |
 | ServerLifecycleEvent (abstract) | game | server | no | - | planned | shared fields of 5 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 4 supported, 1 planned |
 | ServerStartedEvent | game | server | no | - | supported | `ServerLoadEvent` | fired in `lib.rs` after the plugins load and before the ticker starts, as on `NeoForge`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
 | ServerStartingEvent | game | server | no | - | supported | `ServerStartingEvent` | fired in `lib.rs` after the worlds load and before the ticker starts; Wasm plugins load later; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |

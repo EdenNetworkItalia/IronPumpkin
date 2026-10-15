@@ -22,8 +22,8 @@ use ironpumpkin_mods::{
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
         server::{
-            ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
-            ServerTickEndEvent, ServerTickStartEvent,
+            ServerAboutToStartEvent, ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent,
+            ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
         },
         world::{LevelTickEventPost, LevelTickEventPre},
     },
@@ -170,6 +170,7 @@ fn log_once<E: Payload + Send + Sync + 'static>(cx: &mut ModInit, name: &'static
 }
 
 fn register_events(cx: &mut ModInit) {
+    log_once::<ServerAboutToStartEvent>(cx, "ServerAboutToStartEvent");
     log_once::<ServerStartingEvent>(cx, "ServerStartingEvent");
     log_once::<ServerLoadEvent>(cx, "ServerStartedEvent");
     log_once::<ServerTickStartEvent>(cx, "ServerTickEventPre");

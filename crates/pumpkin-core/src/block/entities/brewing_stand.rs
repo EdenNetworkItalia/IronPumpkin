@@ -6,7 +6,6 @@ use std::sync::{
 };
 
 use crate::block::entities::PropertyDelegate;
-use crate::plugin::api::events::inventory::brew::BrewEvent;
 use pumpkin_data::data_component_impl::BrewingFuelImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -132,36 +131,8 @@ impl BrewingStandBlockEntity {
         let ingredient_id = ingredient.get_item().id;
 
         // Fire BrewEvent before mutating items
-        if let Some(server) = world.server.upgrade()
-            && server.plugin_manager.has_handlers::<BrewEvent>()
-        {
-            let before = self
-                .items
-                .read()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone();
-            let mut brew_event = BrewEvent::new(
-                self.position,
-                self.fuel.load(Ordering::Relaxed) as u8,
-                before.clone(),
-            );
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut brew_event);
-            if brew_event.cancelled {
-                // `EventHooks.onPotionAttemptBrew`: a cancelled brew takes the stacks a handler
-                // changed, unless the inventory changed while the event fired.
-                let mut items = self
-                    .items
-                    .write()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if same_stacks(&items[..], &before) && !same_stacks(&brew_event.stacks, &before) {
-                    *items = brew_event.stacks;
-                    drop(items);
-                    self.mark_dirty();
-                }
-                return;
-            }
+        if crate::plugin::brewing_events::fire_brew_pre(self, world) {
+            return;
         }
 
         // Brew potion slots
@@ -273,6 +244,7 @@ impl BrewingStandBlockEntity {
         if !ingredient_used {
             return;
         }
+        crate::plugin::brewing_events::fire_brew_post(self, world);
 
         // Check if remaining ingredient matches or clear it
         if let Ok(items) = self.items.read() {
@@ -714,8 +686,4 @@ impl PropertyDelegate for BrewingStandBlockEntity {
     fn get_properties_size(&self) -> i32 {
         2
     }
-}
-
-fn same_stacks(a: &[ItemStack], b: &[ItemStack]) -> bool {
-    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.are_equal(b))
 }

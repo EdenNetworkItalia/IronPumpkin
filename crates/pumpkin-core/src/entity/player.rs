@@ -11,7 +11,6 @@ use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use crate::entity::attributes::{Modifier, ModifierOperation};
-use crate::plugin::api::events::enchantment::{EnchantItemEvent, PrepareItemEnchantEvent};
 use crate::world::scoreboard::{BedrockScoreboard, Scoreboard};
 use advancement::PlayerAdvancement;
 use arc_swap::ArcSwap;
@@ -3394,31 +3393,11 @@ impl Player {
     }
 
     pub fn increment_stat(&self, category: statistics::StatisticCategory, stat: i32, amount: i32) {
-        use crate::plugin::player::player_statistic_increment::PlayerStatisticIncrementEvent;
-        let (category, stat, amount) = if let Some(server) = self.world().server.upgrade()
-            && server
-                .plugin_manager
-                .has_handlers::<PlayerStatisticIncrementEvent>()
-            && let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id)
-        {
-            let mut event = PlayerStatisticIncrementEvent::new(player_arc, category, stat, amount);
-            server.plugin_manager.fire_blocking(&server, &mut event);
-            if event.cancelled {
-                return;
-            }
-            (event.category, event.stat, event.amount)
-        } else {
-            (category, stat, amount)
-        };
-        if let Ok(mut stats) = self.stats.try_lock() {
-            stats.increment(category, stat, amount);
-        }
+        crate::plugin::stat_events::increment_stat(self, category, stat, amount);
     }
 
     pub fn set_stat(&self, category: statistics::StatisticCategory, stat: i32, value: i32) {
-        if let Ok(mut stats) = self.stats.try_lock() {
-            stats.set(category, stat, value);
-        }
+        crate::plugin::stat_events::set_stat(self, category, stat, value);
     }
 
     pub fn get_stat(&self, category: statistics::StatisticCategory, stat: i32) -> i32 {
@@ -6337,13 +6316,13 @@ impl Player {
     }
 
     /// Handles when the player clicks a button in a container (e.g. Enchantment Table)
-    pub fn on_container_button_click(&self, packet: &SContainerButtonClick) {
-        let screen_handler = self
+    pub fn on_container_button_click(self: &Arc<Self>, packet: &SContainerButtonClick) {
+        let screen_handler_arc = self
             .current_screen_handler
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        let mut screen_handler = screen_handler
+        let screen_handler = screen_handler_arc
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
@@ -6351,7 +6330,12 @@ impl Player {
             return;
         }
 
-        screen_handler.on_button_click(self, packet.button_id.0);
+        drop(crate::plugin::container_events::on_button_click(
+            self,
+            &screen_handler_arc,
+            screen_handler,
+            packet.button_id.0,
+        ));
     }
 
     pub fn has_permission(self: &Arc<Self>, server: &Server, node: &str) -> bool {
@@ -7992,79 +7976,6 @@ impl InventoryPlayer for Player {
         }
     }
 
-    fn fire_prepare_item_enchant_event(
-        &self,
-        item: &ItemStack,
-        level_requirements: &mut [i32; 3],
-        enchantment_id: &mut [i32; 3],
-        enchantment_level: &mut [i32; 3],
-        bookshelf_count: i32,
-    ) -> bool {
-        let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id) else {
-            return false;
-        };
-        let Some(server) = self.world().server.upgrade() else {
-            return false;
-        };
-        let mut event = PrepareItemEnchantEvent::new(
-            player_arc,
-            item.clone(),
-            *level_requirements,
-            *enchantment_id,
-            *enchantment_level,
-            bookshelf_count,
-            self.open_container_pos.load().unwrap_or(BlockPos::ZERO),
-        );
-        server.plugin_manager.fire_blocking(&server, &mut event);
-        if event.cancelled {
-            return true;
-        }
-        *level_requirements = event.level_requirements;
-        *enchantment_id = event.enchantment_id;
-        *enchantment_level = event.enchantment_level;
-        false
-    }
-
-    fn fire_enchant_item_event(
-        &self,
-        item: &ItemStack,
-        option: i32,
-        exp_level_cost: i32,
-        enchantments_to_add: &mut Vec<(&'static pumpkin_data::Enchantment, i32)>,
-    ) -> bool {
-        let Some(player_arc) = self.world().get_player_by_uuid(self.gameprofile.id) else {
-            return false;
-        };
-        let Some(server) = self.world().server.upgrade() else {
-            return false;
-        };
-        let mut event = EnchantItemEvent::new(
-            player_arc,
-            item.clone(),
-            option,
-            exp_level_cost,
-            enchantments_to_add.clone(),
-        );
-        server.plugin_manager.fire_blocking(&server, &mut event);
-        if event.cancelled {
-            return true;
-        }
-        *enchantments_to_add = event.enchantments_to_add;
-        false
-    }
-
-    fn fire_player_enchant_item_event(
-        &self,
-        enchanted_item: &mut ItemStack,
-        enchantments: &[(&'static pumpkin_data::Enchantment, i32)],
-    ) {
-        crate::plugin::container_events::fire_player_enchant_item(
-            self,
-            enchanted_item,
-            enchantments,
-        );
-    }
-
     fn close_screen_handler(&self) {
         self.close_handled_screen();
     }
@@ -8135,6 +8046,10 @@ impl InventoryPlayer for Player {
             }
             world.sync_world_event(pumpkin_data::world::WorldEvent::SoundGrindstoneUsed, pos, 0);
         }
+    }
+
+    fn listens_to_grindstone_take(&self) -> bool {
+        crate::plugin::container_events::listens_to_grindstone_take(self)
     }
 }
 

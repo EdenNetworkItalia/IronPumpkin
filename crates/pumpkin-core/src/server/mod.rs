@@ -403,6 +403,8 @@ impl Server {
             std::process::exit(1);
         }
 
+        crate::plugin::startup::fire_about_to_start(&server).await;
+
         let mut worlds_vec = Vec::new();
         for dim in &server.dimensions {
             info!(

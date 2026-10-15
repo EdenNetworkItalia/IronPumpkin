@@ -49,7 +49,7 @@ The tick events are counted and only the first `ServerTickEvent.Pre` and the fir
 | `FMLLoadCompleteEvent` | mod | none | `NativeMod::load_complete` |
 | `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | not yet: the network task (2.11 in `tasks.md`) |
 | `ModConfigEvent.Loading` | mod | `type`, `file_name`, the value `enabled` of the probe's synced config | `NativeMod::config_loading` |
-| `ServerAboutToStartEvent` | game | none | not yet: Pumpkin has no event for it, and the event bus core task (#102) lists it as planned |
+| `ServerAboutToStartEvent` | game | none | `ServerAboutToStartEvent` |
 | `ServerStartingEvent` | game | none | `ServerStartingEvent` |
 | `ServerStartedEvent` | game | none | `ServerLoadEvent` with `LoadType::Startup` |
 | `ServerTickEvent.Pre` | game | none | `ServerTickStartEvent` |
@@ -69,21 +69,20 @@ recorded again.
 
 `captures/ironpumpkin/diff.txt` is the input for the event tasks:
 
-- IronPumpkin fires 13 of the 16 events of the Java trace, in the order of NeoForge and with the
+- IronPumpkin fires 14 of the 16 events of the Java trace, in the order of NeoForge and with the
   same fields: `FMLConstructModEvent`, the three `RegisterEvent` lines (`minecraft:block`,
   `minecraft:entity_type`, `minecraft:item`), `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
-  `ModConfigEvent.Loading`, `ServerStartingEvent`, `ServerStartedEvent`, `ServerTickEvent.Pre`,
-  `ServerTickEvent.Post`, `ServerStoppingEvent` and `ServerStoppedEvent`. The diff has no `moved`
-  and no `fields` line.
-- The other 3 events are `missing`: `RegisterPayloadHandlersEvent` and
-  `RegisterConfigurationTasksEvent` (the network task, 2.11 in `tasks.md`), and
-  `ServerAboutToStartEvent`, which has no Pumpkin event yet.
+  `ModConfigEvent.Loading`, `ServerAboutToStartEvent`, `ServerStartingEvent`, `ServerStartedEvent`,
+  `ServerTickEvent.Pre`, `ServerTickEvent.Post`, `ServerStoppingEvent` and `ServerStoppedEvent`.
+  The diff has no `moved` and no `fields` line.
+- The other 2 events are `missing`: `RegisterPayloadHandlersEvent` and
+  `RegisterConfigurationTasksEvent` (the network task, 2.11 in `tasks.md`).
 
 On NeoForge 26.3.0.64-beta, `ModConfigEvent.Loading` of a `SYNCED` config fires at startup,
 after `RegisterPayloadHandlersEvent` and before `ServerAboutToStartEvent`, and
 `RegisterConfigurationTasksEvent` fires once per connection, after the channel negotiation.
-IronPumpkin loads the synced configs after `load_complete` and before `ServerStartingEvent`, so
-the loading event has the same place relative to the events that both servers fire.
+IronPumpkin loads the synced configs after `load_complete` and before `ServerAboutToStartEvent`,
+so the loading event has the same place relative to the events that both servers fire.
 
 Two recordings of the IronPumpkin trace, each from an empty server directory, are byte-identical.
 

@@ -66,9 +66,10 @@ use pumpkin_core::{
         BoxFuture, Cancellable, EventHandler, EventPriority, ParentEventHandler, Payload,
         PluginManager, PluginMetadata,
         block::brewing_start::BrewingStartEvent,
-        enchantment::{PlayerEnchantItemEvent, PrepareItemEnchantEvent},
+        enchantment::{EnchantItemEvent, PlayerEnchantItemEvent, PrepareItemEnchantEvent},
         inventory::{
-            brew::BrewEvent, prepare_anvil::PrepareAnvilEvent,
+            brew::BrewEvent, grindstone_take::GrindstoneEventOnTakeItem,
+            potion_brew_post::PotionBrewEventPost, prepare_anvil::PrepareAnvilEvent,
             prepare_grindstone::PrepareGrindstoneEvent,
         },
         player::{
@@ -89,6 +90,7 @@ use pumpkin_data::{
     item::Item,
     item_stack::ItemStack,
     potion::Potion,
+    screen::WindowType,
     statistic::{CustomStatistic, StatisticCategory},
 };
 use pumpkin_inventory::{
@@ -99,9 +101,11 @@ use pumpkin_inventory::{
 };
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
-    java::server::play::{SChatMessage, SClickSlot, SRenameItem, SlotActionType},
+    java::server::play::{
+        SChatMessage, SClickSlot, SContainerButtonClick, SRenameItem, SlotActionType,
+    },
 };
-use pumpkin_util::{GameMode, math::position::BlockPos, math::vector3::Vector3};
+use pumpkin_util::{math::position::BlockPos, math::vector3::Vector3};
 
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -888,7 +892,8 @@ fn one_event_per_fire_site_stat_award_event() {
     let _serial = support::serial();
     let player = support::player("Jumper");
     let cancel = Arc::new(AtomicBool::new(false));
-    let cancel_flag = cancel.clone();
+    let seen = log();
+    let (cancel_flag, seen_by_handler) = (cancel.clone(), seen.clone());
     support::server()
         .plugin_manager
         .register_with::<PlayerStatisticIncrementEvent, _>(
@@ -896,31 +901,55 @@ fn one_event_per_fire_site_stat_award_event() {
                 if event.player.gameprofile.name != "Jumper" {
                     return;
                 }
+                push(
+                    &seen_by_handler,
+                    format!("{} {} {}", event.stat, event.amount, event.value),
+                );
                 if cancel_flag.load(Ordering::Relaxed) {
                     event.set_cancelled(true);
                     return;
                 }
                 assert_eq!(event.category, StatisticCategory::Custom);
-                assert_eq!(event.stat, CustomStatistic::Jump as i32);
-                event.stat = CustomStatistic::EnchantItem as i32;
-                event.amount = 5;
+                if event.stat == CustomStatistic::Jump as i32 {
+                    // The total goes to the stat the handler names.
+                    event.stat = CustomStatistic::EnchantItem as i32;
+                    event.value = 5;
+                }
             }),
             EventPriority::Normal,
             true,
             false,
         );
-
-    player.increment_stat(StatisticCategory::Custom, CustomStatistic::Jump as i32, 1);
-    assert_eq!(
-        player.get_stat(StatisticCategory::Custom, CustomStatistic::Jump as i32),
-        0
-    );
+    let jump = CustomStatistic::Jump as i32;
     let enchanted = CustomStatistic::EnchantItem as i32;
+    let rest = CustomStatistic::TimeSinceRest as i32;
+
+    player.increment_stat(StatisticCategory::Custom, jump, 1);
+    assert_eq!(player.get_stat(StatisticCategory::Custom, jump), 0);
     assert_eq!(player.get_stat(StatisticCategory::Custom, enchanted), 5);
+
+    // `set_stat` fires with the new total, as `StatsCounter.setValue`, and a reset to 0 too.
+    player.set_stat(StatisticCategory::Custom, rest, 40);
+    player.increment_stat(StatisticCategory::Custom, rest, 2);
+    player.set_stat(StatisticCategory::Custom, rest, 0);
+    assert_eq!(player.get_stat(StatisticCategory::Custom, rest), 0);
 
     cancel.store(true, Ordering::Relaxed);
     player.increment_stat(StatisticCategory::Custom, enchanted, 1);
+    player.set_stat(StatisticCategory::Custom, enchanted, 0);
     assert_eq!(player.get_stat(StatisticCategory::Custom, enchanted), 5);
+
+    assert_eq!(
+        entries(&seen),
+        [
+            format!("{jump} 1 1"),
+            format!("{rest} 40 40"),
+            format!("{rest} 2 42"),
+            format!("{rest} -42 0"),
+            format!("{enchanted} 1 6"),
+            format!("{enchanted} -5 0"),
+        ]
+    );
 }
 
 #[test]
@@ -1059,11 +1088,63 @@ fn one_event_per_fire_site_potion_brew_event_pre() {
     assert_eq!(potion(&items[0]), water);
 }
 
+/// The window type of the open screen of `player`. It locks the screen handler, so a handler of
+/// an event that fires under that lock deadlocks here.
+fn open_window(player: &Player) -> Option<WindowType> {
+    let screen = player.current_screen_handler.lock().unwrap().clone();
+    screen.lock().unwrap().window_type()
+}
+
+/// Opens an enchanting table for `player` with `item` on the cursor, `lapis` lapis lazuli in
+/// slot 1 and 15 bookshelves.
+fn enchanting_table(
+    player: &Arc<Player>,
+    item: ItemStack,
+    lapis: u8,
+) -> (Arc<Mutex<EnchantingTableScreenHandler>>, Arc<dyn Inventory>) {
+    let inventory: Arc<dyn Inventory> = Arc::new(SimpleInventory::new(2));
+    inventory.set_stack(1, ItemStack::new(lapis, &Item::LAPIS_LAZULI));
+    let table = open(
+        player,
+        EnchantingTableScreenHandler::new(1, &player.inventory, &inventory, 42, 15),
+    );
+    *table
+        .lock()
+        .unwrap()
+        .get_behaviour()
+        .cursor_stack
+        .lock()
+        .unwrap() = item;
+    (table, inventory)
+}
+
+/// Clicks enchantment row `row` of the open screen (sync id 1) of `player`.
+fn enchant(player: &Arc<Player>, row: i32) {
+    finish_within(player, move |player| {
+        player.on_container_button_click(&SContainerButtonClick {
+            window_id: VarInt(1),
+            button_id: VarInt(row),
+        });
+    });
+}
+
+/// The first stack of `item` in the player inventory of `player`.
+fn held(player: &Player, item: &Item) -> Option<ItemStack> {
+    (0..36)
+        .map(|slot| player.inventory.get_stack(slot))
+        .find(|stack| stack.item == item)
+}
+
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "a handler per enchanting event and the flow through the table"
+)]
 fn one_event_per_fire_site_enchantment_events() {
     let _serial = support::serial();
     let player = support::player("Enchanter");
-    player.gamemode.store(GameMode::Creative);
+    // Row 2 needs at most 31 levels with 15 bookshelves.
+    player.experience_level.store(40, Ordering::Relaxed);
     let table_at = BlockPos::new(24, 64, 24);
     player.open_container_pos.store(Some(table_at));
     let original = Arc::new(Mutex::new([0; 3]));
@@ -1081,6 +1162,7 @@ fn one_event_per_fire_site_enchantment_events() {
             );
             assert_eq!(event.bookshelf_count, 15);
             assert_eq!(event.pos, table_at);
+            assert_eq!(open_window(&event.player), Some(WindowType::Enchantment));
             *original_by_handler.lock().unwrap() = event.original_level_requirements();
             event.level_requirements[0] = 1;
         }),
@@ -1106,12 +1188,32 @@ fn one_event_per_fire_site_enchantment_events() {
         true,
         false,
     );
+    let seen_by_enchant = seen.clone();
+    manager.register_with::<EnchantItemEvent, _>(
+        blocking(move |event: &mut EnchantItemEvent| {
+            if event.player.gameprofile.name != "Enchanter" {
+                return;
+            }
+            assert_eq!(open_window(&event.player), Some(WindowType::Enchantment));
+            push(
+                &seen_by_enchant,
+                format!(
+                    "enchant {} row {}",
+                    event.item.item.registry_key, event.option
+                ),
+            );
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
     let applied_by_handler = seen.clone();
     manager.register_with::<PlayerEnchantItemEvent, _>(
         blocking(move |event: &mut PlayerEnchantItemEvent| {
             if event.player.gameprofile.name != "Enchanter" {
                 return;
             }
+            assert_eq!(open_window(&event.player), Some(WindowType::Enchantment));
             for &(enchantment, level) in &event.enchantments {
                 assert_eq!(
                     event.enchanted_item.get_enchantment_level(enchantment),
@@ -1126,7 +1228,7 @@ fn one_event_per_fire_site_enchantment_events() {
                     !event.enchantments.is_empty()
                 ),
             );
-            // The event carries the live stack: the table keeps this change.
+            // The event carries the item of the table: the table keeps this change.
             event
                 .enchanted_item
                 .add_enchantment(&Enchantment::MENDING, 1);
@@ -1136,26 +1238,281 @@ fn one_event_per_fire_site_enchantment_events() {
         false,
     );
 
-    let inventory: Arc<dyn Inventory> = Arc::new(SimpleInventory::new(2));
-    inventory.set_stack(0, ItemStack::new(1, &Item::DIAMOND_SWORD));
-    inventory.set_stack(1, ItemStack::new(3, &Item::LAPIS_LAZULI));
-    let mut table = EnchantingTableScreenHandler::new(1, &player.inventory, &inventory, 42, 15);
-    table.update_enchantments(player.as_ref());
-
+    // Putting the sword into the table updates the rows.
+    let (table, inventory) = enchanting_table(&player, ItemStack::new(1, &Item::DIAMOND_SWORD), 3);
+    click(&player, 0);
     let vanilla = *original.lock().unwrap();
     assert!(vanilla[0] > 1 && vanilla[2] > 1, "{vanilla:?}");
-    assert_eq!(table.level_requirements, [1, vanilla[1], vanilla[2]]);
+    assert_eq!(
+        table.lock().unwrap().level_requirements,
+        [1, vanilla[1], vanilla[2]]
+    );
 
-    assert!(table.on_button_click(player.as_ref(), 2));
+    enchant(&player, 2);
     let enchanted = inventory.get_stack(0);
     assert!(enchanted.has_enchantments());
     assert_eq!(enchanted.get_enchantment_level(&Enchantment::MENDING), 1);
+    // Row 2 costs 3 levels and 3 lapis lazuli.
+    assert!(inventory.get_stack(1).is_empty());
+    assert_eq!(player.experience_level.load(Ordering::Relaxed), 37);
     player.open_container_pos.store(None);
     assert_eq!(
         entries(&seen),
         [
             format!("later 1 {vanilla:?}"),
-            "enchanted diamond_sword true".to_owned()
+            "enchant diamond_sword row 2".to_owned(),
+            "enchanted diamond_sword true".to_owned(),
+        ]
+    );
+}
+
+#[test]
+fn enchanting_events_handler_closes_the_screen() {
+    let _serial = support::serial();
+    let manager = &support::server().plugin_manager;
+    let close = |player: &Arc<Player>, name: &str| {
+        if player.gameprofile.name == name {
+            // It locks the screen handler of the player: the event fires outside that lock.
+            player.close_handled_screen();
+        }
+    };
+    manager.register_with::<PrepareItemEnchantEvent, _>(
+        blocking(move |event: &mut PrepareItemEnchantEvent| {
+            if event.player.gameprofile.name == "LevelCloser" {
+                close(&event.player, "LevelCloser");
+                event.level_requirements = [1; 3];
+            }
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    manager.register_with::<EnchantItemEvent, _>(
+        blocking(move |event: &mut EnchantItemEvent| close(&event.player, "EnchantCloser")),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    manager.register_with::<PlayerEnchantItemEvent, _>(
+        blocking(move |event: &mut PlayerEnchantItemEvent| {
+            close(&event.player, "AppliedCloser");
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    let player_screen = |player: &Arc<Player>| {
+        let current = player.current_screen_handler.lock().unwrap().clone();
+        let inventory_screen: Arc<Mutex<dyn ScreenHandler>> = player.player_screen_handler.clone();
+        Arc::ptr_eq(&current, &inventory_screen)
+    };
+
+    // The table closed during the level event: it gave the sword back and keeps no rows.
+    let player = support::player("LevelCloser");
+    let (table, inventory) = enchanting_table(&player, ItemStack::new(1, &Item::DIAMOND_SWORD), 3);
+    click(&player, 0);
+    assert!(inventory.get_stack(0).is_empty());
+    assert_ne!(table.lock().unwrap().level_requirements, [1; 3]);
+    assert!(held(&player, &Item::DIAMOND_SWORD).is_some_and(|sword| !sword.has_enchantments()));
+    assert!(player_screen(&player));
+
+    // The table closed before the enchantments apply: nothing is enchanted or paid.
+    for (name, enchanted, levels) in [("EnchantCloser", false, 40), ("AppliedCloser", true, 37)] {
+        let player = support::player(name);
+        player.experience_level.store(40, Ordering::Relaxed);
+        let (table, inventory) =
+            enchanting_table(&player, ItemStack::new(1, &Item::DIAMOND_SWORD), 3);
+        click(&player, 0);
+        let rows = table.lock().unwrap().level_requirements;
+        assert!(rows[2] > 0, "{rows:?}");
+        enchant(&player, 2);
+        assert!(inventory.get_stack(0).is_empty(), "{name}");
+        assert!(player_screen(&player), "{name}");
+        let sword = held(&player, &Item::DIAMOND_SWORD).unwrap();
+        assert_eq!(sword.has_enchantments(), enchanted, "{name}");
+        assert_eq!(
+            player.experience_level.load(Ordering::Relaxed),
+            levels,
+            "{name}"
+        );
+    }
+}
+
+/// Opens a grindstone for `player` with an enchanted sword in the top slot and a vanilla result.
+fn grindstone_with_result(
+    player: &Arc<Player>,
+    pos: BlockPos,
+) -> (Arc<Mutex<GrindstoneScreenHandler>>, Arc<SimpleInventory>) {
+    player.open_container_pos.store(Some(pos));
+    let (handler, inventory) = grindstone(player);
+    // A click on the empty result slot updates the result.
+    click(player, 2);
+    assert_eq!(inventory.get_stack(2).item, &Item::IRON_SWORD);
+    (handler, inventory)
+}
+
+#[test]
+fn one_event_per_fire_site_grindstone_event_on_take_item() {
+    let _serial = support::serial();
+    let player = support::player("Taker");
+    let mode = Arc::new(AtomicUsize::new(0));
+    let seen = log();
+    let (handler_mode, seen_by_handler) = (mode.clone(), seen.clone());
+    support::server()
+        .plugin_manager
+        .register_with::<GrindstoneEventOnTakeItem, _>(
+            blocking(move |event: &mut GrindstoneEventOnTakeItem| {
+                if event.player.gameprofile.name != "Taker" {
+                    return;
+                }
+                push(
+                    &seen_by_handler,
+                    format!(
+                        "{} {} {} {:?}",
+                        event.top.item.registry_key,
+                        event.bottom.is_empty(),
+                        event.xp > 0,
+                        open_window(&event.player),
+                    ),
+                );
+                match handler_mode.load(Ordering::Relaxed) {
+                    1 => {
+                        event.xp = 5;
+                        event.new_top = ItemStack::new(1, &Item::STICK);
+                    }
+                    2 => event.set_cancelled(true),
+                    3 => {
+                        event.new_top = ItemStack::new(1, &Item::STICK);
+                        event.player.close_handled_screen();
+                    }
+                    _ => {}
+                }
+            }),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+
+    // No change: the vanilla experience, and the inputs are consumed.
+    let vanilla_at = BlockPos::new(56, 100, 56);
+    let (_handler, inventory) = grindstone_with_result(&player, vanilla_at);
+    click(&player, 2);
+    assert!(orbs_at(vanilla_at) > 0);
+    assert!(inventory.get_stack(0).is_empty());
+
+    // 5 experience (orbs of 3, 1 and 1) and a new top input.
+    mode.store(1, Ordering::Relaxed);
+    let changed_at = BlockPos::new(64, 100, 64);
+    let (_handler, inventory) = grindstone_with_result(&player, changed_at);
+    click(&player, 2);
+    assert_eq!(orbs_at(changed_at), 3);
+    assert_eq!(inventory.get_stack(0).item, &Item::STICK);
+
+    // Cancelled: no experience, the inputs stay, and the result stays empty.
+    mode.store(2, Ordering::Relaxed);
+    let cancelled_at = BlockPos::new(72, 100, 72);
+    let (handler, inventory) = grindstone_with_result(&player, cancelled_at);
+    click(&player, 2);
+    assert_eq!(orbs_at(cancelled_at), 0);
+    assert_eq!(inventory.get_stack(0).item, &Item::IRON_SWORD);
+    assert!(inventory.get_stack(0).has_enchantments());
+    assert!(inventory.get_stack(2).is_empty());
+    let cursor = handler
+        .lock()
+        .unwrap()
+        .get_behaviour()
+        .cursor_stack
+        .lock()
+        .unwrap()
+        .clone();
+    assert_eq!(cursor.item, &Item::IRON_SWORD);
+    assert!(!cursor.has_enchantments());
+
+    // The grindstone closed during the event: the new top input goes to the player.
+    mode.store(3, Ordering::Relaxed);
+    let closed_at = BlockPos::new(80, 100, 80);
+    let (_handler, inventory) = grindstone_with_result(&player, closed_at);
+    click(&player, 2);
+    assert!(inventory.get_stack(0).is_empty());
+    assert!(held(&player, &Item::STICK).is_some());
+    player.open_container_pos.store(None);
+
+    assert_eq!(entries(&seen), ["iron_sword true true Some(Grindstone)"; 4]);
+}
+
+#[test]
+fn one_event_per_fire_site_potion_brew_event_post() {
+    let _serial = support::serial();
+    let manager = &support::server().plugin_manager;
+    let brewed = BlockPos::new(32, 64, 32);
+    let cancelled = BlockPos::new(36, 64, 36);
+    let positions = [brewed, cancelled];
+    manager.register_with::<BrewingStartEvent, _>(
+        blocking(move |event: &mut BrewingStartEvent| {
+            if positions.contains(&event.block_pos) {
+                event.brewing_time = 1;
+            }
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    manager.register_with::<BrewEvent, _>(
+        blocking(move |event: &mut BrewEvent| {
+            if event.block_pos == cancelled {
+                event.stacks[2] = ItemStack::new(1, &Item::DIAMOND);
+                event.set_cancelled(true);
+            }
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    manager.register_with::<PotionBrewEventPost, _>(
+        blocking(move |event: &mut PotionBrewEventPost| {
+            if !positions.contains(&event.block_pos) {
+                return;
+            }
+            push(
+                &seen_by_handler,
+                format!(
+                    "post {} {} ingredient {}",
+                    event.stacks[0].item.registry_key,
+                    event.stacks[2].item.registry_key,
+                    !event.stacks[3].is_empty(),
+                ),
+            );
+            // `NeoForge` hands out the live stacks: the stand takes this change.
+            event.stacks[1] = ItemStack::new(1, &Item::GLASS_BOTTLE);
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    let potion = |stack: &ItemStack| {
+        stack
+            .get_data_component::<PotionContentsImpl>()
+            .and_then(|contents| contents.potion_id)
+    };
+
+    // The vanilla brew: the event sees the brewed bottles and the consumed ingredient.
+    let items = brew(&brewing_stand(brewed));
+    assert_eq!(potion(&items[0]), Some(i32::from(Potion::AWKWARD.id)));
+    assert_eq!(items[1].item, &Item::GLASS_BOTTLE);
+
+    // A cancelled `PotionBrewEvent.Pre`: the event sees the stacks of the Pre handler.
+    let items = brew(&brewing_stand(cancelled));
+    assert_eq!(potion(&items[0]), Some(i32::from(Potion::WATER.id)));
+    assert_eq!(items[1].item, &Item::GLASS_BOTTLE);
+    assert_eq!(items[2].item, &Item::DIAMOND);
+
+    assert_eq!(
+        entries(&seen),
+        [
+            "post potion air ingredient false",
+            "post potion diamond ingredient true"
         ]
     );
 }

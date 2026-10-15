@@ -24,8 +24,8 @@ use ironpumpkin_mods::{
         BoxFuture, EventHandler, EventPriority, Payload,
         registries::RegisterEvent,
         server::{
-            LoadType, ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent,
-            ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
+            LoadType, ServerAboutToStartEvent, ServerLoadEvent, ServerStartingEvent,
+            ServerStoppedEvent, ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
         },
     },
     register_mod,
@@ -137,6 +137,7 @@ impl NativeMod for ParityProbe {
             false,
             false,
         );
+        trace_first::<ServerAboutToStartEvent>(cx, "ServerAboutToStartEvent");
         trace_first::<ServerStartingEvent>(cx, "ServerStartingEvent");
         trace_first::<ServerTickStartEvent>(cx, "ServerTickEvent.Pre");
         trace_first::<ServerTickEndEvent>(cx, "ServerTickEvent.Post");

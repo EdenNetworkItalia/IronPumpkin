@@ -1,4 +1,3 @@
 missing  reference #6 RegisterPayloadHandlersEvent {}
-missing  reference #8 ServerAboutToStartEvent {}
 missing  reference #13 RegisterConfigurationTasksEvent {"connection_type":"NEOFORGE","ping_channel":true}
-3 differences (missing 3)
+2 differences (missing 2)

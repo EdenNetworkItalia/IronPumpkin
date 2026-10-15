@@ -101,10 +101,17 @@ pub(crate) fn insert_handler(
     });
 }
 
+// The guard in front of every fire site: with many fire sites LLVM stops inlining it (and an
+// iterator chain inside it), and the out-of-line call costs ~0.7 ns per fire with no handler
+// (`event_dispatch` bench).
+#[expect(
+    clippy::inline_always,
+    reason = "the no-handler guard must stay a few instructions at every fire site"
+)]
+#[inline(always)]
 pub(crate) fn has_handlers_in(map: &HandlerMap, event_name: &str, parent_names: &[&str]) -> bool {
-    std::iter::once(event_name)
-        .chain(parent_names.iter().copied())
-        .any(|name| map.get(name).is_some_and(|handlers| !handlers.is_empty()))
+    let listens = |name: &str| map.get(name).is_some_and(|handlers| !handlers.is_empty());
+    listens(event_name) || parent_names.iter().any(|name| listens(name))
 }
 
 /// The handlers of an event and of its parents in dispatch order. Inside one rank the handlers
