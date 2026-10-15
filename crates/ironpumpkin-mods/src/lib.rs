@@ -133,8 +133,7 @@ type Registration = Box<dyn FnOnce(&Context)>;
 /// phase, as it does for a mod id conflict. A mod can still read the `Result` to log more detail
 /// or to skip the rest of its content, but it cannot make the server start without that content.
 ///
-/// It passes `pumpkin-core` types through until the native API lands: the stable boundary for
-/// mods is `ironpumpkin-neo`, not this crate.
+/// This crate is the native API for mods. It passes `pumpkin-core` types through.
 pub struct ModInit {
     id: &'static str,
     data_root: PathBuf,

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets mods declare NeoForge data maps, attach JSON values to registry entries through data packs, and read them back, with merging, removal and client sync.
+Lets mods declare data maps with the behaviour of NeoForge data maps, as the `data-maps` module of `ironpumpkin-mods`, attach JSON values to registry entries through data packs, and read them back, with merging, removal and client sync.
 
 ## ADDED Requirements
 
@@ -35,11 +35,11 @@ An entry that targets a tag SHALL apply to every member of the tag, unless the m
 - **THEN** every block in `c:ores` gets the value
 
 ### Requirement: Updated event
-After each load the host SHALL post `DataMapsUpdatedEvent` with cause `server-reload` for every registry that has data maps. Status: planned (task 2.17).
+After each load the host SHALL fire the Pumpkin event `DataMapsUpdatedEvent` with cause `server-reload` for every registry that has data maps. Status: planned (task 2.17).
 
 #### Scenario: Reload
 - **WHEN** an operator runs `/reload`
-- **THEN** listeners of `data-maps-updated-event` run with cause `server-reload`
+- **THEN** handlers of `DataMapsUpdatedEvent` run with cause `server-reload`
 
 ### Requirement: Backing phase
 Until M5 (Modded gameplay parity) adds the loader, registration SHALL succeed and lookups SHALL return none. Status: planned (task 2.17).

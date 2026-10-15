@@ -1,6 +1,6 @@
 # FTB StoneBlock 4 usage of NeoForge and Minecraft classes
 
-This document lists the NeoForge, Minecraft and Mojang API that the 414 mods of the FTB StoneBlock 4 modpack reference, aggregated across mods. It is the second benchmark for the contract of the native API `ironpumpkin-neo`: the contract is checked against what a large pack needs, not against one mod. The single-mod scan of #35 is the first benchmark. The tracking issue is #46.
+This document lists the NeoForge, Minecraft and Mojang API that the 414 mods of the FTB StoneBlock 4 modpack reference, aggregated across mods. It is the second benchmark for the contract of the native API `ironpumpkin-mods`: the contract is checked against what a large pack needs, not against one mod. The single-mod scan of #35 is the first benchmark. The tracking issue is #46.
 
 Source: the Prism Launcher instance `FTB StoneBlock 4` (Minecraft 1.21.1, NeoForge 21.1.248), folder `.minecraft/mods`, 414 jars, 738 MB. The folder was only read. No jar was run, and no class was loaded: jars are read with `zipfile`, class files with a class file parser. The scan used bytecode only, as in #35. The sources of the mods were not read.
 
@@ -2105,7 +2105,7 @@ Per mod: only mods with at least one mixin class (259 rows). Server mixins are t
 
 ## 9. Mixin targets by method
 
-This section sizes the two primitives of the native mod channel (the NeoForge-shaped API and compile-time source patches) by the members of the mixin classes, not by the classes. Section 8 counts the mixin classes; this section reads every member of every mixin class and its target member.
+This section sizes the two primitives of the native mod channel (the native API and compile-time source patches) by the members of the mixin classes, not by the classes. Section 8 counts the mixin classes; this section reads every member of every mixin class and its target member.
 
 ### 9.1 Method
 
@@ -2129,7 +2129,7 @@ Intent of a member:
 
 The analysis groups the intents in four classes: accessor (accessor), hook (pre, post, cancel), call site (mid, value) and override (overwrite). The classes describe what the mixin does. The two primitives of the native channel serve them as follows:
 
-- **accessor**: a source patch, or the NeoForge-shaped API when it exposes the field or method.
+- **accessor**: a source patch, or the native API when it exposes the field or method.
 - **hook**: a NeoForge event when one fires on that method, otherwise a source patch.
 - **call site**: a source patch.
 - **override**: a source patch.
@@ -2554,7 +2554,7 @@ The other 366 classes of the long tail have one mod each (735 members). By packa
 
 ### 9.5 Intent classes per target member
 
-For each target member of section 9.4: the members in each intent class (section 9.1), and the strongest class. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow`; a source patch serves it, or the NeoForge-shaped API when it exposes the field or method. **Hook**: pre, post and cancel, at the start or the end of the method; a NeoForge event serves it when one fires on that method, otherwise a source patch. **Call site**: value modifiers and mid-method injections, at an identified call, field access or constant inside the method; a source patch serves it. **Sites** is the number of distinct `@At` points. **Override**: `@Overwrite`, a whole-method override; a source patch serves it. **Strongest** is the strongest class of the members of the target member, in the order accessor, hook, call site, override. A target member whose strongest class is call site or override needs a source patch.
+For each target member of section 9.4: the members in each intent class (section 9.1), and the strongest class. **Accessor**: `@Accessor`, `@Invoker`, `@Shadow`; a source patch serves it, or the native API when it exposes the field or method. **Hook**: pre, post and cancel, at the start or the end of the method; a NeoForge event serves it when one fires on that method, otherwise a source patch. **Call site**: value modifiers and mid-method injections, at an identified call, field access or constant inside the method; a source patch serves it. **Sites** is the number of distinct `@At` points. **Override**: `@Overwrite`, a whole-method override; a source patch serves it. **Strongest** is the strongest class of the members of the target member, in the order accessor, hook, call site, override. A target member whose strongest class is call site or override needs a source patch.
 
 | # | Target member | Mods | Accessor | Hook | Call site | Sites | Override | Strongest |
 |--:|:--|--:|--:|--:|--:|--:|--:|:--|
@@ -2828,7 +2828,7 @@ The 25 most targeted classes of other mods, by mods, then by members:
 ### 9.7 Findings
 
 - **Demand is flat.** The most targeted member, `RecipeManager.apply`, has 11 mods. 16 target members have 5 or more mods (section 9.4). 2674 members in 157 mods target 1931 members of 519 vanilla classes. The 200 most targeted members cover 26% of the members and 11% of the mods, and 21% of the mods when accessors are left out (section 9.3). No small set of patched methods ports the pack: with the best order, half of the mods need 97 target members of members that are not accessors, 80% need 329, and all mods need 1120.
-- **Accessors are the largest intent class.** 1086 of the 2674 members (41%) are `@Shadow`, `@Accessor` or `@Invoker`. A source patch that opens the field or method serves them, or the NeoForge-shaped API when it exposes the field or method.
+- **Accessors are the largest intent class.** 1086 of the 2674 members (41%) are `@Shadow`, `@Accessor` or `@Invoker`. A source patch that opens the field or method serves them, or the native API when it exposes the field or method.
 - **Most hooks sit at the start or the end of a method.** Of the 1588 members that are not accessors, 1042 (66%) act at the start or the end of the target method: pre 157, post 282, cancel at `HEAD` 331, cancel at `RETURN` or `TAIL` 144, `@WrapMethod` 26, `@ModifyReturnValue` 102. A NeoForge event that fires at that point, with cancel and a replaceable result, serves such a member. Where no event fires, a source patch serves it.
 - **Call-site members need source patches.** 525 members that are not accessors (33%) act inside the method body: value modifiers other than `@ModifyReturnValue` 343, mid-method injections 123, cancellable injections at an inner point 59. Each needs a source patch at an identified call, field access, constant or local variable in the server source. The points seldom repeat: 520 of the 554 distinct call-site points have one member (section 9.5).
 - **Whole-method overrides are rare.** 21 members (1%) are `@Overwrite`, 13 of them in the performance mods `modernfix` (10) and `ferritecore` (3). The classes that #51 lists have no `@Overwrite` and at most one `@Redirect` each: `RecipeManager` has 25 members that are not accessors, with 0 `@Overwrite` and 1 `@Redirect`; `LootTable`, `LootPool` and `PotionBrewing` are mostly accessors; `BaseSpawner` has 4 hooks at inner points of `serverTick`. NeoForge events and source patches serve their members. The classes whose members are mostly `@Overwrite` or `@Redirect` (`ServerChunkCache`, `StateHolder`, `PalettedContainer`, `BlockBehaviour$BlockStateBase$Cache`, `Biome`) are engine internals that `servercore`, `ferritecore` and `modernfix` replace for speed. They have no counterpart in a Rust server. `Blocks` is the exception: `amendments`, `apothic_enchanting` and `apothic_spawners` redirect its static initializer to construct their own subclass in place of a vanilla block. Those members become a source patch, or a NeoForge API row where the inventory has one.
@@ -3162,7 +3162,7 @@ Members referenced by server-side or mixed classes (27584 distinct, client owner
 | `nbt.CompoundTag.getByte` | sig | 52 | (Ljava/lang/String;)B |
 | `server.level.ServerLevel.getDataStorage` | sig | 52 | ()Lnet/minecraft/world/level/storage/DimensionDataStorage; |
 
-## 11. Coverage against the `ironpumpkin-neo` contract
+## 11. Coverage against the `ironpumpkin-mods` contract
 
 The contract is `mapping-table.md`: 1299 rows, 883 from the inventory of design.md (#34) and 416 from the classes of the single-mod scan (#35). Each row is matched against the scan, so the **mods** column says how many of the 414 mods need the row. Rows name 26.3 items, the scan sees 21.1 names, so the matching is by simple class name and member name. The rules:
 

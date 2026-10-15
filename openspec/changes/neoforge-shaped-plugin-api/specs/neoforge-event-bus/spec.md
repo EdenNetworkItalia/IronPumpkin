@@ -2,108 +2,134 @@
 
 ## Purpose
 
-Lets a ported mod subscribe to NeoForge events by their NeoForge names on the mod bus and the game bus, with priorities, cancellation and results, backed by the Pumpkin events. Native mods, Wasm mods of the future projection and v0.2 plugins share one dispatch.
+Lets a ported mod handle the NeoForge events as Pumpkin events. Each event has the NeoForge name, fire site, fields, cancel rule and result rule. A mod registers handlers with `ModInit::register_event`, with an `EventPriority`, the blocking flag and cancellation. Native mods and v0.2 Wasm plugins share the one Pumpkin dispatch. The lifecycle events of NeoForge are methods of the `NativeMod` trait.
 
 ## ADDED Requirements
 
 ### Requirement: Concrete parents receive subclasses
-A listener on a concrete event class that has concrete subclasses SHALL also receive each subclass event, delivered as the subclass case, as NeoForge delivers it to a listener on the parent type. Status: planned (task 2.3).
+A mod that registers a handler for a concrete event class that has concrete subclasses SHALL also receive each subclass event, delivered as the subclass struct, as NeoForge delivers it to a listener on the parent type. A nested NeoForge class is one struct with the parent name as prefix. Status: planned (task 2.3).
 
-#### Scenario: Listener on a parent
-- **WHEN** a mod listens to `living-entity-use-item-event` and an entity starts using an item
-- **THEN** the listener receives a `living-entity-use-item-event-start` case
+#### Scenario: Handler on a parent
+- **WHEN** a mod registers a handler for `LivingEntityUseItemEvent` and an entity starts using an item
+- **THEN** the handler receives a `LivingEntityUseItemEventStart`
 
-### Requirement: Posting on the mod bus reaches the posting mod only
-`post` on `bus::game` SHALL run the listeners of every mod; `post` on `bus::mod` SHALL run only the listeners of the posting mod, because NeoForge has one mod bus per `ModContainer`. Status: planned (task 2.3).
+### Requirement: Lifecycle methods are called per mod
+The host SHALL call each lifecycle method of `NativeMod` on its own mod only, because NeoForge has one mod bus per `ModContainer`. A Pumpkin event that a mod fires or that the server fires SHALL reach the handlers of every mod. Status: planned (task 2.2).
 
-#### Scenario: Mod bus post
-- **WHEN** mod A posts an event on `bus::mod` and mods A and B both listen to that event type on their mod bus
-- **THEN** only mod A's listener runs
+#### Scenario: Lifecycle method of two mods
+- **WHEN** mods A and B both override the common setup method and the host runs the common setup step
+- **THEN** the host calls the method of A on mod A once and the method of B on mod B once
 
-### Requirement: Reentrant calls
-Calls that run mod code before they return (`post`, capability lookups and handle methods, `transaction.commit`, `attachment-holder.get-data`, `set-data` and `sync-data`, `register-config`, `mod-config.set`, `roll-loot-table`) SHALL run code of the calling mod while the call is on its stack. For a Wasm mod of the projection, the depth SHALL be limited to the reentry depth of 64 of `pumpkin-plugin-runtime`, and a deeper call SHALL fail. Status: planned (tasks 2.3 and 3.1).
+#### Scenario: Game event reaches every mod
+- **WHEN** mods A and B both register a handler for the same Pumpkin event and the server fires it
+- **THEN** both handlers run
 
-#### Scenario: Post from a listener
-- **WHEN** a listener of the calling mod runs during its own `post` call and reads its config
-- **THEN** both calls complete, provided the mod holds no lock of its own state across `post`
+### Requirement: Reentrant calls of Wasm plugins
+A call that runs Wasm plugin code before it returns SHALL be limited to the reentry depth of 64 of `pumpkin-plugin-runtime`, and a deeper call SHALL fail. This limit applies to Wasm plugins only. A native handler runs on the stack of the caller with no depth limit of its own, and a native mod SHALL NOT hold a lock across a fire. Status: planned (task 2.3).
 
-### Requirement: Listener registration
-`add-listener` SHALL register a listener for one event type on the bus that posts it, with one of the five NeoForge priorities and the `receiveCanceled` flag, and SHALL return a listener id. A listener on the wrong bus SHALL fail with `wrong-bus`. Status: planned (task 2.3).
+#### Scenario: Too deep a nesting in a Wasm plugin
+- **WHEN** a Wasm plugin nests calls that re-enter the plugin to a depth of 65
+- **THEN** the call at depth 65 fails
 
-#### Scenario: Wrong bus
-- **WHEN** a mod adds a listener for `fml-common-setup-event` on `bus::game`
-- **THEN** the call fails with `event-bus-error::wrong-bus`
+#### Scenario: Fire from a native handler
+- **WHEN** a native handler fires another event and reads its config, and the mod holds no lock of its own state across the fire
+- **THEN** both calls complete
+
+### Requirement: Handler registration
+`ModInit::register_event` SHALL register a handler for one event struct with one of the five `EventPriority` values (Highest, High, Normal, Low, Lowest), the blocking flag and the receive-canceled flag. A handler that did not set receive-canceled SHALL NOT be called for a cancelled event. Status: planned (task 2.3).
+
+#### Scenario: Receive canceled
+- **WHEN** two handlers for one cancellable event are registered, one with receive-canceled and one without, and an earlier handler cancels the event
+- **THEN** only the handler with receive-canceled runs
+
+### Requirement: Priority is honoured
+`PluginManager::fire_dyn` SHALL call the blocking handlers of an event in the order of their `EventPriority`, Highest first and Lowest last, with registration order inside one priority, and then the non-blocking handlers in the same order. Status: planned (task 2.3).
 
 #### Scenario: Priority order
-- **WHEN** two listeners for one event type have priorities `high` and `low`
-- **THEN** the host calls the `high` listener first
+- **WHEN** two blocking handlers for one event type have priorities `High` and `Low`
+- **THEN** the host calls the `High` handler first
+
+#### Scenario: Blocking before non-blocking
+- **WHEN** a non-blocking handler with priority `Highest` and a blocking handler with priority `Lowest` are registered for one event type
+- **THEN** the host calls the blocking handler first
+
+### Requirement: Handlers are synchronous
+A handler of a native mod SHALL be synchronous inside the async host of Pumpkin. A handler that needs a world call SHALL use `block_on(unconstrained(..))`, as `ModInit::register_service` does, and SHALL NOT hold a lock across a fire. Status: planned (task 2.3).
+
+#### Scenario: World call from a handler
+- **WHEN** a handler reads a block of the world while the server fires an event
+- **THEN** the call completes, and the dispatch continues with the next handler
 
 ### Requirement: Dispatch and write-back
-The host SHALL call each listener with the event, and SHALL apply the fields marked settable and `canceled` that the listener changed before the next listener and before the server acts. Status: planned (task 2.3).
+The host SHALL call each handler with the event by mutable reference, and SHALL act on the fields as the last handler left them. A change to a settable field or to `cancelled` SHALL be visible to the next handler and to the server code that fired the event. Status: planned (task 2.3).
 
 #### Scenario: Change a settable field
-- **WHEN** a `living-heal-event` listener returns `amount` 2.0 for a heal of 4.0
+- **WHEN** a `LivingHealEvent` handler sets `amount` to 2.0 for a heal of 4.0
 - **THEN** the entity heals 2.0
 
 ### Requirement: Cancellation
-A cancellable event SHALL carry `canceled`. When a listener returns it as true, the host SHALL skip later listeners that did not set `receive-canceled` and SHALL NOT perform the action the event describes. Status: planned (task 2.3).
+A cancellable event SHALL carry `cancelled` (the Pumpkin `Cancellable` trait). When a handler sets it, the host SHALL skip later handlers that did not set receive-canceled and SHALL NOT perform the action the event describes. Status: planned (task 2.3).
 
 #### Scenario: Cancel a block break
-- **WHEN** a `break-block-event` listener returns `canceled` true
-- **THEN** the block stays and no later listener without `receive-canceled` runs
+- **WHEN** a `BlockBreakEvent` handler (NeoForge `BreakBlockEvent`) sets `cancelled` to true
+- **THEN** the block stays and no later handler without receive-canceled runs
 
 ### Requirement: Results
-An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`tri-state`, `interaction-result` or the event's own result enum), and the host SHALL apply the returned value as NeoForge does. Status: planned (task 2.3).
+An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`TriState`, `InteractionResult` or the event's own result enum), and the host SHALL apply the set value as NeoForge does. Status: planned (task 2.3).
 
 #### Scenario: Deny a despawn
-- **WHEN** a `mob-despawn-event` listener returns `despawn-result` `deny`
+- **WHEN** a `MobDespawnEvent` handler sets the result to `Deny`
 - **THEN** the mob does not despawn
 
-### Requirement: Registration events carry a resource
-A mod bus event that hands the listener a registration API SHALL carry a resource of the interface that owns the API, and calls on that resource SHALL work only while the host dispatches the event. Status: planned (task 2.3).
+### Requirement: Registration handles work only during their call
+A lifecycle method of `NativeMod` that hands the mod a registration API SHALL pass a handle that works only during that call. A call on a handle that outlives the call SHALL fail with a `registration-closed` error. Status: planned (task 2.2).
 
 #### Scenario: Late call
-- **WHEN** a mod keeps the `register-capabilities-event` handle and calls it after the dispatch returned
+- **WHEN** a mod keeps the capability registration handle that the host passed to its capability registration method and calls it after the method returned
 - **THEN** the call fails with a `registration-closed` error
 
-### Requirement: Supported events fire from their Pumpkin event
-Each event whose row in `mapping-table.md` says supported SHALL fire from the Pumpkin event named in its inventory row once the event bus is implemented, and a test SHALL cover each one. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
+### Requirement: One event per fire site
+A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from the NeoForge fire site, with the NeoForge fields. Where Pumpkin has an event for that fire site, the row SHALL map to that event and the missing fields SHALL be added to it. A new struct with the NeoForge name SHALL exist only where Pumpkin has no event for that fire site. A test SHALL cover each supported row. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
 
 #### Scenario: Player login
-- **WHEN** a player joins and a mod listens to `player-event-player-logged-in-event`
-- **THEN** the listener runs once with that player
+- **WHEN** a player joins and a mod handles the Pumpkin event that the row of `PlayerEvent.PlayerLoggedInEvent` names
+- **THEN** the handler runs once with that player
+
+#### Scenario: Missing field added to a Pumpkin event
+- **WHEN** a NeoForge event has a field that the mapped Pumpkin event lacks
+- **THEN** the Pumpkin event carries the field, and no second struct for the same fire site exists
 
 ### Requirement: Every supported event reaches every mod
-Every event case that the host fires SHALL reach the listeners of every loaded native mod, with write-back of the settable fields and cancellation through `canceled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
+Every event case that the host fires SHALL reach the handlers of every loaded native mod, with write-back of the settable fields and cancellation through `cancelled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
 
 #### Scenario: A mod cancels the break of another mod's block
-- **WHEN** mod A registers the block `moda:ore` and places it, mod B listens to `break-block-event` and returns `canceled` true for that block, and a player breaks it
-- **THEN** the block stays, mod A's block drops nothing, and no later listener without `receive-canceled` runs
+- **WHEN** mod A registers the block `moda:ore` and places it, mod B handles `BlockBreakEvent` and cancels it for that block, and a player breaks it
+- **THEN** the block stays, mod A's block drops nothing, and no later handler without receive-canceled runs
 
 #### Scenario: One test per event family
-- **WHEN** the tests of an event family (server, tick and root package events; player events; level and block events; entity, living and item entity events) run a listener that changes a settable field, and one that cancels the event
-- **THEN** the server acts on the changed value, and skips the action of the canceled event
+- **WHEN** the tests of an event family (server, tick and root package events; player events; level and block events; entity, living and item entity events) run a handler that changes a settable field, and one that cancels the event
+- **THEN** the server acts on the changed value, and skips the action of the cancelled event
 
-### Requirement: Every supported event reaches Wasm plugins
-Every event case that the Wasm projection keeps SHALL reach the listeners of every loaded Wasm mod through the generated host adapter, with write-back and cancellation, and hot events only in batches. An event that reaches only native mods SHALL NOT count as supported by the projection. Each event family SHALL have a Wasm test for cancel and one for write-back. Status: planned (tasks 3.3, 3.12, 3.13 and 3.15).
+### Requirement: Wasm plugins see the same events
+Every event case that the host fires SHALL reach the handlers of every loaded v0.2 Wasm plugin that listens to it, through the existing Pumpkin event pipeline and the same dispatch as for native mods, with write-back and cancellation. Per-tick and per-entity events SHALL reach Wasm plugins only in batches or not at all, under the performance rules of the Wasm executor. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
 
-#### Scenario: A Wasm mod cancels the break of a native mod's block
-- **WHEN** native mod A registers the block `moda:ore` and places it, Wasm mod B listens to `break-block-event` and cancels it for that block, and a player breaks it
+#### Scenario: A Wasm plugin cancels the break of a native mod's block
+- **WHEN** native mod A registers the block `moda:ore` and places it, a Wasm plugin handles `BlockBreakEvent` and cancels it for that block, and a player breaks it
 - **THEN** the block stays, and mod A's block drops nothing
 
-### Requirement: One dispatch for native and Wasm listeners
-Native listeners and Wasm listeners of one event SHALL run in one dispatch, in one priority order, so that each sees the changes and the cancellation of the listeners before it. Status: planned (tasks 2.18 and 3.18).
+### Requirement: One dispatch for native and Wasm handlers
+Native handlers and Wasm handlers of one event SHALL run in the single dispatch of `PluginManager::fire_dyn`, in one priority order, so that each sees the changes and the cancellation of the handlers before it. Status: planned (tasks 2.3 and 2.18).
 
-#### Scenario: A native listener cancels, a Wasm listener observes
-- **WHEN** a native listener on `break-block-event` with priority `high` cancels a break, and a Wasm listener with `receive-canceled` and priority `normal` listens to the same event
-- **THEN** the Wasm listener gets the event canceled, and the block stays
+#### Scenario: A native handler cancels, a Wasm handler observes
+- **WHEN** a blocking native handler on `BlockBreakEvent` with priority `High` cancels a break, and a blocking Wasm handler with receive-canceled and priority `Normal` listens to the same event
+- **THEN** the Wasm handler gets the event cancelled, and the block stays
 
-#### Scenario: A Wasm listener cancels, a native listener observes
-- **WHEN** a Wasm listener with priority `high` cancels a `living-incoming-damage-event`, and a native listener with `receive-canceled` and priority `low` listens to it
-- **THEN** the native listener gets the event canceled, and the entity takes no damage
+#### Scenario: A Wasm handler cancels, a native handler observes
+- **WHEN** a blocking Wasm handler with priority `High` cancels a `LivingIncomingDamageEvent`, and a blocking native handler with receive-canceled and priority `Low` listens to it
+- **THEN** the native handler gets the event cancelled, and the entity takes no damage
 
 ### Requirement: One event pipeline
-A world mutation that a player or an entity causes through the API of a mod (an `ironpumpkin-neo` function, called from a listener or from other mod code, or a v0.2 import of a Wasm mod), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a listener cancels one, and SHALL reach v0.2 plugins and mods alike. Status: planned (tasks 2.4, 2.18, 3.4 and 3.18).
+A world mutation that a player or an entity causes through the API of a mod (a world mutator of `ironpumpkin-mods`, called from a handler or from other mod code, or a v0.2 import of a Wasm plugin), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a handler cancels one, and SHALL reach v0.2 plugins and mods alike. No API function SHALL skip that dispatch. Status: planned (tasks 2.4 and 2.18).
 
 #### Scenario: Every mutator is listed
 - **WHEN** a reviewer reads the `level-access` docs
@@ -111,18 +137,18 @@ A world mutation that a player or an entity causes through the API of a mod (an 
 
 #### Scenario: A projectile of a mod breaks a block
 - **WHEN** a player fires a mining laser projectile of mod A, the projectile calls `level-access.destroy-block` with itself as the breaker, and a v0.2 plugin cancels the Pumpkin `BlockBreakEvent`
-- **THEN** the block stays, and a neo listener of mod B on `break-block-event` with `receive-canceled` gets the same event, canceled, with the player that owns the projectile
+- **THEN** the block stays, and a handler of mod B on `BlockBreakEvent` with receive-canceled gets the same event, cancelled, with the player that owns the projectile
 
 #### Scenario: A plugin sees a mod spawn
-- **WHEN** a neo mod calls `level-access.spawn-entity` and a v0.2 plugin listens to the Pumpkin `EntitySpawnEvent`
+- **WHEN** a native mod calls `level-access.spawn-entity` and a v0.2 plugin listens to the Pumpkin `EntitySpawnEvent`
 - **THEN** the plugin receives the event before the entity joins the level, and cancelling it returns none to the mod
 
-#### Scenario: A v0.2 world call from a Wasm mod
-- **WHEN** a Wasm mod of the projection calls the v0.2 `world.spawn-entity` and a v0.2 plugin cancels the Pumpkin `EntitySpawnEvent`
+#### Scenario: A v0.2 world call from a Wasm plugin
+- **WHEN** a Wasm plugin calls the v0.2 `world.spawn-entity` and another v0.2 plugin cancels the Pumpkin `EntitySpawnEvent`
 - **THEN** no entity spawns, as for `level-access.spawn-entity` without a cause
 
-#### Scenario: A neo mod cancels, a plugin observes
-- **WHEN** a player breaks a block, a neo listener on `break-block-event` returns `canceled` true, and a v0.2 plugin listens to the Pumpkin `BlockBreakEvent` at a lower priority
+#### Scenario: A mod cancels, a plugin observes
+- **WHEN** a player breaks a block, a native handler on `BlockBreakEvent` with priority `High` sets `cancelled` to true, and a v0.2 plugin listens to the same event at a lower priority
 - **THEN** the plugin receives the event already cancelled, and the block stays
 
 #### Scenario: Internal machine state

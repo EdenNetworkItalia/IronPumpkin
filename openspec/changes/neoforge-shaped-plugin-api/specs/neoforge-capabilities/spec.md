@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets mods expose and look up item, fluid and energy handlers on blocks, entities and items through NeoForge capabilities, across mods and over Pumpkin inventories.
+Lets mods expose and look up item, fluid and energy handlers on blocks, entities and items with the behaviour of NeoForge capabilities, across mods and over Pumpkin inventories. It is the `capabilities` module of `ironpumpkin-mods`.
 
 ## ADDED Requirements
 
@@ -18,7 +18,7 @@ Lets mods expose and look up item, fluid and energy handlers on blocks, entities
 - **THEN** the call fails with `capability-error::type-mismatch`
 
 ### Requirement: Providers from mods
-A provider registered through `register-capabilities-event` SHALL answer lookups through the provider that the mod registered, and the handler it returns SHALL become a `capability-handle` whose calls reach that mod's handler. Status: planned (task 2.7).
+A provider registered through the capability registration handle (the `NativeMod` method that stands for `RegisterCapabilitiesEvent`) SHALL answer lookups through the provider that the mod registered, and the handler it returns SHALL become a `capability-handle` whose calls reach that mod's handler. Status: planned (task 2.7).
 
 #### Scenario: Mod block exposes items
 - **WHEN** another mod calls `get-capability` on a block whose mod registered an item provider
@@ -46,8 +46,8 @@ A `block-capability-cache` SHALL return the current handle and SHALL call the in
 - **THEN** the host calls `capability-invalidated` for its listener
 
 ### Requirement: Registration closes
-Calls on `register-capabilities-event` after its dispatch SHALL fail with `registration-closed`. Status: planned (task 2.7).
+Calls on the capability registration handle after the registration method returned SHALL fail with `registration-closed`. Status: planned (task 2.7).
 
 #### Scenario: Late provider
-- **WHEN** a mod registers a provider after the event returned
+- **WHEN** a mod registers a provider after the registration method returned
 - **THEN** the call fails with `capability-error::registration-closed`

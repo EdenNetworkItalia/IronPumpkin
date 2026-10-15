@@ -27,11 +27,13 @@ speed.
 
 A mod gets two primitives, and nothing else:
 
-- **The NeoForge-shaped API.** The planned `ironpumpkin-neo` crate gives mods the shape a NeoForge
-  mod sees, with the NeoForge names: event bus, deferred registers, capabilities, attachments, mod
-  config, network payloads, loot modifiers, data maps and `neoforge.mods.toml` metadata. A port
-  keeps the structure of the Java mod and translates it to Rust class by class. A hook point for a
-  mod is a NeoForge event: there are no IronPumpkin-only hooks.
+- **The native API.** The `ironpumpkin-mods` crate is the API of a mod. It is idiomatic Rust and
+  re-exports the Pumpkin server types a mod needs. IronPumpkin takes the semantics and the catalogue
+  of NeoForge, not its shape: the NeoForge events are Pumpkin events with the same fire sites, fields,
+  cancel and result rules and event names, and lifecycle, config, network, capabilities, attachments
+  and data maps behave as on NeoForge. A mod registers content with Rust builders and keeps its
+  `neoforge.mods.toml` optional. A hook point for a mod is a NeoForge event: there are no
+  IronPumpkin-only hooks.
 - **Source patches.** Mixins, reflection and access transformers have no bytecode to patch in a
   Rust server. What a mod did with them, and no NeoForge event does, becomes a patch to the
   IronPumpkin source. The mod crate ships `patches/<name>.patch` with a justification file
@@ -43,16 +45,15 @@ A mod gets two primitives, and nothing else:
 
 A patch is accepted in a mod only with a justification file next to it that says what the patch
 does, why a NeoForge event or API is not enough, and that the patch is bound to the IronPumpkin
-commit it names. Every accepted patch is a candidate NeoForge-shaped event for a later version, so
-the API grows from real patches.
+commit it names. Every accepted patch is a candidate event with NeoForge semantics for a later
+version, so the API grows from real patches.
 
 The modpack blueprint in `blueprint/` has a GitHub Action that applies the patches and builds the
 binaries for each pack, so operators and players download a binary and never compile. Wasm plugins stay
 what Pumpkin offers today: sandboxed, hot-reloadable, for administration and integrations.
 
 A mod linked into the server binary and a source patch are derivative works of a GPLv3 program, and
-a mod must use a GPLv3-compatible licence. The planned `ironpumpkin-neo` API crate is MIT OR
-Apache-2.0.
+a mod must use a GPLv3-compatible licence. The `ironpumpkin-mods` API crate is MIT OR Apache-2.0.
 
 ## Relationship with Pumpkin
 
@@ -77,8 +78,9 @@ Work is tracked as [milestones](https://github.com/EdenNetworkItalia/IronPumpkin
   round trip.
 - [ ] **M3: NeoForge handshake and registry sync.** A NeoForge client with a test mod joins and sees
   its content.
-- [ ] **M4: NeoForge-shaped native API.** The `ironpumpkin-neo` crate, family by family, sized by a scan
-  of a large reference modpack.
+- [ ] **M4: native API with NeoForge semantics.** Events, lifecycle, config, network, capabilities,
+  attachments and data maps as Pumpkin-idiomatic Rust in `ironpumpkin-mods`, sized by a scan of a
+  large reference modpack.
 - [ ] **M5: Modded gameplay parity.** Block entities and menus, attachments, data maps, dimensions.
 
 ## About Pumpkin
@@ -196,6 +198,6 @@ For Pumpkin itself, join the [Pumpkin community](https://discord.gg/wT8XjrjKkf).
 ## License & Attribution
 
 * **Server**: Licensed under the [GNU General Public License v3.0 (GPLv3)](LICENSE), the same license as Pumpkin.
-* **API crates (`ironpumpkin-mods`, `ironpumpkin-neo` (planned), `pumpkin-plugin-api`, `pumpkin-plugin-wit` & `pumpkin-plugin-utils`)**: Dual-licensed under MIT OR Apache-2.0, so mod and plugin authors can choose either license. A mod linked into the server binary is still bound by the GPLv3 of the server.
+* **API crates (`ironpumpkin-mods`, `pumpkin-plugin-api`, `pumpkin-plugin-wit` & `pumpkin-plugin-utils`)**: Dual-licensed under MIT OR Apache-2.0, so mod and plugin authors can choose either license. A mod linked into the server binary is still bound by the GPLv3 of the server.
   See [LICENSE-MIT](crates/pumpkin-plugin-api/LICENSE-MIT) and [LICENSE-APACHE](crates/pumpkin-plugin-api/LICENSE-APACHE).
 * **Third-Party Assets & Data**: Bedrock mappings, protocol conversion data, and Minecraft assets are subject to their respective licenses and attribution terms. See [assets/NOTICE.md](assets/NOTICE.md) for full details.

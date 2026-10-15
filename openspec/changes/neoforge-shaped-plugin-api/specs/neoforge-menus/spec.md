@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Lets a ported mod open container menus for players with its own slots, data slots and menu logic, in the shape of `AbstractContainerMenu`, `MenuProvider` and `IPlayerExtension#openMenu`.
+Lets a ported mod open container menus for players with its own slots, data slots and menu logic, with the behaviour of `AbstractContainerMenu`, `MenuProvider` and `IPlayerExtension#openMenu`, as the `menus` module of `ironpumpkin-mods`.
 
 ## ADDED Requirements
 
 ### Requirement: Open a menu
-`menus.open-menu` SHALL close the open menu of the player, create a server menu from the `menu-definition`, send it to the player and return its `menu` handle, and SHALL fire the Pumpkin `InventoryOpenEvent`, so that a cancel from a v0.2 plugin or a neo listener of `player-container-event-open` stops the open. A mod menu type SHALL fail with `unsupported-client` for a client without that type. Status: planned (task 2.9).
+`menus.open-menu` SHALL close the open menu of the player, create a server menu from the `menu-definition`, send it to the player and return its `menu` handle, and SHALL fire the Pumpkin `InventoryOpenEvent`, so that a cancel from a v0.2 plugin or from a native handler of `PlayerContainerEventOpen` stops the open. A mod menu type SHALL fail with `unsupported-client` for a client without that type. Status: planned (task 2.9).
 
 #### Scenario: A vanilla menu type
 - **WHEN** a mod opens a `minecraft:generic_9x3` menu with 27 `menu-container` slots and the 36 player inventory slots

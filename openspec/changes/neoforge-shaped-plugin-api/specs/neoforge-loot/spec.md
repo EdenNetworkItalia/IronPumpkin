@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets a ported mod change generated loot through NeoForge global loot modifiers, declared in data pack JSON and applied by mod callbacks.
+Lets a ported mod change generated loot with the behaviour of NeoForge global loot modifiers, as the `loot` module of `ironpumpkin-mods`, declared in data pack JSON and applied by mod callbacks.
 
 ## ADDED Requirements
 
@@ -35,7 +35,7 @@ The host SHALL provide the modifier type `neoforge:add_table` and the condition 
 - **THEN** it runs for that table only
 
 ### Requirement: Unsupported data conditions are ignored
-Data files with `neoforge:conditions` SHALL load as if the conditions were absent, as the inventory states. Status: planned (task 2.16).
+Until the M5 engine extension adds `neoforge:conditions` to the datapack loader, data files with `neoforge:conditions` SHALL load as if the conditions were absent, as the inventory states. Status: planned (task 2.16).
 
 #### Scenario: Conditional modifier
 - **WHEN** a loot modifier file has a `neoforge:conditions` block

@@ -141,8 +141,8 @@ lock does not match `modpack.toml`, and the pull request check fails when `check
 
 ## Licence
 
-The IronPumpkin server is licensed under GPL-3.0. The mod API crates, `ironpumpkin-mods` and the
-planned `ironpumpkin-neo`, are licensed under MIT OR Apache-2.0. A built binary links the server, so
+The IronPumpkin server is licensed under GPL-3.0. The mod API crate, `ironpumpkin-mods`, is
+licensed under MIT OR Apache-2.0. A built binary links the server, so
 it is a GPL-3.0 work: give the source of the pack to whoever receives the binary. A mod linked into
 the binary and a patch to the server source are derivative works of the server: distribute them
 under terms compatible with GPL-3.0.

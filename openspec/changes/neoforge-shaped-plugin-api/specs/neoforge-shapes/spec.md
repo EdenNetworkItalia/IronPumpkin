@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets a ported mod read block shapes and collisions of the level, and declare the shapes of its own blocks, in the shape of `VoxelShape`, `CollisionContext` and the shape getters of `BlockState`.
+Lets a ported mod read block shapes and collisions of the level, and declare the shapes of its own blocks, with the behaviour of `VoxelShape`, `CollisionContext` and the shape getters of `BlockState`, as the `shapes` module of `ironpumpkin-mods`.
 
 ## ADDED Requirements
 

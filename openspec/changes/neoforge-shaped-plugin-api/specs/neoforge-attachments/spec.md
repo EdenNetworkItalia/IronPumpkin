@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Lets mods store their own data on entities, block entities, chunks and levels through NeoForge attachment types, with saving, copy on death and client sync handled by the host.
+Lets mods store their own data on entities, block entities, chunks and levels with the behaviour of NeoForge attachment types, as the `attachments` module of `ironpumpkin-mods`, with saving, copy on death and client sync handled by the host.
 
 ## ADDED Requirements
 
