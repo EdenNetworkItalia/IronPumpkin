@@ -1,7 +1,8 @@
-//! Boots a server with the test mod in a child process, stops it with SIGTERM, and checks that
-//! the test mod's lifecycle methods, config loading hooks and handlers of the server lifecycle and
-//! tick events ran, in `NeoForge` order. The
+//! Boots a server with the test mod in a child process, stops it with the `stop` console command
+//! written to its piped stdin, and checks that the test mod's lifecycle methods, config loading
+//! hooks and handlers of the server lifecycle and tick events ran, in `NeoForge` order. The
 //! child reruns this test binary with `SERVER_DIR` set and starts the server from that directory.
+//! The console command works on every platform, unlike a signal.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -9,6 +10,7 @@
 )]
 
 use std::fs::File;
+use std::io::Write;
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -57,7 +59,8 @@ fn start(dir: &Path, port: u16) -> Child {
 color = false
 
 [commands]
-use_console = false
+use_console = true
+use_tty = false
 
 [networking.java]
 address = "127.0.0.1:{port}"
@@ -83,7 +86,7 @@ enabled = false
         .args([TEST_NAME, "--exact", "--nocapture", "--test-threads=1"])
         .env(SERVER_DIR, dir)
         .current_dir(dir)
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(out.try_clone().unwrap())
         .stderr(out)
         .spawn()
@@ -134,11 +137,10 @@ fn neoforge_lifecycle_events() {
     let mut child = start(dir.path(), port);
     wait_for_boot(dir.path(), &mut child, port);
 
-    let stopped = Command::new("kill")
-        .args(["-TERM", &child.id().to_string()])
-        .status()
-        .unwrap();
-    assert!(stopped.success());
+    // Keep the pipe open until the server exits: an EOF ends the console reader.
+    let mut console = child.stdin.take().unwrap();
+    console.write_all(b"stop\n").unwrap();
+    console.flush().unwrap();
     let deadline = Instant::now() + STOP_TIMEOUT;
     while child.try_wait().unwrap().is_none() {
         if Instant::now() > deadline {
