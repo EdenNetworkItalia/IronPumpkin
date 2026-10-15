@@ -260,7 +260,7 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 | `PlayerEvent.NameFormat` and `TabListNameFormat` | `PlayerEventNameFormat` and `PlayerEventTabListNameFormat` | Fire only when no name was set with `set_display_name` or `set_tab_list_name`. The display name is not cached: the event fires on every read. |
 | `PlayerRespawnPositionEvent` | `PlayerSpawnLocationEvent` | Position, rotation, dimension and `copy_original_spawn_position` are settable. |
 | `AnvilCraftEvent.Pre` and `Post` | `AnvilCraftEventPre` and `AnvilCraftEventPost` | Fire outside the screen-handler lock. A cancel of the Pre event skips the cost and the use of the inputs. |
-| `TradeWithVillagerEvent` | the same name | Fires outside the screen-handler lock. A trade with a villager hangs today: Pumpkin locks the screen handler twice (issue #115, to be fixed upstream). A trade with a wandering trader works. |
+| `TradeWithVillagerEvent` | the same name | Fires outside the screen-handler lock, for a villager and for a wandering trader. A villager sends the refreshed offers from its next tick, as vanilla does. |
 | `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
 
 `PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
@@ -282,7 +282,6 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 
 - Do not implement `handle` for a handler that you register as blocking. The server never calls it.
 - Do not hold a lock of your own state while you fire an event from a handler.
-- Do not rely on a trade with a villager. The click blocks forever today (issue #115). A wandering trader works.
 - Do not change a field that the server does not read back. The change has no effect.
 - Do not wait for a result setter. Events with a result are planned, except `ItemEntityPickupEventPre` (`TriState`) and `ArrowNockEvent` (`InteractionResult`).
 - Do not expect a handler to run for an event that no fire site fires.

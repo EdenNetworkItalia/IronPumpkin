@@ -25,8 +25,14 @@ use std::{
 
 use pumpkin_core::{
     entity::{
-        Entity, EntityBase, experience_orb::ExperienceOrbEntity, item::ItemEntity,
-        passive::wandering_trader::WanderingTraderEntity, player::Player,
+        Entity, EntityBase,
+        experience_orb::ExperienceOrbEntity,
+        item::ItemEntity,
+        passive::{
+            villager::{GossipType, VillagerEntity},
+            wandering_trader::WanderingTraderEntity,
+        },
+        player::Player,
     },
     item::{ItemBehaviour, items::bow::BowItem},
     net::ClientPlatform,
@@ -1019,18 +1025,12 @@ fn anvil_craft_events_handler_closes_the_screen_or_changes_the_inputs() {
     );
 }
 
-/// Opens the trade screen of a new wandering trader with one offer and pays it, and returns the
-/// sync id. `VillagerEntity::complete_trade` locks the trade screen that the click holds (see
-/// `resend_offers_to_player`, issue #115), so the tests trade with a wandering trader.
-fn open_trade(player: &Arc<Player>) -> i32 {
+/// Opens the trade screen of a new villager, or of a new wandering trader, with one offer and
+/// pays it, and returns the sync id and the villager.
+fn open_trade(player: &Arc<Player>, villager: bool) -> (i32, Option<Arc<VillagerEntity>>) {
     let world = player.world();
-    let villager = WanderingTraderEntity::new(Entity::new(
-        world.clone(),
-        player.living_entity.entity.pos.load(),
-        &EntityType::WANDERING_TRADER,
-    ));
-    world.spawn_entity(villager.clone());
-    villager.offers.lock().unwrap().push(MerchantOffer {
+    let pos = player.living_entity.entity.pos.load();
+    let offer = MerchantOffer {
         base_cost_a: ItemStackSerializer(std::borrow::Cow::Owned(ItemStack::new(
             1,
             &Item::EMERALD,
@@ -1044,12 +1044,26 @@ fn open_trade(player: &Arc<Player>) -> i32 {
         special_price: 0,
         price_multiplier: 0.05,
         demand: 0,
-    });
-
-    let sync_id = player.open_handled_screen(villager.as_ref(), None).unwrap();
-    villager
-        .merchant_inventory
-        .set_stack(0, ItemStack::new(1, &Item::EMERALD));
+    };
+    let (sync_id, inventory, villager) = if villager {
+        let merchant = VillagerEntity::new(Entity::new(world.clone(), pos, &EntityType::VILLAGER));
+        world.spawn_entity(merchant.clone());
+        merchant.offers.lock().unwrap().push(offer);
+        let sync_id = player.open_handled_screen(merchant.as_ref(), None).unwrap();
+        let inventory = merchant.merchant_inventory.clone();
+        (sync_id, inventory, Some(merchant))
+    } else {
+        let merchant = WanderingTraderEntity::new(Entity::new(
+            world.clone(),
+            pos,
+            &EntityType::WANDERING_TRADER,
+        ));
+        world.spawn_entity(merchant.clone());
+        merchant.offers.lock().unwrap().push(offer);
+        let sync_id = player.open_handled_screen(merchant.as_ref(), None).unwrap();
+        (sync_id, merchant.merchant_inventory.clone(), None)
+    };
+    inventory.set_stack(0, ItemStack::new(1, &Item::EMERALD));
     let screen = player.current_screen_handler.lock().unwrap().clone();
     screen
         .lock()
@@ -1058,7 +1072,7 @@ fn open_trade(player: &Arc<Player>) -> i32 {
         .downcast_mut::<MerchantScreenHandler>()
         .unwrap()
         .update_result_slot();
-    i32::from(sync_id)
+    (i32::from(sync_id), villager)
 }
 
 #[test]
@@ -1067,7 +1081,10 @@ fn one_event_per_fire_site_trade_with_villager_event() {
     let seen = log();
     let seen_by_handler = seen.clone();
     on::<TradeWithVillagerEvent, _>(move |event| {
-        if named(&event.player, "Trader") || named(&event.player, "TradeCloser") {
+        if ["Trader", "VillagerTrader", "TradeCloser"]
+            .iter()
+            .any(|name| named(&event.player, name))
+        {
             push(
                 &seen_by_handler,
                 format!(
@@ -1085,11 +1102,25 @@ fn one_event_per_fire_site_trade_with_villager_event() {
     });
 
     let player = support::player("Trader");
-    let sync_id = open_trade(&player);
+    let (sync_id, _) = open_trade(&player, false);
     click(&player, sync_id, 2);
 
+    let player = support::player("VillagerTrader");
+    let (sync_id, villager) = open_trade(&player, true);
+    let villager = villager.unwrap();
+    click(&player, sync_id, 2);
+    // The villager refreshes the offers from its next tick, outside the click (issue #115).
+    // An age that is not a multiple of 20 skips the job site and bed searches.
+    villager.get_entity().age.store(1, Ordering::Relaxed);
+    let ticked = villager.clone();
+    finish_within(&player, move |_| ticked.villager_mob_tick());
+    assert_eq!(
+        villager.gossips.lock().unwrap()[&player.gameprofile.id][&GossipType::Trading],
+        2
+    );
+
     let closer = support::player("TradeCloser");
-    let sync_id = open_trade(&closer);
+    let (sync_id, _) = open_trade(&closer, false);
     click(&closer, sync_id, 2);
     assert!(inventory_screen_open(&closer));
 
@@ -1097,6 +1128,7 @@ fn one_event_per_fire_site_trade_with_villager_event() {
         entries(&seen),
         [
             "Trader bread wandering_trader",
+            "VillagerTrader bread villager",
             "TradeCloser bread wandering_trader"
         ]
     );
