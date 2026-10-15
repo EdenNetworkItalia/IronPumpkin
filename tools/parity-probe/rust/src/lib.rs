@@ -1,6 +1,8 @@
-//! Rust probe of the differential parity harness. It is a native mod that listens to the Pumpkin
-//! events that carry the semantics of the slice 1 `NeoForge` events and writes `probe-trace.jsonl`
-//! in the server directory, in the format of the Java probe (`tools/parity-probe/README.md`).
+//! Rust probe of the differential parity harness. It is a native mod that traces the slice 1
+//! `NeoForge` events from the mod lifecycle methods, the config loading hook and the Pumpkin
+//! events that carry their semantics, and writes `probe-trace.jsonl` in the server directory, in
+//! the format of the Java probe (`tools/parity-probe/README.md`). Like the Java probe, it
+//! registers the synced config `parityprobe-synced.toml` with one value, `enabled = true`.
 //!
 //! It traces a `NeoForge` event only where `IronPumpkin` fires it today. `diff.py` lists the other
 //! events of the Java trace as differences.
@@ -8,17 +10,22 @@
 use std::{
     fs::File,
     io::{self, BufWriter, Write},
+    marker::PhantomData,
     sync::{
         Arc, Mutex, PoisonError,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
+    config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     event::{
-        BoxFuture, EventHandler, EventPriority,
-        server::{LoadType, ServerLoadEvent, ServerTickEndEvent, ServerTickStartEvent},
+        BoxFuture, EventHandler, EventPriority, Payload,
+        server::{
+            LoadType, ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent,
+            ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
+        },
     },
     register_mod,
     server::Server,
@@ -113,31 +120,54 @@ impl NativeMod for ParityProbe {
     }
 
     fn init(&self, cx: &mut ModInit) {
+        trace("FMLConstructModEvent", &[]);
+        if let Err(err) = register_config(cx) {
+            error!("[{ID}] cannot register the synced config: {err}");
+        }
         cx.register_event::<ServerLoadEvent, _>(
             Arc::new(Started),
             EventPriority::Normal,
             false,
             false,
         );
-        cx.register_event::<ServerTickStartEvent, _>(
-            Arc::new(Tick {
-                name: "ServerTickEvent.Pre",
-                count: AtomicU64::new(0),
-            }),
-            EventPriority::Normal,
-            false,
-            false,
-        );
-        cx.register_event::<ServerTickEndEvent, _>(
-            Arc::new(Tick {
-                name: "ServerTickEvent.Post",
-                count: AtomicU64::new(0),
-            }),
-            EventPriority::Normal,
-            false,
-            false,
-        );
+        trace_first::<ServerStartingEvent>(cx, "ServerStartingEvent");
+        trace_first::<ServerTickStartEvent>(cx, "ServerTickEvent.Pre");
+        trace_first::<ServerTickEndEvent>(cx, "ServerTickEvent.Post");
+        trace_first::<ServerStoppingEvent>(cx, "ServerStoppingEvent");
+        trace_first::<ServerStoppedEvent>(cx, "ServerStoppedEvent");
     }
+
+    fn common_setup(&self) {
+        trace("FMLCommonSetupEvent", &[]);
+    }
+
+    fn load_complete(&self) {
+        trace("FMLLoadCompleteEvent", &[]);
+    }
+
+    fn config_loading(&self, config: &ModConfig) {
+        let mut fields = vec![
+            ("file_name", Value::Text(config.file_name().to_owned())),
+            (
+                "type",
+                Value::Text(config.config_type().extension().to_ascii_uppercase()),
+            ),
+        ];
+        match config.get::<bool>("enabled") {
+            Ok(enabled) => fields.push(("enabled", Value::Bool(enabled))),
+            Err(err) => error!("[{ID}] cannot read enabled: {err}"),
+        }
+        trace("ModConfigEvent.Loading", &fields);
+    }
+}
+
+/// The config of the Java probe: `SYNCED`, with only `enabled = true`. Its file is
+/// `parityprobe-synced.toml`.
+fn register_config(cx: &mut ModInit) -> Result<(), ConfigError> {
+    let mut spec = ConfigSpec::builder();
+    spec.define("enabled", true);
+    cx.register_config(ConfigType::Synced, spec.build()?)?;
+    Ok(())
 }
 
 register_mod!(ParityProbe);
@@ -159,21 +189,31 @@ impl EventHandler<ServerLoadEvent> for Started {
     }
 }
 
-/// `ServerTickEvent.Pre` and `.Post`. The ticks are counted and only the first one is traced, as
-/// in the Java probe.
-struct Tick {
+/// Traces `name` the first time its event fires. The ticks fire many times, so only the first
+/// one is traced, as in the Java probe.
+struct First<E> {
     name: &'static str,
-    count: AtomicU64,
+    traced: AtomicBool,
+    _event: PhantomData<fn() -> E>,
 }
 
-impl<E: ironpumpkin_mods::event::Payload> EventHandler<E> for Tick {
+impl<E: Payload + Send + Sync + 'static> EventHandler<E> for First<E> {
     fn handle<'a>(&'a self, _server: &'a Arc<Server>, _event: &'a E) -> BoxFuture<'a, ()> {
         Box::pin(async move {
-            if self.count.fetch_add(1, Ordering::Relaxed) == 0 {
+            if !self.traced.swap(true, Ordering::Relaxed) {
                 trace(self.name, &[]);
             }
         })
     }
+}
+
+fn trace_first<E: Payload + Send + Sync + 'static>(cx: &mut ModInit, name: &'static str) {
+    let handler = Arc::new(First::<E> {
+        name,
+        traced: AtomicBool::new(false),
+        _event: PhantomData,
+    });
+    cx.register_event::<E, _>(handler, EventPriority::Normal, false, false);
 }
 
 #[cfg(test)]

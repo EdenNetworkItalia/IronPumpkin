@@ -43,41 +43,48 @@ The tick events are counted and only the first `ServerTickEvent.Pre` and the fir
 
 | Event | Bus | Fields | IronPumpkin today |
 |:--|:--|:--|:--|
-| `FMLConstructModEvent` | mod | none | not yet: the lifecycle task (#103) |
+| `FMLConstructModEvent` | mod | none | `NativeMod::init` |
 | `RegisterEvent` | mod | `registry`: only `minecraft:block`, `minecraft:item`, `minecraft:entity_type` | not yet: the registration task (2.5 in `tasks.md`) |
-| `FMLCommonSetupEvent` | mod | none | not yet: the lifecycle task (#103) |
-| `FMLLoadCompleteEvent` | mod | none | not yet: the lifecycle task (#103) |
+| `FMLCommonSetupEvent` | mod | none | `NativeMod::common_setup` |
+| `FMLLoadCompleteEvent` | mod | none | `NativeMod::load_complete` |
 | `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | not yet: the network task (2.11 in `tasks.md`) |
-| `ModConfigEvent.Loading` | mod | `type`, `file_name`, the value `enabled` of the probe's synced config | not yet: the mod config task (#104) |
-| `ServerAboutToStartEvent` | game | none | not yet: the event bus core task (#102) |
-| `ServerStartingEvent` | game | none | not yet: the event bus core task (#102) |
+| `ModConfigEvent.Loading` | mod | `type`, `file_name`, the value `enabled` of the probe's synced config | `NativeMod::config_loading` |
+| `ServerAboutToStartEvent` | game | none | not yet: Pumpkin has no event for it, and the event bus core task (#102) lists it as planned |
+| `ServerStartingEvent` | game | none | `ServerStartingEvent` |
 | `ServerStartedEvent` | game | none | `ServerLoadEvent` with `LoadType::Startup` |
 | `ServerTickEvent.Pre` | game | none | `ServerTickStartEvent` |
 | `ServerTickEvent.Post` | game | none | `ServerTickEndEvent` |
 | `RegisterConfigurationTasksEvent` | mod | `connection_type`, `ping_channel` (the client negotiated `parityprobe:ping`) | not yet: the network task (2.11 in `tasks.md`) |
-| `ServerStoppingEvent` | game | none | not yet: the event bus core task (#102) |
-| `ServerStoppedEvent` | game | none | not yet: the event bus core task (#102) |
+| `ServerStoppingEvent` | game | none | `ServerStoppingEvent` |
+| `ServerStoppedEvent` | game | none | `ServerStoppedEvent` |
 
-The Rust probe uses today's API of `ironpumpkin-mods`: `NativeMod::init` and
-`ModInit::register_event` on the Pumpkin events of the last column. It traces nothing for the
-"not yet" rows. When a task adds an event, the Rust probe listens to it, and the captures and
-`diff.txt` are recorded again.
+The Rust probe uses today's API of `ironpumpkin-mods`: the `NativeMod` methods and the Pumpkin
+events of the last column, the events registered with `ModInit::register_event`. Like the Java
+probe, it registers one `ConfigType::Synced` config with `ModInit::register_config`: the file
+`parityprobe-synced.toml` with the value `enabled = true`. It traces nothing for the "not yet"
+rows. When a task adds an event, the Rust probe listens to it, and the captures and `diff.txt` are
+recorded again.
 
 ## Result of slice 1
 
 `captures/ironpumpkin/diff.txt` is the input for the event tasks:
 
-- IronPumpkin fires three of the 16 events of the Java trace. `ServerStartedEvent` and
-  `ServerTickEvent.Post` have no difference. `ServerTickEvent.Pre` is `moved`: on NeoForge the
-  first tick runs after `ServerStartedEvent`, on IronPumpkin before it. The Pumpkin ticker thread
-  starts in `PumpkinServer::new`, and `ServerLoadEvent` fires later, in `PumpkinServer::start`.
-  The fire site of `ServerStartedEvent` belongs to the event bus core task (#102).
-- The other 13 events are `missing`. The last column of the table above names the task that adds
-  each one.
+- IronPumpkin fires 10 of the 16 events of the Java trace, in the order of NeoForge and with the
+  same fields: `FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
+  `ModConfigEvent.Loading`, `ServerStartingEvent`, `ServerStartedEvent`, `ServerTickEvent.Pre`,
+  `ServerTickEvent.Post`, `ServerStoppingEvent` and `ServerStoppedEvent`. The diff has no `moved`
+  and no `fields` line.
+- The other 6 events are `missing`: the three `RegisterEvent` lines (the registration task, 2.5 in
+  `tasks.md`), `RegisterPayloadHandlersEvent` and `RegisterConfigurationTasksEvent` (the network
+  task, 2.11 in `tasks.md`), and `ServerAboutToStartEvent`, which has no Pumpkin event yet.
 
 On NeoForge 26.3.0.64-beta, `ModConfigEvent.Loading` of a `SYNCED` config fires at startup,
 after `RegisterPayloadHandlersEvent` and before `ServerAboutToStartEvent`, and
 `RegisterConfigurationTasksEvent` fires once per connection, after the channel negotiation.
+IronPumpkin loads the synced configs after `load_complete` and before `ServerStartingEvent`, so
+the loading event has the same place relative to the events that both servers fire.
+
+Two recordings of the IronPumpkin trace, each from an empty server directory, are byte-identical.
 
 ## diff.py
 
