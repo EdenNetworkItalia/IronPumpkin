@@ -17,7 +17,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 | **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting and player events have NeoForge fire sites and fields. Five player rows and the abstract classes stay planned, and the level and entity families are planned (tasks 2.13 and 2.15). See [Events](./events.md) and [What is unsupported](./unsupported.md). |
 | **Registration** | `DeferredRegister`, `DeferredHolder` | `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag` with builders. See [Registration](./registration.md). |
 | **Config** | `ModConfigSpec` | `ModInit::register_config` with a `ConfigSpec` and a `ConfigType`: `Local`, `Synced` or `Startup`. The file is `config/<modid>-<type>.toml`. A `Synced` config goes to NeoForge clients as `neoforge:config_file`. See [Configuration](./configuration.md). |
-| **Network** | `PayloadRegistrar` | Payload registration is planned (task 2.11). The server already negotiates the NeoForge channels with the client. |
+| **Network** | `PayloadRegistrar`, `PacketDistributor`, `RegisterConfigurationTasksEvent` | `RegisterPayloadHandlersEvent` and `RegisterConfigurationTasksEvent` as Pumpkin events, a `PayloadRegistrar` per channel id with raw bytes, and `network::send_to_player` and the broadcasts. The server negotiates the channels with a NeoForge client. See [Network payloads](./network.md). |
 | **Mixins and reflection** | Mixin configs, access transformers, reflection | Source patches that the pack build applies. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
 | **Build and distribution** | Gradle, a jar on a mod site | `cargo xtask build` and a GitHub Action. A release has one binary per platform. See [Setup and build](./setup-and-build.md). |
 | **Client side** | The same jar runs on the client | A NeoForge client needs a Java mod with the same registry names. See [What is unsupported](./unsupported.md). |
@@ -30,7 +30,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 
 1. Create a pack from the template and build it once. See [Setup and build](./setup-and-build.md).
 2. Port the content: blocks, items, entity types and tags. See [Registration](./registration.md).
-3. Port the lifecycle, the config and the event listeners. See [Lifecycle](./lifecycle.md), [Configuration](./configuration.md) and [Events](./events.md).
+3. Port the lifecycle, the config, the event listeners and the network payloads. See [Lifecycle](./lifecycle.md), [Configuration](./configuration.md), [Events](./events.md) and [Network payloads](./network.md).
 4. Port each mixin, access transformer and reflection call. Use a NeoForge event or an `ironpumpkin-mods` function when one exists. Use a source patch when none exists. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
 5. Check the rest of the mod against [What is unsupported](./unsupported.md).
 6. Keep the Java client half of the mod, with the same registry names, for NeoForge clients.
@@ -42,6 +42,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 - [Lifecycle](./lifecycle.md): `@Mod`, the FML lifecycle events, `neoforge.mods.toml` and `ModList` against `NativeMod`.
 - [Configuration](./configuration.md): `ModConfigSpec` and the config types against `ConfigSpec` and `ConfigType`.
 - [Events](./events.md): `@SubscribeEvent` and `IEventBus` against `ModInit::register_event`.
+- [Network payloads](./network.md): `PayloadRegistrar`, `IPayloadContext`, `PacketDistributor` and the configuration tasks against the `network` module.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
 
@@ -53,7 +54,6 @@ A page for an API that does not exist yet is written when its task lands.
 | :--- | :--- | :--- |
 | Level and block events | `BlockEvent` and the level events | 2.13 |
 | Entity events | `EntityJoinLevelEvent`, the living and item entity events | 2.15 |
-| Network payloads | `PayloadRegistrar`, `RegisterPayloadHandlersEvent` | 2.11 |
 
 ## Look up a NeoForge class
 

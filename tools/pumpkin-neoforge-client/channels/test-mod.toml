@@ -1,0 +1,27 @@
+# The channels of ironpumpkin-test-mod. Append them to the channel map of a NeoForge 26.3 client
+# (neoforge-26.3.toml) to get the map of a client that has the mod. The client sends back each
+# payload on test-mod:licence and test-mod:echo, which answers the licence task and the echo.
+
+[[configuration]]
+id = "test-mod:licence"
+version = "1"
+optional = true
+echo = true
+
+[[configuration]]
+id = "test-mod:greeting"
+version = "1"
+flow = "clientbound"
+optional = true
+
+[[play]]
+id = "test-mod:echo"
+version = "1"
+optional = true
+echo = true
+
+[[play]]
+id = "test-mod:echo_reply"
+version = "1"
+flow = "clientbound"
+optional = true

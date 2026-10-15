@@ -334,7 +334,11 @@ impl JavaClient {
                         break;
                     }
 
-                    if let Some(packet) = self.reassemble_split(split.as_mut(), packet).await {
+                    if let Some(packet) = self.reassemble_split(split.as_mut(), packet).await
+                        && !crate::plugin::network_events::handle_play_payload_on_network(
+                            self, player, server, &packet,
+                        )
+                    {
                         player.inbound_packets.push(packet);
                     }
                 }
@@ -1119,6 +1123,14 @@ impl JavaClient {
             }
             id if id == SCustomPayload::to_id(version) => {
                 let payload = SCustomPayload::read(&mut payload, &version)?;
+                if crate::plugin::network_events::handle_play_payload(
+                    player,
+                    server,
+                    payload.channel,
+                    payload.data,
+                ) {
+                    return Ok(());
+                }
                 let channel_str = payload.channel.to_string();
                 let mut event = PlayerCustomPayloadEvent::new(
                     player.clone(),

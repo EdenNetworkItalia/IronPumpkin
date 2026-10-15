@@ -7,7 +7,7 @@
 //! disconnects the client, like `finishCurrentTask` does when the requested task is not current.
 
 use std::collections::VecDeque;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use pumpkin_data::dynamic::{self, ContentIds, ContentTables};
 use pumpkin_protocol::{
@@ -35,7 +35,14 @@ use super::{
     neoforge::{ClientChannels, ConnectionType},
     pending::PendingConnection,
 };
-use crate::{plugin::startup, server::Server};
+use crate::{
+    plugin::{
+        api::events::network::CustomConfigurationTask,
+        network_events::{self, ModTasks},
+        startup,
+    },
+    server::Server,
+};
 
 /// The snapshot of one synced registry: every id with its namespaced name.
 pub type RegistrySnapshotFn = fn(&ContentTables) -> Vec<(i32, Identifier)>;
@@ -168,6 +175,12 @@ pub enum ConfigurationTask {
     ExtensibleEnums,
     /// `CheckFeatureFlags`: `neoforge:feature_flags`, then the wait for the ack.
     FeatureFlags,
+    /// A task of a mod from `RegisterConfigurationTasksEvent`: the task at `index` of the mod
+    /// tasks of the connection. It waits until a finish request for its type.
+    Mod {
+        index: usize,
+        task_type: &'static str,
+    },
     /// `JoinWorldTask`: `finish_configuration`.
     Finish,
 }
@@ -183,6 +196,8 @@ pub enum TaskReply {
     FinishConfiguration,
     /// A custom payload on this channel.
     Payload(&'static str),
+    /// A finish request of a mod payload handler for the mod task of this type.
+    ModTask(&'static str),
 }
 
 impl ConfigurationTask {
@@ -220,6 +235,7 @@ impl ConfigurationTask {
                 ExtensibleEnumAcknowledgePayload::CHANNEL,
             )),
             Self::FeatureFlags => Some(TaskReply::Payload(FeatureFlagAcknowledgePayload::CHANNEL)),
+            Self::Mod { task_type, .. } => Some(TaskReply::ModTask(task_type)),
             Self::Finish => Some(TaskReply::FinishConfiguration),
         }
     }
@@ -237,6 +253,7 @@ impl ConfigurationTask {
             Self::DataMaps => "neoforge:registry_data_map_negotiation",
             Self::ExtensibleEnums => "neoforge:check_extensible_enum",
             Self::FeatureFlags => "neoforge:check_feature_flags",
+            Self::Mod { task_type, .. } => task_type,
             Self::Finish => "join_world",
         }
     }
@@ -250,7 +267,7 @@ impl TaskReply {
             Self::KnownPacks => "select_known_packs",
             Self::ResourcePack => "resource_pack",
             Self::FinishConfiguration => "finish_configuration",
-            Self::Payload(channel) => channel,
+            Self::Payload(channel) | Self::ModTask(channel) => channel,
         }
     }
 
@@ -278,6 +295,7 @@ pub const fn is_terminal_resource_pack_response(result: &ResourcePackResponseRes
 pub struct ConfigurationTasks {
     pending: VecDeque<ConfigurationTask>,
     current: Option<ConfigurationTask>,
+    mod_tasks: ModTasks,
 }
 
 impl ConfigurationTasks {
@@ -299,7 +317,26 @@ impl ConfigurationTasks {
         Self {
             pending,
             current: None,
+            mod_tasks: ModTasks::default(),
         }
+    }
+
+    /// Queues the tasks of `RegisterConfigurationTasksEvent` in order, before `JoinWorldTask`.
+    pub fn add_mod_tasks(&mut self, tasks: Vec<Arc<dyn CustomConfigurationTask>>) {
+        let finish = self.pending.pop_back();
+        for task in tasks {
+            let task_type = task.task_type();
+            let index = self.mod_tasks.push(task);
+            self.pending
+                .push_back(ConfigurationTask::Mod { index, task_type });
+        }
+        self.pending.extend(finish);
+    }
+
+    /// The mod task at `index`.
+    #[must_use]
+    pub fn mod_task(&self, index: usize) -> Option<Arc<dyn CustomConfigurationTask>> {
+        self.mod_tasks.get(index)
     }
 
     /// `ConfigurationInitialization.configureEarlyTasks`: the tasks before the known packs.
@@ -398,6 +435,7 @@ impl PendingConnection {
             &self.payload_setup,
             server.advanced_config.resource_pack.java.enabled,
         );
+        network_events::register_configuration_tasks(self).await;
         self.run_configuration_tasks(server).await;
     }
 
@@ -465,6 +503,9 @@ impl PendingConnection {
                     })
                     .await;
                 }
+                ConfigurationTask::Mod { index, .. } => {
+                    network_events::run_mod_task(self, index).await;
+                }
                 ConfigurationTask::Finish => self.send_packet_now(&CFinishConfig).await,
             }
         }
@@ -519,16 +560,25 @@ impl PendingConnection {
         let Err(current) = self.configuration_tasks.finish(reply) else {
             return true;
         };
-        let current = current.map_or("none", ConfigurationTask::id);
+        let reason = if let TaskReply::ModTask(requested) = reply {
+            // The `IllegalStateException` of `ServerConfigurationPacketListenerImpl.finishCurrentTask`.
+            let current = current.map_or("null", ConfigurationTask::id);
+            format!(
+                "Unexpected request for task finish, current task: {current}, requested: {requested}"
+            )
+        } else {
+            let current = current.map_or("none", ConfigurationTask::id);
+            format!(
+                "Unexpected configuration reply {} during task {current}",
+                reply.name()
+            )
+        };
         info!(
-            "Client {} sent {reply:?} while the configuration task was {current}, disconnecting",
-            self.id
+            "Client {} sent {reply:?} while the configuration task was {}, disconnecting",
+            self.id,
+            current.map_or("none", ConfigurationTask::id)
         );
-        self.kick(TextComponent::text(format!(
-            "Unexpected configuration reply {} during task {current}",
-            reply.name()
-        )))
-        .await;
+        self.kick(TextComponent::text(reason)).await;
         false
     }
 
@@ -1060,6 +1110,71 @@ mod tests {
             assert_eq!(task.reply(), Some(reply));
             assert_eq!(tasks.finish(reply), Ok(()));
         }
+        assert_eq!(tasks.start_next(), Some(ConfigurationTask::Finish));
+    }
+
+    /// A mod task that waits for its finish request.
+    struct ModTask(&'static str);
+
+    impl CustomConfigurationTask for ModTask {
+        fn task_type(&self) -> &'static str {
+            self.0
+        }
+
+        fn run(&self, _context: &mut crate::plugin::api::events::network::TaskContext<'_>) {}
+    }
+
+    /// Scenario "Two mod tasks" of `neoforge-network`: the tasks of `RegisterConfigurationTasksEvent`
+    /// run after the tasks of `NeoForge`, in registration order, before `JoinWorldTask`.
+    #[test]
+    fn mod_tasks_run_after_the_neoforge_tasks_in_registration_order() {
+        let mut tasks = queue(&run_b_client(), false);
+        tasks.add_mod_tasks(vec![
+            Arc::new(ModTask("a:first")),
+            Arc::new(ModTask("b:second")),
+        ]);
+        let started = order(tasks);
+        assert_eq!(
+            started[started.len() - 4..],
+            [
+                ConfigurationTask::FeatureFlags,
+                ConfigurationTask::Mod {
+                    index: 0,
+                    task_type: "a:first"
+                },
+                ConfigurationTask::Mod {
+                    index: 1,
+                    task_type: "b:second"
+                },
+                ConfigurationTask::Finish
+            ]
+        );
+    }
+
+    /// Scenario "Licence handshake" of `neoforge-network` on the queue: the mod task blocks
+    /// `finish_configuration` until a finish request of its own type.
+    #[test]
+    fn a_mod_task_blocks_the_finish_until_its_finish_request() {
+        let mut tasks = queue(&ClientChannels::default(), false);
+        tasks.add_mod_tasks(vec![Arc::new(ModTask("a:licence"))]);
+        assert_eq!(tasks.start_next(), Some(ConfigurationTask::KnownPacks));
+        assert_eq!(tasks.finish(TaskReply::KnownPacks), Ok(()));
+        let licence = ConfigurationTask::Mod {
+            index: 0,
+            task_type: "a:licence",
+        };
+        assert_eq!(tasks.start_next(), Some(licence));
+        assert_eq!(tasks.start_next(), None);
+        assert_eq!(tasks.mod_task(0).unwrap().task_type(), "a:licence");
+        assert_eq!(
+            tasks.finish(TaskReply::FinishConfiguration),
+            Err(Some(licence))
+        );
+        assert_eq!(
+            tasks.finish(TaskReply::ModTask("a:other")),
+            Err(Some(licence))
+        );
+        assert_eq!(tasks.finish(TaskReply::ModTask("a:licence")), Ok(()));
         assert_eq!(tasks.start_next(), Some(ConfigurationTask::Finish));
     }
 

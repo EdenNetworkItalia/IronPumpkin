@@ -316,11 +316,13 @@ fn check_modded_tasks(entries: &[Entry], synced_config: &[u8]) {
         "{tags} {positions:?} {finish}"
     );
 
-    // Run (b), seq 88: version 1, protocol play, the channel neoforge:split.
+    // Run (b), seq 88: version 1, protocol play, the channel neoforge:split. The test mod adds
+    // its optional server-bound play channel test-mod:echo, as `CommonRegisterTask` lists every
+    // optional play channel that accepts server-bound payloads.
     let register = &entries[positions[1]];
     assert_eq!(
         register.data,
-        "0104706c6179010e6e656f666f7267653a73706c6974"
+        "0104706c6179020e6e656f666f7267653a73706c69740d746573742d6d6f643a6563686f"
     );
     let configs = config_files(entries);
     assert_eq!(configs.len(), 2);

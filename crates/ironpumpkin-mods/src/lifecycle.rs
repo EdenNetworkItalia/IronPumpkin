@@ -4,7 +4,8 @@
 //! `RegisterEvent` once per registry (`GameData.postRegisterEvents`) and loads the local configs,
 //! then `CommonModLoader.load` runs common setup, sided setup
 //! (`FMLDedicatedServerSetupEvent` on a dedicated server), enqueue IMC, process IMC and load
-//! complete, and `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
+//! complete. `NetworkRegistry.setup` then posts `RegisterPayloadHandlersEvent`, and
+//! `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
 //! step calls the method of every mod in load order before the next step starts, and each method
 //! runs on its own mod only, as each `NeoForge` mod has its own mod bus.
 //!
@@ -37,7 +38,8 @@ pub(crate) const REGISTRIES: [ContentKind; 3] = [
 /// Runs the steps after the last [`NativeMod::init`](crate::NativeMod::init): `RegisterEvent`
 /// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
 /// handlers or `None` when no handler listens, then the lifecycle steps, with the local configs
-/// loaded before them and the synced configs after them.
+/// loaded before them, then the payload registration step `register_payload_handlers`, and the
+/// synced configs last.
 ///
 /// # Errors
 ///
@@ -48,6 +50,7 @@ pub(crate) fn run(
     mod_list: &ModList,
     configs: &[Arc<ModConfig>],
     mut fire_register: impl FnMut(ContentKind) -> Option<RegisterEvent>,
+    register_payload_handlers: impl FnOnce(),
 ) -> Result<(), String> {
     let mut register_error = None;
     for registry in REGISTRIES {
@@ -82,6 +85,7 @@ pub(crate) fn run(
     for loaded in mods {
         loaded.native_mod.load_complete();
     }
+    register_payload_handlers();
     config::load(configs, ConfigType::Synced)
 }
 
@@ -193,11 +197,17 @@ mod tests {
                 mod_id: "beta",
             },
         ];
-        run(&mods, &mod_list, &[], |registry| {
-            let event = RegisterEvent::new(registry);
-            record(format!("RegisterEvent {}", event.registry_key()));
-            Some(event)
-        })
+        run(
+            &mods,
+            &mod_list,
+            &[],
+            |registry| {
+                let event = RegisterEvent::new(registry);
+                record(format!("RegisterEvent {}", event.registry_key()));
+                Some(event)
+            },
+            || record("RegisterPayloadHandlersEvent".to_owned()),
+        )
         .unwrap();
         assert_eq!(
             *CALLS.lock().unwrap(),
@@ -216,6 +226,7 @@ mod tests {
                 "inter_mod_process beta",
                 "load_complete alpha",
                 "load_complete beta",
+                "RegisterPayloadHandlersEvent",
             ]
         );
     }
@@ -293,13 +304,20 @@ mod tests {
             native_mod: &CONFIG_MOD,
             mod_id: "configmod",
         }];
-        run(&mods, &mod_list, &init.configs, no_handler).unwrap();
+        run(&mods, &mod_list, &init.configs, no_handler, || {
+            CONFIG_CALLS
+                .lock()
+                .unwrap()
+                .push("RegisterPayloadHandlersEvent".to_owned());
+        })
+        .unwrap();
         assert_eq!(
             *CONFIG_CALLS.lock().unwrap(),
             [
                 "config_loading local",
                 "common_setup local Ok(true) synced Err(NotLoaded(\"configmod-synced.toml\"))",
                 "load_complete",
+                "RegisterPayloadHandlersEvent",
                 "config_loading synced",
             ]
         );
@@ -341,16 +359,22 @@ mod tests {
             mod_id: "setupmod",
         }];
         let mut fired = Vec::new();
-        let error = run(&mods, &mod_list, &[], |registry| {
-            fired.push(registry);
-            let event = RegisterEvent::new(registry);
-            // Only the fire of the block registry runs the registration.
-            let result = event.register(ContentKind::Block, "setupmod:late", || {
-                Err(RegistryError::RegistryFrozen)
-            });
-            assert_eq!(result.is_err(), registry == ContentKind::Block);
-            Some(event)
-        })
+        let error = run(
+            &mods,
+            &mod_list,
+            &[],
+            |registry| {
+                fired.push(registry);
+                let event = RegisterEvent::new(registry);
+                // Only the fire of the block registry runs the registration.
+                let result = event.register(ContentKind::Block, "setupmod:late", || {
+                    Err(RegistryError::RegistryFrozen)
+                });
+                assert_eq!(result.is_err(), registry == ContentKind::Block);
+                Some(event)
+            },
+            || {},
+        )
         .unwrap_err();
         assert_eq!(
             fired,

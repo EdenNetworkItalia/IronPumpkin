@@ -9,6 +9,7 @@
 //! version = "1"
 //! flow = "clientbound" # or "serverbound"; leave it out for a bidirectional channel
 //! optional = true
+//! echo = true # optional: send each payload of the server on this channel back unchanged
 //! ```
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -52,12 +53,17 @@ struct ChannelEntry {
     flow: Option<Flow>,
     #[serde(default)]
     optional: bool,
+    /// Not a `NeoForge` field: the client sends each payload of the server on the channel back.
+    #[serde(default)]
+    echo: bool,
 }
 
 /// The channel map of the emulated `NeoForge` client.
 #[derive(Debug, Clone, Default)]
 pub struct ChannelMap {
     query: ModdedNetworkQueryPayload,
+    /// The channels whose payloads the client sends back, per protocol.
+    echo: BTreeMap<ConnectionProtocol, BTreeSet<Identifier>>,
 }
 
 impl ChannelMap {
@@ -76,14 +82,21 @@ impl ChannelMap {
 
     fn from_entries(raw: BTreeMap<String, Vec<ChannelEntry>>) -> Result<Self, Error> {
         let mut queries = BTreeMap::new();
+        let mut echo = BTreeMap::new();
         for (protocol_id, entries) in raw {
             let protocol = ConnectionProtocol::from_id(&protocol_id)
                 .ok_or_else(|| format!("unknown connection protocol {protocol_id:?}"))?;
             let mut components = BTreeSet::new();
             for entry in entries {
+                let id = Identifier::parse(&entry.id)
+                    .map_err(|e| format!("bad channel id {:?}: {e}", entry.id))?;
+                if entry.echo {
+                    echo.entry(protocol)
+                        .or_insert_with(BTreeSet::new)
+                        .insert(id.clone());
+                }
                 components.insert(ModdedNetworkQueryComponent {
-                    id: Identifier::parse(&entry.id)
-                        .map_err(|e| format!("bad channel id {:?}: {e}", entry.id))?,
+                    id,
                     version: entry.version,
                     flow: entry.flow.map(|flow| match flow {
                         Flow::Clientbound => PacketFlow::Clientbound,
@@ -96,6 +109,17 @@ impl ChannelMap {
         }
         Ok(Self {
             query: ModdedNetworkQueryPayload { queries },
+            echo,
+        })
+    }
+
+    /// Whether the client sends the payloads of the server on `channel` back in `protocol`.
+    #[must_use]
+    pub fn echoes(&self, protocol: ConnectionProtocol, channel: &str) -> bool {
+        Identifier::parse(channel).is_ok_and(|id| {
+            self.echo
+                .get(&protocol)
+                .is_some_and(|channels| channels.contains(&id))
         })
     }
 
@@ -206,6 +230,7 @@ mod tests {
             [[play]]
             id = "a:play"
             optional = true
+            echo = true
             "#,
         )
         .unwrap();
@@ -222,5 +247,8 @@ mod tests {
             BTreeSet::from([Identifier::parse_static("a:play")])
         );
         assert_eq!(map.required_channels(), vec!["a:required".to_owned()]);
+        assert!(map.echoes(ConnectionProtocol::Play, "a:play"));
+        assert!(!map.echoes(ConnectionProtocol::Configuration, "a:play"));
+        assert!(!map.echoes(ConnectionProtocol::Play, "a:both"));
     }
 }

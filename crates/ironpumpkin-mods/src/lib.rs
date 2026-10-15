@@ -4,7 +4,8 @@
 //! references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`. Before the first
 //! world loads, the server reads the metadata of every linked mod, checks the dependencies, calls
 //! each [`NativeMod::init`] once in load order, fires `RegisterEvent` once per registry, and then
-//! calls the lifecycle methods ([`lifecycle`]).
+//! calls the lifecycle methods ([`lifecycle`]) and fires `RegisterPayloadHandlersEvent`
+//! ([`network`]).
 //!
 //! This crate is the only `IronPumpkin` dependency a mod needs. It re-exports the server types:
 //!
@@ -25,6 +26,7 @@
 //! | [`mods_toml`]   | `ModInfo`, `ModDependency`, the `neoforge.mods.toml` reader               |
 //! | [`imc`]         | inter-mod messages                                                        |
 //! | [`config`]      | TOML config specs: `ConfigSpec`, `ConfigType`, `ModConfig`                |
+//! | [`network`]     | payload channels, payload handlers, configuration tasks, send helpers     |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -43,7 +45,7 @@ use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
     entity::custom,
     plugin::{
-        Context, PluginMetadata,
+        Context, PluginMetadata, network_events,
         startup::{self, NativeModInfo},
     },
 };
@@ -69,6 +71,7 @@ pub mod imc;
 pub mod lifecycle;
 pub mod mod_list;
 pub mod mods_toml;
+pub mod network;
 pub mod registry;
 pub mod version;
 
@@ -125,6 +128,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/events.md")]
     struct Events;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/network.md")]
+    struct Network;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;
@@ -712,8 +718,19 @@ pub fn init_mods(server: &Arc<Server>) {
                 .fire_with(server, || RegisterEvent::new(registry)),
         ))
     };
-    lifecycle::run(&mods, mod_list, &configs, fire_register)
-        .unwrap_or_else(|err| refuse_to_start(&err));
+    let register_payload_handlers = || {
+        futures::executor::block_on(tokio::task::unconstrained(
+            network_events::register_payload_handlers(server),
+        ));
+    };
+    lifecycle::run(
+        &mods,
+        mod_list,
+        &configs,
+        fire_register,
+        register_payload_handlers,
+    )
+    .unwrap_or_else(|err| refuse_to_start(&err));
     config::start(server, configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()

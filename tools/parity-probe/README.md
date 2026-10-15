@@ -18,7 +18,7 @@ driver is the headless client `tools/pumpkin-neoforge-client` in `record` mode, 
 | `diff.py` | Compares two traces. Python 3 standard library only. |
 | `probe-channel.toml` | The channel of the Java probe, for the channel map of the client. |
 | `captures/neoforge-26.3.0.64-beta/probe-trace.jsonl` | The Java trace, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace.jsonl` | The Rust trace of the same day. |
+| `captures/ironpumpkin/probe-trace.jsonl` | The Rust trace, recorded on 2026-10-16. |
 | `captures/ironpumpkin/diff.txt` | The output of `diff.py` for the two traces. |
 
 ## Trace format
@@ -48,42 +48,39 @@ The tick events are counted and only the first `ServerTickEvent.Pre` and the fir
 | `RegisterEvent` | mod | `registry`: only `minecraft:block`, `minecraft:item`, `minecraft:entity_type` | `RegisterEvent` (`registries::RegisterEvent`) |
 | `FMLCommonSetupEvent` | mod | none | `NativeMod::common_setup` |
 | `FMLLoadCompleteEvent` | mod | none | `NativeMod::load_complete` |
-| `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | not yet: the network task (2.11 in `tasks.md`) |
+| `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | `network::RegisterPayloadHandlersEvent` |
 | `ModConfigEvent.Loading` | mod | `type`, `file_name`, the value `enabled` of the probe's synced config | `NativeMod::config_loading` |
 | `ServerAboutToStartEvent` | game | none | `ServerAboutToStartEvent` |
 | `ServerStartingEvent` | game | none | `ServerStartingEvent` |
 | `ServerStartedEvent` | game | none | `ServerLoadEvent` with `LoadType::Startup` |
 | `ServerTickEvent.Pre` | game | none | `ServerTickStartEvent` |
 | `ServerTickEvent.Post` | game | none | `ServerTickEndEvent` |
-| `RegisterConfigurationTasksEvent` | mod | `connection_type`, `ping_channel` (the client negotiated `parityprobe:ping`) | not yet: the network task (2.11 in `tasks.md`) |
+| `RegisterConfigurationTasksEvent` | mod | `connection_type`, `ping_channel` (the client negotiated `parityprobe:ping`) | `network::RegisterConfigurationTasksEvent` |
 | `ServerStoppingEvent` | game | none | `ServerStoppingEvent` |
 | `ServerStoppedEvent` | game | none | `ServerStoppedEvent` |
 
 The Rust probe uses today's API of `ironpumpkin-mods`: the `NativeMod` methods and the Pumpkin
 events of the last column, the events registered with `ModInit::register_event`. Like the Java
 probe, it registers one `ConfigType::Synced` config with `ModInit::register_config`: the file
-`parityprobe-synced.toml` with the value `enabled = true`. It traces nothing for the "not yet"
-rows. When a task adds an event, the Rust probe listens to it, and the captures and `diff.txt` are
-recorded again.
+`parityprobe-synced.toml` with the value `enabled = true`. It also registers `parityprobe:ping`
+as an optional configuration channel in both directions, with
+`PayloadRegistrar::configuration_bidirectional`. When a task adds an event, the Rust probe
+listens to it, and the captures and `diff.txt` are recorded again.
 
 ## Result of slice 1
 
-`captures/ironpumpkin/diff.txt` is the input for the event tasks:
+`captures/ironpumpkin/diff.txt` reports no differences. IronPumpkin fires the 16 events of the Java
+trace in the order of NeoForge and with the same fields: `FMLConstructModEvent`, the three
+`RegisterEvent` lines (`minecraft:block`, `minecraft:entity_type`, `minecraft:item`),
+`FMLCommonSetupEvent`, `FMLLoadCompleteEvent`, `RegisterPayloadHandlersEvent`,
+`ModConfigEvent.Loading`, `ServerAboutToStartEvent`, `ServerStartingEvent`, `ServerStartedEvent`,
+`ServerTickEvent.Pre`, `ServerTickEvent.Post`, `RegisterConfigurationTasksEvent`,
+`ServerStoppingEvent` and `ServerStoppedEvent`.
 
-- IronPumpkin fires 14 of the 16 events of the Java trace, in the order of NeoForge and with the
-  same fields: `FMLConstructModEvent`, the three `RegisterEvent` lines (`minecraft:block`,
-  `minecraft:entity_type`, `minecraft:item`), `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
-  `ModConfigEvent.Loading`, `ServerAboutToStartEvent`, `ServerStartingEvent`, `ServerStartedEvent`,
-  `ServerTickEvent.Pre`, `ServerTickEvent.Post`, `ServerStoppingEvent` and `ServerStoppedEvent`.
-  The diff has no `moved` and no `fields` line.
-- The other 2 events are `missing`: `RegisterPayloadHandlersEvent` and
-  `RegisterConfigurationTasksEvent` (the network task, 2.11 in `tasks.md`).
-
-On NeoForge 26.3.0.64-beta, `ModConfigEvent.Loading` of a `SYNCED` config fires at startup,
-after `RegisterPayloadHandlersEvent` and before `ServerAboutToStartEvent`, and
-`RegisterConfigurationTasksEvent` fires once per connection, after the channel negotiation.
-IronPumpkin loads the synced configs after `load_complete` and before `ServerAboutToStartEvent`,
-so the loading event has the same place relative to the events that both servers fire.
+On both servers, `RegisterPayloadHandlersEvent` fires at startup after `FMLLoadCompleteEvent` and
+before `ModConfigEvent.Loading` of the `SYNCED` config, and `RegisterConfigurationTasksEvent` fires
+once per connection, after the channel negotiation, with `connection_type` `NEOFORGE` and the
+negotiated `parityprobe:ping`.
 
 Two recordings of the IronPumpkin trace, each from an empty server directory, are byte-identical.
 

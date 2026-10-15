@@ -762,6 +762,9 @@ impl<'a> Session<'a> {
                     .await;
             }
             SplitPacketPayload::CHANNEL => self.on_split(data)?,
+            _ if channels.echoes(ConnectionProtocol::Configuration, channel) => {
+                return self.reply(channel, data).await;
+            }
             _ => {}
         }
         Ok(None)

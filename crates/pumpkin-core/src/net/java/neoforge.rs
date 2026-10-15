@@ -121,6 +121,12 @@ const BUILTIN_CHANNELS: [Identifier; 7] = [
     Identifier::parse_static(CommonRegisterPayload::CHANNEL),
 ];
 
+/// Whether `id` is one of [`BUILTIN_CHANNELS`], which `NetworkRegistry.checkPacket` always lets
+/// through.
+pub(crate) fn is_builtin_channel(id: &Identifier) -> bool {
+    BUILTIN_CHANNELS.contains(id)
+}
+
 /// The fixed part of `NetworkRegistry.getInitialServerUnregisterChannels`.
 const INITIAL_UNREGISTER_CHANNELS: [Identifier; 2] = [
     Identifier::parse_static(MinecraftRegisterPayload::CHANNEL),
@@ -316,6 +322,8 @@ type PayloadRegistrations =
 /// reply, or on the pong for any other client.
 pub struct NetworkRegistry {
     payload_registrations: RwLock<PayloadRegistrations>,
+    /// The handlers of the mod channels, set once by the payload registration step.
+    pub(crate) mod_payloads: crate::plugin::network_events::ModPayloads,
 }
 
 impl Default for NetworkRegistry {
@@ -344,6 +352,7 @@ impl NetworkRegistry {
         }
         Self {
             payload_registrations: RwLock::new(registrations),
+            mod_payloads: crate::plugin::network_events::ModPayloads::default(),
         }
     }
 

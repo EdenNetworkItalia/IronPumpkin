@@ -33,7 +33,6 @@ The inventory in `design.md` of the change folder has one row for each element o
 - 2.7: capabilities.
 - 2.9: menus.
 - 2.10: shapes.
-- 2.11: network payloads.
 - 2.14: attachments.
 - 2.16: loot modifiers.
 - 2.17: data maps.
@@ -43,7 +42,7 @@ The player events landed with task 2.12. These player rows stay planned, each fo
 - `PlayerEvent.Clone`: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. The copy on death belongs to attachments (task 2.14).
 - `PermissionsChangedEvent`: the op and deop commands change the op list before the permission level of the player changes. A cancel needs a check in each caller before the list changes.
 - `CanContinueSleepingEvent`: Pumpkin has no check that wakes a sleeping player, so the event has no decision to change.
-- `PlayerNegotiationEvent`: it delays a login until async work ends. The configuration tasks are a fixed list, so no hook can add work to a login. Task 2.11 makes them dynamic.
+- `PlayerNegotiationEvent`: it delays a login until async work ends, and it has no fire site yet. A mod delays a login with a configuration task of `RegisterConfigurationTasksEvent` instead. See [Network payloads](./network.md).
 - `AdvancementEvent.AdvancementProgressEvent`: Pumpkin awards and revokes a criterion under the advancement lock and passes no criterion name outside it. The event needs a step after the lock for each grant and revoke.
 - The abstract classes, such as `PlayerEvent`: they have no struct, because the NeoForge event bus rejects a listener on an abstract event. Register a handler for a subclass.
 
