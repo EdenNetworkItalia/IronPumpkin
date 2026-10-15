@@ -55,6 +55,9 @@ what Pumpkin offers today: sandboxed, hot-reloadable, for administration and int
 A mod linked into the server binary and a source patch are derivative works of a GPLv3 program, and
 a mod must use a GPLv3-compatible licence. The `ironpumpkin-mods` API crate is MIT OR Apache-2.0.
 
+To port a NeoForge mod, read the [porting guide](docs/porting-from-neoforge/index.md). It compares
+NeoForge and IronPumpkin for each topic and lists what is unsupported or planned.
+
 ## Relationship with Pumpkin
 
 IronPumpkin builds on the work of the [Pumpkin project](https://pumpkinmc.org/) and its
@@ -175,7 +178,8 @@ and customizable experience. It prioritizes performance and player enjoyment whi
 Without mods, IronPumpkin runs like Pumpkin: see the [Quick Start](https://docs.pumpkinmc.org/#quick-start) guide.
 With mods, create a modpack repository from the
 [ironpumpkin-pack-template](https://github.com/EdenNetworkItalia/ironpumpkin-pack-template) template
-repository and build the server there: see [blueprint/README.md](blueprint/README.md).
+repository and build the server there: see [blueprint/README.md](blueprint/README.md) and the guide
+[Setup and build](docs/porting-from-neoforge/setup-and-build.md).
 
 ## Contributions
 

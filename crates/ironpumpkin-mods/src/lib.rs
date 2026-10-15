@@ -85,6 +85,26 @@ use event::{EventHandler, EventPriority, Payload};
 use permission::Permission;
 use server::Server;
 
+// The Rust snippets of the porting guide are doc-tests of this crate, so an API change that breaks
+// a snippet fails `cargo test --doc -p ironpumpkin-mods`.
+#[cfg(doctest)]
+mod porting_guide {
+    #[doc = include_str!("../../../docs/porting-from-neoforge/index.md")]
+    struct Index;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/setup-and-build.md")]
+    struct SetupAndBuild;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/registration.md")]
+    struct Registration;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
+    struct MixinsAndPatches;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/unsupported.md")]
+    struct Unsupported;
+}
+
 /// A mod compiled into the server binary.
 pub trait NativeMod: Sync {
     /// Unique id, also the namespace of the mod's commands and permissions.
