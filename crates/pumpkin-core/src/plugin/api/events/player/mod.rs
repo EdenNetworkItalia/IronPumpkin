@@ -74,6 +74,35 @@ pub mod player_unleash_entity;
 pub mod player_unregister_channel;
 pub mod player_velocity;
 
+// IronPumpkin: the NeoForge player events without a Pumpkin event at the fire site.
+pub mod anvil_craft;
+pub mod arrow;
+pub mod attack;
+pub mod break_speed;
+pub mod client_information;
+pub mod flyable_fall;
+pub mod hotbar;
+pub mod item_entity_pickup;
+pub mod name_format;
+pub mod player_container;
+pub mod player_file;
+pub mod tracking;
+pub mod trade_with_villager;
+
+pub use anvil_craft::*;
+pub use arrow::*;
+pub use attack::*;
+pub use break_speed::*;
+pub use client_information::*;
+pub use flyable_fall::*;
+pub use hotbar::*;
+pub use item_entity_pickup::*;
+pub use name_format::*;
+pub use player_container::*;
+pub use player_file::*;
+pub use tracking::*;
+pub use trade_with_villager::*;
+
 pub use async_player_chat::*;
 pub use async_player_pre_login::*;
 pub use bedrock_form_response::*;

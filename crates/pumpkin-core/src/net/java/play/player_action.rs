@@ -83,11 +83,11 @@ impl JavaClient {
                         server
                             .block_registry
                             .attack(&world, block, state, &position, player);
-                        let speed = block::calc_block_breaking(player, state, block);
+                        let speed = block::calc_block_breaking(player, state, block, &position);
                         // Instant break
                         if speed >= 1.0 {
                             let broken_state = world.get_block_state(&position);
-                            let can_harvest = player.can_harvest(broken_state, block);
+                            let can_harvest = player.can_harvest(broken_state, block, &position);
                             let flags = if can_harvest {
                                 BlockFlags::NOTIFY_ALL
                             } else {
@@ -193,7 +193,7 @@ impl JavaClient {
 
                     let (block, state) = world.get_block_and_state(&location);
                     let block_drop = player.gamemode.load() != GameMode::Creative
-                        && player.can_harvest(state, block);
+                        && player.can_harvest(state, block, &location);
 
                     let new_state = world.break_block(
                         &location,

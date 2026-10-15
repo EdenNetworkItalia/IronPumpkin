@@ -8,6 +8,7 @@ use super::PlayerEvent;
 
 /// Event that is triggered when a player closes an inventory.
 #[derive(Event, Clone)]
+#[event_parents(super::PlayerContainerEvent)]
 pub struct InventoryCloseEvent {
     /// The player who closed the inventory.
     pub player: Arc<Player>,

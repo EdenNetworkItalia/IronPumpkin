@@ -5,6 +5,7 @@ use std::sync::Arc;
 /// An event that occurs when a player opens an inventory.
 #[cancellable]
 #[derive(Event, Clone)]
+#[event_parents(crate::plugin::player::PlayerContainerEvent)]
 pub struct InventoryOpenEvent {
     /// The player opening the inventory.
     pub player: Arc<Player>,

@@ -2568,11 +2568,16 @@ impl ToFromWasmEvent for PlayerSpawnLocationEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::PlayerSpawnLocationEvent(data) => Self {
-                player: consume_player(state, &data.player),
-                spawn_pos: from_wasm_position(data.spawn_pos),
-                cancelled: data.cancelled,
-            },
+            Event::PlayerSpawnLocationEvent(data) => {
+                let player = consume_player(state, &data.player);
+                let entity = &player.living_entity.entity;
+                let (yaw, pitch) = (entity.yaw.load(), entity.pitch.load());
+                let dimension = player.world().dimension.clone();
+                let spawn_pos = from_wasm_position(data.spawn_pos);
+                let mut event = Self::new(player, spawn_pos, yaw, pitch, dimension, false, true);
+                event.cancelled = data.cancelled;
+                event
+            }
             _ => panic!("unexpected event type"),
         }
     }

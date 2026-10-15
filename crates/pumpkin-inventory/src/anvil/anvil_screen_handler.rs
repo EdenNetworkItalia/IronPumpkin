@@ -69,7 +69,11 @@ impl Slot for AnvilResultSlot {
         (player.has_infinite_materials() || player.experience_level() >= cost) && cost > 0
     }
 
-    fn on_take_item(&self, player: &dyn InventoryPlayer, _stack: &ItemStack) {
+    fn on_take_item(&self, player: &dyn InventoryPlayer, stack: &ItemStack) {
+        let (left, right) = (self.inventory.get_stack(0), self.inventory.get_stack(1));
+        if player.fire_anvil_craft_pre(&left, &right, stack) {
+            return;
+        }
         let cost = self.cost.load(Ordering::Relaxed);
         if !player.has_infinite_materials() {
             player.add_experience_levels(-cost);
@@ -92,6 +96,7 @@ impl Slot for AnvilResultSlot {
         self.inventory.set_stack(0, ItemStack::EMPTY.clone());
         player.use_anvil();
         self.mark_dirty();
+        player.fire_anvil_craft_post(&left, &right, stack);
     }
 
     fn mark_dirty(&self) {

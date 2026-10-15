@@ -999,10 +999,12 @@ impl Player {
     }
 
     pub fn get_tab_list_name(&self) -> Option<TextComponent> {
-        self.tab_list_name
+        let name = self
+            .tab_list_name
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+            .clone();
+        name.or_else(|| crate::plugin::player_events::tab_list_name_format(self))
     }
 
     pub fn set_tab_list_name(&self, name: Option<TextComponent>) {
@@ -1412,10 +1414,14 @@ impl Player {
         damage = damage.max(0.0);
 
         let pos = victim_entity.pos.load();
-        let attack_type = AttackType::new(self, attack_cooldown_progress as f32);
+        let (attack_type, hit) = crate::plugin::player_events::attack_hit(
+            self,
+            victim,
+            AttackType::new(self, attack_cooldown_progress as f32),
+        );
 
-        if matches!(attack_type, AttackType::Critical) {
-            damage *= 1.5;
+        if hit.critical {
+            damage *= f64::from(hit.multiplier);
         }
 
         let is_mace_smash = matches!(attack_type, AttackType::MaceSmash);
@@ -1530,7 +1536,7 @@ impl Player {
             let mut knockback_strength = f64::from(knockback_level);
             match attack_type {
                 AttackType::Knockback => knockback_strength += 1.0,
-                AttackType::Sweeping => {
+                _ if hit.sweep => {
                     combat::spawn_sweep_particle(attacker_entity, &world, &pos);
 
                     let mut sweep_damage = 1.0;
@@ -2930,7 +2936,7 @@ impl Player {
                     p.stop_mining();
 
                     let block = Block::from_state_id(state.id);
-                    let can_harvest = p.can_harvest(state, block);
+                    let can_harvest = p.can_harvest(state, block, &pos);
                     let flags = if can_harvest {
                         pumpkin_world::world::BlockFlags::NOTIFY_ALL
                     } else {
@@ -3034,7 +3040,8 @@ impl Player {
         starting_time: i32,
     ) -> bool {
         let time = self.tick_counter.load(Ordering::Relaxed) - starting_time;
-        let speed = block::calc_block_breaking(self, state, Block::from_state_id(state.id));
+        let speed =
+            block::calc_block_breaking(self, state, Block::from_state_id(state.id), &location);
         let total_progress = speed * (time + 1) as f32;
         let stage = (total_progress * 10.0) as i32;
         let stage = stage.min(9);
@@ -4982,8 +4989,10 @@ impl Player {
         );
     }
 
-    pub fn can_harvest(&self, state: &BlockState, block: &'static Block) -> bool {
-        !state.tool_required() || self.inventory().held_item().is_correct_for_drops(block)
+    pub fn can_harvest(&self, state: &BlockState, block: &'static Block, pos: &BlockPos) -> bool {
+        let vanilla =
+            !state.tool_required() || self.inventory().held_item().is_correct_for_drops(block);
+        crate::plugin::player_events::harvest_check(self, state, pos, vanilla)
     }
 
     /// The id under which Pumpkin will store it's `mining_efficiency` modifier value
@@ -6953,7 +6962,7 @@ impl EntityBase for Player {
         {
             return display_name.clone();
         }
-        let name = self.get_name();
+        let name = crate::plugin::player_events::name_format(self, self.get_name());
         let name_clone = name.clone();
         let mut name = name.click_event(ClickEvent::SuggestCommand {
             command: format!("/tell {} ", self.gameprofile.name.clone()).into(),
@@ -8058,6 +8067,19 @@ impl InventoryPlayer for Player {
 
     fn close_screen_handler(&self) {
         self.close_handled_screen();
+    }
+
+    fn fire_anvil_craft_pre(
+        &self,
+        left: &ItemStack,
+        right: &ItemStack,
+        output: &ItemStack,
+    ) -> bool {
+        crate::plugin::player_events::anvil_craft_pre(self, left, right, output)
+    }
+
+    fn fire_anvil_craft_post(&self, left: &ItemStack, right: &ItemStack, output: &ItemStack) {
+        crate::plugin::player_events::anvil_craft_post(self, left, right, output);
     }
 
     fn use_anvil(&self) {

@@ -526,20 +526,27 @@ pub fn drop_loot(
     }
 }
 
-pub fn calc_block_breaking(player: &Player, state: &BlockState, block: &'static Block) -> f32 {
+pub fn calc_block_breaking(
+    player: &Player,
+    state: &BlockState,
+    block: &'static Block,
+    pos: &BlockPos,
+) -> f32 {
     let hardness = state.hardness;
     #[expect(clippy::float_cmp)]
     if hardness == -1.0 {
         // unbreakable
         return 0.0;
     }
-    let i = if player.can_harvest(state, block) {
+    let i = if player.can_harvest(state, block, pos) {
         30.0
     } else {
         100.0
     };
 
-    player.get_mining_speed(block) / hardness / i
+    crate::plugin::player_events::break_speed(player, state, player.get_mining_speed(block), pos)
+        / hardness
+        / i
 }
 
 #[derive(PartialEq, Eq, Debug)]

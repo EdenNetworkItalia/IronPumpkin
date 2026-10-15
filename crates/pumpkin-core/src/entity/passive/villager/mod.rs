@@ -891,6 +891,13 @@ impl VillagerEntity {
             };
             self.resend_offers_to_player(&player);
         }
+        crate::plugin::player_events::trade_with_villager(
+            world,
+            player_uuid,
+            self.get_entity().entity_id,
+            &self.offers,
+            offer_index,
+        );
     }
 
     fn resend_offers_to_player(&self, player: &Arc<Player>) {

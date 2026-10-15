@@ -27,7 +27,11 @@ impl ItemBehaviour for BowItem {
         let has_arrows = Self::has_arrows(player);
         let gamemode = player.gamemode.load();
 
-        if !has_arrows && gamemode != GameMode::Creative {
+        if crate::plugin::player_events::arrow_nock(
+            player,
+            has_arrows || gamemode == GameMode::Creative,
+        ) || (!has_arrows && gamemode != GameMode::Creative)
+        {
             return;
         }
 
@@ -66,16 +70,20 @@ impl BowItem {
         let use_ticks = player.living_entity.item_use_time.load(Ordering::Relaxed);
         let use_ticks = Self::USE_DURATION - use_ticks;
 
-        // Check minimum draw time
-        if use_ticks < 3 {
-            return;
-        }
-
         // Check arrows again
         let arrow_slot = player.find_arrow();
         let gamemode = player.gamemode.load();
 
         if arrow_slot.is_none() && gamemode != GameMode::Creative {
+            return;
+        }
+
+        let Some(use_ticks) = crate::plugin::player_events::arrow_loose(player, weapon, use_ticks)
+        else {
+            return;
+        };
+        // Check minimum draw time
+        if use_ticks < 3 {
             return;
         }
 

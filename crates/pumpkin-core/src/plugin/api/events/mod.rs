@@ -10,6 +10,7 @@ pub mod inventory;
 pub mod player;
 pub mod raid;
 pub mod registries;
+pub mod results;
 pub mod server;
 pub mod vehicle;
 pub mod world;

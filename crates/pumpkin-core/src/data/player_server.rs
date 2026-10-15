@@ -56,7 +56,20 @@ impl ServerPlayerData {
         player.write_nbt(&mut nbt);
 
         self.storage.save_player_data(&player.gameprofile.id, nbt)?;
+        self.fire_save_to_file(player);
         Ok(())
+    }
+
+    /// The directory of the player data files.
+    #[must_use]
+    pub fn data_path(&self) -> &std::path::Path {
+        self.storage.get_data_path()
+    }
+
+    fn fire_save_to_file(&self, player: &Player) {
+        if self.storage.is_save_enabled() {
+            crate::plugin::player_events::save_to_file(player, self.data_path());
+        }
     }
 
     /// Performs periodic maintenance tasks.
@@ -79,6 +92,7 @@ impl ServerPlayerData {
                     let mut nbt = NbtCompound::new();
                     player.write_nbt(&mut nbt);
                     snapshots.push((player.gameprofile.id, nbt));
+                    self.fire_save_to_file(player);
                 }
             }
 
@@ -175,6 +189,7 @@ impl ServerPlayerData {
         player.write_nbt(&mut nbt);
 
         self.storage.save_player_data(&uuid, nbt)?;
+        self.fire_save_to_file(player);
         Ok(())
     }
 }

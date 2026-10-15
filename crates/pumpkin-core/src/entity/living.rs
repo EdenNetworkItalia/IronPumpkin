@@ -1889,7 +1889,11 @@ impl LivingEntity {
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .allow_flying
         });
-        if may_fly || self.is_immune_to_fall_damage() {
+        if may_fly {
+            crate::plugin::player_events::flyable_fall(caller, fall_distance, damage_per_distance);
+            return;
+        }
+        if self.is_immune_to_fall_damage() {
             return;
         }
 

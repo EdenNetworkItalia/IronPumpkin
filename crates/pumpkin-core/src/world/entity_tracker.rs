@@ -586,6 +586,7 @@ impl TrackedEntity {
                 client.try_enqueue_packet(data);
             }
         }
+        crate::plugin::player_events::start_tracking(player, &self.entity);
     }
 
     pub fn remove_pairing(&self, player: &Player) {
@@ -631,6 +632,7 @@ impl TrackedEntity {
             World::collect_java_recipients_by_version(java_recipients.into_iter());
         World::broadcast_java_grouped(&je_packet, recipients_by_version);
         World::broadcast_bedrock_grouped(&be_packet, bedrock_recipients.into_iter());
+        crate::plugin::player_events::stop_tracking_all(&players, &self.seen_by, &self.entity);
 
         self.seen_by.clear();
         self.bedrock_watchers.store(0, Relaxed);
@@ -643,15 +645,17 @@ impl TrackedEntity {
                 self.bedrock_watchers.fetch_sub(1, Relaxed);
             }
             self.remove_pairing(player);
+            crate::plugin::player_events::stop_tracking(player, &self.entity);
         }
     }
 
     /// Forgets the player as a viewer without a removal packet; the client already dropped it.
     pub fn forget_player(&self, player: &Player) {
-        if self.seen_by.remove(&player.gameprofile.id).is_some()
-            && matches!(player.client.as_ref(), ClientPlatform::Bedrock(_))
-        {
-            self.bedrock_watchers.fetch_sub(1, Relaxed);
+        if self.seen_by.remove(&player.gameprofile.id).is_some() {
+            if matches!(player.client.as_ref(), ClientPlatform::Bedrock(_)) {
+                self.bedrock_watchers.fetch_sub(1, Relaxed);
+            }
+            crate::plugin::player_events::stop_tracking(player, &self.entity);
         }
     }
 

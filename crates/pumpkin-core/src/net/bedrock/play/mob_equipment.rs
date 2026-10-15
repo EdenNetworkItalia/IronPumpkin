@@ -30,5 +30,6 @@ impl BedrockClient {
         let stack = inv.held_item();
         let equipment = &[(EquipmentSlot::MAIN_HAND, stack)];
         player.living_entity.send_equipment_changes(equipment);
+        crate::plugin::player_events::hotbar_post(player, previous_slot, slot);
     }
 }

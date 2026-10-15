@@ -29,6 +29,7 @@ pub mod loader;
 /// Plugins can request these permissions in their metadata to access specific
 /// host features.
 pub mod permissions;
+pub(crate) mod player_events;
 pub mod startup;
 
 use crate::{LOGGER_IMPL, server::Server};

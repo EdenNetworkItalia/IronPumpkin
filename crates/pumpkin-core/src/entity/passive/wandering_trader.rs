@@ -545,6 +545,13 @@ impl WanderingTraderEntity {
         if let Some(player) = world.get_player_by_uuid(player_uuid) {
             trigger_trade_advancement(&player);
         }
+        crate::plugin::player_events::trade_with_villager(
+            world,
+            player_uuid,
+            self.get_entity().entity_id,
+            &self.offers,
+            offer_index,
+        );
     }
 }
 

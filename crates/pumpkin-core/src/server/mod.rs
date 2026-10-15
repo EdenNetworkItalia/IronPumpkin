@@ -717,6 +717,7 @@ impl Server {
 
         // Wrap in Arc after data is loaded
         let player = Arc::new(player);
+        crate::plugin::player_events::load_from_file(self, &player);
         {
             let mut advancements = player
                 .advancements

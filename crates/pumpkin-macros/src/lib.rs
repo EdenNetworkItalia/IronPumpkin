@@ -14,13 +14,17 @@ use syn::{Block as SynBlock, Expr, Field, Fields, ItemStruct, Stmt, parse_macro_
 /// Put `#[cancellable]` above `#[derive(Event)]`: the attribute must add the `cancelled` field
 /// before the derive runs, or the event never reports a cancel to the dispatch.
 ///
+/// `#[event_parents(path::ParentEvent, ..)]` names the concrete parent events, nearest first: a
+/// handler on a parent also receives this event.
+///
 /// # Arguments
 /// - `item` – The input `TokenStream` representing the struct to derive `Event` for.
-#[proc_macro_derive(Event)]
+#[proc_macro_derive(Event, attributes(event_parents))]
 pub fn event(item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+    let parents = event_parents(&ast.attrs);
 
     // `#[cancellable]` runs before the derive and adds the field, so the dispatch can skip the
     // handlers that do not receive cancelled events.
@@ -53,9 +57,31 @@ pub fn event(item: TokenStream) -> TokenStream {
             }
 
             #is_cancelled
+
+            #parents
         }
     }
     .into()
+}
+
+/// The `get_parent_names_static` of `#[event_parents(..)]`, which also checks that each parent
+/// type exists.
+fn event_parents(attrs: &[Attribute]) -> Option<proc_macro2::TokenStream> {
+    let attr = attrs.iter().find(|a| a.path().is_ident("event_parents"))?;
+    let paths = attr
+        .parse_args_with(Punctuated::<syn::Path, Token![,]>::parse_terminated)
+        .expect("#[event_parents] takes a list of event type paths");
+    let names = paths.iter().map(|p| {
+        let last = &p.segments.last().unwrap().ident;
+        quote! { stringify!(#last) }
+    });
+    let checks = paths.iter();
+    Some(quote! {
+        fn get_parent_names_static() -> &'static [&'static str] {
+            #(let _ = std::marker::PhantomData::<#checks>;)*
+            &[#(#names),*]
+        }
+    })
 }
 
 /// Marks a struct as cancellable by adding a `cancelled: bool` field and

@@ -3999,14 +3999,23 @@ impl World {
             )
         };
 
-        let mut spawn_loc_event = crate::plugin::api::events::player::player_spawn_location::PlayerSpawnLocationEvent::new(
-            player.clone(),
+        let crate::plugin::player_events::RespawnPosition {
             position,
-        );
-        if let Some(ref s) = server {
-            s.plugin_manager.fire(s, &mut spawn_loc_event).await;
-        }
-        let position = spawn_loc_event.spawn_pos;
+            yaw,
+            pitch,
+            dimension: respawn_dimension,
+        } = crate::plugin::player_events::respawn_position(
+            server.as_ref(),
+            player,
+            crate::plugin::player_events::RespawnPosition {
+                position,
+                yaw,
+                pitch,
+                dimension: respawn_dimension,
+            },
+            alive,
+        )
+        .await;
 
         // Candidate destination world for a cross-dimension respawn.
         let candidate_world = if respawn_dimension == self.dimension {

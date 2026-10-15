@@ -230,6 +230,20 @@ pub trait InventoryPlayer: Send + Sync {
     /// Performs anvil block damage and plays anvil sound events.
     fn use_anvil(&self) {}
 
+    /// Fires the event before the player pays for the anvil `output`. Returns true if
+    /// cancelled.
+    fn fire_anvil_craft_pre(
+        &self,
+        _left: &ItemStack,
+        _right: &ItemStack,
+        _output: &ItemStack,
+    ) -> bool {
+        false
+    }
+
+    /// Fires the event after the player took the anvil `output`, with the inputs before the take.
+    fn fire_anvil_craft_post(&self, _left: &ItemStack, _right: &ItemStack, _output: &ItemStack) {}
+
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}
 }

@@ -65,11 +65,11 @@ impl BedrockClient {
                             .block_registry
                             .attack(&world, block, state, &location, player);
                     }
-                    let speed = crate::block::calc_block_breaking(player, state, block);
+                    let speed = crate::block::calc_block_breaking(player, state, block, &location);
                     if speed >= 1.0 {
                         player.stop_mining();
                         let broken_state = world.get_block_state(&location);
-                        let can_harvest = player.can_harvest(broken_state, block);
+                        let can_harvest = player.can_harvest(broken_state, block, &location);
                         let flags = if can_harvest {
                             BlockFlags::NOTIFY_ALL
                         } else {
@@ -157,7 +157,7 @@ impl BedrockClient {
 
                 let (block, state) = world.get_block_and_state(&location);
                 if player.gamemode.load() != GameMode::Creative && !state.is_air() {
-                    let speed = crate::block::calc_block_breaking(player, state, block);
+                    let speed = crate::block::calc_block_breaking(player, state, block, &location);
                     let elapsed = player.tick_counter.load(Ordering::Relaxed)
                         - player.start_mining_time.load(Ordering::Relaxed)
                         + 1;
@@ -172,7 +172,7 @@ impl BedrockClient {
                     {
                         player.stop_mining();
 
-                        let can_harvest = player.can_harvest(state, block);
+                        let can_harvest = player.can_harvest(state, block, &location);
                         let flags = if can_harvest {
                             BlockFlags::NOTIFY_ALL
                         } else {

@@ -62,6 +62,11 @@ impl JavaClient {
 
                 // 4. Atomically swap the new config into the player
                 player.config.store(std::sync::Arc::new(new_config));
+                crate::plugin::player_events::client_information_updated(
+                    server,
+                    player,
+                    &current_config,
+                );
 
                 (
                     update_settings,

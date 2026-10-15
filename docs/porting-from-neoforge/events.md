@@ -240,7 +240,26 @@ The anvil and grindstone events fire outside the screen-handler lock, so a handl
 
 `StatAwardEvent` has the status `planned` in `mapping-table.md`, because of the delta and the missing fire on `set_stat`.
 
-`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The pages for the player, the level and block, and the entity families are planned (tasks 2.12, 2.13 and 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
+`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The pages for the level and block, and the entity families are planned (tasks 2.13 and 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
+
+## The player events
+
+The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A nested class takes its parent name as a prefix: `PlayerEvent.BreakSpeed` is `PlayerEventBreakSpeed`, `PlayerXpEvent.PickupXp` is `PlayerXpEventPickupXp`. Where Pumpkin already had an event at the fire site, the NeoForge event maps to it: `PlayerRespawnPositionEvent` is `PlayerSpawnLocationEvent`, `PlayerSwitchHotbarSlotEvent.Pre` is `PlayerItemHeldEvent`. `mapping-table.md` names the Rust type of each row.
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `PlayerEvent.BreakSpeed` | `PlayerEventBreakSpeed` | Fires on every mining step. `new_speed` is settable. A cancel makes the block unbreakable for that step. |
+| `PlayerEvent.HarvestCheck` | `PlayerEventHarvestCheck` | `can_harvest` is settable. It decides the mining speed and the drops. |
+| `CriticalHitEvent` and `SweepAttackEvent` | the same names | `critical_hit`, `damage_multiplier`, `disable_sweep` and `sweeping` are settable. A cancelled sweep event keeps the value of `sweeping`. |
+| `ArrowNockEvent` and `ArrowLooseEvent` | the same names | A cancel or a set `action` stops the draw. `charge` is settable, and a cancel shoots nothing. |
+| `ItemEntityPickupEvent.Pre` and `Post` | `ItemEntityPickupEventPre` and `ItemEntityPickupEventPost` | `can_pickup` is a `TriState`: `False` refuses, `True` ignores the pickup delay. |
+| `PlayerXpEvent.PickupXp` | `PlayerXpEventPickupXp` | A cancel leaves the orb. |
+| `PlayerEvent.NameFormat` and `TabListNameFormat` | `PlayerEventNameFormat` and `PlayerEventTabListNameFormat` | Fire only when no name was set with `set_display_name` or `set_tab_list_name`. The display name is not cached: the event fires on every read. |
+| `PlayerRespawnPositionEvent` | `PlayerSpawnLocationEvent` | Position, rotation, dimension and `copy_original_spawn_position` are settable. |
+| `AnvilCraftEvent.Pre`, `TradeWithVillagerEvent` | the same names (`AnvilCraftEventPre`) | Fire under the screen-handler lock. |
+| `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
+
+`PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
 
 ---
 
@@ -259,8 +278,8 @@ The anvil and grindstone events fire outside the screen-handler lock, so a handl
 
 - Do not implement `handle` for a handler that you register as blocking. The server never calls it.
 - Do not hold a lock of your own state while you fire an event from a handler.
-- Do not close the enchanting screen from a handler of an enchanting event. The event fires under the screen-handler lock.
+- Do not close the enchanting, anvil or trade screen from a handler of an enchanting event, `AnvilCraftEventPre`, `AnvilCraftEventPost` or `TradeWithVillagerEvent`. These events fire under the screen-handler lock.
 - Do not change a field that the server does not read back. The change has no effect.
-- Do not wait for a result setter. Events with a result are planned.
+- Do not wait for a result setter. Events with a result are planned, except `ItemEntityPickupEventPre` (`TriState`) and `ArrowNockEvent` (`InteractionResult`).
 - Do not expect a handler to run for an event that no fire site fires.
 - Do not panic in a handler. The panic hook of the server writes a crash report and exits at once.

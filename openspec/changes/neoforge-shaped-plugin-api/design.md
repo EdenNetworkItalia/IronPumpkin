@@ -133,6 +133,7 @@ There is no hook catalogue, no generated accessor API and no service-seam API of
   - `PlayerEnchantItemEvent` fires before the lapis is consumed, and the table writes the item back. `EnchantmentLevelSetEvent` has `pos` and a getter for the original levels. Both events and `EnchantItemEvent` fire under the enchanting-table screen-handler lock, so a handler that closes the screen can deadlock.
   - A cancel of `PotionBrewEvent.Pre` takes the stacks only if the stand inventory did not change meanwhile.
   - `ServerChatEvent` fills `raw_text` only when a handler was registered when the event is created.
+  - `AnvilCraftEventPre`, `AnvilCraftEventPost` and `TradeWithVillagerEvent` fire under the screen-handler lock of the anvil or the trade screen. `PlayerEventNameFormat` is not cached and fires on every read of the display name. `PlayerEvent` and the other abstract classes have no struct: EventBus 8.0.5 rejects a listener on an abstract event. The concrete parent `PlayerContainerEvent` is named by `#[event_parents(..)]` on `InventoryOpenEvent` and `InventoryCloseEvent`.
   - `StatAwardEvent` stays `planned`. The Rust `amount` is a delta, and `set_stat` fires no event. NeoForge fires on `setValue` with the new total, resets to 0 included.
 - Priority. `PluginManager` (`crates/pumpkin-core/src/plugin/mod.rs`, `dispatch.rs`) keeps each handler list in dispatch order at registration: blocking handlers before non-blocking handlers, each from `Highest` to `Lowest`, in registration order inside one priority. Upstream Pumpkin stores `EventPriority` and never reads it, so this is an IronPumpkin change and an upstream parity candidate. The registration has the NeoForge `receiveCanceled` flag: a handler does not run for a cancelled event unless it sets the flag. `Context::register_event` (Wasm hosts) always receives cancelled events. Priority between v0.2 Wasm plugins and native mods follows from the single dispatch. The reentry depth of 64 of `pumpkin-plugin-runtime` is a limit of Wasm plugins and is not part of the native API.
 - Parent events. A concrete NeoForge class with concrete subclasses is a struct, and each subclass struct names it in `Payload::get_parent_names_static`. A handler on the parent is a `ParentEventHandler` that a mod registers with `ModInit::register_parent_event`: it gets the parent struct and every subclass struct as `dyn Payload` and downcasts it. The dispatch merges the handlers of the subclass and of its parents in one priority order, the subclass handlers first inside one rank. An abstract NeoForge class has no struct, so nobody can listen to it.
@@ -257,7 +258,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 98 | 164 | 0 | 20 |
+| Events, server and common | 282 | 119 | 143 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 21 | 116 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
@@ -270,7 +271,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 7 | 39 | 0 | 41 |
-| Total | 1093 | 183 | 552 | 210 | 148 |
+| Total | 1093 | 204 | 531 | 210 | 148 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -426,55 +427,55 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | MobSplitEvent | game | both | yes | - | planned | `SlimeSplitEvent` | Pumpkin defines SlimeSplitEvent but never fires it |
 | SpawnClusterSizeEvent | game | both | no | - | planned | natural spawner pack size | no hook |
 
-#### `event.entity.player` (67: 29 supported, 33 planned, 5 not supported)
+#### `event.entity.player` (67: 50 supported, 12 planned, 5 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | AdvancementEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
 | AdvancementEvent.AdvancementEarnEvent | game | both | no | - | supported | `PlayerAdvancementDoneEvent` | fired in `entity/player/advancement.rs`; WIT v0.2 |
-| AdvancementEvent.AdvancementProgressEvent | game | both | no | - | planned | advancement criteria tracking | no per-criterion event |
-| AnvilCraftEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
-| AnvilCraftEvent.Post | game | both | no | - | planned | anvil screen handler (pumpkin-inventory) | no event when the result is taken |
-| AnvilCraftEvent.Pre | game | both | yes | - | planned | anvil screen handler (pumpkin-inventory) | no event when the result is taken |
-| ArrowLooseEvent | game | both | yes | - | planned | bow release in the bow `ItemBehaviour` | EntityShootBowEvent exists, but Pumpkin fires it only from mob bow and crossbow goals |
-| ArrowNockEvent | game | both | yes | setAction(InteractionResult) | planned | bow `ItemBehaviour` use | no event when drawing starts |
+| AdvancementEvent.AdvancementProgressEvent | game | both | no | - | planned | advancement criteria tracking | `PlayerAdvancements::award` and `revoke` run under the advancement lock, and `finish_award` (outside it) gets no criterion name and runs only for a completed advancement; the event needs a post-lock step for each grant and revoke |
+| AnvilCraftEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| AnvilCraftEvent.Post | game | both | no | - | supported | `AnvilCraftEventPost` | fired in the anvil result slot (`AnvilScreenHandler`, `InventoryPlayer::fire_anvil_craft_post`) after the take, under the screen-handler lock; test `cancel_anvil_craft_event_pre` |
+| AnvilCraftEvent.Pre | game | both | yes | - | supported | `AnvilCraftEventPre` | fired in the anvil result slot before the cost is paid, under the screen-handler lock; a cancel skips the cost and the use of the inputs; test `cancel_anvil_craft_event_pre` |
+| ArrowLooseEvent | game | both | yes | - | supported | `ArrowLooseEvent` | fired in `BowItem::release_bow` for players; `charge` written back, a cancel shoots nothing; test `change_a_settable_field_arrow_loose_event` |
+| ArrowNockEvent | game | both | yes | setAction(InteractionResult) | supported | `ArrowNockEvent` | fired in the bow `normal_use`; a cancel or a set `action` stops the draw, Pumpkin's item use returns no result; test `cancel_arrow_nock_event` |
 | AttackEntityEvent | game | both | yes | - | supported | `EntityDamageByEntityEvent` | fired in `entity/living.rs`; WIT v0.2; fires later, after the damage is computed |
 | BonemealEvent | game | both | yes | - | supported | `BlockFertilizeEvent` | fired in `block/registry.rs`; WIT v0.2 |
-| CanContinueSleepingEvent | game | both | no | - | planned | sleep checks in the `Player` tick | no event |
+| CanContinueSleepingEvent | game | both | no | - | planned | sleep checks in the `Player` tick | `Player::tick` has no check that wakes a sleeping player (vanilla `Player.tick` wakes the player at day, `LivingEntity.tick` when the bed is gone), so there is no decision for the event to change |
 | CanPlayerSleepEvent | game | server | no | - | supported | `PlayerBedEnterEvent` | fired in `block/blocks/bed.rs`, `block/blocks/straw_bed.rs`; WIT v0.2 |
-| ClientInformationUpdatedEvent | game | server | no | - | planned | client_information handling in `Player` | PlayerLocaleChangeEvent and PlayerChangedMainHandEvent cover two fields |
-| CriticalHitEvent | game | both | no | - | planned | player attack in `Player` | no critical hit hook |
+| ClientInformationUpdatedEvent | game | server | no | - | supported | `ClientInformationUpdatedEvent` | fired in `net/java/play/client_information.rs` after the settings are stored; Java only; test `one_event_per_fire_site_client_information_updated_event` |
+| CriticalHitEvent | game | both | no | - | supported | `CriticalHitEvent` | fired in `Player::attack`; `critical_hit`, `damage_multiplier`, `disable_sweep` written back; test `change_a_settable_field_critical_hit_event` |
 | CustomClickActionEvent | game | server | yes | - | supported | `DialogClickActionEvent` | fired in `net/java/mod.rs`; WIT v0.2; custom click actions from dialogs |
 | FluidTooltipEvent | game | both | no | - | not supported | - | tooltip lines are built by the client; Pumpkin never builds them |
-| ItemEntityPickupEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| ItemEntityPickupEvent.Post | game | both | no | - | planned | item entity pickup | no post-pickup event |
-| ItemEntityPickupEvent.Pre | game | both | no | setCanPickup(TriState) | supported | `EntityPickupItemEvent` | fired in `entity/living.rs`; WIT v0.2 |
+| ItemEntityPickupEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| ItemEntityPickupEvent.Post | game | both | no | - | supported | `ItemEntityPickupEventPost` | fired in `ItemEntity::on_player_collision` after the items moved; test `one_event_per_fire_site_item_entity_pickup_events` |
+| ItemEntityPickupEvent.Pre | game | both | no | setCanPickup(TriState) | supported | `ItemEntityPickupEventPre` | fired in `ItemEntity::on_player_collision` before the checks; `can_pickup` (`TriState`) applied; `EntityPickupItemEvent` fires after the insert and cannot stop it; test `one_event_per_fire_site_item_entity_pickup_events` |
 | ItemFishedEvent | game | both | yes | - | supported | `PlayerFishEvent` | fired in `net/java/play/use_item.rs`; WIT v0.2 |
 | ItemTooltipEvent | game | both | no | - | not supported | - | tooltip lines are built by the client; Pumpkin never builds them |
-| PermissionsChangedEvent | game | server | yes | - | planned | op list (`server.wit` op-player) | no event on an op level change |
-| PlayerContainerEvent | game | both | no | - | supported | `InventoryOpenEvent` | fired in `entity/player.rs`; WIT v0.2; concrete parent; InventoryCloseEvent for Close |
+| PermissionsChangedEvent | game | server | yes | - | planned | op list (`server.wit` op-player) | the op and deop commands (`command/commands/op.rs`, `deop.rs`) and the Wasm host op calls change the op list under the `operator_config` write lock before `Player::set_permission_lvl`; a cancel needs a check before the op list changes in each caller |
+| PlayerContainerEvent | game | both | no | - | supported | `PlayerContainerEvent` | concrete parent: a `ParentEventHandler` gets `InventoryOpenEvent` and `InventoryCloseEvent`; test `handler_on_a_parent_player_container_event` |
 | PlayerContainerEvent.Close | game | both | no | - | supported | `InventoryCloseEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerContainerEvent.Open | game | both | no | - | supported | `InventoryOpenEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerDestroyItemEvent | game | both | no | - | supported | `PlayerItemBreakEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `EnchantingTableScreenHandler::on_button_click` after the enchantments apply and before the lapis is consumed, under the screen-handler lock; the table writes `enchanted_item` back to slot 0; test `one_event_per_fire_site_enchantment_events` |
-| PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 26 supported, 26 planned, 5 not supported, 2 client-only |
-| PlayerEvent.BreakSpeed | game | both | yes | - | planned | mining speed in block breaking | no hook; the client also predicts break speed |
-| PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | no event that pairs the old and the new player |
-| PlayerEvent.HarvestCheck | game | both | no | - | planned | harvest tool check in block breaking | no hook |
+| PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events (EventBus 8.0.5 `addToListeners`); subclasses: 46 supported, 6 planned, 5 not supported, 2 client-only |
+| PlayerEvent.BreakSpeed | game | both | yes | - | supported | `PlayerEventBreakSpeed` | fired in `block::calc_block_breaking` on every mining step; `new_speed` written back, a cancel gives -1; the client also predicts break speed; test `one_event_per_fire_site_break_speed_and_harvest_check` |
+| PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | `World::respawn_player` keeps the same `Arc<Player>` across death and the End exit, so there is no old player to pair with a new one; the copy-on-death rule belongs to attachments (task 2.14) |
+| PlayerEvent.HarvestCheck | game | both | no | - | supported | `PlayerEventHarvestCheck` | fired in `Player::can_harvest` (mining speed and drops); `can_harvest` written back; test `one_event_per_fire_site_break_speed_and_harvest_check` |
 | PlayerEvent.ItemCraftedEvent | game | both | no | - | supported | `CraftItemEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerEvent.ItemSmeltedEvent | game | both | no | - | supported | `FurnaceExtractEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerEvent.LoadFromFile | game | both | no | - | planned | player data load (NBT) | no event |
-| PlayerEvent.NameFormat | game | both | no | - | planned | player display name | no event |
+| PlayerEvent.LoadFromFile | game | both | no | - | supported | `PlayerEventLoadFromFile` | fired in `Server::add_player` after the data load; `player_file(suffix)`; test `one_event_per_fire_site_player_file_events` |
+| PlayerEvent.NameFormat | game | both | no | - | supported | `PlayerEventNameFormat` | fired in `Player::get_display_name` when no name is set through the API; not cached, fires on every read; test `change_a_settable_field_name_format_events` |
 | PlayerEvent.PlayerChangeGameModeEvent | game | both | yes | - | supported | `PlayerGamemodeChangeEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerEvent.PlayerChangedDimensionEvent | game | both | no | - | supported | `PlayerChangedWorldEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerEvent.PlayerLoggedInEvent | game | both | no | - | supported | `PlayerJoinEvent` | fired in `world/mod.rs`; WIT v0.2 |
 | PlayerEvent.PlayerLoggedOutEvent | game | both | no | - | supported | `PlayerLeaveEvent` | fired in `world/mod.rs`; WIT v0.2 |
 | PlayerEvent.PlayerRespawnEvent | game | both | no | - | supported | `PlayerRespawnEvent` | fired in `world/mod.rs`; WIT v0.2 |
-| PlayerEvent.SaveToFile | game | both | no | - | planned | player data save (NBT) | no event |
-| PlayerEvent.StartTracking | game | both | no | - | planned | entity tracker (`world/entity_tracker.rs`) | PlayerShowEntityEvent is plugin-driven visibility, not tracking |
-| PlayerEvent.StopTracking | game | both | no | - | planned | entity tracker (`world/entity_tracker.rs`) | PlayerHideEntityEvent is plugin-driven visibility, not tracking |
-| PlayerEvent.TabListNameFormat | game | both | no | - | planned | tab list API (`plugin/api/tab_list.rs`) | API exists, no event |
-| PlayerFlyableFallEvent | game | both | no | - | planned | fall handling in `Player` | movement is client authoritative; the fall distance comes from the client |
+| PlayerEvent.SaveToFile | game | both | no | - | supported | `PlayerEventSaveToFile` | fired in `ServerPlayerData` on leave, periodic save and `save_all_players` while saving is enabled; the periodic save fires before the asynchronous write; test `one_event_per_fire_site_player_file_events` |
+| PlayerEvent.StartTracking | game | both | no | - | supported | `PlayerEventStartTracking` | fired in `TrackedEntity::add_pairing`; test `one_event_per_fire_site_tracking_events` |
+| PlayerEvent.StopTracking | game | both | no | - | supported | `PlayerEventStopTracking` | fired in `TrackedEntity::remove_player`, `forget_player` and `broadcast_removed`; test `one_event_per_fire_site_tracking_events` |
+| PlayerEvent.TabListNameFormat | game | both | no | - | supported | `PlayerEventTabListNameFormat` | fired in `Player::get_tab_list_name` when no name is set through the API; `set_tab_list_name` sends the change; test `change_a_settable_field_name_format_events` |
+| PlayerFlyableFallEvent | game | both | no | - | supported | `PlayerFlyableFallEvent` | fired in `LivingEntity::handle_fall_damage` for a player that may fly; nothing read back; `distance` is the fall distance (NeoForge 26.3 passes the multiplier twice); test `one_event_per_fire_site_player_flyable_fall_event` |
 | PlayerInteractEvent (abstract) | game | both | no | - | planned | shared fields of 6 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 4 supported, 2 not supported |
 | PlayerInteractEvent.EntityInteract | game | both | yes | setCancellationResult(InteractionResult) | supported | `PlayerInteractEntityEvent` | fired in `net/bedrock/play/inventory_action.rs`, `net/java/play/interact.rs`; WIT v0.2 |
 | PlayerInteractEvent.LeftClickBlock | game | both | yes | setUseBlock(TriState), setUseItem(TriState) | supported | `PlayerInteractEvent` | fired in `net/bedrock/play/inventory_action.rs`, `net/java/play/swing_arm.rs`, `net/java/play/use_item.rs` and 1 more; WIT v0.2; action left click block |
@@ -482,20 +483,20 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerInteractEvent.RightClickBlock | game | both | yes | setUseBlock(TriState), setUseItem(TriState), setCancellationResult(InteractionResult) | supported | `PlayerInteractEvent` | fired in `net/bedrock/play/inventory_action.rs`, `net/java/play/swing_arm.rs`, `net/java/play/use_item.rs` and 1 more; WIT v0.2; action right click block |
 | PlayerInteractEvent.RightClickEmpty | game | both | no | - | not supported | - | only the client knows about an empty-hand click on air |
 | PlayerInteractEvent.RightClickItem | game | both | yes | setCancellationResult(InteractionResult) | supported | `PlayerInteractEvent` | fired in `net/bedrock/play/inventory_action.rs`, `net/java/play/swing_arm.rs`, `net/java/play/use_item.rs` and 1 more; WIT v0.2; action right click air |
-| PlayerNegotiationEvent | game | both | no | - | planned | phase 3 configuration-task queue in `net/java/pending.rs` | delays login until async work ends |
-| PlayerRespawnPositionEvent | game | server | no | - | planned | respawn position selection | PlayerRespawnEvent carries the position, but `world/mod.rs` discards handler changes |
+| PlayerNegotiationEvent | game | both | no | - | planned | phase 3 configuration-task queue in `net/java/pending.rs` | delays login until async work ends; the configuration tasks are a `Copy` enum with `const ALL` (task 2.11 makes them dynamic), so no hook can add work to a login |
+| PlayerRespawnPositionEvent | game | server | no | - | supported | `PlayerSpawnLocationEvent` | fired in `World::respawn_player`; position, yaw, pitch, dimension and `copy_original_spawn_position` written back; WIT v0.2 sees the position only; test `change_a_settable_field_respawn_position_event` |
 | PlayerSetSpawnEvent | game | server | yes | - | supported | `PlayerSpawnChangeEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerSpawnPhantomsEvent | game | both | no | setResult(Result) | not supported | - | Pumpkin has no phantom spawner |
-| PlayerSwitchHotbarSlotEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| PlayerSwitchHotbarSlotEvent.Post | game | both | no | - | planned | held slot change | no post event |
+| PlayerSwitchHotbarSlotEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| PlayerSwitchHotbarSlotEvent.Post | game | both | no | - | supported | `PlayerSwitchHotbarSlotEventPost` | fired in `net/java/play/set_held_item.rs`, `net/bedrock/play/mob_equipment.rs` after the change; test `one_event_per_fire_site_switch_hotbar_slot_event_post` |
 | PlayerSwitchHotbarSlotEvent.Pre | game | both | yes | - | supported | `PlayerItemHeldEvent` | fired in `net/bedrock/play/mob_equipment.rs`, `net/java/play/set_held_item.rs`; WIT v0.2 |
 | PlayerWakeUpEvent | game | both | no | - | supported | `PlayerBedLeaveEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerXpEvent (abstract) | game | both | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported, 1 planned |
+| PlayerXpEvent (abstract) | game | both | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 3 supported |
 | PlayerXpEvent.LevelChange | game | both | yes | - | supported | `PlayerLevelChangeEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerXpEvent.PickupXp | game | both | yes | - | planned | experience orb pickup | PlayerExpChangeEvent fires in `Player::add_experience_points` for every source, not only orbs |
+| PlayerXpEvent.PickupXp | game | both | yes | - | supported | `PlayerXpEventPickupXp` | fired in `ExperienceOrbEntity::on_player_collision` before the pickup delay is set; a cancel leaves the orb; test `cancel_pickup_xp_event` |
 | PlayerXpEvent.XpChange | game | both | yes | - | supported | `PlayerExpChangeEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| SweepAttackEvent | game | both | yes | - | planned | player attack in `Player` | no sweep hook |
-| TradeWithVillagerEvent | game | both | no | - | planned | merchant screen handler | TradeSelectEvent is the selection, not the trade |
+| SweepAttackEvent | game | both | yes | - | supported | `SweepAttackEvent` | fired in `Player::attack` after `CriticalHitEvent`; `sweeping` written back, also on cancel; test `cancel_sweep_attack_event` |
+| TradeWithVillagerEvent | game | both | no | - | supported | `TradeWithVillagerEvent` | fired in `complete_trade` of the villager and the wandering trader, under the trade screen-handler lock; test `one_event_per_fire_site_trade_with_villager_event` |
 | UseItemOnBlockEvent | game | both | yes | setCancellationResult(InteractionResult) | supported | `PlayerInteractEvent` | fired in `net/bedrock/play/inventory_action.rs`, `net/java/play/swing_arm.rs`, `net/java/play/use_item.rs` and 1 more; WIT v0.2; action right click block |
 
 #### `event.level` (41: 16 supported, 24 planned, 1 not supported)

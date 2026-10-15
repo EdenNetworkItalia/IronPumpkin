@@ -672,7 +672,10 @@ impl EntityBase for ItemEntity {
     }
 
     fn on_player_collision(&self, player: &Arc<Player>) {
-        if self.pickup_delay.load(Ordering::Relaxed) > 0
+        let pickup = crate::plugin::player_events::item_pickup_pre(player, self.entity.entity_id);
+        if pickup == crate::plugin::results::TriState::False
+            || (pickup != crate::plugin::results::TriState::True
+                && self.pickup_delay.load(Ordering::Relaxed) > 0)
             || player.living_entity.health.load() <= 0.0
             || player.is_spectator()
         {
@@ -702,6 +705,12 @@ impl EntityBase for ItemEntity {
 
         if inserted || player.is_creative() {
             player.inventory_changed.store(true, Ordering::Relaxed);
+            crate::plugin::player_events::item_pickup_post(
+                player,
+                self.entity.entity_id,
+                &self.item_stack,
+                count_before,
+            );
 
             let amount_picked_up = if player.is_creative() {
                 count_before

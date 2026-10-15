@@ -141,6 +141,16 @@ pub fn world() -> Arc<World> {
 
 /// Joins a player named `name` to the overworld, over a loopback socket that nobody reads.
 pub fn player(name: &str) -> Arc<Player> {
+    join(name, false)
+}
+
+/// Joins a player like [`player`], with a packet writer, so a packet that waits for the writer
+/// returns once the write to the closed socket fails.
+pub fn player_with_writer(name: &str) -> Arc<Player> {
+    join(name, true)
+}
+
+fn join(name: &str, writer: bool) -> Arc<Player> {
     let server = server();
     RUNTIME.block_on(async {
         let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
@@ -164,12 +174,15 @@ pub fn player(name: &str) -> Arc<Player> {
             properties: ArcSwap::from_pointee(Vec::new()),
             profile_actions: None,
         };
-        let client = JavaClient::from_pending(
+        let mut client = JavaClient::from_pending(
             pending,
             profile.clone(),
             PlayerConfig::default(),
             NegotiatedState::default(),
         );
+        if writer {
+            client.start_outgoing_packet_task();
+        }
         let world = world();
         let player = Arc::new(Player::new(
             Arc::new(ClientPlatform::Java(client)),
