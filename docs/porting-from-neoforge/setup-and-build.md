@@ -30,7 +30,7 @@ An IronPumpkin mod is a Rust crate. A modpack is a repository that you create fr
 | `version` | `version()`, or the key of `mods_toml()` | `${file.jarVersion}` in the file becomes `version()`. |
 | A mod that clients need | `client_required()` | The default is `true`. A client without the mod is disconnected at the configuration handshake. |
 | `description`, `authors`, `[[dependencies.<modId>]]` | The same keys of `mods_toml()` | A mod without a `mods_toml()` has no dependencies. |
-| `license` | `license` in the `Cargo.toml` of the crate | The server does not read the key of the file. |
+| `license` | The same key of `mods_toml()`, and `license` in the `Cargo.toml` of the crate | A `mods_toml()` needs a non-blank `license`. A missing or blank license stops the server with "Missing license". The server does not keep the value. |
 
 ---
 
@@ -340,7 +340,7 @@ The IronPumpkin server is GPL-3.0. A built binary links the server, so it is a G
 - Depend on `ironpumpkin-mods` only.
 - Use the same key in `modpack.toml` as the package name of the mod crate.
 - Keep `exclude = [".ironpumpkin"]` in the root `Cargo.toml`.
-- Give the mod a `neoforge.mods.toml` with the `modId` and the registry `namespace` of the Java mod. Without a file, use the registry namespace as the `NativeMod::id`, when the id charset allows it.
+- Give the mod a `neoforge.mods.toml` with a `license`, the `modId` and the registry `namespace` of the Java mod. Without a file, use the registry namespace as the `NativeMod::id`, when the id charset allows it.
 - Set `client_required` to `false` for a mod with only server logic.
 - Give the source of the pack, of each mod and of each patch to whoever gets the binary.
 

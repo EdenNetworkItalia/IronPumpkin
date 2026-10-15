@@ -16,7 +16,7 @@ In IronPumpkin, a mod builds a `ConfigSpec` with a `ConfigSpecBuilder`. It regis
 | **Registration** | `ModContainer#registerConfig(type, spec)` | `ModInit::register_config(type, spec)` in `init` |
 | **Types** | `ModConfig.Type.LOCAL`, `SYNCED`, `STARTUP` and `CLIENT` | `ConfigType::Local`, `Synced` and `Startup`. `CLIENT` never loads on a server. |
 | **File** | `config/<modid>-<type>.toml` | The same path. `register_config_with_file_name` sets another name. |
-| **Load time** | Startup at registration. Local after the load complete step. Synced when the server is about to start. | Startup in `register_config`. Local and Synced after `load_complete`, before the server starts. |
+| **Load time** | Startup at registration. Local before `FMLCommonSetupEvent`. Synced when the server is about to start, after `FMLLoadCompleteEvent`. | Startup inside `register_config`. Local after the last `init`, before `common_setup`. Synced after `load_complete`, before the server starts. |
 | **Correction** | `ModConfigSpec.correct` on load | The same rules, and the same `.bak` backup of the old file |
 | **Reload** | `ConfigWatcher` watches the file | The server checks the files every `mod_config_reload_ticks` ticks |
 | **Events** | `ModConfigEvent.Loading` and `Reloading` on the mod bus | `NativeMod::config_loading` and `NativeMod::config_reloading` |
@@ -166,10 +166,12 @@ The mapping from the Java code to the Rust code:
 | Type | File | Loads | Clients |
 | :--- | :--- | :--- | :--- |
 | `Startup` | `config/<modid>-startup.toml` | In `register_config`, so `init` reads it before it registers content | Never get it. A value that changes content must agree with the client by other means. |
-| `Local` | `config/<modid>-local.toml` | After `load_complete`, before the server starts | Never get it |
+| `Local` | `config/<modid>-local.toml` | After the last `init` of every mod, before `common_setup` | Never get it |
 | `Synced` | `config/<modid>-synced.toml` | After `load_complete`, before the server starts | Get it in the configuration phase, as `neoforge:config_file` |
 
-`ModConfig::get` returns `ConfigError::NotLoaded` for a Local or Synced config until it loads. The hook `config_loading` runs for every config of every mod, after `load_complete`. A Startup config loads earlier, but its hook runs with the others.
+The order is: `init` of every mod (Startup configs load inside it), the Local configs, `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process`, `load_complete`, the Synced configs.
+
+`ModConfig::get` returns `ConfigError::NotLoaded` for a Local config in `init`, and for a Synced config until it loads after `load_complete`. A mod reads its Local config in `common_setup`. The hook `config_loading` runs once for each config when it loads. For a Startup config, it runs inside `register_config`, before the call returns.
 
 The file name uses the mod id. With a `neoforge.mods.toml`, that is the `modId` of the file. A client applies a synced file only when its own copy of the mod registers a config with the same file name.
 
@@ -185,6 +187,8 @@ The server reads the file on load and checks each value against the spec:
 - A list keeps the elements that pass. It falls back to its default when none pass.
 - A key that the spec does not define is removed.
 - A file that is not valid TOML is recreated with the defaults.
+- A boolean value accepts the strings `"true"` and `"false"` in any case, as the NeoForge validator does.
+- A file larger than 1 MiB fails to load with `ConfigError::Io`.
 
 When the corrected text differs from the file, the server copies the old file to `<name>-1.toml.bak`. It then writes the corrected text with the comments of the spec. It keeps five backups.
 
@@ -193,6 +197,8 @@ When the corrected text differs from the file, the server copies the old file to
 The server checks the config files every `mod_config_reload_ticks` ticks. The key is in `pumpkin.toml`. The default is 100. The value 0 turns the check off. A changed file reloads, and the server calls `NativeMod::config_reloading`.
 
 `ModConfig::save` writes the values to the file and calls `config_reloading` too, as `ModConfigSpec#save` does.
+
+The hooks of all mods run one at a time, under one lock. A reload that the poll finds and a `save` on another thread never overlap. A `save` inside a hook of the same config writes the file and does not call the hook again, so a `config_reloading` hook that saves does not recurse.
 
 A client that connects after a reload gets the new text of a synced file. The server sends the file in the configuration phase of each connection.
 
@@ -209,7 +215,7 @@ A value with `world_restart` or `game_restart` keeps the value that it loaded wi
 | `InvalidSpec` | The builder has an empty or double path, a dangling comment or flag, or a default that fails its own validator. |
 | `Duplicate` | Another config uses the file. |
 | `NotLoaded` | The Local or Synced config has not loaded yet. |
-| `Io` | The server cannot read or write the file. |
+| `Io` | The server cannot read or write the file, or the file is larger than 1 MiB. |
 
 A config error never stops the server, except a Local or Synced config that cannot load. That error stops the startup. Log the other errors and continue.
 
@@ -222,13 +228,15 @@ A config error never stops the server, except a Local or Synced config that cann
 - Build the spec and register it in `NativeMod::init`.
 - Keep the `Arc<ModConfig>` that `register_config` returns.
 - Write the path of a value as the sections and the key joined with `.`, for example `"general.damage"`.
-- Read a Local or Synced value after it loads, for example in `config_loading` or in an event handler.
+- Read a Local value from `common_setup` on. Read a Synced value in its `config_loading` hook or in an event handler.
 - Use a Startup config for a value that `init` needs before it registers content.
 - Handle the `Result` of `get` and `set`.
 
 **Don't**
 
 - Do not read a Local or Synced config in `init`. It has not loaded, and `get` returns `NotLoaded`.
+- Do not read a Synced config in `common_setup` or `load_complete`. It loads after `load_complete`.
+- Do not expect a `config_reloading` hook to run again for a `save` that the hook itself makes.
 - Do not change a Startup value and expect clients to follow. Clients never get a Startup config.
 - Do not use `game_restart` in a synced config.
 - Do not edit the file and expect an instant reload. The server checks every `mod_config_reload_ticks` ticks.

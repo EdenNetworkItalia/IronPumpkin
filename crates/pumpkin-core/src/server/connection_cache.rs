@@ -229,7 +229,7 @@ impl Default for CachedStatus {
     fn default() -> Self {
         Self::new(
             &BasicConfiguration::default(),
-            "A blazingly fast Pumpkin server!",
+            "A blazingly fast IronPumpkin server!",
             1000,
         )
     }

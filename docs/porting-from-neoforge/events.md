@@ -200,7 +200,7 @@ Inside one priority, the order is the registration order. The server applies the
 
 A handler for a parent event runs after the handlers of the event itself, inside the same priority.
 
-A handler that did not set `receive_canceled` does not run once an earlier handler cancelled the event. This rule holds for blocking and non-blocking handlers.
+A handler that did not set `receive_canceled` does not run once an earlier handler cancelled the event. This rule holds for blocking and non-blocking handlers. `ModInit::register_event` takes the flag. A Wasm plugin that registers through `Context::register_event` always receives cancelled events.
 
 The server acts on the fields as the last blocking handler left them.
 
@@ -222,18 +222,22 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 | :--- | :--- | :--- |
 | `ServerStartingEvent` | `server::ServerStartingEvent` | After the worlds load, before the first tick and the first connection |
 | `ServerStartedEvent` | `server::ServerLoadEvent` | Before the first tick |
-| `ServerStoppingEvent` | `server::ServerStoppingEvent` | Before the server saves the players and the worlds |
+| `ServerStoppingEvent` | `server::ServerStoppingEvent` | After the ticker thread exits (bound 30 s), before the server saves the players and the worlds |
 | `ServerStoppedEvent` | `server::ServerStoppedEvent` | After the save. Only native mods get it. |
 | `ServerTickEvent.Pre` and `Post` | `server::ServerTickStartEvent` and `ServerTickEndEvent` | `has_time()` works as `hasTime` |
-| `LevelTickEvent.Pre` and `Post` | `world::LevelTickEventPre` and `LevelTickEventPost` | Once for each world and tick. The worlds tick in parallel. |
+| `LevelTickEvent.Pre` and `Post` | `world::LevelTickEventPre` and `LevelTickEventPost` | Once for each world and tick, also while the game is frozen. In a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time. |
 | `VanillaGameEvent` | `world::GenericGameEvent` | Fires from a few call sites |
-| `ServerChatEvent` | `player::PlayerChatEvent` | A cancel sends the message to nobody. `message` is plain text. |
-| `StatAwardEvent` | `player::PlayerStatisticIncrementEvent` | `stat` and `amount` are settable. A cancel adds nothing. |
-| `AnvilUpdateEvent` | `inventory::PrepareAnvilEvent` | `output`, `repair_cost` and `material_cost` are settable. A cancel empties the output. |
-| `GrindstoneEvent.OnPlaceItem` | `inventory::PrepareGrindstoneEvent` | `output` and `xp` are settable. A cancel empties the output. |
-| `PotionBrewEvent.Pre` | `inventory::BrewEvent` | A cancel skips the vanilla brewing |
-| `EnchantmentLevelSetEvent` | `enchantment::PrepareItemEnchantEvent` | One event for the three rows of the table |
-| `PlayerEnchantItemEvent` | `enchantment::PlayerEnchantItemEvent` | Cannot be cancelled |
+| `ServerChatEvent` | `player::PlayerChatEvent` | A cancel sends the message to nobody. `message` is plain text. `raw_text` is filled only when a chat handler was registered when the event is created. |
+| `StatAwardEvent` | `player::PlayerStatisticIncrementEvent` | `stat` and `amount` are settable. A cancel adds nothing. `amount` is a delta, and `set_stat` fires no event, so a listener for the new total or for a reset does not work yet. |
+| `AnvilUpdateEvent` | `inventory::PrepareAnvilEvent` | Fires on every result update, outside the screen-handler lock. `output`, `repair_cost` and `material_cost` are settable. A cancel clears the output and the cost. The result applies only if the inputs did not change meanwhile. |
+| `GrindstoneEvent.OnPlaceItem` | `inventory::PrepareGrindstoneEvent` | Fires on every result update, outside the screen-handler lock. `result_item` is the vanilla result. `output` and `xp` are settable, and `xp` applies when it is 0 or more. A cancel clears the result. |
+| `PotionBrewEvent.Pre` | `inventory::BrewEvent` | A cancel skips the vanilla brewing. It takes `stacks` only if the stand inventory did not change meanwhile. |
+| `EnchantmentLevelSetEvent` | `enchantment::PrepareItemEnchantEvent` | One event for the three rows of the table. `pos` is the open container. `original_level_requirements()` returns the vanilla levels. |
+| `PlayerEnchantItemEvent` | `enchantment::PlayerEnchantItemEvent` | Fires before the lapis is consumed. The table writes `enchanted_item` back. Cannot be cancelled. |
+
+The anvil and grindstone events fire outside the screen-handler lock, so a handler can close the screen or lock a screen handler. The enchanting events (`EnchantmentLevelSetEvent`, `EnchantItemEvent` and `PlayerEnchantItemEvent`) still fire under that lock.
+
+`StatAwardEvent` has the status `planned` in `mapping-table.md`, because of the delta and the missing fire on `set_stat`.
 
 `mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The pages for the player, the level and block, and the entity families are planned (tasks 2.12, 2.13 and 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
 
@@ -254,6 +258,7 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 
 - Do not implement `handle` for a handler that you register as blocking. The server never calls it.
 - Do not hold a lock of your own state while you fire an event from a handler.
+- Do not close the enchanting screen from a handler of an enchanting event. The event fires under the screen-handler lock.
 - Do not change a field that the server does not read back. The change has no effect.
 - Do not wait for a result setter. Events with a result are planned.
 - Do not expect a handler to run for an event that no fire site fires.

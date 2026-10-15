@@ -8,7 +8,7 @@ Base: Pumpkin `master` at `f1c0871f4`, Minecraft Java 26.3 (`CURRENT_MC_VERSION 
 
 ### Pumpkin baseline (upstream `f1c0871f4`, before phase 1)
 
-**Plugin architecture.** One `PluginManager` (`crates/pumpkin-core/src/plugin/mod.rs`, `PLUGIN_API_VERSION = 2`), two loaders:
+**Plugin architecture.** One `PluginManager` (`crates/pumpkin-core/src/plugin/mod.rs`, `PLUGIN_API_VERSION = 3` in IronPumpkin, 2 in upstream `f1c0871f4`), two loaders:
 - Native: `crates/pumpkin-core/src/plugin/loader/native.rs` loads `.so/.dll/.dylib` with `libloading` (symbols `PUMPKIN_API_VERSION`, `METADATA`, `plugin`). Plugins get `Context` (`plugin/api/context.rs`): `register_command`, `register_event`, `register_permission`, `register_service`, `register_plugin_loader`. Nothing registers blocks, items or entities.
 - Wasm: component model on wasmtime. Public WIT in `crates/pumpkin-plugin-wit/v0.2/*.wit` (world in `plugin.wit`: `on-load`, `handle-event`, `handle-command`, `handle-ai-goal-*`, `handle-generate-phase`). Hosts `crates/pumpkin-wasm-host-v0_1`, `-v0_2` (one per API version), shared `-common`, umbrella `pumpkin-wasm-host`. SDK `crates/pumpkin-plugin-api` (MIT/Apache), runtime `crates/pumpkin-plugin-runtime`. WIT is mirrored publicly: changes must be additive, regenerated with `cargo run -p pumpkin-codegen -- wit`.
 - Existing server-side dynamic registries are the pattern to copy: custom enchantments (`crates/pumpkin-core/src/server/enchantment.rs`), custom recipes, datapack registries (`crates/pumpkin-core/src/data/datapack/dynamic_registry_loader.rs`, merged into `CRegistryData` in `net/java/login/known_packs.rs`).

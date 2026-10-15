@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 111 | 111 | 0 | 0 | 0 | 93 | 12 |
-| Inventory, planned | 624 | 579 | 43 | 2 | 0 | 460 | 111 |
+| Inventory, supported | 161 | 161 | 0 | 0 | 0 | 142 | 41 |
+| Inventory, planned | 574 | 529 | 43 | 2 | 0 | 411 | 82 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -33,11 +33,11 @@ How to read it:
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `RegisterPayloadHandlersEvent` | 170 | event class | `event-bus.event::register-payload-handlers-event` (resource `network.register-payload-handlers-event`) | planned |
-| `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` | planned |
+| `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` (runs after the last `init`, with the Local configs loaded) | supported |
 | `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `ModInit::register_command` (API call, no event) | supported |
-| `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` | planned |
+| `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` (two hooks, no parent handler) | planned |
 | `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerInteractEvent.RightClickBlock` | 67 | event class | `event-bus.event::player-interact-event-right-click-block` | supported |
@@ -46,11 +46,11 @@ How to read it:
 | `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `event-bus.event::break-block-event` | supported |
 | `ServerTickEvent` | 52 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `EntityJoinLevelEvent` | 49 | event class | `event-bus.event::entity-join-level-event` | supported |
-| `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` | planned |
+| `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` (after a poll reload and after `ModConfig::save`; a `save` inside the hook does not call it again) | supported |
 | `LivingDeathEvent` | 46 | event class | `event-bus.event::living-death-event` | supported |
 | `RegisterEvent` | 46 | event class | `event-bus.event::register-event` (resource `registration.register-event`) | planned |
 | `ServerTickEvent.Post` | 43 | event class | `pumpkin_core::plugin::server::ServerTickEndEvent` | supported |
-| `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` | planned |
+| `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` (Startup inside `ModInit::register_config`, Local before `NativeMod::common_setup`, Synced after `NativeMod::load_complete`) | supported |
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | planned |
 | `ServerStartedEvent` | 40 | event class | `pumpkin_core::plugin::server::ServerLoadEvent` | supported |
@@ -59,9 +59,9 @@ How to read it:
 | `LivingIncomingDamageEvent` | 37 | event class | `event-bus.event::living-incoming-damage-event` | supported |
 | `ServerStoppedEvent` | 36 | event class | `pumpkin_core::plugin::server::ServerStoppedEvent` | supported |
 | `PlayerTickEvent` | 36 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `LevelTickEvent.Post` | 32 | event class | `pumpkin_core::plugin::world::LevelTickEventPost` | supported |
+| `LevelTickEvent.Post` | 32 | event class | `pumpkin_core::plugin::world::LevelTickEventPost` (fires while the game is frozen too; the worlds tick in parallel) | supported |
 | `LivingDropsEvent` | 31 | event class | `event-bus.event::living-drops-event` | supported |
-| `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | planned |
+| `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | supported |
 | `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
 | `LevelEvent.Unload` | 30 | event class | `event-bus.event::level-event-unload` | supported |
 | `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | planned |
@@ -77,9 +77,9 @@ How to read it:
 | `LivingDamageEvent.Post` | 25 | event class | `event-bus.event::living-damage-event-post` | planned |
 | `PlayerEvent.PlayerRespawnEvent` | 24 | event class | `event-bus.event::player-event-player-respawn-event` | supported |
 | `ServerAboutToStartEvent` | 24 | event class | `event-bus.event::server-about-to-start-event` | planned |
-| `ServerStoppingEvent` | 24 | event class | `pumpkin_core::plugin::server::ServerStoppingEvent` | supported |
+| `ServerStoppingEvent` | 24 | event class | `pumpkin_core::plugin::server::ServerStoppingEvent` (fires after the ticker thread exits, with a 30 s bound) | supported |
 | `PlayerTickEvent.Post` | 24 | event class | `event-bus.event::player-tick-event-post` | planned |
-| `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` | planned |
+| `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` (the Synced configs load right after it) | supported |
 | `PlayerEvent.Clone` | 23 | event class | `event-bus.event::player-event-clone` | planned |
 | `PlayerInteractEvent.RightClickItem` | 23 | event class | `event-bus.event::player-interact-event-right-click-item` | supported |
 | `BlockEvent.EntityPlaceEvent` | 23 | event class | `event-bus.event::block-event-entity-place-event` | supported |
@@ -87,7 +87,7 @@ How to read it:
 | `LivingEvent` | 22 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ItemEntityPickupEvent` | 20 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent` | 19 | event class | `event-bus.event::tags-updated-event` | planned |
-| `LevelTickEvent.Pre` | 19 | event class | `pumpkin_core::plugin::world::LevelTickEventPre` | supported |
+| `LevelTickEvent.Pre` | 19 | event class | `pumpkin_core::plugin::world::LevelTickEventPre` (fires while the game is frozen too; the worlds tick in parallel) | supported |
 | `PlayerEvent.BreakSpeed` | 18 | event class | `event-bus.event::player-event-break-speed` | planned |
 | `EntityTickEvent.Post` | 18 | event class | `event-bus.event::entity-tick-event-post` | planned |
 | `PlayerTickEvent.Pre` | 18 | event class | `event-bus.event::player-tick-event-pre` | planned |
@@ -123,9 +123,9 @@ How to read it:
 | `PlayerContainerEvent` | 10 | event class | `event-bus.event::player-container-event` | supported |
 | `ChunkEvent.Load` | 10 | event class | `event-bus.event::chunk-event-load` | planned |
 | `ExplosionEvent.Detonate` | 10 | event class | `event-bus.event::explosion-event-detonate` | supported |
-| `InterModProcessEvent` | 10 | event class | `NativeMod::inter_mod_process` (`imc::InterModProcess::get_messages`, `imc::ImcMessage`) | planned |
+| `InterModProcessEvent` | 10 | event class | `NativeMod::inter_mod_process` (`imc::InterModProcess::get_messages`, `imc::ImcMessage`) | supported |
 | `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | planned |
-| `AnvilUpdateEvent` | 9 | event class | `pumpkin_core::plugin::inventory::PrepareAnvilEvent` | supported |
+| `AnvilUpdateEvent` | 9 | event class | `pumpkin_core::plugin::inventory::PrepareAnvilEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
 | `EntityInvulnerabilityCheckEvent` | 9 | event class | `event-bus.event::entity-invulnerability-check-event` | planned |
 | `EntityLeaveLevelEvent` | 9 | event class | `event-bus.event::entity-leave-level-event` | planned |
 | `EntityMountEvent` | 9 | event class | `event-bus.event::entity-mount-event` | supported |
@@ -147,7 +147,7 @@ How to read it:
 | `BlockEvent.BlockToolModificationEvent` | 7 | event class | `event-bus.event::block-event-block-tool-modification-event` | planned |
 | `RegisterConfigurationTasksEvent` | 7 | event class | `event-bus.event::register-configuration-tasks-event` (resource `network.register-configuration-tasks-event`) | planned |
 | `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | planned |
-| `ServerChatEvent` | 6 | event class | `pumpkin_core::plugin::player::PlayerChatEvent` | supported |
+| `ServerChatEvent` | 6 | event class | `pumpkin_core::plugin::player::PlayerChatEvent` (`raw_text` is filled only when a handler was registered at creation) | supported |
 | `EntityTeleportEvent.TeleportCommand` | 6 | event class | `event-bus.event::entity-teleport-event-teleport-command` | supported |
 | `EntityTravelToDimensionEvent` | 6 | event class | `event-bus.event::entity-travel-to-dimension-event` | supported |
 | `MobEffectEvent.Remove` | 6 | event class | `event-bus.event::mob-effect-event-remove` | supported |
@@ -156,7 +156,7 @@ How to read it:
 | `BlockEvent.NeighborNotifyEvent` | 6 | event class | `event-bus.event::block-event-neighbor-notify-event` | supported |
 | `ChunkWatchEvent.Sent` | 6 | event class | `event-bus.event::chunk-watch-event-sent` | supported |
 | `ExplosionEvent.Start` | 6 | event class | `event-bus.event::explosion-event-start` | planned |
-| `ModConfigEvent.Unloading` | 6 | event class | `event-bus.event::mod-config-event-unloading` | planned |
+| `ModConfigEvent.Unloading` | 6 | event class | `event-bus.event::mod-config-event-unloading` (not implemented) | planned |
 | `PermissionGatherEvent` | 6 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PermissionGatherEvent.Nodes` | 6 | event class | `event-bus.event::permission-gather-event-nodes` | supported |
 | `CommandEvent` | 5 | event class | `event-bus.event::command-event` | planned |
@@ -185,11 +185,11 @@ How to read it:
 | `BlockEvent.EntityMultiPlaceEvent` | 4 | event class | `event-bus.event::block-event-entity-multi-place-event` | planned |
 | `BlockEvent.FarmlandTrampleEvent` | 4 | event class | `event-bus.event::block-event-farmland-trample-event` | planned |
 | `ChunkDataEvent.Save` | 4 | event class | `event-bus.event::chunk-data-event-save` | planned |
-| `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | planned |
+| `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | supported |
 | `DataMapsUpdatedEvent` | 4 | event class | `event-bus.event::data-maps-updated-event` | planned |
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` | supported |
+| `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `event-bus.event::grindstone-event-on-take-item` | planned |
 | `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
 | `EntityMobGriefingEvent` | 3 | event class | `event-bus.event::entity-mob-griefing-event` | planned |
@@ -229,12 +229,12 @@ How to read it:
 | `SleepFinishedTimeEvent` | 2 | event class | `event-bus.event::sleep-finished-time-event` | supported |
 | `CropGrowEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `CropGrowEvent.Post` | 2 | event class | `event-bus.event::crop-grow-event-post` | planned |
-| `FMLDedicatedServerSetupEvent` | 2 | event class | `NativeMod::dedicated_server_setup` | planned |
+| `FMLDedicatedServerSetupEvent` | 2 | event class | `NativeMod::dedicated_server_setup` | supported |
 | `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
-| `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` | supported |
+| `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` (`amount` is a delta and `set_stat` fires nothing: gap) | planned |
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
 | `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingUseTotemEvent` | 1 | event class | `event-bus.event::living-use-totem-event` | supported |
@@ -273,10 +273,10 @@ How to read it:
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PotionBrewEvent.Post` | 0 | event class | `event-bus.event::potion-brew-event-post` | planned |
-| `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` | supported |
+| `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` (a cancel takes `stacks` only if the stand did not change) | supported |
 | `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | planned |
 | `EnchantedEntityLootEvent` | 0 | event class | `event-bus.event::enchanted-entity-loot-event` | planned |
-| `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` | supported |
+| `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` (has `pos`; `original_level_requirements()` returns the vanilla levels; fires under the screen lock) | supported |
 | `EntityTeleportEvent.ItemConsumption` | 0 | event class | `event-bus.event::entity-teleport-event-item-consumption` | supported |
 | `EffectParticleModificationEvent` | 0 | event class | `event-bus.event::effect-particle-modification-event` | planned |
 | `LivingDrownEvent` | 0 | event class | `event-bus.event::living-drown-event` | planned |
@@ -288,7 +288,7 @@ How to read it:
 | `CustomClickActionEvent` | 0 | event class | `event-bus.event::custom-click-action-event` | supported |
 | `FluidTooltipEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | planned |
-| `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` | supported |
+| `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` (fires before the lapis is consumed; `enchanted_item` is written back; fires under the screen lock) | supported |
 | `PlayerEvent.PlayerChangeGameModeEvent` | 0 | event class | `event-bus.event::player-event-player-change-game-mode-event` | supported |
 | `PlayerEvent.TabListNameFormat` | 0 | event class | `event-bus.event::player-event-tab-list-name-format` | planned |
 | `PlayerFlyableFallEvent` | 0 | event class | `event-bus.event::player-flyable-fall-event` | planned |
@@ -574,35 +574,35 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `ModConfigSpec` | 182 | Config API | `ironpumpkin_mods::config::ConfigSpec` | planned |
-| `ModConfig` | 165 | Config API | `ironpumpkin_mods::config::ModConfig` | planned |
-| `ModConfig.Type` | 165 | Config API | `ironpumpkin_mods::config::ConfigType` | planned |
+| `ModConfigSpec` | 182 | Config API | `ironpumpkin_mods::config::ConfigSpec` | supported |
+| `ModConfig` | 165 | Config API | `ironpumpkin_mods::config::ModConfig` | supported |
+| `ModConfig.Type` | 165 | Config API | `ironpumpkin_mods::config::ConfigType` | supported |
 | `IConfigSpec` | 162 | Config API | `ironpumpkin_mods::config::ConfigSpec` | planned |
-| `ModConfigSpec.Builder#comment` | 156 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::comment` | planned |
-| `ModConfigSpec.Builder#define` | 140 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define`, `define_validated` | planned |
-| `ModConfigSpec.BooleanValue` | 138 | Config API | `ironpumpkin_mods::config::ModConfig::get::<bool>` | planned |
-| `ModConfigSpec.Builder#defineInRange` | 134 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_in_range` | planned |
-| `ModConfigSpec.Builder#push` | 132 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::push` | planned |
-| `ModConfigSpec.Builder#pop` | 130 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::pop` | planned |
-| `ModConfigSpec.Builder#build` | 123 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::build` | planned |
+| `ModConfigSpec.Builder#comment` | 156 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::comment` | supported |
+| `ModConfigSpec.Builder#define` | 140 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define`, `define_validated` | supported |
+| `ModConfigSpec.BooleanValue` | 138 | Config API | `ironpumpkin_mods::config::ModConfig::get::<bool>` | supported |
+| `ModConfigSpec.Builder#defineInRange` | 134 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_in_range` | supported |
+| `ModConfigSpec.Builder#push` | 132 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::push` | supported |
+| `ModConfigSpec.Builder#pop` | 130 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::pop` | supported |
+| `ModConfigSpec.Builder#build` | 123 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::build` | supported |
 | `ModConfigSpec.IntValue` | 119 | Config API | `ironpumpkin_mods::config::ModConfig::get::<i32>` | planned |
-| `ModConfigSpec.ConfigValue` | 104 | Config API | `ironpumpkin_mods::config::ModConfig::get`, `set`, `save`, `get_default` | planned |
-| `ModConfig.Type.LOCAL` | 102 | Config types | `ironpumpkin_mods::config::ConfigType::Local` | planned |
-| `ModConfig.Type.SYNCED` | 75 | Config types | `ironpumpkin_mods::config::ConfigType::Synced` | planned |
-| `ModConfigSpec.DoubleValue` | 68 | Config API | `ironpumpkin_mods::config::ModConfig::get::<f64>` | planned |
+| `ModConfigSpec.ConfigValue` | 104 | Config API | `ironpumpkin_mods::config::ModConfig::get`, `set`, `save`, `get_default` | supported |
+| `ModConfig.Type.LOCAL` | 102 | Config types | `ironpumpkin_mods::config::ConfigType::Local` | supported |
+| `ModConfig.Type.SYNCED` | 75 | Config types | `ironpumpkin_mods::config::ConfigType::Synced` | supported |
+| `ModConfigSpec.DoubleValue` | 68 | Config API | `ironpumpkin_mods::config::ModConfig::get::<f64>` | supported |
 | `ModConfigSpec.Builder#configure` | 57 | Config API | `ironpumpkin_mods::config::ConfigSpec::builder`, then `ConfigSpecBuilder::build` | planned |
-| `ModConfigSpec.EnumValue` | 39 | Config API | `ironpumpkin_mods::config::ConfigEnum`, `ModConfig::get::<E>` | planned |
-| `ModConfigSpec.Builder#translation` | 38 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::translation` | planned |
-| `ModConfigSpec.Builder#defineEnum` | 37 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_enum` | planned |
-| `ModConfigSpec.Builder#defineList` | 31 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` | planned |
+| `ModConfigSpec.EnumValue` | 39 | Config API | `ironpumpkin_mods::config::ConfigEnum`, `ModConfig::get::<E>` | supported |
+| `ModConfigSpec.Builder#translation` | 38 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::translation` | supported |
+| `ModConfigSpec.Builder#defineEnum` | 37 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_enum` | supported |
+| `ModConfigSpec.Builder#defineList` | 31 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` | supported |
 | `ModConfigSpec.Builder#defineListAllowEmpty` | 31 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` (an empty list in the file is kept) | planned |
-| `ModConfigSpec.LongValue` | 22 | Config API | `ironpumpkin_mods::config::ModConfig::get::<i64>` | planned |
-| `ModConfig.Type.STARTUP` | 17 | Config types | `ironpumpkin_mods::config::ConfigType::Startup` | planned |
-| `ModConfigSpec.Builder#worldRestart` | 15 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::world_restart` | planned |
+| `ModConfigSpec.LongValue` | 22 | Config API | `ironpumpkin_mods::config::ModConfig::get::<i64>` | supported |
+| `ModConfig.Type.STARTUP` | 17 | Config types | `ironpumpkin_mods::config::ConfigType::Startup` | supported |
+| `ModConfigSpec.Builder#worldRestart` | 15 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::world_restart` | supported |
 | `ModConfigSpec.ValueSpec` | 7 | Config API | `ironpumpkin_mods::config::ConfigSpec` (per value: `ModConfig::get_default`, `ConfigSpec::translation`) | planned |
 | `ModConfigSpec.Range` | 5 | Config API | `ironpumpkin_mods::config::RangeBound` (`i32`, `i64`, `f64`) | planned |
 | `IConfigSpec.ILoadedConfig` | 5 | Config API | `ironpumpkin_mods::config::ModConfig` | planned |
-| `ModConfigSpec.Builder#gameRestart` | 4 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::game_restart` | planned |
+| `ModConfigSpec.Builder#gameRestart` | 4 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::game_restart` | supported |
 | `ConfigTracker` | 4 | Config API | `ironpumpkin_mods::config` doc, not supported | not supported |
 | `ModConfigSpec.RestartType` | 3 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::world_restart`, `game_restart` | planned |
 | `ModConfigs` | 3 | Config API | `mod-config.get-mod-configs`, `get-file-names` | planned |
@@ -710,60 +710,60 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `file modLoader` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file loaderVersion` | 414 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `file license` | 414 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.license` | planned |
+| `file license` | 414 | `neoforge.mods.toml` keys | `mods_toml::parse`: required, a missing or blank license stops the server with "Missing license" | supported |
 | `file mods` | 414 | `neoforge.mods.toml` keys | `NativeMod::mods_toml`; the `[[mods]]` entry of the mod (`mods_toml::parse`) | planned |
 | `[[mods]] modId` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::mod_id` (`mods_toml::is_valid_mod_id`) | supported |
 | `[[mods]] version` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::version` (`version::ArtifactVersion`, `${file.jarVersion}` is `NativeMod::version`) | supported |
-| `[[mods]] displayName` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::display_name` | planned |
+| `[[mods]] displayName` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::display_name` | supported |
 | `[[mods]] description` | 414 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::description` | supported |
-| `@Mod(value)` | 411 | Entry point annotations | `register_mod!` and `NativeMod::init`; the mod id is `NativeMod::id` or the `modId` of `NativeMod::mods_toml` | planned |
+| `@Mod(value)` | 411 | Entry point annotations | `register_mod!` and `NativeMod::init`; the mod id is `NativeMod::id` or the `modId` of `NativeMod::mods_toml` | supported |
 | `[[dependencies.<modid>]] modId` | 404 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::mod_id` | supported |
-| `[[dependencies.<modid>]] versionRange` | 404 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::version_range` (`version::VersionRange`) | planned |
-| `[[dependencies.<modid>]] side` | 398 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::side` (`DependencySide`, `CLIENT` is ignored) | planned |
+| `[[dependencies.<modid>]] versionRange` | 404 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::version_range` (`version::VersionRange`) | supported |
+| `[[dependencies.<modid>]] side` | 398 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::side` (`DependencySide`, `CLIENT` is ignored) | supported |
 | `[[mods]] authors` | 392 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::authors` | supported |
-| `[[dependencies.<modid>]] ordering` | 388 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::ordering` (`Ordering`, the load order of `init` and the lifecycle methods) | planned |
-| `[[dependencies.<modid>]] type` | 361 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::dependency_type` (`DependencyType`) | planned |
+| `[[dependencies.<modid>]] ordering` | 388 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::ordering` (`Ordering`, the load order of `init` and the lifecycle methods) | supported |
+| `[[dependencies.<modid>]] type` | 361 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::dependency_type` (`DependencyType`) | supported |
 | `[[mixins]] config` | 291 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file mixins` | 278 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `IEventBus#addListener` | 263 | Event bus and mod container | `event-bus.add-listener` | planned |
+| `IEventBus#addListener` | 263 | Event bus and mod container | `ModInit::register_event`, `ModInit::register_parent_event`, `Context::register_event` (Wasm) | supported |
 | `file issueTrackerURL` | 236 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.issue-tracker-url`, `mod-info.issue-tracker-url` | planned |
 | `ModList#get` | 200 | Event bus and mod container | `mod_list::ModList::get` | planned |
-| `@EventBusSubscriber(modid)` | 186 | Entry point annotations | `event-bus.add-listener` of the calling mod | planned |
-| `ModList#isLoaded` | 175 | Event bus and mod container | `mod_list::ModList::is_loaded` | planned |
-| `ModContainer#registerConfig` | 159 | Event bus and mod container | `ModInit::register_config`, `ModInit::register_config_with_file_name` | planned |
-| `@EventBusSubscriber(value)` | 151 | Entry point annotations | `event-bus.add-listener` (client-dist subscribers are not registered) | planned |
-| `IEventBus#register` | 112 | Event bus and mod container | `event-bus.add-listener` | planned |
-| `EventPriority` | 99 | Event bus and mod container | `pumpkin:plugin/event.event-priority` | supported |
+| `@EventBusSubscriber(modid)` | 186 | Entry point annotations | `ModInit::register_event` of the calling mod (Rust has no annotation scan) | planned |
+| `ModList#isLoaded` | 175 | Event bus and mod container | `mod_list::ModList::is_loaded` | supported |
+| `ModContainer#registerConfig` | 159 | Event bus and mod container | `ModInit::register_config`, `ModInit::register_config_with_file_name` | supported |
+| `@EventBusSubscriber(value)` | 151 | Entry point annotations | `ModInit::register_event` (client-dist subscribers are not registered) | planned |
+| `IEventBus#register` | 112 | Event bus and mod container | `ModInit::register_event` for each handler (Rust has no annotation scan) | planned |
+| `EventPriority` | 99 | Event bus and mod container | `pumpkin_core::plugin::EventPriority` (WIT `event-priority`; `Highest` runs first) | supported |
 | `IEventBus#post` | 86 | Event bus and mod container | `event-bus.post` | planned |
-| `@Mod(dist)` | 77 | Entry point annotations | `mod_list::dist()` (always `Dist::DedicatedServer`) | planned |
-| `@SubscribeEvent(priority)` | 76 | Entry point annotations | `event-bus.add-listener` `priority` (`pumpkin:plugin/event.event-priority`) | planned |
-| `ModList#getModContainerById` | 69 | Event bus and mod container | `mod_list::ModList::get_mod_container_by_id` | planned |
+| `@Mod(dist)` | 77 | Entry point annotations | `mod_list::dist()` (always `Dist::DedicatedServer`) | supported |
+| `@SubscribeEvent(priority)` | 76 | Entry point annotations | `ModInit::register_event` `priority` argument (`EventPriority`) | supported |
+| `ModList#getModContainerById` | 69 | Event bus and mod container | `mod_list::ModList::get_mod_container_by_id` | supported |
 | `ModContainer#getModInfo` | 61 | Event bus and mod container | `mod_list::ModList::get_mod_container_by_id` returns the `mods_toml::ModInfo` | supported |
 | `file accessTransformers` | 55 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[accessTransformers]] file` | 55 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[mods]] updateJSONURL` | 38 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `ModContainer#getEventBus` | 32 | Event bus and mod container | the `NativeMod` lifecycle methods, one set per mod; game events through `ModInit::register_event` | planned |
-| `ModList#getMods` | 31 | Event bus and mod container | `mod_list::ModList::get_mods` | planned |
+| `ModList#getMods` | 31 | Event bus and mod container | `mod_list::ModList::get_mods` | supported |
 | `ModList#getModFileById` | 16 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#getAllScanData` | 16 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `IEventBus#start` | 15 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModContainer#getModId` | 15 | Event bus and mod container | `mods_toml::ModInfo::mod_id` | supported |
-| `[[dependencies.<modid>]] reason` | 14 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::reason` | planned |
+| `[[dependencies.<modid>]] reason` | 14 | `neoforge.mods.toml` keys | `mods_toml::ModDependency::reason` | supported |
 | `[[mods]] enumExtensions` | 13 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `IEventBus#unregister` | 12 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `[[mods]] modUrl` | 10 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-url` | planned |
 | `[[mods]] issueTrackerURL` | 8 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.issue-tracker-url`, `mod-info.issue-tracker-url` | planned |
-| `@SubscribeEvent(receiveCanceled)` | 6 | Entry point annotations | `event-bus.add-listener` `receive-canceled` | planned |
+| `@SubscribeEvent(receiveCanceled)` | 6 | Entry point annotations | `ModInit::register_event` `receive_canceled` argument | supported |
 | `[[mods]] featureFlags` | 4 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `ModList#getModFiles` | 3 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#forEachModInOrder` | 3 | Event bus and mod container | `mod_list::ModList::get_sorted_mods` (iterate) | planned |
 | `[[dependencies.<modid>]] referralUrl` | 3 | `neoforge.mods.toml` keys | `lifecycle.mod-dependency.referral-url` | planned |
-| `ModList#size` | 2 | Event bus and mod container | `mod_list::ModList::size` | planned |
+| `ModList#size` | 2 | Event bus and mod container | `mod_list::ModList::size` | supported |
 | `ModList#forEachModFile` | 2 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#forEachModContainer` | 2 | Event bus and mod container | `mod_list::ModList::get_mods` (iterate) | planned |
-| `ModList#getSortedMods` | 2 | Event bus and mod container | `mod_list::ModList::get_sorted_mods` | planned |
+| `ModList#getSortedMods` | 2 | Event bus and mod container | `mod_list::ModList::get_sorted_mods` | supported |
 | `[[mixins]] requiredMods` | 2 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `ModContainer#getNamespace` | 1 | Event bus and mod container | `mods_toml::ModInfo::namespace` | planned |
+| `ModContainer#getNamespace` | 1 | Event bus and mod container | `mods_toml::ModInfo::namespace` | supported |
 | `ModContainer#acceptEvent` | 1 | Event bus and mod container | `lifecycle` doc, not supported | not supported |
 | `ModList#applyForEachModContainer` | 1 | Event bus and mod container | `mod_list::ModList::get_mods` (iterate) | planned |
 | `file showAsResourcePack` | 1 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
@@ -776,7 +776,7 @@ How to read it:
 | `file services` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `file properties` | 0 | `neoforge.mods.toml` keys | `lifecycle.mods-toml.properties` | planned |
 | `[[mixins]] behaviorVersion` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
-| `[[mods]] namespace` | 0 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::namespace` (`mods_toml::is_valid_namespace`) | planned |
+| `[[mods]] namespace` | 0 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::namespace` (`mods_toml::is_valid_namespace`) | supported |
 | `[[mods]] dependencies` | 0 | `neoforge.mods.toml` keys | `mods_toml::ModInfo::dependencies` | supported |
 | `[[mods]] features` | 0 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
 | `[[mods]] modproperties` | 0 | `neoforge.mods.toml` keys | `lifecycle.mod-info.mod-properties` | planned |
@@ -880,7 +880,7 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `NeoForge` | 219 | Types in the root `common` package | `event-bus.bus::game` | planned |
 | `transfer` | 189 | Packages outside the families above | `capabilities.capability-handle` | planned |
-| `ModConfigSpec` | 182 | Types in the root `common` package | `ironpumpkin_mods::config::ConfigSpec` | planned |
+| `ModConfigSpec` | 182 | Types in the root `common` package | `ironpumpkin_mods::config::ConfigSpec` | supported |
 | `transfer.item` | 149 | Packages outside the families above | `capabilities.handler-type::item-resource-handler`, `types.item-resource` | planned |
 | `common.util` | 133 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `transfer.fluid` | 130 | Packages outside the families above | `capabilities.handler-type::fluid-resource-handler`, `types.fluid-resource` | planned |

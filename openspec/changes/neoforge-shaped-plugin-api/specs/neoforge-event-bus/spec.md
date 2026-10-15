@@ -14,7 +14,7 @@ A mod that registers a handler for a concrete event class that has concrete subc
 - **THEN** the handler receives a `LivingEntityUseItemEventStart`
 
 ### Requirement: Lifecycle methods are called per mod
-The host SHALL call each lifecycle method of `NativeMod` on its own mod only, because NeoForge has one mod bus per `ModContainer`. A Pumpkin event that a mod fires or that the server fires SHALL reach the handlers of every mod. Status: implemented (#103).
+The host SHALL call each lifecycle method of `NativeMod` on its own mod only, because NeoForge has one mod bus per `ModContainer`. A Pumpkin event that a mod fires or that the server fires SHALL reach the handlers of every mod. Status: supported (task 2.2, #103).
 
 #### Scenario: Lifecycle method of two mods
 - **WHEN** mods A and B both override the common setup method and the host runs the common setup step

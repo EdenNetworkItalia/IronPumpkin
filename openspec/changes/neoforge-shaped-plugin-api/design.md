@@ -126,19 +126,35 @@ There is no hook catalogue, no generated accessor API and no service-seam API of
 `ironpumpkin-mods` (`crates/ironpumpkin-mods`, MIT OR Apache-2.0) is the native API for mods. The `net.minecraft` side stays the types of Pumpkin: there is no Mojang-shaped facade. Each family has its delta spec in this change.
 
 - Surface. The surface for NeoForge behaviour is the NeoForge public API of the inventory in this document, and nothing more. No hook, accessor or service seam of IronPumpkin's own is exposed to mods. The one IronPumpkin-only extension is the vanilla `display` entry of block, item and entity type properties, documented as such. The implementation can put internal hooks on Pumpkin methods to fire the events. These hooks are host code, not API: a mod cannot name them, and they can move on any upstream merge.
-- Events. The NeoForge events of the inventory are Pumpkin events (the plugin event system in `crates/pumpkin-core/src/plugin/`: `Payload`, `ModInit::register_event`, `EventPriority`, blocking handlers and cancel) with the same fire sites, fields, cancel and result rules and event names as NeoForge 26.3. A concrete NeoForge class is one struct, and a nested class is flattened with the parent prefix (`ServerTickEventPost`). One event per fire site: where Pumpkin has an event for the fire site, the mapping table maps the NeoForge event to it and the missing fields are added to it (`BlockBreakEvent` for `BreakBlockEvent`), as an upstream parity candidate. A new struct with the NeoForge name exists only where Pumpkin has no event for that fire site. There is no second dispatch layer.
-- Priority. `PluginManager::fire_dyn` (`crates/pumpkin-core/src/plugin/mod.rs`) stores `EventPriority` and never reads it. The dispatch is changed to honour it: blocking handlers sorted by priority, then non-blocking handlers. This is an IronPumpkin change and an upstream parity candidate. The registration also gets the NeoForge `receiveCanceled` flag: a handler does not run for a cancelled event unless it sets the flag. Priority between v0.2 Wasm plugins and native mods then follows from the single dispatch. The reentry depth of 64 of `pumpkin-plugin-runtime` is a limit of Wasm plugins and is not part of the native API.
+- Events. The NeoForge events of the inventory are Pumpkin events (the plugin event system in `crates/pumpkin-core/src/plugin/`: `Payload`, `ModInit::register_event`, `EventPriority`, blocking handlers and cancel) with the same fire sites, fields, cancel and result rules and event names as NeoForge 26.3. A concrete NeoForge class is one struct, and a nested class is flattened with the parent prefix (`ServerTickEventPost`). One event per fire site: where Pumpkin has an event for the fire site, the mapping table maps the NeoForge event to it and the missing fields are added to it (`BlockBreakEvent` for `BreakBlockEvent`), as an upstream parity candidate. A new struct with the NeoForge name exists only where Pumpkin has no event for that fire site. There is no second dispatch layer. The fire sites have these properties, which a port relies on:
+  - `LevelTickEvent` fires while the game is frozen too. In a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time.
+  - `ServerStoppingEvent` fires after the ticker thread exits, with a 30 s bound. A tick that runs longer logs a warning and the shutdown continues.
+  - `PrepareAnvilEvent` and `PrepareGrindstoneEvent` fire outside the screen-handler lock on every result update. The result applies only if the inputs did not change while the event fired.
+  - `PlayerEnchantItemEvent` fires before the lapis is consumed, and the table writes the item back. `EnchantmentLevelSetEvent` has `pos` and a getter for the original levels. Both events and `EnchantItemEvent` fire under the enchanting-table screen-handler lock, so a handler that closes the screen can deadlock.
+  - A cancel of `PotionBrewEvent.Pre` takes the stacks only if the stand inventory did not change meanwhile.
+  - `ServerChatEvent` fills `raw_text` only when a handler was registered when the event is created.
+  - `StatAwardEvent` stays `planned`. The Rust `amount` is a delta, and `set_stat` fires no event. NeoForge fires on `setValue` with the new total, resets to 0 included.
+- Priority. `PluginManager` (`crates/pumpkin-core/src/plugin/mod.rs`, `dispatch.rs`) keeps each handler list in dispatch order at registration: blocking handlers before non-blocking handlers, each from `Highest` to `Lowest`, in registration order inside one priority. Upstream Pumpkin stores `EventPriority` and never reads it, so this is an IronPumpkin change and an upstream parity candidate. The registration has the NeoForge `receiveCanceled` flag: a handler does not run for a cancelled event unless it sets the flag. `Context::register_event` (Wasm hosts) always receives cancelled events. Priority between v0.2 Wasm plugins and native mods follows from the single dispatch. The reentry depth of 64 of `pumpkin-plugin-runtime` is a limit of Wasm plugins and is not part of the native API.
 - Parent events. A concrete NeoForge class with concrete subclasses is a struct, and each subclass struct names it in `Payload::get_parent_names_static`. A handler on the parent is a `ParentEventHandler` that a mod registers with `ModInit::register_parent_event`: it gets the parent struct and every subclass struct as `dyn Payload` and downcasts it. The dispatch merges the handlers of the subclass and of its parents in one priority order, the subclass handlers first inside one rank. An abstract NeoForge class has no struct, so nobody can listen to it.
 - Guardrail helpers. `PluginManager::fire_with` and `fire_blocking_with` take a closure that builds the event, and call it only when `has_handlers` finds a handler of the event or of a parent.
 - Synchronous handlers. Handlers are synchronous inside the async host of Pumpkin. A handler that needs a world call uses `block_on(unconstrained(..))`, as `ModInit::register_service` does (`crates/ironpumpkin-mods/src/lib.rs`), and never holds a lock across a fire.
-- Lifecycle. The lifecycle events (`FMLCommonSetupEvent`, `FMLLoadCompleteEvent` and the others) are methods of the `NativeMod` trait with a default no-op. `init_mods` calls them in NeoForge order after the last `init`. Inter-mod messages are a queue on `ironpumpkin-mods`. `neoforge.mods.toml` is optional through `NativeMod::mods_toml()`, and the trait methods are the fallback. A mod with a mods.toml uses the NeoForge id charset (FancyModLoader `ModInfo.VALID_MODID`, `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`), and its registry namespace can differ from its mod id. `init` runs in the load order of FancyModLoader `ModSorter`: the `BEFORE` and `AFTER` orderings of the dependencies, with the mod id as tie-break. The mod list API (`is_loaded`, `get_mods`, the sorted mods and the container by id) lives in `ironpumpkin-mods`.
+- Lifecycle. The lifecycle events (`FMLCommonSetupEvent`, `FMLLoadCompleteEvent` and the others) are methods of the `NativeMod` trait with a default no-op. `init_mods` calls `init` of every mod in load order. Then the Local configs load, and `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process` and `load_complete` each run on every mod in turn, in NeoForge order. Inter-mod messages are a queue on `ironpumpkin-mods`. `neoforge.mods.toml` is optional through `NativeMod::mods_toml()`, and the trait methods are the fallback. A mod with a mods.toml uses the FML mod id pattern (FancyModLoader `ModInfo.VALID_MODID`, `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`), and its registry namespace can differ from its mod id. The `license` key is required: a missing or blank license stops the server with "Missing license", as in FancyModLoader `ModFileInfo`. `init` runs in the load order of FancyModLoader `ModSorter`: the `BEFORE` and `AFTER` orderings of the dependencies, with the mod id as tie-break. The mod list API (`is_loaded`, `get_mods`, the sorted mods and the container by id) lives in `ironpumpkin-mods`. The mod list holds the system mods `minecraft` and `neoforge`, so a ported descriptor that requires them loads.
 - Registration. The M2 builders are the API: `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag` with `content::BlockBuilder` and the other builders (`crates/ironpumpkin-mods/src/content.rs`, backed by `crates/pumpkin-data/src/dynamic.rs`). Entries apply at init and bind at the single freeze. The mapping table maps the typed registers of NeoForge to these functions, and lookups after the freeze go through the frozen tables. `RegistryError::RegistryFrozen` is `registry-frozen` and `RegistryError::Duplicate` is `duplicate`. The `creative_mode_tab` registration is accepted and ignored.
-- Mod config. A Rust TOML config spec in `ironpumpkin-mods` has a builder (comments, sections, typed values with ranges, enums and lists), correction, write with comments, `get`, `set` and `save`, and reload by polling every N ticks. It adds no dependency. The types are Local, Synced and Startup, and the files are `config/<modid>-<type>.toml` like NeoForge, so client-side and server-side files stay parallel. The Synced type feeds the `neoforge:config_file` sync through a live source: each synced `ModConfig` is a `startup::SyncedConfigSource`, and the `SyncConfig` configuration task reads the current file for each connection, so a reloaded file reaches every later client. Startup configs load in `ModInit::register_config`, before registration. Local and Synced configs load at the end of `init_mods`, after the last `init` and the lifecycle steps and before the server starts. The parity harness trace of a NeoForge 26.3.0.64-beta dedicated server (`tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`) has the same order: construct, `RegisterEvent`, `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`, `RegisterPayloadHandlersEvent`, `ModConfigEvent.Loading` of the synced config, then `ServerAboutToStartEvent`. Loading and reloading are the `NativeMod` methods `config_loading` and `config_reloading`. The poll interval is `mod_config_reload_ticks` in `pumpkin.toml`, and the poll is a host handler of `ServerTickEndEvent`. The module `ironpumpkin_mods::config` documents the correction rules.
+- Mod config. A Rust TOML config spec in `ironpumpkin-mods` has a builder (comments, sections, typed values with ranges, enums and lists), correction, write with comments, `get`, `set` and `save`, and reload by polling every N ticks. It adds no dependency. The types are Local, Synced and Startup, and the files are `config/<modid>-<type>.toml` like NeoForge, so client-side and server-side files stay parallel. The Synced type feeds the `neoforge:config_file` sync through a live source: each synced `ModConfig` is a `startup::SyncedConfigSource`, and the `SyncConfig` configuration task reads the current file for each connection, so a reloaded file reaches every later client. Startup configs load inside `ModInit::register_config` during `init`, so `init` reads them before it registers content. Local configs load after every `init` and before `common_setup`. Synced configs load after `load_complete` and before the server starts. The parity harness trace of a NeoForge 26.3.0.64-beta dedicated server (`tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`) has the same order: construct, `RegisterEvent`, `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`, `RegisterPayloadHandlersEvent`, `ModConfigEvent.Loading` of the synced config, then `ServerAboutToStartEvent`. Loading and reloading are the `NativeMod` methods `config_loading` and `config_reloading`. The hooks of all mods run one at a time. A `save` inside a hook of the same config writes the file and does not call the hook again. The host reads at most 1 MiB of a config file, and a larger file fails to load. A boolean value accepts the strings "true" and "false" in any case, as the NeoForge validator does. The poll interval is `mod_config_reload_ticks` in `pumpkin.toml`, and the poll is a host handler of `ServerTickEndEvent`. The module `ironpumpkin_mods::config` documents the correction rules.
 - Network. Payload registration per channel lives in `ironpumpkin-mods` over the M3 negotiation (`NegotiatedState`, `NetworkRegistry::register`, `c:version`, `c:register` and `neoforge:split` exist). It has per-channel dispatch and helpers that send to a player, to all players or to a dimension. Mod configuration tasks need a dynamic variant: `ConfigurationTask` in `crates/pumpkin-core/src/net/java/configuration_tasks.rs` is a `Copy` enum with `const ALL`, and the unexpected-reply kick must know the mod channels. The tick thread is the world tick of the sender, and the network thread is the connection task.
 - Other families. Capabilities, attachments, data maps, loot modifiers, menus and shapes behave as on NeoForge and are modules of `ironpumpkin-mods` with Rust names. Attachment storage, the data map loader and mod menu types wait for the engine phase (M5).
 - State of mixins. The state that a mixin adds to a vanilla class with `@Unique` (443 members in 61 mods) becomes an attachment of the entity, block entity, chunk or level (spec `neoforge-attachments`).
 - Growth. The API grows only from real patches. Every accepted patch is a candidate event with NeoForge semantics for a later version of `ironpumpkin-mods`: when an event can do what the patch does, the event enters the API and the inventory, and the patch leaves the mod.
 - Mods that other mods extend. A mod that other mods extend exposes its own events and API, as NeoForge mods do. Source patches apply to the IronPumpkin tree only, so the 881 mixin members that target other mods (73 mods into 46 mods, section "Mixins into other mods" of `modpack-usage.md`) become events or API of the target mod, or a change that the two mod authors agree on.
+
+### Contract changes to existing Pumpkin events
+
+Two Pumpkin events that upstream already has get a new contract here. A plugin or mod that handles them sees the new behaviour.
+
+- `PrepareAnvilEvent` fires on every anvil result update when the left input is not empty: a click on the input or result slots, a quick move or a rename. It fires after the screen-handler lock is released. It carries the vanilla result, cost and material cost. `output`, `repair_cost` and `material_cost` apply. A cancel clears the output and the cost. The result applies only if the inputs, the name and the result did not change while the event fired.
+- `PrepareGrindstoneEvent` fires on every grindstone result update (an input change or a take), outside the lock. `result_item` is the id of the vanilla result. A set `output` replaces the result, with `xp` used when it is 0 or more. A cancel clears the result. The same guard on unchanged inputs applies.
+
+The event layouts changed, so `PLUGIN_API_VERSION` is 3 and a native plugin built for version 2 does not load. The WIT v0.2 records do not change: the Wasm hosts keep the native-only fields on write-back.
 
 ### Source patches
 
@@ -241,33 +257,35 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 90 | 172 | 0 | 20 |
+| Events, server and common | 282 | 97 | 165 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 0 | 137 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
 | Attachments | 26 | 0 | 23 | 0 | 3 |
 | Data maps | 24 | 0 | 24 | 0 | 0 |
-| Config | 37 | 0 | 33 | 1 | 3 |
+| Config | 37 | 22 | 11 | 1 | 3 |
 | Networking | 88 | 5 | 59 | 0 | 24 |
-| Lifecycle and metadata | 82 | 10 | 36 | 10 | 26 |
+| Lifecycle and metadata | 82 | 30 | 16 | 10 | 26 |
 | Loot and conditions | 25 | 0 | 24 | 0 | 1 |
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
-| Other server-side packages | 87 | 6 | 40 | 0 | 41 |
-| Total | 1093 | 111 | 624 | 210 | 148 |
+| Other server-side packages | 87 | 7 | 39 | 0 | 41 |
+| Total | 1093 | 161 | 574 | 210 | 148 |
+
+Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
 ### Events
 
 Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or common: 282. Client: 189. Abstract classes: 71.
 
-#### `event` (38: 5 supported, 24 planned, 9 not supported)
+#### `event` (38: 4 supported, 25 planned, 9 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | AddAttributeTooltipsEvent | game | both | no | - | not supported | - | tooltip text is built for display; the client renders tooltips from item components |
 | AddPackFindersEvent | mod | both | no | - | planned | datapack manager (`datapack.wit`) | ship the mod data folder as a plugin-bundled datapack |
 | AddServerReloadListenersEvent | game | server | no | - | planned | datapack reload (`datapack-manager.reload`) | needs a reload hook for plugin data |
-| AnvilUpdateEvent | game | both | yes | - | supported | `PrepareAnvilEvent` | fired by `AnvilScreenHandler::update_result` after the vanilla result, with output, level cost and material cost write-back and cancel; test `change_a_settable_field_anvil_update_event`; WIT v0.2 |
+| AnvilUpdateEvent | game | both | yes | - | supported | `PrepareAnvilEvent` | fires on every anvil result update with a non-empty left input (slot click, quick move, rename), after the screen-handler lock is released, with the vanilla result, cost and material cost; `output`, `repair_cost` and `material_cost` apply and a cancel clears the output and the cost, only if the inputs, the name and the result did not change meanwhile; tests `change_a_settable_field_anvil_update_event`, `anvil_update_event_handler_closes_the_screen`, `update_result_without_handler_is_vanilla`; WIT v0.2 |
 | BlockEntityTypeAddBlocksEvent | mod | both | no | - | planned | block entities (phase 6) | custom block entity types come with phase 6 |
 | BuildCreativeModeTabContentsEvent | mod | both | no | - | not supported | - | creative tab contents are client UI; the server never reads them |
 | CommandEvent | game | server | yes | - | planned | `PlayerCommandPreprocessEvent` | Pumpkin defines PlayerCommandPreprocessEvent but never fires it; ServerCommandEvent for the console |
@@ -276,7 +294,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | GameShuttingDownEvent | game | both | no | - | planned | plugin `on-unload` | Pumpkin calls on-unload; no event |
 | GatherSkippedAttributeTooltipsEvent | game | both | no | - | not supported | - | tooltip display only, see AddAttributeTooltipsEvent |
 | GrindstoneEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| GrindstoneEvent.OnPlaceItem | game | both | yes | - | supported | `PrepareGrindstoneEvent` | fired by `GrindstoneScreenHandler::update_result`, with output and experience write-back and cancel; test `one_event_per_fire_site_grindstone_event_on_place_item`; WIT v0.2 |
+| GrindstoneEvent.OnPlaceItem | game | both | yes | - | supported | `PrepareGrindstoneEvent` | fires on every grindstone result update (input change or take), after the screen-handler lock is released; `result_item` is the id of the vanilla result; a set `output` replaces the result and `xp` applies when it is 0 or more; a cancel clears the result; the result applies only if the inputs did not change meanwhile; tests `one_event_per_fire_site_grindstone_event_on_place_item`, `update_result_without_handler_is_vanilla`; WIT v0.2 |
 | GrindstoneEvent.OnTakeItem | game | both | yes | - | planned | grindstone screen handler (pumpkin-inventory) | no event when the result is taken |
 | ItemAttributeModifierEvent | game | both | no | - | planned | attribute modifiers data component | needs a hook where Pumpkin reads item attribute modifiers |
 | ItemStackedOnOtherEvent | game | both | yes | - | planned | slot click handling (pumpkin-inventory) | no event for stacking one item onto another in a slot |
@@ -296,9 +314,9 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | RegisterRecipePropertiesEvent | mod | both | no | - | not supported | - | recipe property sets feed client recipe displays; Pumpkin derives them from generated data |
 | RegisterStructureConversionsEvent | game | both | no | - | not supported | - | converts pre-1.18.2 structure ids; Pumpkin does not upgrade old worlds |
 | RegisterTooltipAppendersEvent | mod | both | no | - | not supported | - | tooltip display only |
-| ServerChatEvent | game | server | yes | - | supported | `PlayerChatEvent` | fired in `net/bedrock/play/chat_message.rs`, `net/java/play/chat_message.rs`; `message` is plain text, not a component; test `cancel_server_chat_event`; WIT v0.2 |
+| ServerChatEvent | game | server | yes | - | supported | `PlayerChatEvent` | fired in `net/bedrock/play/chat_message.rs`, `net/java/play/chat_message.rs`; `message` is plain text, not a component; `raw_text` is filled only when a chat handler was registered when the event is created; test `cancel_server_chat_event`; WIT v0.2 |
 | SortedReloadListenerEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 planned, 1 client-only |
-| StatAwardEvent | game | both | yes | - | supported | `PlayerStatisticIncrementEvent` | fired in `entity/player.rs`, with stat and amount write-back and cancel; test `one_event_per_fire_site_stat_award_event`; WIT v0.2 |
+| StatAwardEvent | game | both | yes | - | planned | `PlayerStatisticIncrementEvent` | fired in `entity/player.rs` on `increment_stat`, with stat and amount write-back and cancel; gap: the Rust `amount` is a delta and `set_stat` fires no event, while NeoForge fires on `setValue` with the new total, resets to 0 included; test `one_event_per_fire_site_stat_award_event`; WIT v0.2 |
 | TagsUpdatedEvent | game | both | no | - | planned | datapack reload | concrete parent of the two tag update events |
 | TagsUpdatedEvent.ServerDataLoad | game | server | no | - | planned | datapack reload (`datapack-manager.reload`) | no event after tags reload |
 | VanillaGameEvent | game | both | yes | - | planned | `GenericGameEvent` | Pumpkin has no vanilla game event dispatch: `World::emit_game_event` fires it from a few call sites and a cancel stops no listener; test `one_event_per_fire_site_vanilla_game_event`; WIT v0.2 |
@@ -310,7 +328,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerBrewedPotionEvent | game | both | no | - | planned | brewing stand screen handler | no event when the potion is taken |
 | PotionBrewEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
 | PotionBrewEvent.Post | game | both | no | - | planned | brewing stand block entity | no post-brew event |
-| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `block/entities/brewing_stand.rs`; a cancel applies `stacks`; test `one_event_per_fire_site_potion_brew_event_pre`; WIT v0.2 |
+| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `block/entities/brewing_stand.rs`; a cancel applies `stacks` only if the stand inventory did not change meanwhile; test `one_event_per_fire_site_potion_brew_event_pre`; WIT v0.2 |
 
 #### `event.enchanting` (4: 1 supported, 3 planned)
 
@@ -318,7 +336,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | EnchantedBlockLootEvent | game | server | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
 | EnchantedEntityLootEvent | game | both | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
-| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired in `entity/player.rs` once for the three rows, after the clues are chosen; test `one_event_per_fire_site_enchantment_events`; WIT v0.2 |
+| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired in `entity/player.rs` once for the three rows, after the clues are chosen, under the enchanting-table screen-handler lock; `pos` is the open container position (the zero position with no container) and `original_level_requirements()` returns the vanilla levels; test `one_event_per_fire_site_enchantment_events`; WIT v0.2 |
 | GetEnchantmentLevelEvent | game | both | no | - | planned | enchantment level lookup on `ItemStack` | no hook |
 
 #### `event.entity` (21: 8 supported, 13 planned)
@@ -438,7 +456,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerContainerEvent.Close | game | both | no | - | supported | `InventoryCloseEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerContainerEvent.Open | game | both | no | - | supported | `InventoryOpenEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerDestroyItemEvent | game | both | no | - | supported | `PlayerItemBreakEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `EnchantingTableScreenHandler::on_button_click` after the enchantments apply; test `one_event_per_fire_site_enchantment_events` |
+| PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `EnchantingTableScreenHandler::on_button_click` after the enchantments apply and before the lapis is consumed, under the screen-handler lock; the table writes `enchanted_item` back to slot 0; test `one_event_per_fire_site_enchantment_events` |
 | PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 26 supported, 26 planned, 5 not supported, 2 client-only |
 | PlayerEvent.BreakSpeed | game | both | yes | - | planned | mining speed in block breaking | no hook; the client also predicts break speed |
 | PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | no event that pairs the old and the new player |
@@ -542,11 +560,11 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | RegisterRpcSchemaEvent | game | server | no | - | planned | management JSON-RPC server (`net/management/rpc.rs`) | the method set is fixed; no plugin hook adds methods |
 | ServerAboutToStartEvent | game | server | no | - | planned | plugin `on-load` | plugins load before worlds; no separate event |
-| ServerLifecycleEvent (abstract) | game | server | no | - | planned | shared fields of 5 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 4 planned |
+| ServerLifecycleEvent (abstract) | game | server | no | - | planned | shared fields of 5 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 4 supported, 1 planned |
 | ServerStartedEvent | game | server | no | - | supported | `ServerLoadEvent` | fired in `lib.rs` after the plugins load and before the ticker starts, as on `NeoForge`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
 | ServerStartingEvent | game | server | no | - | supported | `ServerStartingEvent` | fired in `lib.rs` after the worlds load and before the ticker starts; Wasm plugins load later; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | ServerStoppedEvent | game | server | no | - | supported | `ServerStoppedEvent` | fired in `lib.rs` after the worlds save; Wasm plugins are unloaded before it; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
-| ServerStoppingEvent | game | server | no | - | supported | `ServerStoppingEvent` | fired in `lib.rs` when the server stops accepting connections; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| ServerStoppingEvent | game | server | no | - | supported | `ServerStoppingEvent` | fired in `lib.rs` when the server stops accepting connections, after the ticker thread exits (bound 30 s: a tick that runs longer logs a warning and the shutdown continues); test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 
 #### `event.tick` (12: 4 supported, 8 planned)
 
@@ -556,8 +574,8 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | EntityTickEvent.Post | game | both | no | - | planned | entity tick in `EntityBase` | same cost concern as EntityTickEvent.Pre |
 | EntityTickEvent.Pre | game | both | yes | - | planned | entity tick in `EntityBase` | a call into Wasm per entity per tick is expensive; needs a filter by entity type |
 | LevelTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
-| LevelTickEvent.Post | game | both | no | - | supported | `LevelTickEventPost` | fired in `server/mod.rs` after each world ticks; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
-| LevelTickEvent.Pre | game | both | no | - | supported | `LevelTickEventPre` | fired in `server/mod.rs` before each world ticks; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| LevelTickEvent.Post | game | both | no | - | supported | `LevelTickEventPost` | fired in `server/mod.rs` after each world ticks, also while the game is frozen (once per world, in sequence); in a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| LevelTickEvent.Pre | game | both | no | - | supported | `LevelTickEventPre` | fired in `server/mod.rs` before each world ticks, also while the game is frozen (once per world, in sequence); in a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | PlayerTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
 | PlayerTickEvent.Post | game | both | no | - | planned | `Player` tick | no per-player tick event |
 | PlayerTickEvent.Pre | game | both | no | - | planned | `Player` tick | no per-player tick event |
@@ -571,27 +589,27 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | VillageSiegeEvent | game | both | yes | - | not supported | - | Pumpkin has no village siege spawner |
 
-#### `fml.event.config` (4: 4 planned)
+#### `fml.event.config` (4: 2 supported, 2 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
-| ModConfigEvent | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | concrete parent of the config events |
-| ModConfigEvent.Loading | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API |
-| ModConfigEvent.Reloading | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API |
-| ModConfigEvent.Unloading | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API |
+| ModConfigEvent | mod | both | no | - | planned | `NativeMod::config_loading`, `NativeMod::config_reloading` | concrete parent of the config events; the Rust API has the two hooks and no parent handler, so a listener on the parent implements both hooks |
+| ModConfigEvent.Loading | mod | both | no | - | supported | `NativeMod::config_loading` | called once per config after it loads: Startup inside `register_config`, Local before `common_setup`, Synced after `load_complete`; the hooks of all mods run one at a time; tests `local_configs_load_before_common_setup_and_synced_after_load_complete` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| ModConfigEvent.Reloading | mod | both | no | - | supported | `NativeMod::config_reloading` | called after a reload that the poll finds (`mod_config_reload_ticks`) and after `ModConfig::save`; a `save` inside a hook of the same config does not call the hook again; tests `save_calls_the_reloading_hook_once_even_when_the_hook_saves`, `an_edit_reloads_within_the_interval_and_changes_the_synced_body` and `neoforge_client_syncs_custom_content` (`crates/ironpumpkin-test-mod/tests`) |
+| ModConfigEvent.Unloading | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | not implemented: the host does not unload a config when the server stops |
 
-#### `fml.event.lifecycle` (8: 8 planned)
+#### `fml.event.lifecycle` (8: 6 supported, 2 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
-| FMLCommonSetupEvent | mod | both | no | - | planned | plugin `on-load` after registration | `NativeMod` lifecycle method, called after registration |
-| FMLConstructModEvent | mod | both | no | - | planned | plugin `on-load` | `init_mods` calls the lifecycle method after the last `init` |
-| FMLDedicatedServerSetupEvent | mod | server | no | - | planned | plugin `on-load` after registration | `NativeMod` lifecycle method, called after registration |
-| FMLLoadCompleteEvent | mod | both | no | - | planned | after all plugins loaded | no event after the last plugin loads |
-| InterModEnqueueEvent | mod | both | no | - | planned | plugin IPC (`ipc.wit`) | IMC maps to plugin-to-plugin messages |
-| InterModProcessEvent | mod | both | no | - | planned | plugin IPC (`ipc.wit`) | IMC maps to plugin-to-plugin messages |
-| ModLifecycleEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 planned, 1 client-only |
-| ParallelDispatchEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 planned, 1 client-only |
+| FMLCommonSetupEvent | mod | both | no | - | supported | `NativeMod::common_setup` | called for every mod in load order after the last `init`, with the Local configs loaded; tests `lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc`, `local_configs_load_before_common_setup_and_synced_after_load_complete` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| FMLConstructModEvent | mod | both | no | - | supported | `NativeMod::init` | `init_mods` calls `init` of each mod in load order, with the `ModInit` registration API; tests `init_runs_in_dependency_order` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| FMLDedicatedServerSetupEvent | mod | server | no | - | supported | `NativeMod::dedicated_server_setup` | called for every mod in load order after `common_setup`; test `lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc` |
+| FMLLoadCompleteEvent | mod | both | no | - | supported | `NativeMod::load_complete` | called for every mod in load order after the IMC steps; the Synced configs load right after it; tests `lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc`, `local_configs_load_before_common_setup_and_synced_after_load_complete` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| InterModEnqueueEvent | mod | both | no | - | supported | `NativeMod::inter_mod_enqueue` (`InterModEnqueue::send`) | a send to a mod that is not loaded returns false; test `lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc` |
+| InterModProcessEvent | mod | both | no | - | supported | `NativeMod::inter_mod_process` (`InterModProcess::get_messages`) | the target mod lists the messages that were sent to it; test `lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc` |
+| ModLifecycleEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 supported, 1 client-only |
+| ParallelDispatchEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 supported, 1 client-only |
 
 #### Events in other packages (19: 1 supported, 14 planned, 4 not supported)
 
@@ -1117,48 +1135,48 @@ Synced = listed in `NeoForgeRegistriesSetup.VANILLA_SYNC_REGISTRIES`, so a NeoFo
 
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `ModConfigSpec` | class, 15 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.BooleanValue` | class, 3 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#define` | method, 12 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#defineInRange` | method, 16 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#defineInList` | method, 4 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#defineList` | method, 9 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#defineListAllowEmpty` | method, 8 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#defineEnum` | method, 20 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#comment` | method, 2 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#translation` | method, 1 overload | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#worldRestart` | method, 1 overload | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#gameRestart` | method, 1 overload | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#push` | method, 2 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#pop` | method, 2 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#configure` | method, 1 overload | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Builder#build` | method, 1 overload | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.ConfigValue` | class, 10 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.DoubleValue` | class, 2 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.EnumValue` | class, 1 public method | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.IntValue` | class, 2 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.ListValueSpec` | class, 3 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.LongValue` | class, 2 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.Range` | class, 7 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfigSpec.RestartType` | enum, 1 public method | both | planned | Rust config spec of `ironpumpkin-mods` | world restart and game restart flags |
-| `ModConfigSpec.ValueSpec` | class, 8 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
+| `ModConfigSpec` | class, 15 public methods | both | supported | `ConfigSpec` | `ConfigSpec::builder()` builds the spec; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` and `set_and_save_write_the_key_under_its_section`; gaps: no `IConfigSpec` trait, and a value is read by path with `ModConfig::get::<T>`, not through a typed handle |
+| `ModConfigSpec.BooleanValue` | class, 3 public methods | both | supported | `ModConfig::get::<bool>` | read by path, no typed handle; tests `a_boolean_accepts_the_strings_true_and_false` and `set_and_save_write_the_key_under_its_section` |
+| `ModConfigSpec.Builder#define` | method, 12 overloads | both | supported | `ConfigSpecBuilder::define`, `define_validated` | tests `a_boolean_accepts_the_strings_true_and_false`, `a_path_defined_twice_is_an_invalid_spec` |
+| `ModConfigSpec.Builder#defineInRange` | method, 16 overloads | both | supported | `ConfigSpecBuilder::define_in_range` | for `i32`, `i64` and `f64`; a number out of range is clamped; test `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
+| `ModConfigSpec.Builder#defineInList` | method, 4 overloads | both | planned | `ConfigSpecBuilder::define_validated` | no dedicated method: `define_validated` with a membership check does the same |
+| `ModConfigSpec.Builder#defineList` | method, 9 overloads | both | supported | `ConfigSpecBuilder::define_list` | elements that fail are removed, and a list with no element left gets the default; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.Builder#defineListAllowEmpty` | method, 8 overloads | both | planned | `ConfigSpecBuilder::define_list` | no dedicated method: `define_list` keeps an empty list from the file, and no test covers the empty list |
+| `ModConfigSpec.Builder#defineEnum` | method, 20 overloads | both | supported | `ConfigSpecBuilder::define_enum` | the type implements `ConfigEnum`; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.Builder#comment` | method, 2 overloads | both | supported | `ConfigSpecBuilder::comment` | each line of the comment is one `#` line; test `a_comment_with_line_breaks_writes_one_comment_line_each` |
+| `ModConfigSpec.Builder#translation` | method, 1 overload | both | supported | `ConfigSpecBuilder::translation` | read back with `ConfigSpec::translation`; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.Builder#worldRestart` | method, 1 overload | both | supported | `ConfigSpecBuilder::world_restart` | a dedicated server closes its world only at stop, so it acts like `game_restart`; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.Builder#gameRestart` | method, 1 overload | both | supported | `ConfigSpecBuilder::game_restart` | a synced config cannot have such a value; test `a_synced_config_cannot_need_a_game_restart` |
+| `ModConfigSpec.Builder#push` | method, 2 overloads | both | supported | `ConfigSpecBuilder::push` | test `set_and_save_write_the_key_under_its_section` |
+| `ModConfigSpec.Builder#pop` | method, 2 overloads | both | supported | `ConfigSpecBuilder::pop` | test `set_and_save_write_the_key_under_its_section` |
+| `ModConfigSpec.Builder#configure` | method, 1 overload | both | planned | `ConfigSpec::builder`, then `ConfigSpecBuilder::build` | no `configure`: a mod fills the builder directly and calls `build` |
+| `ModConfigSpec.Builder#build` | method, 1 overload | both | supported | `ConfigSpecBuilder::build` | returns a `Result`; `InvalidSpec` for a malformed definition; test `a_path_defined_twice_is_an_invalid_spec` |
+| `ModConfigSpec.ConfigValue` | class, 10 public methods | both | supported | `ModConfig::get`, `set`, `save`, `get_default` | the value methods are on `ModConfig`, addressed by path; tests `set_and_save_write_the_key_under_its_section`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
+| `ModConfigSpec.DoubleValue` | class, 2 public methods | both | supported | `ModConfig::get::<f64>` | read by path, no typed handle; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.EnumValue` | class, 1 public method | both | supported | `ConfigEnum`, `ModConfig::get::<E>` | read by path, no typed handle; test `enums_lists_and_restart_values_follow_the_spec` |
+| `ModConfigSpec.IntValue` | class, 2 public methods | both | planned | `ModConfig::get::<i32>` | `i32` is implemented but no test reads an `i32` value; a port can use `i64`, which `ModConfigSpec.LongValue` covers |
+| `ModConfigSpec.ListValueSpec` | class, 3 public methods | both | planned | `ConfigSpecBuilder::define_list` | no public type for it: `define_list` takes the element validator |
+| `ModConfigSpec.LongValue` | class, 2 public methods | both | supported | `ModConfig::get::<i64>` | read by path, no typed handle; test `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
+| `ModConfigSpec.Range` | class, 7 public methods | both | planned | `RangeBound` (`i32`, `i64`, `f64`) | no `Range` object: `RangeBound` is a trait, and `define_in_range` writes the range comment |
+| `ModConfigSpec.RestartType` | enum, 1 public method | both | planned | `ConfigSpecBuilder::world_restart`, `game_restart` | no public enum: the two builder methods set the flag |
+| `ModConfigSpec.ValueSpec` | class, 8 public methods | both | planned | `ConfigSpec` (per value: `ModConfig::get_default`, `ConfigSpec::translation`) | no public type for it: `get_default` and `translation` give the per-value data |
 | `NeoForgeLocalConfig` | class, 0 public methods | both | not supported | - | NeoForge own settings; Pumpkin has its own `pumpkin.toml` |
 | `NeoForgeSyncedConfig` | class, 0 public methods | both | not supported | - | NeoForge own settings; Pumpkin has its own `pumpkin.toml` |
 | `ConfigTracker` | class, 7 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
-| `IConfigSpec` | interface, 5 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `IConfigSpec.ILoadedConfig` | interface, 2 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfig` | class, 6 public methods | both | planned | config handle in `ironpumpkin-mods` | no config system in the plugin API yet |
-| `ModConfig.Type` | enum, 1 public method | both | planned | config types, see the config type table | no config system in the plugin API yet |
-| `ModConfigs` | class, 4 public methods | both | planned | config lookup by mod in `ironpumpkin-mods` | no config system in the plugin API yet |
+| `IConfigSpec` | interface, 5 public methods | both | planned | `ConfigSpec` | no `IConfigSpec` trait: `ConfigSpec` is the only spec type |
+| `IConfigSpec.ILoadedConfig` | interface, 2 public methods | both | planned | `ModConfig` | no such interface: the loaded values are on `ModConfig` |
+| `ModConfig` | class, 6 public methods | both | supported | `ModConfig` | `mod_id`, `config_type`, `file_name`, `path`, `spec`, `get`, `set`, `save` and `get_default`; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `set_and_save_write_the_key_under_its_section` |
+| `ModConfig.Type` | enum, 1 public method | both | supported | `ConfigType::{Local, Synced, Startup}` | `CLIENT` never loads on a server (see the client-only row); tests in the config type table |
+| `ModConfigs` | class, 4 public methods | both | planned | lookup of configs by mod, not implemented | not implemented: a mod keeps the `Arc<ModConfig>` that `register_config` returns |
 
 #### Config types (`ModConfig.Type` in FancyModLoader 12.0.8)
 
 | Type | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|
-| `ModConfig.Type.LOCAL` | both | planned | Rust config spec, file `config/<modid>-local.toml` | one copy per side, never synced |
+| `ModConfig.Type.LOCAL` | both | supported | `ConfigType::Local`, file `config/<modid>-local.toml` | one copy per side, never synced; loads after the last `init` and before `common_setup`; test `local_configs_load_before_common_setup_and_synced_after_load_complete` |
 | `ModConfig.Type.CLIENT` | client | client-only | - | client-only config, never loaded on a dedicated server |
-| `ModConfig.Type.SYNCED` | both | planned | Rust config spec plus the phase 3 `config_file` sync through a live source | the server sends it to clients |
-| `ModConfig.Type.STARTUP` | both | planned | Rust config spec, read before registration | no config system in the plugin API yet |
+| `ModConfig.Type.SYNCED` | both | supported | `ConfigType::Synced`, file `config/<modid>-synced.toml`, `neoforge:config_file` sync through a live source | the server sends it to NeoForge clients in the configuration phase; loads after `load_complete`; a reload reaches the next client, not a client already in play; tests `an_edit_reloads_within_the_interval_and_changes_the_synced_body` and `neoforge_client_syncs_custom_content` (`crates/ironpumpkin-test-mod/tests`) |
+| `ModConfig.Type.STARTUP` | both | supported | `ConfigType::Startup`, file `config/<modid>-startup.toml` | loads inside `ModInit::register_config`, so `init` reads it; test `init_reads_a_startup_config_from_the_file` |
 
 Config events (`ModConfigEvent.Loading`, `Reloading`, `Unloading`) are in the `fml.event.config` event table. Config sync is the `SyncConfig` configuration task and the `neoforge:config_file` payload in the networking section.
 
@@ -1282,48 +1300,48 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 
 | Annotation member | Type | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `@Mod(value)` | String | both | planned | `NativeMod` entry point (`register_mod!`) with the mod id | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `@Mod(dist)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | planned | always the dedicated server dist | client-dist entry points never run |
-| `@Mod(depends)` | String[], default `{}` | both | supported | plugin-metadata `dependencies` (`metadata.wit`) | available today |
+| `@Mod(value)` | String | both | supported | `NativeMod` entry point (`register_mod!`) with the mod id | the mod id is `NativeMod::id` or the `modId` of `mods_toml`; tests `collects_registered_mods_in_id_order_and_runs_init`, `the_mods_toml_decides_the_metadata` |
+| `@Mod(dist)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | supported | `mod_list::dist()` | always `Dist::DedicatedServer`; client-dist entry points never run; test `mod_list_answers_like_neoforge` |
+| `@Mod(depends)` | String[], default `{}` | both | supported | `mods_toml::ModInfo::dependencies` | ids, types, ranges, ordering and side; test `parses_the_client_mod_descriptor` |
 | `@EventBusSubscriber(value)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | planned | registration through `ModInit::register_event` | client-dist subscribers are skipped |
 | `@EventBusSubscriber(modid)` | String, default `""` | both | planned | registration through `ModInit::register_event` | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `@SubscribeEvent(priority)` | EventPriority, default `EventPriority.NORMAL` | both | planned | `ModInit::register_event` `priority` argument (`EventPriority`, same five levels) | `PluginManager::fire_dyn` stores the priority and never reads it; task 2.3 makes the dispatch honour it |
-| `@SubscribeEvent(receiveCanceled)` | boolean, default `false` | both | planned | cancelled-event delivery flag on `register-event` | Pumpkin has a `blocking` flag, no receive-cancelled flag |
+| `@SubscribeEvent(priority)` | EventPriority, default `EventPriority.NORMAL` | both | supported | `ModInit::register_event` `priority` argument (`EventPriority`, same five levels) | blocking handlers run before non-blocking ones, each from Highest to Lowest, in registration order inside one priority; tests `priority_order`, `blocking_before_non_blocking` |
+| `@SubscribeEvent(receiveCanceled)` | boolean, default `false` | both | supported | `ModInit::register_event` `receive_canceled` argument | a handler without the flag does not run for a cancelled event; `Context::register_event` (Wasm) always receives cancelled events; tests `receive_canceled`, `register_and_register_event_receive_cancelled_events` |
 
 #### Event bus and mod container (eventbus 8.0.5, FancyModLoader 12.0.8)
 
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
 | `IEventBus#register` | method, 1 overload | both | planned | registration through `ModInit::register_event` | Rust has no annotation scan; a macro lists the handlers |
-| `IEventBus#addListener` | method, 8 overloads | both | planned | `ModInit::register_event` (native), `Context::register_event` (`context.wit` register-event, Wasm) | each NeoForge event type is a Pumpkin event or maps to one |
+| `IEventBus#addListener` | method, 8 overloads | both | supported | `ModInit::register_event` (native), `ModInit::register_parent_event` (parent class), `Context::register_event` (Wasm) | each NeoForge event type is a Pumpkin event or maps to one; tests `priority_order`, `blocking_before_non_blocking`, `receive_canceled`, `handler_on_a_parent` |
 | `IEventBus#unregister` | method, 1 overload | both | not supported | - | Pumpkin plugins register handlers for the plugin lifetime |
 | `IEventBus#post` | method, 2 overloads | both | planned | firing a Pumpkin event; plugin IPC across plugins | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
 | `IEventBus#start` | method, 1 overload | both | not supported | - | internal FML bus start |
 | `EventPriority` | enum: HIGHEST, HIGH, NORMAL, LOW, LOWEST | both | supported | WIT `event-priority` | same five levels |
 | `ModContainer#getModId` | method, 1 overload | both | supported | plugin-metadata `name` (`metadata.wit`) | available today |
-| `ModContainer#getNamespace` | method, 1 overload | both | planned | registry namespace of the plugin | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModContainer#getNamespace` | method, 1 overload | both | supported | `mods_toml::ModInfo::namespace` | the `namespace` key, or the mod id; test `mod_list_answers_like_neoforge` |
 | `ModContainer#getModInfo` | method, 1 overload | both | supported | plugin-metadata (`metadata.wit`) | available today |
 | `ModContainer#getCustomExtension` | method, 1 overload | both | client-only | - | extension points are client screens (config screen factory) |
 | `ModContainer#registerExtensionPoint` | method, 2 overloads | both | client-only | - | extension points are client screens (config screen factory) |
-| `ModContainer#registerConfig` | method, 2 overloads | both | planned | Rust config spec of `ironpumpkin-mods` | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModContainer#registerConfig` | method, 2 overloads | both | supported | `ModInit::register_config`, `ModInit::register_config_with_file_name` | tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `a_second_config_with_the_same_file_is_a_duplicate` |
 | `ModContainer#getEventBus` | method, 1 overload | both | planned | `NativeMod` lifecycle methods, one set per mod | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
 | `ModContainer#acceptEvent` | method, 2 overloads | both | not supported | - | internal FML dispatch |
 | `ModList#of` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
-| `ModList#get` | method, 1 overload | both | planned | plugin manager handle | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModList#get` | method, 1 overload | both | planned | `ModList::get()` | returns the process-wide list that `init_mods` builds; no unit test reads it, the boot log of `hello-mod` does |
 | `ModList#getModFiles` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#getModFileById` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
-| `ModList#getModContainerById` | method, 1 overload | both | planned | plugin manager lookup by name | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#getMods` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#isLoaded` | method, 1 overload | both | planned | plugin manager lookup by name | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#size` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModList#getModContainerById` | method, 1 overload | both | supported | `ModList::get_mod_container_by_id` | test `mod_list_answers_like_neoforge` |
+| `ModList#getMods` | method, 1 overload | both | supported | `ModList::get_mods` | test `mod_list_answers_like_neoforge` |
+| `ModList#isLoaded` | method, 1 overload | both | supported | `ModList::is_loaded` | the system mods `minecraft` and `neoforge` count as loaded; test `mod_list_answers_like_neoforge` |
+| `ModList#size` | method, 1 overload | both | supported | `ModList::size` | test `mod_list_answers_like_neoforge` |
 | `ModList#getAllScanData` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#forEachModFile` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#applyForEachModFile` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#applyForEachModFileAlphabetical` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
-| `ModList#forEachModContainer` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#getSortedMods` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#forEachModInOrder` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| `ModList#applyForEachModContainer` | method, 1 overload | both | planned | plugin manager list | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModList#forEachModContainer` | method, 1 overload | both | planned | `ModList::get_mods` (iterate) | no callback method: iterate the slice |
+| `ModList#getSortedMods` | method, 1 overload | both | supported | `ModList::get_sorted_mods` | test `mod_list_answers_like_neoforge` |
+| `ModList#forEachModInOrder` | method, 1 overload | both | planned | `ModList::get_sorted_mods` (iterate) | no callback method: iterate the slice |
+| `ModList#applyForEachModContainer` | method, 1 overload | both | planned | `ModList::get_mods` (iterate) | no callback method: iterate the slice |
 | `ModList#clear` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 
 #### `neoforge.mods.toml` keys (44, every `getConfigElement` and `getConfigList` call in FML and NeoForge)
@@ -1333,46 +1351,46 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | [[mods]] | `enumExtensions` | FML `FMLLoader` | both | not supported | - | extensible enums stay excluded (risk: feature flags and extensible enums) |
 | file | `modLoader` | FML `ModFileInfo` | both | not supported | - | selects the Java language loader; a ported plugin is Rust |
 | file | `loaderVersion` | FML `ModFileInfo` | both | not supported | - | FML version range |
-| file | `license` | FML `ModFileInfo` | both | planned | license field for the metadata reader | plugin-metadata has no license |
+| file | `license` | FML `ModFileInfo` | both | supported | `mods_toml::parse` | required: a missing or blank license stops the server with "Missing license", as FML `ModFileInfo` does; the value is not kept; test `a_missing_or_blank_license_is_rejected` |
 | file | `showAsResourcePack` | FML `ModFileInfo` | both | not supported | - | pack listing in the client UI |
 | file | `showAsDataPack` | FML `ModFileInfo` | both | not supported | - | pack listing in the client UI |
 | file | `services` | FML `ModFileInfo` | both | not supported | - | Java ServiceLoader declarations |
-| file | `properties` | FML `ModFileInfo` | both | planned | free-form properties in the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| file | `issueTrackerURL` | FML `ModFileInfo`, NeoForge `CrashReportExtender` | both | planned | URL field for the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| file | `mods` | FML `ModFileInfo` | both | planned | one plugin per `[[mods]]` entry | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| file | `properties` | FML `ModFileInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| file | `issueTrackerURL` | FML `ModFileInfo`, NeoForge `CrashReportExtender` | both | planned | not read | `mods_toml::parse` does not read it |
+| file | `mods` | FML `ModFileInfo` | both | planned | `NativeMod::mods_toml`, `mods_toml::parse` | a native mod reads the `[[mods]]` entry with its id, or the only entry; a file with several mods has no equivalent; test `picks_the_entry_of_the_mod` |
 | file | `mixins` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | [[mixins]] | `config` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | [[mixins]] | `requiredMods` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | [[mixins]] | `behaviorVersion` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | file | `accessTransformers` | FML `ModFileParser` | both | not supported | - | access transformers; Java bytecode patching |
 | [[accessTransformers]] | `file` | FML `ModFileParser` | both | not supported | - | access transformers; Java bytecode patching |
-| [[mods]] | `modId` | FML `ModInfo` | both | supported | plugin-metadata `name` | reading it from neoforge.mods.toml is planned |
-| [[mods]] | `namespace` | FML `ModInfo` | both | planned | registry namespace of the plugin | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[mods]] | `version` | FML `ModInfo` | both | supported | plugin-metadata `version` | reading it from neoforge.mods.toml is planned |
-| [[mods]] | `displayName` | FML `ModInfo` | both | planned | display name field for the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[mods]] | `description` | FML `ModInfo` | both | supported | plugin-metadata `description` | reading it from neoforge.mods.toml is planned |
+| [[mods]] | `modId` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::mod_id` | read by `mods_toml::parse`, with the charset of `ModInfo.VALID_MODID`; tests `mod_id_charset_follows_fml`, `rejects_invalid_descriptors` |
+| [[mods]] | `namespace` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::namespace` | the registry namespace, the mod id by default, with the charset of `ModInfo.VALID_NAMESPACE`; test `applies_the_fml_defaults` |
+| [[mods]] | `version` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::version` | read by `mods_toml::parse`; `${file.jarVersion}` becomes `NativeMod::version`; test `applies_the_fml_defaults` |
+| [[mods]] | `displayName` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::display_name` | the mod id by default; test `applies_the_fml_defaults` |
+| [[mods]] | `description` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::description` | read by `mods_toml::parse`; "MISSING DESCRIPTION" by default; test `applies_the_fml_defaults` |
 | [[mods]] | `logoFile` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo`, NeoForge `LogoFileWarningsHandler` | client | client-only | - | mod list screen |
 | [[mods]] | `logoBlur` | FML `ModInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `updateJSONURL` | FML `ModInfo` | both | not supported | - | NeoForge version checker |
-| [[mods]] | `modUrl` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo` | both | planned | URL field for the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[mods]] | `dependencies` | FML `ModInfo` | both | supported | plugin-metadata `dependencies` | ids only |
+| [[mods]] | `modUrl` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[mods]] | `dependencies` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::dependencies` | the `[[dependencies.<modid>]]` entries of the mod; tests `parses_the_client_mod_descriptor`, `a_bad_mods_toml_id_or_dependency_stops_the_load` |
 | [[mods]] | `features` | FML `ModInfo` | both | not supported | - | environment checks (Java version, OpenGL version) |
-| [[mods]] | `modproperties` | FML `ModInfo` | both | planned | free-form properties in the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[dependencies.<modid>]] | `modId` | FML `ModInfo.ModVersion` | both | supported | an entry of plugin-metadata `dependencies` | reading it from neoforge.mods.toml is planned |
-| [[dependencies.<modid>]] | `type` | FML `ModInfo.ModVersion` | both | planned | dependency kind (required, optional, incompatible, discouraged) | Pumpkin dependencies are names only |
-| [[dependencies.<modid>]] | `reason` | FML `ModInfo.ModVersion` | both | planned | dependency kind message | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[dependencies.<modid>]] | `versionRange` | FML `ModInfo.ModVersion` | both | planned | version range check on dependencies | Pumpkin dependencies have no version |
-| [[dependencies.<modid>]] | `ordering` | FML `ModInfo.ModVersion` | both | planned | load order between plugins | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[dependencies.<modid>]] | `side` | FML `ModInfo.ModVersion` | both | planned | skip client-side dependencies on the server | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[dependencies.<modid>]] | `referralUrl` | FML `ModInfo.ModVersion` | both | planned | dependency kind message | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
-| [[mods]] | `authors` | NeoForge `DefaultModDisplayInfo` | both | supported | plugin-metadata `authors` | reading it from neoforge.mods.toml is planned |
+| [[mods]] | `modproperties` | FML `ModInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[dependencies.<modid>]] | `modId` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::mod_id` | test `parses_the_client_mod_descriptor` |
+| [[dependencies.<modid>]] | `type` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::dependency_type` | required, optional, incompatible or discouraged, case-insensitive; test `checks_version_ranges_types_and_sides` |
+| [[dependencies.<modid>]] | `reason` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::reason` | added to the error of an incompatible dependency; test `checks_version_ranges_types_and_sides` |
+| [[dependencies.<modid>]] | `versionRange` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::version_range` | Maven ranges, as `ModSorter.verifyDependencyVersions` reads them; tests `checks_version_ranges_types_and_sides`, `ranges_contain_like_maven` |
+| [[dependencies.<modid>]] | `ordering` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::ordering` | BEFORE and AFTER order `init` and the lifecycle methods, the mod id breaks ties; tests `before_and_after_order_three_mods`, `id_breaks_ties_and_none_adds_no_order` |
+| [[dependencies.<modid>]] | `side` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::side` | a CLIENT dependency is ignored on the server; test `checks_version_ranges_types_and_sides` |
+| [[dependencies.<modid>]] | `referralUrl` | FML `ModInfo.ModVersion` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[mods]] | `authors` | NeoForge `DefaultModDisplayInfo` | both | supported | `mods_toml::ModInfo::authors` | read by `mods_toml::parse`; `parses_the_client_mod_descriptor` covers a descriptor without the key only |
 | [[mods]] | `credits` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `licenseURL` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `bannerFile` | NeoForge `DefaultModDisplayInfo`, NeoForge `LogoFileWarningsHandler` | client | client-only | - | mod list screen |
 | [[mods]] | `iconFile` | NeoForge `DefaultModDisplayInfo`, NeoForge `LogoFileWarningsHandler` | client | client-only | - | mod list screen |
 | [[mods]] | `iconBlur` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `displayURL` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
-| [[mods]] | `issueTrackerURL` | NeoForge `DefaultModDisplayInfo` | both | planned | URL field for the metadata reader | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| [[mods]] | `issueTrackerURL` | NeoForge `DefaultModDisplayInfo` | both | planned | not read | `mods_toml::parse` does not read it |
 | [[mods]] | `featureFlags` | NeoForge `FeatureFlagLoader` | both | not supported | - | mod feature flags stay excluded (risk: feature flags and extensible enums) |
 
 ### Loot modifiers, loot conditions and data conditions
@@ -1566,7 +1584,7 @@ The root `common` package mixes families, so its types have one row each in the 
 | `ItemAbilities` | 20 constants | both | planned | engine extension point (M5) | M5 engine extension: item abilities (tool actions); no Pumpkin equivalent |
 | `ItemAbility` | class, 4 public methods | both | planned | engine extension point (M5) | M5 engine extension: item abilities (tool actions); no Pumpkin equivalent |
 | `LenientUnboundedMapCodec` | class, 8 public methods | both | not supported | - | Java codec helper |
-| `ModConfigSpec` | class, 15 public methods | both | planned | Rust config spec of `ironpumpkin-mods` | see the config section |
+| `ModConfigSpec` | class, 15 public methods | both | supported | `ConfigSpec` | see the config section; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` and `set_and_save_write_the_key_under_its_section` |
 | `MonsterRoomHooks` | class, 2 public methods | both | not supported | - | internal hook class called from patches |
 | `MutableDataComponentHolder` | interface, 14 public methods | both | planned | data components on `ItemStack` (pumpkin-data) | no native API yet |
 | `NeoForge` | class, 0 public methods | both | planned | Pumpkin event dispatch (`ModInit::register_event`) | `NeoForge.EVENT_BUS` |
