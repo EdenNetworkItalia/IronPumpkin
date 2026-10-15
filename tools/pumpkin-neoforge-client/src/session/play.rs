@@ -19,10 +19,9 @@ use pumpkin_protocol::{
     ClientPacket, PacketDecodeError, RawPacket, VarInt,
     codec::item_stack_seralizer::ItemStackSerializer,
     java::server::play::{
-        FLAG_ON_GROUND, SChatCommand, SChatMessage, SChunkBatch, SClientCommand,
-        SClientInformationPlay, SConfirmTeleport, SKeepAlive, SPlayPingRequest, SPlayPong,
-        SPlayerAction, SPlayerLoaded, SPlayerPosition, SPlayerPositionRotation, SSetCreativeSlot,
-        SSetHeldItem, SUseItem, SUseItemOn, Status,
+        FLAG_ON_GROUND, SChatCommand, SChatMessage, SChunkBatch, SClientCommand, SConfirmTeleport,
+        SKeepAlive, SPlayPingRequest, SPlayPong, SPlayerAction, SPlayerLoaded, SPlayerPosition,
+        SPlayerPositionRotation, SSetCreativeSlot, SSetHeldItem, SUseItem, SUseItemOn, Status,
     },
     ser::NetworkReadExt,
 };
@@ -510,21 +509,6 @@ impl<'a> Play<'a> {
         } else if packet.id == play::CHUNK_BATCH_FINISHED {
             self.send(&SChunkBatch {
                 chunks_per_tick: CHUNKS_PER_TICK,
-            })
-            .await?;
-        } else if packet.id == play::LOGIN {
-            // The play variant of the client information, sent once. Unverified against a
-            // decompiled client: see the README.
-            self.send(&SClientInformationPlay {
-                locale: "en_us",
-                view_distance: 2,
-                chat_mode: VarInt(0),
-                chat_colors: true,
-                skin_parts: 0x7f,
-                main_hand: VarInt(1),
-                text_filtering: false,
-                server_listing: true,
-                particle_status: VarInt(0),
             })
             .await?;
         } else if packet.id == play::DISCONNECT {

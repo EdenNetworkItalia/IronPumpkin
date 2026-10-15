@@ -32,6 +32,7 @@ use pumpkin_core::{
     net::ClientPlatform,
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, ParentEventHandler, Payload,
+        block::block_damage::BlockDamageEvent,
         inventory::inventory_open::InventoryOpenEvent,
         player::{
             AnvilCraftEventPost, AnvilCraftEventPre, ArrowLooseEvent, ArrowNockEvent,
@@ -41,7 +42,10 @@ use pumpkin_core::{
             PlayerEventNameFormat, PlayerEventSaveToFile, PlayerEventStartTracking,
             PlayerEventStopTracking, PlayerEventTabListNameFormat, PlayerFlyableFallEvent,
             PlayerSwitchHotbarSlotEventPost, PlayerXpEventPickupXp, SweepAttackEvent,
-            TradeWithVillagerEvent, player_spawn_location::PlayerSpawnLocationEvent,
+            TradeWithVillagerEvent,
+            item_held::PlayerItemHeldEvent,
+            player_interact_event::{InteractAction, PlayerInteractEvent},
+            player_spawn_location::PlayerSpawnLocationEvent,
         },
         results::TriState,
     },
@@ -63,7 +67,9 @@ use pumpkin_protocol::{
     },
     java::{
         client::play::MerchantOffer,
-        server::play::{SClickSlot, SClientInformationPlay, SSetHeldItem, SlotActionType},
+        server::play::{
+            SClickSlot, SClientInformationPlay, SPlayerAction, SSetHeldItem, SlotActionType, Status,
+        },
     },
 };
 use pumpkin_util::{
@@ -561,6 +567,82 @@ fn one_event_per_fire_site_switch_hotbar_slot_event_post() {
     }
 
     assert_eq!(entries(&seen), ["2 5 5"]);
+}
+
+/// `PlayerInteractEvent.LeftClickBlock` fires first at the start of a dig, as in
+/// `ServerPlayerGameMode.handleBlockBreakAction` of `NeoForge` 26.3, and a cancel stops the dig
+/// before `BlockDamageEvent`. The stop of a dig fires nothing.
+#[test]
+fn left_click_block_fires_at_the_dig_start() {
+    let _serial = support::serial();
+    let player = support::player("Digger");
+    player.set_client_loaded(true);
+    let pos = player
+        .get_entity()
+        .block_pos
+        .load()
+        .offset(Vector3::new(1, -1, 0));
+    let cancel = Arc::new(AtomicBool::new(false));
+    let seen = log();
+    let (clicks, cancel_flag) = (seen.clone(), cancel.clone());
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Digger") && event.action == InteractAction::LeftClickBlock {
+            push(&clicks, format!("click {}", event.clicked_pos.unwrap()));
+            event.set_cancelled(cancel_flag.load(Ordering::Relaxed));
+        }
+    });
+    let damage = seen.clone();
+    on::<BlockDamageEvent, _>(move |event| {
+        if named(&event.player, "Digger") {
+            push(&damage, "damage".to_owned());
+            event.set_cancelled(true);
+        }
+    });
+
+    let dig = |status: Status| SPlayerAction {
+        status: VarInt(status as i32),
+        position: pos,
+        face: 1,
+        sequence: VarInt(1),
+    };
+    let client = java_client(&player);
+    client.handle_player_action(&player, &dig(Status::StartedDigging), support::server());
+    client.handle_player_action(&player, &dig(Status::CancelledDigging), support::server());
+    cancel.store(true, Ordering::Relaxed);
+    client.handle_player_action(&player, &dig(Status::StartedDigging), support::server());
+
+    let click = format!("click {pos}");
+    assert_eq!(entries(&seen), [click.as_str(), "damage", click.as_str()]);
+}
+
+/// `PlayerSwitchHotbarSlotEvent.Pre` (`PlayerItemHeldEvent`) fires only when the slot changes,
+/// as in `ServerGamePacketListenerImpl.handleSetCarriedItem` of `NeoForge` 26.3.
+#[test]
+fn switch_hotbar_slot_event_pre_fires_only_on_a_change() {
+    let _serial = support::serial();
+    let player = support::player("SlotHolder");
+    player.inventory().set_selected_slot(3);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<PlayerItemHeldEvent, _>(move |event| {
+        if named(&event.player, "SlotHolder") {
+            push(
+                &seen_by_handler,
+                format!("{} {}", event.previous_slot, event.new_slot),
+            );
+        }
+    });
+
+    for slot in [3, 6, 6] {
+        java_client(&player).handle_set_held_item(
+            support::server(),
+            &player,
+            &SSetHeldItem { slot },
+        );
+    }
+
+    assert_eq!(entries(&seen), ["3 6"]);
+    assert_eq!(player.inventory().get_selected_slot(), 6);
 }
 
 #[test]

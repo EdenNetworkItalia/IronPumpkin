@@ -14,11 +14,14 @@ impl JavaClient {
         let Some(player_arc) = player.world().get_player_by_uuid(player.gameprofile.id) else {
             return;
         };
-        let mut event = PlayerItemHeldEvent::new(player_arc, previous_slot, slot);
-        server.plugin_manager.fire_blocking(server, &mut event);
-        if event.cancelled {
-            player.try_send_client_packet(&CSetSelectedSlot::new(previous_slot as i8));
-            return;
+        // `NeoForge` fires `PlayerSwitchHotbarSlotEvent.Pre` only when the slot changes.
+        if previous_slot != slot {
+            let mut event = PlayerItemHeldEvent::new(player_arc, previous_slot, slot);
+            server.plugin_manager.fire_blocking(server, &mut event);
+            if event.cancelled {
+                player.try_send_client_packet(&CSetSelectedSlot::new(previous_slot as i8));
+                return;
+            }
         }
 
         let inv = player.inventory();

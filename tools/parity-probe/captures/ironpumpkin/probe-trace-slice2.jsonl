@@ -1,0 +1,34 @@
+{"ordinal":0,"name":"FMLConstructModEvent","fields":{}}
+{"ordinal":1,"name":"RegisterEvent","fields":{"registry":"minecraft:block"}}
+{"ordinal":2,"name":"RegisterEvent","fields":{"registry":"minecraft:entity_type"}}
+{"ordinal":3,"name":"RegisterEvent","fields":{"registry":"minecraft:item"}}
+{"ordinal":4,"name":"FMLCommonSetupEvent","fields":{}}
+{"ordinal":5,"name":"FMLLoadCompleteEvent","fields":{}}
+{"ordinal":6,"name":"ModConfigEvent.Loading","fields":{"enabled":true,"file_name":"parityprobe-synced.toml","type":"SYNCED"}}
+{"ordinal":7,"name":"ServerAboutToStartEvent","fields":{}}
+{"ordinal":8,"name":"ServerStartingEvent","fields":{}}
+{"ordinal":9,"name":"ServerStartedEvent","fields":{}}
+{"ordinal":10,"name":"ServerTickEvent.Pre","fields":{}}
+{"ordinal":11,"name":"ServerTickEvent.Post","fields":{}}
+{"ordinal":12,"name":"PlayerEvent.PlayerLoggedInEvent","fields":{"step":0}}
+{"ordinal":13,"name":"ServerTickEvent.Pre","fields":{"step":0}}
+{"ordinal":14,"name":"ServerTickEvent.Post","fields":{"step":0}}
+{"ordinal":15,"name":"ServerTickEvent.Pre","fields":{"step":1}}
+{"ordinal":16,"name":"ServerTickEvent.Post","fields":{"step":1}}
+{"ordinal":17,"name":"ServerChatEvent","fields":{"raw_text":"hello from the parity script","step":1}}
+{"ordinal":18,"name":"ServerTickEvent.Pre","fields":{"step":2}}
+{"ordinal":19,"name":"ServerTickEvent.Post","fields":{"step":2}}
+{"ordinal":20,"name":"PlayerInteractEvent.LeftClickBlock","fields":{"pos":"1 -1 0","step":2}}
+{"ordinal":21,"name":"ServerTickEvent.Pre","fields":{"step":3}}
+{"ordinal":22,"name":"ServerTickEvent.Post","fields":{"step":3}}
+{"ordinal":23,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
+{"ordinal":24,"name":"ServerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":25,"name":"ServerTickEvent.Post","fields":{"step":4}}
+{"ordinal":26,"name":"PlayerInteractEvent.RightClickBlock","fields":{"pos":"1 -2 0","step":4}}
+{"ordinal":27,"name":"UseItemOnBlockEvent","fields":{"pos":"1 -2 0","step":4}}
+{"ordinal":28,"name":"ServerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":29,"name":"ServerTickEvent.Post","fields":{"step":5}}
+{"ordinal":30,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
+{"ordinal":31,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
+{"ordinal":32,"name":"ServerStoppingEvent","fields":{}}
+{"ordinal":33,"name":"ServerStoppedEvent","fields":{}}

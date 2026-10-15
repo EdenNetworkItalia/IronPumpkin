@@ -5,7 +5,7 @@
 //! registers the synced config `parityprobe-synced.toml` with one value, `enabled = true`.
 //!
 //! It traces a `NeoForge` event only where `IronPumpkin` fires it today. `diff.py` lists the other
-//! events of the Java trace as differences.
+//! events of the Java trace as differences. The module `play` traces the play events of slice 2.
 
 use std::{
     fs::File,
@@ -16,6 +16,8 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+
+mod play;
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
@@ -40,6 +42,7 @@ pub const TRACE_FILE: &str = "probe-trace.jsonl";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Bool(bool),
+    Int(u64),
     Text(String),
 }
 
@@ -54,6 +57,7 @@ pub fn line(ordinal: u64, name: &str, fields: &[(&str, Value)]) -> String {
         .map(|(key, value)| {
             let value = match value {
                 Value::Bool(value) => value.to_string(),
+                Value::Int(value) => value.to_string(),
                 Value::Text(value) => quote(value),
             };
             format!("{}:{value}", quote(key))
@@ -143,6 +147,7 @@ impl NativeMod for ParityProbe {
         trace_first::<ServerTickEndEvent>(cx, "ServerTickEvent.Post");
         trace_first::<ServerStoppingEvent>(cx, "ServerStoppingEvent");
         trace_first::<ServerStoppedEvent>(cx, "ServerStoppedEvent");
+        play::register(cx);
     }
 
     fn common_setup(&self) {

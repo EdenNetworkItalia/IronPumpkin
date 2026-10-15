@@ -62,6 +62,8 @@ public final class ParityProbe {
         NeoForge.EVENT_BUS.addListener(ParityProbe::onServerStopped);
         NeoForge.EVENT_BUS.addListener(ParityProbe::onServerTickPre);
         NeoForge.EVENT_BUS.addListener(ParityProbe::onServerTickPost);
+
+        PlayEvents.register(NeoForge.EVENT_BUS);
     }
 
     private static void onConstruct(FMLConstructModEvent event) {

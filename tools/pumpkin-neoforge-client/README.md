@@ -101,11 +101,14 @@ cargo run -p pumpkin-neoforge-client -- play --port 25565 \
 
 In the play state the client answers these packets:
 
-- `login`: it sends the client information with the play packet. This second send, after the one
-  of the configuration phase, is unverified. A review doubts that vanilla sends the client
-  information in play on `login`: it may send it only in the configuration phase and when an
-  option changes. No decompiled 26.3 client was available to check it, so the behaviour stays. The
-  send makes IronPumpkin fire `ClientInformationUpdatedEvent` on every join.
+- `login`: it sends nothing, as the vanilla 26.3 client. `ClientPacketListener.handleLogin` sends
+  no client information. In play, only `ClientPacketListener.broadcastClientInformation` sends it,
+  through `Options.broadcastOptions`, which every `Options.save` calls. The field
+  `remoteClientInformation` starts empty for each play connection, so the first save in play sends
+  the information even without a change: an option change, a tutorial step, or the first join to
+  any multiplayer server (`joinedFirstServer` in `Minecraft.tick`). The client acts as a vanilla
+  client that joined a server before and changes no option, so a join fires no
+  `ClientInformationUpdatedEvent` on the server.
 - `player_position`: it applies the position and the relative flags, then sends
   `accept_teleportation` and `move_player_pos_rot`. After the first position it sends
   `player_loaded`. The block of the player's feet at that position is the origin of the `~`
