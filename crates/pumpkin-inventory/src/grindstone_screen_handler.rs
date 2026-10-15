@@ -81,11 +81,18 @@ impl GrindstoneResultSlot {
     }
 }
 
-/// What the handlers of the grindstone place event decided, as `CommonHooks.onGrindstoneChange`
-/// of `NeoForge` applies it.
+/// The grindstone inputs and the vanilla result of one result update. The grindstone place event
+/// fires with them after the player released the screen-handler lock.
+#[derive(Clone)]
+pub struct GrindstoneInputs {
+    pub top: ItemStack,
+    pub bottom: ItemStack,
+    pub output: ItemStack,
+}
+
+/// What the handlers of the grindstone place event decided when it is not the vanilla result,
+/// as `CommonHooks.onGrindstoneChange` of `NeoForge` applies it.
 pub enum GrindstonePlace {
-    /// No handler set an output: the grindstone computes the vanilla result and experience.
-    Vanilla,
     /// The grindstone produces nothing.
     Cancelled,
     /// The output of a handler, and the experience it gives, or -1 for the vanilla amount.
@@ -195,6 +202,7 @@ pub struct GrindstoneScreenHandler {
     behaviour: ScreenHandlerBehaviour,
     /// Shared with [`GrindstoneResultSlot::xp`].
     pub xp: Arc<AtomicI32>,
+    update_event_pending: bool,
 }
 
 impl GrindstoneScreenHandler {
@@ -212,11 +220,11 @@ impl GrindstoneScreenHandler {
         player_inventory: &Arc<PlayerInventory>,
         inventory: Arc<dyn Inventory>,
     ) -> Self {
-        let result_slot = GrindstoneResultSlot::new(inventory.clone(), Self::RESULT_SLOT);
         let mut handler = Self {
             inventory: inventory.clone(),
             behaviour: ScreenHandlerBehaviour::new(sync_id, Some(WindowType::Grindstone)),
-            xp: result_slot.xp.clone(),
+            xp: Arc::new(AtomicI32::new(-1)),
+            update_event_pending: false,
         };
 
         // Slot 0: Input slot
@@ -226,11 +234,13 @@ impl GrindstoneScreenHandler {
         )));
         // Slot 1: Additional slot
         handler.add_slot(Arc::new(GrindstoneInputSlot::new(
-            inventory,
+            inventory.clone(),
             Self::ADDITIONAL_SLOT,
         )));
         // Slot 2: Result slot
-        handler.add_slot(Arc::new(result_slot));
+        let result_slot = Arc::new(GrindstoneResultSlot::new(inventory, Self::RESULT_SLOT));
+        handler.xp = result_slot.xp.clone();
+        handler.add_slot(result_slot);
 
         let player_inventory: Arc<dyn Inventory> = player_inventory.clone();
         handler.add_player_slots(&player_inventory);
@@ -245,24 +255,60 @@ impl GrindstoneScreenHandler {
         self.inventory.set_stack(Self::RESULT_SLOT, result);
     }
 
-    /// Fires the grindstone place event and sets the result the handlers decided, or the vanilla
-    /// result, like the `createResult` of `NeoForge`'s `GrindstoneMenu`.
-    pub fn update_result(&mut self, player: &dyn InventoryPlayer) {
-        match player.fire_grindstone_place_event(self.inventory.as_ref()) {
-            None | Some(GrindstonePlace::Vanilla) => {
-                self.xp.store(-1, Ordering::Relaxed);
-                self.create_result();
-            }
-            Some(GrindstonePlace::Cancelled) => {
-                self.xp.store(-1, Ordering::Relaxed);
-                self.inventory
-                    .set_stack(Self::RESULT_SLOT, ItemStack::EMPTY.clone());
-            }
-            Some(GrindstonePlace::Output { output, xp }) => {
-                self.xp.store(xp, Ordering::Relaxed);
-                self.inventory.set_stack(Self::RESULT_SLOT, output);
-            }
+    /// Computes the vanilla result and experience and marks the grindstone place event as
+    /// pending, like the `createResult` of `NeoForge`'s `GrindstoneMenu`. The player fires it with
+    /// [`Self::take_update_event`] after it releases the screen-handler lock.
+    pub fn update_result(&mut self) {
+        self.xp.store(-1, Ordering::Relaxed);
+        self.create_result();
+        self.update_event_pending = true;
+    }
+
+    /// Whether a grindstone place event is pending, and clears it.
+    pub const fn take_update_event(&mut self) -> bool {
+        std::mem::replace(&mut self.update_event_pending, false)
+    }
+
+    /// The current inputs and result for the grindstone place event.
+    #[must_use]
+    pub fn update_inputs(&self) -> GrindstoneInputs {
+        GrindstoneInputs {
+            top: self.inventory.get_stack(Self::INPUT_SLOT),
+            bottom: self.inventory.get_stack(Self::ADDITIONAL_SLOT),
+            output: self.inventory.get_stack(Self::RESULT_SLOT),
         }
+    }
+
+    /// Applies what the handlers of the grindstone place event decided for `inputs`. Returns
+    /// `false` and changes nothing when the inputs or the result changed while the event fired.
+    pub fn apply_update_event(
+        &mut self,
+        inputs: &GrindstoneInputs,
+        place: GrindstonePlace,
+    ) -> bool {
+        if !self
+            .inventory
+            .get_stack(Self::INPUT_SLOT)
+            .are_equal(&inputs.top)
+            || !self
+                .inventory
+                .get_stack(Self::ADDITIONAL_SLOT)
+                .are_equal(&inputs.bottom)
+            || !self
+                .inventory
+                .get_stack(Self::RESULT_SLOT)
+                .are_equal(&inputs.output)
+        {
+            return false;
+        }
+        let (output, xp) = match place {
+            GrindstonePlace::Cancelled => (ItemStack::EMPTY.clone(), -1),
+            GrindstonePlace::Output { output, xp } => (output, xp),
+        };
+        self.xp.store(xp, Ordering::Relaxed);
+        self.inventory.set_stack(Self::RESULT_SLOT, output);
+        self.send_content_updates();
+        true
     }
 
     #[must_use]
@@ -455,7 +501,7 @@ impl ScreenHandler for GrindstoneScreenHandler {
 
                 slot.on_quick_move_crafted(slot_stack.clone(), stack_left.clone());
                 slot.on_take_item(player, &stack_left);
-                self.update_result(player);
+                self.update_result();
                 self.send_content_updates();
                 return stack_left;
             } else if slot_index < Self::INV_SLOT_START {
@@ -510,7 +556,7 @@ impl ScreenHandler for GrindstoneScreenHandler {
 
             slot.on_take_item(player, &slot_stack);
             slot.mark_dirty();
-            self.update_result(player);
+            self.update_result();
             self.send_content_updates();
         }
 
@@ -526,7 +572,7 @@ impl ScreenHandler for GrindstoneScreenHandler {
     ) {
         self.internal_on_slot_click(slot_index, button, action_type, player);
         if (slot_index as usize) <= Self::RESULT_SLOT {
-            self.update_result(player);
+            self.update_result();
             self.send_content_updates();
         }
     }

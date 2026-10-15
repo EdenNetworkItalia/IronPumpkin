@@ -11,6 +11,9 @@ use syn::{Block as SynBlock, Expr, Field, Fields, ItemStruct, Stmt, parse_macro_
 
 /// Derives the `Payload` trait for an event struct, enabling it to be used in the plugin system.
 ///
+/// Put `#[cancellable]` above `#[derive(Event)]`: the attribute must add the `cancelled` field
+/// before the derive runs, or the event never reports a cancel to the dispatch.
+///
 /// # Arguments
 /// - `item` – The input `TokenStream` representing the struct to derive `Event` for.
 #[proc_macro_derive(Event)]

@@ -1233,6 +1233,9 @@ impl Server {
         let handle = self.runtime.clone();
 
         for world in worlds.iter() {
+            // Vanilla ticks each level while the game is frozen, so the level tick events fire.
+            self.plugin_manager
+                .fire_blocking_with(self, || LevelTickEventPre::new(world.clone()));
             world.flush_block_updates();
             world.flush_synced_block_events();
 
@@ -1242,6 +1245,8 @@ impl Server {
                 let _guard = player_handle.enter();
                 player.tick(self);
             });
+            self.plugin_manager
+                .fire_blocking_with(self, || LevelTickEventPost::new(world.clone()));
         }
     }
 

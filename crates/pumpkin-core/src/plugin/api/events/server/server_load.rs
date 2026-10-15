@@ -10,10 +10,6 @@ pub enum LoadType {
 }
 
 /// An event that fires once the server has finished loading.
-///
-/// `NeoForge`: `net.neoforged.neoforge.event.server.ServerStartedEvent`, fired by
-/// `ServerLifecycleHooks.handleServerStarted` before the tick loop. Pumpkin fires it after the
-/// plugins load and starts the ticker after it.
 #[derive(Event, Clone)]
 pub struct ServerLoadEvent {
     /// Why the server load event was emitted.

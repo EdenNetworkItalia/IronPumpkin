@@ -7,15 +7,19 @@ use std::sync::Arc;
 ///
 /// `NeoForge`: `net.neoforged.neoforge.event.AnvilUpdateEvent`, fired by
 /// `CommonHooks.onAnvilUpdate` after `AnvilMenu.createResult` computed the vanilla result, when
-/// the left input is not empty. The anvil applies `output`, `repair_cost` and `material_cost` as
-/// the last handler left them; a cancelled event leaves the anvil with no output and no cost.
+/// the left input is not empty. It fires on each result update (an input click, a quick move, a
+/// rename), after the player released the lock of its screen handler. The anvil applies
+/// `output`, `repair_cost` and `material_cost` as the last handler left them; a cancelled event
+/// leaves the anvil with no output and no cost. When the inputs, the name or the result changed
+/// while the event fired, the anvil keeps its state.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PrepareAnvilEvent {
     /// The player using the anvil.
     pub player: Arc<Player>,
 
-    /// The name in the anvil text field, empty when the client sent none. The server cannot
+    /// The name in the anvil text field, empty when the client sent none: `NeoForge` gives
+    /// `null` for no name, this field cannot tell no name from an empty name. The server cannot
     /// change it, so the anvil ignores a change.
     pub rename_text: String,
 

@@ -5,7 +5,10 @@ use std::{borrow::Cow, sync::Arc};
 
 use arc_swap::ArcSwap;
 
-use super::{BoxFuture, DynEventHandler, EventPriority, HandlerMap, Payload, PluginManager};
+use super::{
+    BoxFuture, DynEventHandler, EventHandler, EventPriority, HandlerMap, Payload, PluginManager,
+    TypedEventHandler,
+};
 use crate::server::Server;
 
 /// Handles a concrete parent event and each event that names it as a parent.
@@ -150,6 +153,51 @@ pub(crate) async fn dispatch(
 }
 
 impl PluginManager {
+    /// Register an event handler with the receive-canceled flag of a `NeoForge` listener: without
+    /// it, the handler does not run once a handler before it cancelled the event.
+    pub fn register_with<E, H>(
+        &self,
+        handler: Arc<H>,
+        priority: EventPriority,
+        blocking: bool,
+        receive_canceled: bool,
+    ) where
+        E: Payload + Send + Sync + 'static,
+        H: EventHandler<E> + 'static,
+    {
+        let typed_handler: Arc<dyn DynEventHandler> = Arc::new(TypedEventHandler {
+            handler,
+            priority,
+            blocking,
+            receive_canceled,
+            source: None,
+            _phantom: std::marker::PhantomData,
+        });
+        insert_handler(&self.handlers, E::get_name_static(), &typed_handler);
+    }
+
+    /// Register a handler for the concrete parent event `P` and every event that names `P` as a
+    /// parent.
+    pub fn register_parent<P, H>(
+        &self,
+        handler: Arc<H>,
+        priority: EventPriority,
+        blocking: bool,
+        receive_canceled: bool,
+    ) where
+        P: Payload + 'static,
+        H: ParentEventHandler + 'static,
+    {
+        let parent_handler: Arc<dyn DynEventHandler> = Arc::new(ParentHandler {
+            handler,
+            priority,
+            blocking,
+            receive_canceled,
+            source: None,
+        });
+        insert_handler(&self.handlers, P::get_name_static(), &parent_handler);
+    }
+
     /// Builds the event with `make` only when a handler listens, fires it and returns it with the
     /// changes of the handlers. Returns `None` without calling `make` when nobody listens, so a
     /// fire site with no handler allocates nothing.

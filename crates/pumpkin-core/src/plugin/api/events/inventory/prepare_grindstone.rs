@@ -6,10 +6,12 @@ use std::sync::Arc;
 /// An event that occurs when items are placed into a grindstone.
 ///
 /// `NeoForge`: `net.neoforged.neoforge.event.GrindstoneEvent.OnPlaceItem`, fired by
-/// `CommonHooks.onGrindstoneChange` from `GrindstoneMenu.createResult` when an input changes.
-/// A cancelled event leaves the grindstone with no output. Otherwise an empty `output` keeps the
-/// vanilla result and experience, and a set `output` replaces the vanilla result, with `xp` as
-/// its experience when it is 0 or more.
+/// `CommonHooks.onGrindstoneChange` from `GrindstoneMenu.createResult` when an input changes,
+/// after the player released the lock of its screen handler. A cancelled event leaves the
+/// grindstone with no output. Otherwise an empty `output` keeps the vanilla result and
+/// experience, and a set `output` replaces the vanilla result, with `xp` as its experience when
+/// it is 0 or more. When the inputs or the result changed while the event fired, the grindstone
+/// keeps its state.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PrepareGrindstoneEvent {

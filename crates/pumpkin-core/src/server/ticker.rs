@@ -34,6 +34,9 @@ static TICK_DEADLINE_NANOS: AtomicI64 = AtomicI64::new(0);
 
 /// Whether the current tick has time left before its deadline, like the `haveTime` supplier that
 /// vanilla passes to `MinecraftServer.tickServer`. The tick events of `NeoForge` carry it.
+///
+/// The deadline is a process-global static that every `Server` of the process shares. A process
+/// runs one ticker, and the tests that create servers run none.
 #[must_use]
 pub fn has_time() -> bool {
     elapsed_nanos(*CLOCK) < TICK_DEADLINE_NANOS.load(Ordering::Relaxed)

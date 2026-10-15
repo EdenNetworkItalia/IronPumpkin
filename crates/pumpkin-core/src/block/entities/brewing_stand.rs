@@ -6,6 +6,7 @@ use std::sync::{
 };
 
 use crate::block::entities::PropertyDelegate;
+use crate::plugin::api::events::inventory::brew::BrewEvent;
 use pumpkin_data::data_component_impl::BrewingFuelImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -132,25 +133,35 @@ impl BrewingStandBlockEntity {
 
         // Fire BrewEvent before mutating items
         if let Some(server) = world.server.upgrade()
-            && let Some(brew_event) = server.plugin_manager.fire_blocking_with(&server, || {
-                crate::plugin::api::events::inventory::brew::BrewEvent::new(
-                    self.position,
-                    self.fuel.load(Ordering::Relaxed) as u8,
-                    self.items
-                        .read()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .clone(),
-                )
-            })
-            && brew_event.cancelled
+            && server.plugin_manager.has_handlers::<BrewEvent>()
         {
-            // `EventHooks.onPotionAttemptBrew`: a cancelled brew takes the handlers' stacks.
-            *self
+            let before = self
                 .items
-                .write()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = brew_event.stacks;
-            self.mark_dirty();
-            return;
+                .read()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            let mut brew_event = BrewEvent::new(
+                self.position,
+                self.fuel.load(Ordering::Relaxed) as u8,
+                before.clone(),
+            );
+            server
+                .plugin_manager
+                .fire_blocking(&server, &mut brew_event);
+            if brew_event.cancelled {
+                // `EventHooks.onPotionAttemptBrew`: a cancelled brew takes the stacks a handler
+                // changed, unless the inventory changed while the event fired.
+                let mut items = self
+                    .items
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if same_stacks(&items[..], &before) && !same_stacks(&brew_event.stacks, &before) {
+                    *items = brew_event.stacks;
+                    drop(items);
+                    self.mark_dirty();
+                }
+                return;
+            }
         }
 
         // Brew potion slots
@@ -703,4 +714,8 @@ impl PropertyDelegate for BrewingStandBlockEntity {
     fn get_properties_size(&self) -> i32 {
         2
     }
+}
+
+fn same_stacks(a: &[ItemStack], b: &[ItemStack]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.are_equal(b))
 }

@@ -54,9 +54,15 @@ impl ToFromWasmEvent for PrepareItemEnchantEvent {
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        let original = self.original_level_requirements;
-        *self = Self::from_wasm_event(event, state);
-        self.original_level_requirements = original;
+        // The Wasm data has no table position: keep the position and the vanilla levels.
+        let returned = Self::from_wasm_event(event, state);
+        self.player = returned.player;
+        self.item = returned.item;
+        self.level_requirements = returned.level_requirements;
+        self.enchantment_id = returned.enchantment_id;
+        self.enchantment_level = returned.enchantment_level;
+        self.bookshelf_count = returned.bookshelf_count;
+        self.cancelled = returned.cancelled;
     }
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
@@ -70,16 +76,17 @@ impl ToFromWasmEvent for PrepareItemEnchantEvent {
                     enchantment_id[i] = offer.enchantment_id;
                     enchantment_level[i] = offer.enchantment_level;
                 }
-                Self {
-                    player: consume_player(state, &data.player),
-                    item: consume_item_stack(state, &data.item),
+                let mut event = Self::new(
+                    consume_player(state, &data.player),
+                    consume_item_stack(state, &data.item),
                     level_requirements,
-                    original_level_requirements: level_requirements,
                     enchantment_id,
                     enchantment_level,
-                    bookshelf_count: data.bookshelf_count,
-                    cancelled: data.cancelled,
-                }
+                    data.bookshelf_count,
+                    pumpkin_util::math::position::BlockPos::ZERO,
+                );
+                event.cancelled = data.cancelled;
+                event
             }
             _ => panic!("unexpected event type"),
         }

@@ -8,11 +8,6 @@ use super::PlayerEvent;
 /// An event that occurs when a player sends a chat message.
 ///
 /// This event contains information about the sender, message, and recipients.
-///
-/// `NeoForge`: `net.neoforged.neoforge.event.ServerChatEvent`, fired by
-/// `CommonHooks.onServerChatSubmittedEvent` when the server gets a chat message. A cancelled
-/// event sends the message to nobody. `message` is the text the server formats and sends: plain
-/// text, where `NeoForge` has a component.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PlayerChatEvent {
@@ -22,8 +17,8 @@ pub struct PlayerChatEvent {
     /// The message being sent.
     pub message: String,
 
-    /// The message as the player sent it (`ServerChatEvent#getRawText`). Handlers do not change
-    /// it.
+    /// The message as the player sent it. Handlers do not change it. It is empty when no handler
+    /// listened as the event was created, so a server without a chat handler copies nothing.
     pub raw_text: String,
 
     /// The recipients of the message. If empty, the message is broadcasted to all players.
@@ -50,9 +45,19 @@ impl PlayerChatEvent {
         recipients: Vec<Arc<Player>>,
         signature: Option<Vec<u8>>,
     ) -> Self {
+        let raw_text = if player
+            .world()
+            .server
+            .upgrade()
+            .is_some_and(|server| server.plugin_manager.has_handlers::<Self>())
+        {
+            message.clone()
+        } else {
+            String::new()
+        };
         Self {
             player,
-            raw_text: message.clone(),
+            raw_text,
             message,
             recipients,
             signature,
@@ -60,7 +65,7 @@ impl PlayerChatEvent {
         }
     }
 
-    /// The name of the player who sent the message (`ServerChatEvent#getUsername`).
+    /// The name of the player who sent the message.
     #[must_use]
     pub fn username(&self) -> &str {
         &self.player.gameprofile.name

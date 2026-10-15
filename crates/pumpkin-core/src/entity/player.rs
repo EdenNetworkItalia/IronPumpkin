@@ -5763,8 +5763,14 @@ impl Player {
             .as_any_mut()
             .downcast_mut::<pumpkin_inventory::anvil::AnvilScreenHandler>()
             && anvil_handler.set_item_name(packet.item_name, self.has_infinite_materials())
+            && let Some(inputs) = anvil_handler.update_inputs()
         {
-            anvil_handler.apply_update_event(self.as_ref());
+            drop(crate::plugin::container_events::fire_anvil(
+                self,
+                &screen_handler_arc,
+                screen_handler,
+                &inputs,
+            ));
         }
     }
 
@@ -6307,6 +6313,11 @@ impl Player {
         }
 
         screen_handler.set_received_cursor_hash(packet.carried_item);
+        let mut screen_handler = crate::plugin::container_events::fire_pending(
+            self,
+            &screen_handler_arc,
+            screen_handler,
+        );
         screen_handler.enable_sync();
 
         if not_in_sync {
@@ -7993,6 +8004,7 @@ impl InventoryPlayer for Player {
             *enchantment_id,
             *enchantment_level,
             bookshelf_count,
+            self.open_container_pos.load().unwrap_or(BlockPos::ZERO),
         );
         server.plugin_manager.fire_blocking(&server, &mut event);
         if event.cancelled {
@@ -8034,101 +8046,14 @@ impl InventoryPlayer for Player {
 
     fn fire_player_enchant_item_event(
         &self,
-        inputs: &dyn pumpkin_inventory::inventory::Inventory,
+        enchanted_item: &mut ItemStack,
         enchantments: &[(&'static pumpkin_data::Enchantment, i32)],
     ) {
-        use crate::plugin::enchantment::PlayerEnchantItemEvent;
-        let world = self.world();
-        let Some(server) = world.server.upgrade() else {
-            return;
-        };
-        if !server
-            .plugin_manager
-            .has_handlers::<PlayerEnchantItemEvent>()
-        {
-            return;
-        }
-        let Some(player) = world.get_player_by_uuid(self.gameprofile.id) else {
-            return;
-        };
-        let mut event =
-            PlayerEnchantItemEvent::new(player, inputs.get_stack(0), enchantments.to_vec());
-        server.plugin_manager.fire_blocking(&server, &mut event);
-    }
-
-    fn fire_anvil_update_event(
-        &self,
-        inputs: &dyn pumpkin_inventory::inventory::Inventory,
-        name: Option<&str>,
-        xp_cost: i32,
-        material_cost: i32,
-    ) -> Option<pumpkin_inventory::anvil::AnvilUpdate> {
-        use crate::plugin::inventory::prepare_anvil::PrepareAnvilEvent;
-        use pumpkin_inventory::anvil::AnvilUpdate;
-        let world = self.world();
-        let server = world.server.upgrade()?;
-        if !server.plugin_manager.has_handlers::<PrepareAnvilEvent>() {
-            return None;
-        }
-        let left = inputs.get_stack(0);
-        if left.is_empty() {
-            return None;
-        }
-        let player = world.get_player_by_uuid(self.gameprofile.id)?;
-        let mut event = PrepareAnvilEvent::new(
-            player,
-            name.unwrap_or_default().to_owned(),
-            left,
-            inputs.get_stack(1),
-            inputs.get_stack(2),
-            xp_cost.max(0).cast_unsigned(),
-            material_cost,
+        crate::plugin::container_events::fire_player_enchant_item(
+            self,
+            enchanted_item,
+            enchantments,
         );
-        server.plugin_manager.fire_blocking(&server, &mut event);
-        Some(if event.cancelled {
-            AnvilUpdate::Cancelled
-        } else {
-            AnvilUpdate::Result {
-                output: event.output,
-                xp_cost: i32::try_from(event.repair_cost).unwrap_or(i32::MAX),
-                material_cost: event.material_cost,
-            }
-        })
-    }
-
-    fn fire_grindstone_place_event(
-        &self,
-        inputs: &dyn pumpkin_inventory::inventory::Inventory,
-    ) -> Option<pumpkin_inventory::grindstone_screen_handler::GrindstonePlace> {
-        use crate::plugin::inventory::prepare_grindstone::PrepareGrindstoneEvent;
-        use pumpkin_inventory::grindstone_screen_handler::{
-            GrindstonePlace, GrindstoneScreenHandler,
-        };
-        let world = self.world();
-        let server = world.server.upgrade()?;
-        if !server
-            .plugin_manager
-            .has_handlers::<PrepareGrindstoneEvent>()
-        {
-            return None;
-        }
-        let player = world.get_player_by_uuid(self.gameprofile.id)?;
-        let top = inputs.get_stack(GrindstoneScreenHandler::INPUT_SLOT);
-        let bottom = inputs.get_stack(GrindstoneScreenHandler::ADDITIONAL_SLOT);
-        let vanilla = GrindstoneScreenHandler::compute_result(&top, &bottom);
-        let result_item = (!vanilla.is_empty()).then(|| vanilla.item.registry_key.to_string());
-        let mut event = PrepareGrindstoneEvent::new(player, result_item, top, bottom);
-        server.plugin_manager.fire_blocking(&server, &mut event);
-        Some(if event.cancelled {
-            GrindstonePlace::Cancelled
-        } else if event.output.is_empty() {
-            GrindstonePlace::Vanilla
-        } else {
-            GrindstonePlace::Output {
-                output: event.output,
-                xp: event.xp,
-            }
-        })
     }
 
     fn close_screen_handler(&self) {

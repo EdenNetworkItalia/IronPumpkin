@@ -6,10 +6,6 @@ use super::PlayerEvent;
 use crate::entity::player::Player;
 
 /// An event that occurs when a player's statistic is incremented.
-///
-/// `NeoForge`: `net.neoforged.neoforge.event.StatAwardEvent`, fired by `EventHooks.onStatAward`
-/// in `Player.awardStat`. The server adds `amount` to the statistic that `category` and `stat`
-/// name, as the last handler left them; a cancelled event adds nothing.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PlayerStatisticIncrementEvent {
@@ -22,7 +18,8 @@ pub struct PlayerStatisticIncrementEvent {
     /// The amount incremented.
     pub amount: i32,
 
-    /// The category of the statistic (`StatAwardEvent#getStat`).
+    /// The category of the statistic. The server adds `amount` to the statistic that `category`
+    /// and `stat` name, as the last handler left them.
     pub category: StatisticCategory,
 
     /// The id of the statistic inside its category.

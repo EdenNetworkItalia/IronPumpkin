@@ -49,7 +49,9 @@ use std::{
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
+        mpsc,
     },
+    time::Duration,
 };
 
 use pumpkin_core::{
@@ -80,6 +82,7 @@ use pumpkin_core::{
 use pumpkin_data::{
     Enchantment,
     data_component_impl::PotionContentsImpl,
+    entity::EntityType,
     item::Item,
     item_stack::ItemStack,
     potion::Potion,
@@ -91,7 +94,10 @@ use pumpkin_inventory::{
     grindstone_screen_handler::GrindstoneScreenHandler, inventory::Inventory,
     screen_handler::ScreenHandler,
 };
-use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SChatMessage};
+use pumpkin_protocol::{
+    codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
+    java::server::play::{SChatMessage, SClickSlot, SRenameItem, SlotActionType},
+};
 use pumpkin_util::{GameMode, math::position::BlockPos, math::vector3::Vector3};
 
 type Log = Arc<Mutex<Vec<String>>>;
@@ -266,6 +272,77 @@ fn receive_canceled() {
 
     assert!(event.cancelled);
     assert_eq!(entries(&log), ["cancel", "with receive-canceled true"]);
+}
+
+/// A cancellable event that only `register_and_register_event_receive_cancelled_events` fires
+/// on the shared server.
+#[derive(Default)]
+struct UpstreamRegisterEvent {
+    cancelled: bool,
+}
+
+impl Payload for UpstreamRegisterEvent {
+    fn get_name_static() -> &'static str {
+        "NeoForgeBusUpstreamRegisterEvent"
+    }
+
+    fn get_name(&self) -> &'static str {
+        Self::get_name_static()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled
+    }
+}
+
+#[test]
+fn register_and_register_event_receive_cancelled_events() {
+    let server = support::server();
+    let manager = &server.plugin_manager;
+    let log = log();
+    manager.register_with::<UpstreamRegisterEvent, _>(
+        blocking(|event: &mut UpstreamRegisterEvent| event.cancelled = true),
+        EventPriority::Highest,
+        true,
+        false,
+    );
+    let native = log.clone();
+    manager.register::<UpstreamRegisterEvent, _>(
+        blocking(move |event: &mut UpstreamRegisterEvent| {
+            push(&native, format!("register {}", event.cancelled));
+        }),
+        EventPriority::Normal,
+        true,
+    );
+    // The Wasm hosts register through the plugin context.
+    let metadata = PluginMetadata {
+        name: "bus-cancel-mod".to_owned(),
+        version: "1.0.0".to_owned(),
+        authors: Vec::new(),
+        description: "Event bus cancel test mod".to_owned(),
+        dependencies: Vec::new(),
+        permissions: Vec::new(),
+    };
+    let wasm = log.clone();
+    create_context(server, metadata).register_event::<UpstreamRegisterEvent, _>(
+        blocking(move |event: &mut UpstreamRegisterEvent| {
+            push(&wasm, format!("register_event {}", event.cancelled));
+        }),
+        EventPriority::Low,
+        true,
+    );
+
+    manager.fire_blocking(server, &mut UpstreamRegisterEvent::default());
+
+    assert_eq!(entries(&log), ["register true", "register_event true"]);
 }
 
 /// A concrete parent event and a subclass, as `EntityTeleportEvent` and `EnderPearl`.
@@ -458,15 +535,53 @@ fn world_call_from_a_handler() {
     assert_eq!(entries(&log), ["bedrock true", "next handler"]);
 }
 
-/// The anvil of `player`: a damaged sword on the left and a diamond on the right.
-fn anvil(player: &Player) -> (AnvilScreenHandler, Arc<SimpleInventory>) {
+/// Opens `handler` as the screen of `player`, as `Player::open_handled_screen` does.
+fn open<H: ScreenHandler + 'static>(player: &Player, handler: H) -> Arc<Mutex<H>> {
+    let handler = Arc::new(Mutex::new(handler));
+    *player.current_screen_handler.lock().unwrap() = handler.clone();
+    handler
+}
+
+/// Runs `action` on another thread and waits for it: a handler that deadlocks fails the test
+/// instead of hanging it.
+fn finish_within(player: &Arc<Player>, action: impl FnOnce(&Arc<Player>) + Send + 'static) {
+    let (done, finished) = mpsc::channel();
+    let player = player.clone();
+    std::thread::spawn(move || {
+        action(&player);
+        let _ = done.send(());
+    });
+    finished
+        .recv_timeout(Duration::from_secs(30))
+        .unwrap_or_else(|_| panic!("the action did not finish: a handler deadlocked or panicked"));
+}
+
+/// Left-clicks `slot` of the open screen (sync id 1) of `player`.
+fn click(player: &Arc<Player>, slot: i16) {
+    let packet = SClickSlot {
+        sync_id: VarInt(1),
+        revision: VarInt(0),
+        slot,
+        button: SClickSlot::BUTTON_LEFT,
+        mode: SlotActionType::Pickup,
+        length_of_array: VarInt(0),
+        array_of_changed_slots: Vec::new(),
+        carried_item: OptionalItemStackHash(None),
+    };
+    finish_within(player, move |player| {
+        player.on_slot_click(packet, support::server());
+    });
+}
+
+/// Opens an anvil for `player`: a damaged sword on the left and a diamond on the right.
+fn anvil(player: &Player) -> (Arc<Mutex<AnvilScreenHandler>>, Arc<SimpleInventory>) {
     let inventory = Arc::new(SimpleInventory::new(3));
-    let handler = AnvilScreenHandler::new(1, &player.inventory, inventory.clone());
     let mut sword = ItemStack::new(1, &Item::DIAMOND_SWORD);
     sword.set_damage(1000);
     inventory.set_stack(0, sword);
     inventory.set_stack(1, ItemStack::new(3, &Item::DIAMOND));
-    (handler, inventory)
+    let handler = AnvilScreenHandler::new(1, &player.inventory, inventory.clone());
+    (open(player, handler), inventory)
 }
 
 #[test]
@@ -507,20 +622,104 @@ fn change_a_settable_field_anvil_update_event() {
             false,
         );
 
-    let (mut handler, inventory) = anvil(&player);
-    handler.update_result(player.as_ref());
+    // A click on the empty result slot updates the result: the player cannot pay the vanilla
+    // cost, so the click takes nothing.
+    let (handler, inventory) = anvil(&player);
+    click(&player, 2);
     assert_eq!(inventory.get_stack(2).item, &Item::NETHER_STAR);
-    assert_eq!(handler.get_cost(), 7);
-    assert_eq!(handler.repair_item_count_cost.load(Ordering::Relaxed), 1);
+    let anvil_state = handler.lock().unwrap();
+    assert_eq!(anvil_state.get_cost(), 7);
+    assert_eq!(
+        anvil_state.repair_item_count_cost.load(Ordering::Relaxed),
+        1
+    );
+    drop(anvil_state);
     // Vanilla repairs the sword with 3 diamonds: 3 levels, 3 diamonds.
     assert_eq!(entries(&seen), ["diamond_sword diamond diamond_sword 3 3"]);
 
     cancel.store(true, Ordering::Relaxed);
-    let (mut handler, inventory) = anvil(&player);
-    handler.update_result(player.as_ref());
+    let (handler, inventory) = anvil(&player);
+    click(&player, 2);
     assert!(inventory.get_stack(2).is_empty());
-    assert_eq!(handler.get_cost(), 0);
-    assert_eq!(handler.repair_item_count_cost.load(Ordering::Relaxed), 0);
+    let anvil_state = handler.lock().unwrap();
+    assert_eq!(anvil_state.get_cost(), 0);
+    assert_eq!(
+        anvil_state.repair_item_count_cost.load(Ordering::Relaxed),
+        0
+    );
+}
+
+#[test]
+fn anvil_update_event_handler_closes_the_screen() {
+    let _serial = support::serial();
+    let player = support::player("AnvilCloser");
+    support::server()
+        .plugin_manager
+        .register_with::<PrepareAnvilEvent, _>(
+            blocking(|event: &mut PrepareAnvilEvent| {
+                if event.player.gameprofile.name != "AnvilCloser" {
+                    return;
+                }
+                event.output = ItemStack::new(1, &Item::NETHER_STAR);
+                // It locks the screen handler of the player: the event fires outside that lock.
+                event.player.close_handled_screen();
+            }),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+
+    let (_handler, inventory) = anvil(&player);
+    finish_within(&player, |player| {
+        player.on_rename_item(&SRenameItem { item_name: "Named" });
+    });
+
+    // The closed anvil gave the inputs back, so the output of the handler does not apply.
+    assert!(inventory.get_stack(0).is_empty());
+    assert_ne!(inventory.get_stack(2).item, &Item::NETHER_STAR);
+    let current = player.current_screen_handler.lock().unwrap().clone();
+    let inventory_screen: Arc<Mutex<dyn ScreenHandler>> = player.player_screen_handler.clone();
+    assert!(Arc::ptr_eq(&current, &inventory_screen));
+}
+
+#[test]
+fn update_result_without_handler_is_vanilla() {
+    let _serial = support::serial();
+    let player = support::player("NoHandler");
+
+    let (updated, updated_inventory) = anvil(&player);
+    let (created, created_inventory) = anvil(&player);
+    let mut updated = updated.lock().unwrap();
+    let mut created = created.lock().unwrap();
+    updated.update_result(player.as_ref());
+    // The player plays in survival: no infinite materials.
+    created.create_result(false);
+    assert!(
+        updated_inventory
+            .get_stack(2)
+            .are_equal(&created_inventory.get_stack(2))
+    );
+    assert_eq!(updated.get_cost(), created.get_cost());
+    assert_eq!(
+        updated.repair_item_count_cost.load(Ordering::Relaxed),
+        created.repair_item_count_cost.load(Ordering::Relaxed)
+    );
+    // The event waits for the player to release the screen-handler lock.
+    assert!(updated.take_update_event());
+    assert!(!created.take_update_event());
+
+    let (updated, updated_inventory) = grindstone(&player);
+    let (created, created_inventory) = grindstone(&player);
+    let mut updated = updated.lock().unwrap();
+    updated.update_result();
+    created.lock().unwrap().create_result();
+    assert!(
+        updated_inventory
+            .get_stack(2)
+            .are_equal(&created_inventory.get_stack(2))
+    );
+    assert_eq!(updated.xp.load(Ordering::Relaxed), -1);
+    assert!(updated.take_update_event());
 }
 
 /// Sends `message` as a chat message of `player` and returns how many bytes the server queued
@@ -584,14 +783,27 @@ fn cancel_server_chat_event() {
     assert_eq!(entries(&seen), ["hello -> rewritten"]);
 }
 
-/// The grindstone of `player` with an enchanted sword in the top slot.
-fn grindstone(player: &Player) -> (GrindstoneScreenHandler, Arc<SimpleInventory>) {
+/// Opens a grindstone for `player` with an enchanted sword in the top slot.
+fn grindstone(player: &Player) -> (Arc<Mutex<GrindstoneScreenHandler>>, Arc<SimpleInventory>) {
     let inventory = Arc::new(SimpleInventory::new(3));
-    let handler = GrindstoneScreenHandler::new(1, &player.inventory, inventory.clone());
     let mut sword = ItemStack::new(1, &Item::IRON_SWORD);
     sword.add_enchantment(&Enchantment::SHARPNESS, 2);
     inventory.set_stack(0, sword);
-    (handler, inventory)
+    let handler = GrindstoneScreenHandler::new(1, &player.inventory, inventory.clone());
+    (open(player, handler), inventory)
+}
+
+/// The experience orbs at `pos`.
+fn orbs_at(pos: BlockPos) -> usize {
+    support::world()
+        .entities
+        .load()
+        .iter()
+        .filter(|entity| {
+            let entity = entity.get_entity();
+            entity.entity_type.id == EntityType::EXPERIENCE_ORB.id && entity.block_pos.load() == pos
+        })
+        .count()
 }
 
 #[test]
@@ -605,17 +817,19 @@ fn one_event_per_fire_site_grindstone_event_on_place_item() {
         .plugin_manager
         .register_with::<PrepareGrindstoneEvent, _>(
             blocking(move |event: &mut PrepareGrindstoneEvent| {
-                if event.player.gameprofile.name != "Grinder" {
+                if event.player.gameprofile.name != "Grinder" || event.top.is_empty() {
                     return;
                 }
+                // It locks the screen handler of the player: the event fires outside that lock.
+                let screen = event.player.current_screen_handler.lock().unwrap().clone();
+                let window = screen.lock().unwrap().window_type();
                 push(
                     &seen_by_handler,
                     format!(
-                        "{} {} {:?} {}",
+                        "{} {} {:?} {window:?}",
                         event.top.item.registry_key,
                         event.bottom.is_empty(),
                         event.result_item,
-                        event.xp
                     ),
                 );
                 match handler_mode.load(Ordering::Relaxed) {
@@ -632,28 +846,37 @@ fn one_event_per_fire_site_grindstone_event_on_place_item() {
             false,
         );
 
-    // No output: the vanilla result, an unenchanted sword, and the vanilla experience.
-    let (mut handler, inventory) = grindstone(&player);
-    handler.update_result(player.as_ref());
+    // No output: the vanilla result, an unenchanted sword, and the vanilla experience. The
+    // first click updates the result, the second takes it.
+    let vanilla_at = BlockPos::new(40, 100, 40);
+    player.open_container_pos.store(Some(vanilla_at));
+    let (_handler, inventory) = grindstone(&player);
+    click(&player, 2);
     let result = inventory.get_stack(2);
     assert_eq!(result.item, &Item::IRON_SWORD);
     assert!(!result.has_enchantments());
-    assert_eq!(handler.xp.load(Ordering::Relaxed), -1);
+    click(&player, 2);
+    assert!(orbs_at(vanilla_at) > 0);
 
+    // A set output with 5 experience: orbs of 3, 1 and 1.
     mode.store(1, Ordering::Relaxed);
-    let (mut handler, inventory) = grindstone(&player);
-    handler.update_result(player.as_ref());
+    let output_at = BlockPos::new(48, 100, 48);
+    player.open_container_pos.store(Some(output_at));
+    let (_handler, inventory) = grindstone(&player);
+    click(&player, 2);
     assert_eq!(inventory.get_stack(2).item, &Item::STICK);
-    assert_eq!(handler.xp.load(Ordering::Relaxed), 5);
+    click(&player, 2);
+    assert_eq!(orbs_at(output_at), 3);
 
     mode.store(2, Ordering::Relaxed);
-    let (mut handler, inventory) = grindstone(&player);
-    handler.update_result(player.as_ref());
+    let (_handler, inventory) = grindstone(&player);
+    click(&player, 2);
     assert!(inventory.get_stack(2).is_empty());
+    player.open_container_pos.store(None);
 
     assert_eq!(
         entries(&seen),
-        [r#"iron_sword true Some("iron_sword") -1"#; 3]
+        [r#"iron_sword true Some("iron_sword") Some(Grindstone)"#; 3]
     );
 }
 
@@ -735,10 +958,8 @@ fn water_bottle() -> ItemStack {
     bottle
 }
 
-/// Ticks a brewing stand with water, nether wart and blaze powder until it brews. A handler of
-/// `BrewingStartEvent` shortens the brew to one tick.
-fn brew(position: BlockPos) -> [ItemStack; 5] {
-    let world = support::world();
+/// A brewing stand at `position` with water, nether wart and blaze powder.
+fn brewing_stand(position: BlockPos) -> Arc<BrewingStandBlockEntity> {
     let stand = BrewingStandBlockEntity::new(position);
     // The stand has no block in the world: with the bottles it already shows, it does not
     // update the block state.
@@ -750,6 +971,12 @@ fn brew(position: BlockPos) -> [ItemStack; 5] {
         ItemStack::new(1, &Item::NETHER_WART),
         ItemStack::new(1, &Item::BLAZE_POWDER),
     ];
+    Arc::new(stand)
+}
+
+/// Ticks `stand` until it brews. A handler of `BrewingStartEvent` shortens the brew to one tick.
+fn brew(stand: &BrewingStandBlockEntity) -> [ItemStack; 5] {
+    let world = support::world();
     stand.tick(&world);
     stand.tick(&world);
     stand.items.read().unwrap().clone()
@@ -759,18 +986,38 @@ fn brew(position: BlockPos) -> [ItemStack; 5] {
 fn one_event_per_fire_site_potion_brew_event_pre() {
     let _serial = support::serial();
     let manager = &support::server().plugin_manager;
+    // The handlers stay on the shared server, so they act only on the stands of this test.
+    let brewed = BlockPos::new(4, 64, 4);
+    let cancelled = BlockPos::new(8, 64, 8);
+    let cancelled_meanwhile = BlockPos::new(12, 64, 12);
+    let changed_meanwhile = BlockPos::new(16, 64, 16);
+    let positions = [brewed, cancelled, cancelled_meanwhile, changed_meanwhile];
     manager.register_with::<BrewingStartEvent, _>(
-        blocking(|event: &mut BrewingStartEvent| event.brewing_time = 1),
+        blocking(move |event: &mut BrewingStartEvent| {
+            if positions.contains(&event.block_pos) {
+                event.brewing_time = 1;
+            }
+        }),
         EventPriority::Normal,
         true,
         false,
     );
-    let cancelled_at = BlockPos::new(8, 64, 8);
+    let stands = positions.map(brewing_stand);
+    let players_side = stands.clone();
     manager.register_with::<BrewEvent, _>(
         blocking(move |event: &mut BrewEvent| {
+            let Some(index) = positions.iter().position(|pos| *pos == event.block_pos) else {
+                return;
+            };
             assert_eq!(event.stacks[3].item, &Item::NETHER_WART);
-            event.stacks[2] = ItemStack::new(1, &Item::DIAMOND);
-            if event.block_pos == cancelled_at {
+            if event.block_pos != cancelled_meanwhile {
+                event.stacks[2] = ItemStack::new(1, &Item::DIAMOND);
+            }
+            if event.block_pos == cancelled_meanwhile || event.block_pos == changed_meanwhile {
+                // A player takes the ingredient while the event fires.
+                players_side[index].items.write().unwrap()[3] = ItemStack::EMPTY.clone();
+            }
+            if event.block_pos != brewed {
                 event.set_cancelled(true);
             }
         }),
@@ -778,24 +1025,35 @@ fn one_event_per_fire_site_potion_brew_event_pre() {
         true,
         false,
     );
-
-    // Not cancelled: vanilla brews and ignores the stacks of the handler.
-    let items = brew(BlockPos::new(4, 64, 4));
-    let awkward = Some(i32::from(Potion::AWKWARD.id));
     let potion = |stack: &ItemStack| {
         stack
             .get_data_component::<PotionContentsImpl>()
             .and_then(|contents| contents.potion_id)
     };
-    assert_eq!(potion(&items[0]), awkward);
+    let water = Some(i32::from(Potion::WATER.id));
+
+    // Not cancelled: vanilla brews and ignores the stacks of the handler.
+    let items = brew(&stands[0]);
+    assert_eq!(potion(&items[0]), Some(i32::from(Potion::AWKWARD.id)));
     assert!(items[2].is_empty());
     assert!(items[3].is_empty());
 
     // Cancelled: no brew, and the stand takes the stacks of the handler.
-    let items = brew(cancelled_at);
+    let items = brew(&stands[1]);
     assert_eq!(items[2].item, &Item::DIAMOND);
-    assert_eq!(potion(&items[0]), Some(i32::from(Potion::WATER.id)));
+    assert_eq!(potion(&items[0]), water);
     assert_eq!(items[3].item, &Item::NETHER_WART);
+
+    // Cancelled with the stacks unchanged: the ingredient the player took stays taken.
+    let items = brew(&stands[2]);
+    assert!(items[3].is_empty());
+    assert_eq!(potion(&items[0]), water);
+
+    // Cancelled with changed stacks while the inventory changed: the player's change wins.
+    let items = brew(&stands[3]);
+    assert!(items[3].is_empty());
+    assert!(items[2].is_empty());
+    assert_eq!(potion(&items[0]), water);
 }
 
 #[test]
@@ -803,8 +1061,10 @@ fn one_event_per_fire_site_enchantment_events() {
     let _serial = support::serial();
     let player = support::player("Enchanter");
     player.gamemode.store(GameMode::Creative);
+    let table_at = BlockPos::new(24, 64, 24);
+    player.open_container_pos.store(Some(table_at));
     let original = Arc::new(Mutex::new([0; 3]));
-    let applied = log();
+    let seen = log();
     let manager = &support::server().plugin_manager;
     let original_by_handler = original.clone();
     manager.register_with::<PrepareItemEnchantEvent, _>(
@@ -812,16 +1072,38 @@ fn one_event_per_fire_site_enchantment_events() {
             if event.player.gameprofile.name != "Enchanter" {
                 return;
             }
-            assert_eq!(event.level_requirements, event.original_level_requirements);
+            assert_eq!(
+                event.level_requirements,
+                event.original_level_requirements()
+            );
             assert_eq!(event.bookshelf_count, 15);
-            *original_by_handler.lock().unwrap() = event.original_level_requirements;
+            assert_eq!(event.pos, table_at);
+            *original_by_handler.lock().unwrap() = event.original_level_requirements();
             event.level_requirements[0] = 1;
         }),
-        EventPriority::Normal,
+        EventPriority::High,
         true,
         false,
     );
-    let applied_by_handler = applied.clone();
+    let seen_by_later = seen.clone();
+    manager.register_with::<PrepareItemEnchantEvent, _>(
+        blocking(move |event: &mut PrepareItemEnchantEvent| {
+            if event.player.gameprofile.name == "Enchanter" {
+                push(
+                    &seen_by_later,
+                    format!(
+                        "later {} {:?}",
+                        event.level_requirements[0],
+                        event.original_level_requirements()
+                    ),
+                );
+            }
+        }),
+        EventPriority::Low,
+        true,
+        false,
+    );
+    let applied_by_handler = seen.clone();
     manager.register_with::<PlayerEnchantItemEvent, _>(
         blocking(move |event: &mut PlayerEnchantItemEvent| {
             if event.player.gameprofile.name != "Enchanter" {
@@ -836,11 +1118,15 @@ fn one_event_per_fire_site_enchantment_events() {
             push(
                 &applied_by_handler,
                 format!(
-                    "{} {}",
+                    "enchanted {} {}",
                     event.enchanted_item.item.registry_key,
                     !event.enchantments.is_empty()
                 ),
             );
+            // The event carries the live stack: the table keeps this change.
+            event
+                .enchanted_item
+                .add_enchantment(&Enchantment::MENDING, 1);
         }),
         EventPriority::Normal,
         true,
@@ -854,12 +1140,21 @@ fn one_event_per_fire_site_enchantment_events() {
     table.update_enchantments(player.as_ref());
 
     let vanilla = *original.lock().unwrap();
-    assert!(vanilla[2] > 1, "{vanilla:?}");
+    assert!(vanilla[0] > 1 && vanilla[2] > 1, "{vanilla:?}");
     assert_eq!(table.level_requirements, [1, vanilla[1], vanilla[2]]);
 
     assert!(table.on_button_click(player.as_ref(), 2));
-    assert!(inventory.get_stack(0).has_enchantments());
-    assert_eq!(entries(&applied), ["diamond_sword true"]);
+    let enchanted = inventory.get_stack(0);
+    assert!(enchanted.has_enchantments());
+    assert_eq!(enchanted.get_enchantment_level(&Enchantment::MENDING), 1);
+    player.open_container_pos.store(None);
+    assert_eq!(
+        entries(&seen),
+        [
+            format!("later 1 {vanilla:?}"),
+            "enchanted diamond_sword true".to_owned()
+        ]
+    );
 }
 
 #[test]
@@ -893,10 +1188,12 @@ fn one_event_per_fire_site_level_tick_events() {
     );
 
     support::server().tick_worlds();
+    // The tick of a frozen game.
+    support::server().tick_players_and_network();
 
     assert_eq!(
         entries(&seen),
-        ["pre minecraft:overworld", "post minecraft:overworld"]
+        ["pre minecraft:overworld", "post minecraft:overworld"].repeat(2)
     );
 }
 

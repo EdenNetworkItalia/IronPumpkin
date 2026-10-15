@@ -217,6 +217,27 @@ pub static SERVER_IS_STOPPING: AtomicBool = AtomicBool::new(false);
 pub static CRASH_REPORT: OnceLock<CrashReport> = OnceLock::new();
 pub static SERVER_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
 
+/// How long the shutdown waits for the running tick to end.
+const TICKER_STOP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Waits until the ticker left its loop, as `NeoForge` fires `ServerStoppingEvent` after the tick
+/// loop ends. A tick that runs longer than [`TICKER_STOP_TIMEOUT`] does not hang the shutdown:
+/// the server logs it and stops while that tick runs.
+async fn join_ticker(ticker: std::thread::JoinHandle<()>) {
+    STOP_INTERRUPT.cancel();
+    let deadline = tokio::time::Instant::now() + TICKER_STOP_TIMEOUT;
+    while !ticker.is_finished() {
+        if tokio::time::Instant::now() >= deadline {
+            warn!("The ticker did not stop within {TICKER_STOP_TIMEOUT:?}, stopping without it");
+            return;
+        }
+        sleep(Duration::from_millis(10)).await;
+    }
+    if ticker.join().is_err() {
+        error!("The ticker thread panicked");
+    }
+}
+
 pub fn stop_server() {
     SHOULD_STOP.store(true, Ordering::Relaxed);
     STOP_INTERRUPT.cancel();
@@ -473,16 +494,18 @@ impl PumpkinServer {
 
         // The ticker starts after `ServerLoadEvent`, as `NeoForge` fires `ServerStartedEvent`
         // before the first tick.
-        {
+        let ticker = {
             let ticker_server = self.server.clone();
-            if let Err(err) = std::thread::Builder::new()
+            match std::thread::Builder::new()
                 .name("Server-Ticker".into())
                 .spawn(move || {
                     Ticker::run(&ticker_server);
-                })
-            {
-                error!("Failed to spawn Server-Ticker thread: {err}");
-                std::process::exit(1);
+                }) {
+                Ok(ticker) => ticker,
+                Err(err) => {
+                    error!("Failed to spawn Server-Ticker thread: {err}");
+                    std::process::exit(1);
+                }
             }
         };
 
@@ -499,6 +522,7 @@ impl PumpkinServer {
         }
 
         SERVER_IS_STOPPING.store(true, Ordering::Release);
+        join_ticker(ticker).await;
         self.server
             .plugin_manager
             .fire_with(&self.server, || ServerStoppingEvent)

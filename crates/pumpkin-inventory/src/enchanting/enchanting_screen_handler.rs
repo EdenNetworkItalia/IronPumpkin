@@ -371,15 +371,19 @@ impl ScreenHandler for EnchantingTableScreenHandler {
 
         if !player.is_creative() {
             player.add_experience_levels(-(id + 1));
-            lapis_stack.decrement(lapis_cost);
-            self.inventory.set_stack(1, lapis_stack);
         }
 
         for &(enchant, level) in &enchantments {
             item_stack.add_enchantment(enchant, level as u16);
         }
+        // `NeoForge` fires `onPlayerEnchantItem` on the live stack, before the lapis is consumed.
+        player.fire_player_enchant_item_event(&mut item_stack, &enchantments);
         self.inventory.set_stack(0, item_stack);
-        player.fire_player_enchant_item_event(self.inventory.as_ref(), &enchantments);
+
+        if !player.is_creative() {
+            lapis_stack.decrement(lapis_cost);
+            self.inventory.set_stack(1, lapis_stack);
+        }
 
         // Update seed
         player.set_enchantment_seed(rand::random());

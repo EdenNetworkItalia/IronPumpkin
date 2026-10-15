@@ -5,8 +5,7 @@ use std::sync::Arc;
 
 use crate::entity::player::Player;
 
-/// An event triggered when an item is enchanted at an enchanting table, before the
-/// enchantments apply. [`PlayerEnchantItemEvent`](super::PlayerEnchantItemEvent) fires after.
+/// An event triggered when an item is enchanted at an enchanting table.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct EnchantItemEvent {

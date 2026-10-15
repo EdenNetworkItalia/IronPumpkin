@@ -20,6 +20,8 @@ use tracing::{debug, error, info, warn};
 
 pub mod api;
 pub mod cache;
+pub(crate) mod container_events;
+mod context_events;
 pub mod dispatch;
 pub mod loader;
 /// Constants for plugin permissions.
@@ -37,7 +39,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Bump this whenever the public plugin API or any event layout changes in a way
 /// that makes old binary plugins incompatible.
-pub const PLUGIN_API_VERSION: u32 = 2;
+pub const PLUGIN_API_VERSION: u32 = 3;
 
 const PLUGIN_DIR: &str = "./plugins";
 
@@ -1195,51 +1197,6 @@ impl PluginManager {
         H: EventHandler<E> + 'static,
     {
         self.register_with::<E, H>(handler, priority, blocking, true);
-    }
-
-    /// Register an event handler with the receive-canceled flag of a `NeoForge` listener: without
-    /// it, the handler does not run once a handler before it cancelled the event.
-    pub fn register_with<E, H>(
-        &self,
-        handler: Arc<H>,
-        priority: EventPriority,
-        blocking: bool,
-        receive_canceled: bool,
-    ) where
-        E: Payload + Send + Sync + 'static,
-        H: EventHandler<E> + 'static,
-    {
-        let typed_handler: Arc<dyn DynEventHandler> = Arc::new(TypedEventHandler {
-            handler,
-            priority,
-            blocking,
-            receive_canceled,
-            source: None,
-            _phantom: std::marker::PhantomData,
-        });
-        dispatch::insert_handler(&self.handlers, E::get_name_static(), &typed_handler);
-    }
-
-    /// Register a handler for the concrete parent event `P` and every event that names `P` as a
-    /// parent.
-    pub fn register_parent<P, H>(
-        &self,
-        handler: Arc<H>,
-        priority: EventPriority,
-        blocking: bool,
-        receive_canceled: bool,
-    ) where
-        P: Payload + 'static,
-        H: ParentEventHandler + 'static,
-    {
-        let parent_handler: Arc<dyn DynEventHandler> = Arc::new(ParentHandler {
-            handler,
-            priority,
-            blocking,
-            receive_canceled,
-            source: None,
-        });
-        dispatch::insert_handler(&self.handlers, P::get_name_static(), &parent_handler);
     }
 
     #[must_use]
