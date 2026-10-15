@@ -11,6 +11,7 @@ use crate::plugin::PluginManager;
 use crate::plugin::loader::PluginLoader;
 use crate::plugin::player::player_login::PlayerLoginEvent;
 use crate::plugin::server::server_broadcast::ServerBroadcastEvent;
+use crate::plugin::world::level_tick::{LevelTickEventPost, LevelTickEventPre};
 use crate::server::tick_rate_manager::ServerTickRateManager;
 use crate::world::WorldPortal;
 use crate::world::custom_bossbar::CustomBossbars;
@@ -1265,7 +1266,11 @@ impl Server {
         let handle = self.runtime.clone();
         worlds.par_iter().for_each(|world| {
             let _guard = handle.enter();
+            self.plugin_manager
+                .fire_blocking_with(self, || LevelTickEventPre::new(world.clone()));
             world.tick(self);
+            self.plugin_manager
+                .fire_blocking_with(self, || LevelTickEventPost::new(world.clone()));
         });
 
         // Global tasks

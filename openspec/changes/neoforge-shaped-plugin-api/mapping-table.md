@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 107 | 107 | 0 | 0 | 0 | 88 | 12 |
-| Inventory, planned | 628 | 583 | 43 | 2 | 0 | 465 | 111 |
+| Inventory, supported | 111 | 111 | 0 | 0 | 0 | 93 | 12 |
+| Inventory, planned | 624 | 579 | 43 | 2 | 0 | 460 | 111 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -36,7 +36,7 @@ How to read it:
 | `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` | planned |
 | `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `RegisterCommandsEvent` | 93 | event class | `event-bus.event::register-commands-event` | supported |
+| `RegisterCommandsEvent` | 93 | event class | `ModInit::register_command` (API call, no event) | supported |
 | `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` | planned |
 | `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
@@ -49,17 +49,17 @@ How to read it:
 | `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` | planned |
 | `LivingDeathEvent` | 46 | event class | `event-bus.event::living-death-event` | supported |
 | `RegisterEvent` | 46 | event class | `event-bus.event::register-event` (resource `registration.register-event`) | planned |
-| `ServerTickEvent.Post` | 43 | event class | `event-bus.event::server-tick-event-post` | supported |
+| `ServerTickEvent.Post` | 43 | event class | `pumpkin_core::plugin::server::ServerTickEndEvent` | supported |
 | `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` | planned |
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | planned |
-| `ServerStartedEvent` | 40 | event class | `event-bus.event::server-started-event` | supported |
+| `ServerStartedEvent` | 40 | event class | `pumpkin_core::plugin::server::ServerLoadEvent` | supported |
 | `LevelTickEvent` | 40 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingDamageEvent` | 38 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingIncomingDamageEvent` | 37 | event class | `event-bus.event::living-incoming-damage-event` | supported |
-| `ServerStoppedEvent` | 36 | event class | `event-bus.event::server-stopped-event` | planned |
+| `ServerStoppedEvent` | 36 | event class | `pumpkin_core::plugin::server::ServerStoppedEvent` | supported |
 | `PlayerTickEvent` | 36 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `LevelTickEvent.Post` | 32 | event class | `event-bus.event::level-tick-event-post` | planned |
+| `LevelTickEvent.Post` | 32 | event class | `pumpkin_core::plugin::world::LevelTickEventPost` | supported |
 | `LivingDropsEvent` | 31 | event class | `event-bus.event::living-drops-event` | supported |
 | `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | planned |
 | `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
@@ -73,11 +73,11 @@ How to read it:
 | `LevelEvent.Load` | 27 | event class | `event-bus.event::level-event-load` | supported |
 | `EntityTickEvent` | 27 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PlayerEvent.PlayerChangedDimensionEvent` | 26 | event class | `event-bus.event::player-event-player-changed-dimension-event` | supported |
-| `ServerStartingEvent` | 26 | event class | `event-bus.event::server-starting-event` | planned |
+| `ServerStartingEvent` | 26 | event class | `pumpkin_core::plugin::server::ServerStartingEvent` | supported |
 | `LivingDamageEvent.Post` | 25 | event class | `event-bus.event::living-damage-event-post` | planned |
 | `PlayerEvent.PlayerRespawnEvent` | 24 | event class | `event-bus.event::player-event-player-respawn-event` | supported |
 | `ServerAboutToStartEvent` | 24 | event class | `event-bus.event::server-about-to-start-event` | planned |
-| `ServerStoppingEvent` | 24 | event class | `event-bus.event::server-stopping-event` | planned |
+| `ServerStoppingEvent` | 24 | event class | `pumpkin_core::plugin::server::ServerStoppingEvent` | supported |
 | `PlayerTickEvent.Post` | 24 | event class | `event-bus.event::player-tick-event-post` | planned |
 | `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` | planned |
 | `PlayerEvent.Clone` | 23 | event class | `event-bus.event::player-event-clone` | planned |
@@ -87,7 +87,7 @@ How to read it:
 | `LivingEvent` | 22 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ItemEntityPickupEvent` | 20 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent` | 19 | event class | `event-bus.event::tags-updated-event` | planned |
-| `LevelTickEvent.Pre` | 19 | event class | `event-bus.event::level-tick-event-pre` | planned |
+| `LevelTickEvent.Pre` | 19 | event class | `pumpkin_core::plugin::world::LevelTickEventPre` | supported |
 | `PlayerEvent.BreakSpeed` | 18 | event class | `event-bus.event::player-event-break-speed` | planned |
 | `EntityTickEvent.Post` | 18 | event class | `event-bus.event::entity-tick-event-post` | planned |
 | `PlayerTickEvent.Pre` | 18 | event class | `event-bus.event::player-tick-event-pre` | planned |
@@ -95,7 +95,7 @@ How to read it:
 | `ItemEntityPickupEvent.Pre` | 17 | event class | `event-bus.event::item-entity-pickup-event-pre` | supported |
 | `BlockDropsEvent` | 17 | event class | `event-bus.event::block-drops-event` | supported |
 | `ChunkEvent` | 17 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `ServerTickEvent.Pre` | 17 | event class | `event-bus.event::server-tick-event-pre` | supported |
+| `ServerTickEvent.Pre` | 17 | event class | `pumpkin_core::plugin::server::ServerTickStartEvent` | supported |
 | `EntityAttributeModificationEvent` | 16 | event class | `event-bus.event::entity-attribute-modification-event` (resource `registration.entity-attribute-modification-event`) | planned |
 | `FinalizeSpawnEvent` | 16 | event class | `event-bus.event::finalize-spawn-event` | supported |
 | `LivingEntityUseItemEvent` | 16 | event class | `event-bus.event::living-entity-use-item-event` | planned |
@@ -125,7 +125,7 @@ How to read it:
 | `ExplosionEvent.Detonate` | 10 | event class | `event-bus.event::explosion-event-detonate` | supported |
 | `InterModProcessEvent` | 10 | event class | `NativeMod::inter_mod_process` (`imc::InterModProcess::get_messages`, `imc::ImcMessage`) | planned |
 | `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | planned |
-| `AnvilUpdateEvent` | 9 | event class | `event-bus.event::anvil-update-event` | supported |
+| `AnvilUpdateEvent` | 9 | event class | `pumpkin_core::plugin::inventory::PrepareAnvilEvent` | supported |
 | `EntityInvulnerabilityCheckEvent` | 9 | event class | `event-bus.event::entity-invulnerability-check-event` | planned |
 | `EntityLeaveLevelEvent` | 9 | event class | `event-bus.event::entity-leave-level-event` | planned |
 | `EntityMountEvent` | 9 | event class | `event-bus.event::entity-mount-event` | supported |
@@ -147,7 +147,7 @@ How to read it:
 | `BlockEvent.BlockToolModificationEvent` | 7 | event class | `event-bus.event::block-event-block-tool-modification-event` | planned |
 | `RegisterConfigurationTasksEvent` | 7 | event class | `event-bus.event::register-configuration-tasks-event` (resource `network.register-configuration-tasks-event`) | planned |
 | `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | planned |
-| `ServerChatEvent` | 6 | event class | `event-bus.event::server-chat-event` | supported |
+| `ServerChatEvent` | 6 | event class | `pumpkin_core::plugin::player::PlayerChatEvent` | supported |
 | `EntityTeleportEvent.TeleportCommand` | 6 | event class | `event-bus.event::entity-teleport-event-teleport-command` | supported |
 | `EntityTravelToDimensionEvent` | 6 | event class | `event-bus.event::entity-travel-to-dimension-event` | supported |
 | `MobEffectEvent.Remove` | 6 | event class | `event-bus.event::mob-effect-event-remove` | supported |
@@ -189,7 +189,7 @@ How to read it:
 | `DataMapsUpdatedEvent` | 4 | event class | `event-bus.event::data-maps-updated-event` | planned |
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `GrindstoneEvent.OnPlaceItem` | 3 | event class | `event-bus.event::grindstone-event-on-place-item` | supported |
+| `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `event-bus.event::grindstone-event-on-take-item` | planned |
 | `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
 | `EntityMobGriefingEvent` | 3 | event class | `event-bus.event::entity-mob-griefing-event` | planned |
@@ -234,7 +234,7 @@ How to read it:
 | `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
-| `StatAwardEvent` | 1 | event class | `event-bus.event::stat-award-event` | supported |
+| `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` | supported |
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
 | `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingUseTotemEvent` | 1 | event class | `event-bus.event::living-use-totem-event` | supported |
@@ -269,14 +269,14 @@ How to read it:
 | `RegisterTooltipAppendersEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `SortedReloadListenerEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | planned |
-| `VanillaGameEvent` | 0 | event class | `event-bus.event::vanilla-game-event` | supported |
+| `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` | planned |
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PotionBrewEvent.Post` | 0 | event class | `event-bus.event::potion-brew-event-post` | planned |
-| `PotionBrewEvent.Pre` | 0 | event class | `event-bus.event::potion-brew-event-pre` | supported |
+| `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` | supported |
 | `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | planned |
 | `EnchantedEntityLootEvent` | 0 | event class | `event-bus.event::enchanted-entity-loot-event` | planned |
-| `EnchantmentLevelSetEvent` | 0 | event class | `event-bus.event::enchantment-level-set-event` | supported |
+| `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` | supported |
 | `EntityTeleportEvent.ItemConsumption` | 0 | event class | `event-bus.event::entity-teleport-event-item-consumption` | supported |
 | `EffectParticleModificationEvent` | 0 | event class | `event-bus.event::effect-particle-modification-event` | planned |
 | `LivingDrownEvent` | 0 | event class | `event-bus.event::living-drown-event` | planned |
@@ -288,7 +288,7 @@ How to read it:
 | `CustomClickActionEvent` | 0 | event class | `event-bus.event::custom-click-action-event` | supported |
 | `FluidTooltipEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | planned |
-| `PlayerEnchantItemEvent` | 0 | event class | `event-bus.event::player-enchant-item-event` | supported |
+| `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` | supported |
 | `PlayerEvent.PlayerChangeGameModeEvent` | 0 | event class | `event-bus.event::player-event-player-change-game-mode-event` | supported |
 | `PlayerEvent.TabListNameFormat` | 0 | event class | `event-bus.event::player-event-tab-list-name-format` | planned |
 | `PlayerFlyableFallEvent` | 0 | event class | `event-bus.event::player-flyable-fall-event` | planned |
@@ -1044,7 +1044,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent` | 148 | same | `event-bus.event::fml-common-setup-event` |
 | `net.neoforged.fml.common.EventBusSubscriber` | 126 | same | `event-bus.add-listener` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent` | 96 | same | fields in the subclass records of `event-bus` (abstract) |
-| `net.neoforged.neoforge.event.RegisterCommandsEvent` | 93 | same | `event-bus.event::register-commands-event` |
+| `net.neoforged.neoforge.event.RegisterCommandsEvent` | 93 | same | `ModInit::register_command` (API call, no event) |
 | `net.neoforged.neoforge.event.entity.player.PlayerInteractEvent` | 85 | same | fields in the subclass records of `event-bus` (abstract) |
 | `net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent` | 75 | same | gap: not supported (client UI); documented in `event-bus` |
 | `net.neoforged.fml.common.EventBusSubscriber$Bus` | 69 | same | `event-bus.bus` |
@@ -1052,7 +1052,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.level.BlockEvent` | 65 | same | fields in the subclass records of `event-bus` (abstract) |
 | `net.neoforged.neoforge.event.EventHooks` | 51 | same | `event-bus.post` |
 | `net.neoforged.neoforge.event.entity.EntityJoinLevelEvent` | 49 | same | `event-bus.event::entity-join-level-event` |
-| `net.neoforged.neoforge.event.server.ServerStartedEvent` | 40 | same | `event-bus.event::server-started-event` |
+| `net.neoforged.neoforge.event.server.ServerStartedEvent` | 40 | same | `pumpkin_core::plugin::server::ServerLoadEvent` |
 | `net.neoforged.neoforge.event.entity.living.LivingDamageEvent` | 38 | same | fields in the subclass records of `event-bus` (abstract) |
 | `net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent` | 37 | same | `event-bus.event::living-incoming-damage-event` |
 | `net.neoforged.neoforge.event.tick.PlayerTickEvent` | 36 | same | fields in the subclass records of `event-bus` (abstract) |
@@ -1078,7 +1078,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$StartTracking` | 13 | same | `event-bus.event::player-event-start-tracking` |
 | `net.neoforged.neoforge.event.entity.ProjectileImpactEvent` | 12 | same | `event-bus.event::projectile-impact-event` |
 | `net.neoforged.neoforge.event.village.VillagerTradesEvent` | 12 | CHANGED | gap: removed in NeoForge 26.1 (villager trades are datapack data); documented in `event-bus` |
-| `net.neoforged.neoforge.event.AnvilUpdateEvent` | 9 | same | `event-bus.event::anvil-update-event` |
+| `net.neoforged.neoforge.event.AnvilUpdateEvent` | 9 | same | `pumpkin_core::plugin::inventory::PrepareAnvilEvent` |
 | `net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent$Start` | 9 | same | `event-bus.event::living-entity-use-item-event-start` |
 | `net.neoforged.neoforge.event.entity.living.LivingKnockBackEvent` | 9 | same | `event-bus.event::living-knock-back-event` |
 | `net.neoforged.neoforge.event.village.WandererTradesEvent` | 9 | CHANGED | gap: removed in NeoForge 26.1 (wandering trader trades are datapack data); documented in `event-bus` |

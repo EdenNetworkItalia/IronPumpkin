@@ -6890,12 +6890,13 @@ impl World {
     }
 
     pub fn emit_game_event(&self, event_key: impl Into<String>, position: Vector3<f64>) {
-        let mut event = crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
-            event_key.into(),
-            position,
-        );
         if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
+            server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
+                    event_key.into(),
+                    position,
+                )
+            });
         }
     }
 

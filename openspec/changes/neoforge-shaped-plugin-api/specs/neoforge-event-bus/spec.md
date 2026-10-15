@@ -7,7 +7,7 @@ Lets a ported mod handle the NeoForge events as Pumpkin events. Each event has t
 ## ADDED Requirements
 
 ### Requirement: Concrete parents receive subclasses
-A mod that registers a handler for a concrete event class that has concrete subclasses SHALL also receive each subclass event, delivered as the subclass struct, as NeoForge delivers it to a listener on the parent type. A nested NeoForge class is one struct with the parent name as prefix. Status: planned (task 2.3).
+A mod that registers a handler for a concrete event class that has concrete subclasses SHALL also receive each subclass event, delivered as the subclass struct, as NeoForge delivers it to a listener on the parent type. A nested NeoForge class is one struct with the parent name as prefix. Status: supported (task 2.3, #102).
 
 #### Scenario: Handler on a parent
 - **WHEN** a mod registers a handler for `LivingEntityUseItemEvent` and an entity starts using an item
@@ -36,14 +36,14 @@ A call that runs Wasm plugin code before it returns SHALL be limited to the reen
 - **THEN** both calls complete
 
 ### Requirement: Handler registration
-`ModInit::register_event` SHALL register a handler for one event struct with one of the five `EventPriority` values (Highest, High, Normal, Low, Lowest), the blocking flag and the receive-canceled flag. A handler that did not set receive-canceled SHALL NOT be called for a cancelled event. Status: planned (task 2.3).
+`ModInit::register_event` SHALL register a handler for one event struct with one of the five `EventPriority` values (Highest, High, Normal, Low, Lowest), the blocking flag and the receive-canceled flag. A handler that did not set receive-canceled SHALL NOT be called for a cancelled event. Status: supported (task 2.3, #102).
 
 #### Scenario: Receive canceled
 - **WHEN** two handlers for one cancellable event are registered, one with receive-canceled and one without, and an earlier handler cancels the event
 - **THEN** only the handler with receive-canceled runs
 
 ### Requirement: Priority is honoured
-`PluginManager::fire_dyn` SHALL call the blocking handlers of an event in the order of their `EventPriority`, Highest first and Lowest last, with registration order inside one priority, and then the non-blocking handlers in the same order. Status: planned (task 2.3).
+`PluginManager::fire_dyn` SHALL call the blocking handlers of an event in the order of their `EventPriority`, Highest first and Lowest last, with registration order inside one priority, and then the non-blocking handlers in the same order. Status: supported (task 2.3, #102).
 
 #### Scenario: Priority order
 - **WHEN** two blocking handlers for one event type have priorities `High` and `Low`
@@ -54,21 +54,21 @@ A call that runs Wasm plugin code before it returns SHALL be limited to the reen
 - **THEN** the host calls the blocking handler first
 
 ### Requirement: Handlers are synchronous
-A handler of a native mod SHALL be synchronous inside the async host of Pumpkin. A handler that needs a world call SHALL use `block_on(unconstrained(..))`, as `ModInit::register_service` does, and SHALL NOT hold a lock across a fire. Status: planned (task 2.3).
+A handler of a native mod SHALL be synchronous inside the async host of Pumpkin. A handler that needs a world call SHALL use `block_on(unconstrained(..))`, as `ModInit::register_service` does, and SHALL NOT hold a lock across a fire. Status: supported (task 2.3, #102).
 
 #### Scenario: World call from a handler
 - **WHEN** a handler reads a block of the world while the server fires an event
 - **THEN** the call completes, and the dispatch continues with the next handler
 
 ### Requirement: Dispatch and write-back
-The host SHALL call each handler with the event by mutable reference, and SHALL act on the fields as the last handler left them. A change to a settable field or to `cancelled` SHALL be visible to the next handler and to the server code that fired the event. Status: planned (task 2.3).
+The host SHALL call each handler with the event by mutable reference, and SHALL act on the fields as the last handler left them. A change to a settable field or to `cancelled` SHALL be visible to the next handler and to the server code that fired the event. Status: supported (task 2.3, #102).
 
 #### Scenario: Change a settable field
 - **WHEN** a `LivingHealEvent` handler sets `amount` to 2.0 for a heal of 4.0
 - **THEN** the entity heals 2.0
 
 ### Requirement: Cancellation
-A cancellable event SHALL carry `cancelled` (the Pumpkin `Cancellable` trait). When a handler sets it, the host SHALL skip later handlers that did not set receive-canceled and SHALL NOT perform the action the event describes. Status: planned (task 2.3).
+A cancellable event SHALL carry `cancelled` (the Pumpkin `Cancellable` trait). When a handler sets it, the host SHALL skip later handlers that did not set receive-canceled and SHALL NOT perform the action the event describes. Status: supported (task 2.3, #102).
 
 #### Scenario: Cancel a block break
 - **WHEN** a `BlockBreakEvent` handler (NeoForge `BreakBlockEvent`) sets `cancelled` to true

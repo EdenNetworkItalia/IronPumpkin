@@ -113,13 +113,19 @@ impl NativeMod for ParityProbe {
     }
 
     fn init(&self, cx: &mut ModInit) {
-        cx.register_event::<ServerLoadEvent, _>(Arc::new(Started), EventPriority::Normal, false);
+        cx.register_event::<ServerLoadEvent, _>(
+            Arc::new(Started),
+            EventPriority::Normal,
+            false,
+            false,
+        );
         cx.register_event::<ServerTickStartEvent, _>(
             Arc::new(Tick {
                 name: "ServerTickEvent.Pre",
                 count: AtomicU64::new(0),
             }),
             EventPriority::Normal,
+            false,
             false,
         );
         cx.register_event::<ServerTickEndEvent, _>(
@@ -128,6 +134,7 @@ impl NativeMod for ParityProbe {
                 count: AtomicU64::new(0),
             }),
             EventPriority::Normal,
+            false,
             false,
         );
     }

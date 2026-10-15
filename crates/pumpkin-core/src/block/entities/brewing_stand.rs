@@ -131,17 +131,26 @@ impl BrewingStandBlockEntity {
         let ingredient_id = ingredient.get_item().id;
 
         // Fire BrewEvent before mutating items
-        if let Some(server) = world.server.upgrade() {
-            let mut brew_event = crate::plugin::api::events::inventory::brew::BrewEvent::new(
-                self.position,
-                self.fuel.load(Ordering::Relaxed) as u8,
-            );
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut brew_event);
-            if brew_event.cancelled {
-                return;
-            }
+        if let Some(server) = world.server.upgrade()
+            && let Some(brew_event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::inventory::brew::BrewEvent::new(
+                    self.position,
+                    self.fuel.load(Ordering::Relaxed) as u8,
+                    self.items
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone(),
+                )
+            })
+            && brew_event.cancelled
+        {
+            // `EventHooks.onPotionAttemptBrew`: a cancelled brew takes the handlers' stacks.
+            *self
+                .items
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = brew_event.stacks;
+            self.mark_dirty();
+            return;
         }
 
         // Brew potion slots

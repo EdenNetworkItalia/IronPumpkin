@@ -133,10 +133,19 @@ impl ToFromWasmEvent for BrewEvent {
             Event::BrewEvent(data) => Self {
                 block_pos: from_wasm_block_position(data.block_pos),
                 fuel_level: data.fuel_level,
+                stacks: std::array::from_fn(|_| pumpkin_data::item_stack::ItemStack::EMPTY.clone()),
                 cancelled: data.cancelled,
             },
             _ => panic!("unexpected event type"),
         }
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has no stacks: keep the native fields of the event.
+        let returned = Self::from_wasm_event(event, state);
+        self.block_pos = returned.block_pos;
+        self.fuel_level = returned.fuel_level;
+        self.cancelled = returned.cancelled;
     }
 }
 
@@ -372,13 +381,24 @@ impl ToFromWasmEvent for PrepareAnvilEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::PrepareAnvilEvent(data) => Self {
-                player: consume_player(state, &data.player),
-                rename_text: data.rename_text,
-                repair_cost: data.repair_cost,
-            },
+            Event::PrepareAnvilEvent(data) => Self::new(
+                consume_player(state, &data.player),
+                data.rename_text,
+                pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
+                pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
+                pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
+                data.repair_cost,
+                0,
+            ),
             _ => panic!("unexpected event type"),
         }
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has no stacks or material cost: keep the native fields of the event.
+        let returned = Self::from_wasm_event(event, state);
+        self.rename_text = returned.rename_text;
+        self.repair_cost = returned.repair_cost;
     }
 }
 
@@ -396,12 +416,20 @@ impl ToFromWasmEvent for PrepareGrindstoneEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::PrepareGrindstoneEvent(data) => Self {
-                player: consume_player(state, &data.player),
-                result_item: data.result_item,
-            },
+            Event::PrepareGrindstoneEvent(data) => Self::new(
+                consume_player(state, &data.player),
+                data.result_item,
+                pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
+                pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
+            ),
             _ => panic!("unexpected event type"),
         }
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has no stacks, output or experience: keep the native fields of the event.
+        let returned = Self::from_wasm_event(event, state);
+        self.result_item = returned.result_item;
     }
 }
 

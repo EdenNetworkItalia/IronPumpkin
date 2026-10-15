@@ -53,6 +53,12 @@ impl ToFromWasmEvent for PrepareItemEnchantEvent {
         })
     }
 
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        let original = self.original_level_requirements;
+        *self = Self::from_wasm_event(event, state);
+        self.original_level_requirements = original;
+    }
+
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
             Event::PrepareItemEnchantEvent(data) => {
@@ -68,6 +74,7 @@ impl ToFromWasmEvent for PrepareItemEnchantEvent {
                     player: consume_player(state, &data.player),
                     item: consume_item_stack(state, &data.item),
                     level_requirements,
+                    original_level_requirements: level_requirements,
                     enchantment_id,
                     enchantment_level,
                     bookshelf_count: data.bookshelf_count,

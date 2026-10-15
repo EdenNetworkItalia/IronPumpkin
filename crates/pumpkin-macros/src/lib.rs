@@ -19,6 +19,18 @@ pub fn event(item: TokenStream) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
+    // `#[cancellable]` runs before the derive and adds the field, so the dispatch can skip the
+    // handlers that do not receive cancelled events.
+    let is_cancellable = matches!(&ast.data, syn::Data::Struct(data)
+        if data.fields.iter().any(|f| f.ident.as_ref().is_some_and(|i| i == "cancelled")));
+    let is_cancelled = is_cancellable.then(|| {
+        quote! {
+            fn is_cancelled(&self) -> bool {
+                self.cancelled
+            }
+        }
+    });
+
     quote! {
         impl #impl_generics crate::plugin::Payload for #name #ty_generics #where_clause {
             fn get_name_static() -> &'static str {
@@ -36,6 +48,8 @@ pub fn event(item: TokenStream) -> TokenStream {
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
+
+            #is_cancelled
         }
     }
     .into()

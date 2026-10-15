@@ -73,7 +73,7 @@ pub mod version;
 /// The events a mod can listen to, and the traits to handle them.
 pub mod event {
     pub use pumpkin_core::plugin::api::events::*;
-    pub use pumpkin_core::plugin::{BoxFuture, EventHandler};
+    pub use pumpkin_core::plugin::{BoxFuture, EventHandler, ParentEventHandler};
 }
 
 /// Text components and the translation macro.
@@ -94,7 +94,7 @@ macro_rules! __translate_cross {
 }
 
 use content::{ContentKind, EntityFactory, RegistryError};
-use event::{EventHandler, EventPriority, Payload};
+use event::{EventHandler, EventPriority, ParentEventHandler, Payload};
 use imc::{InterModEnqueue, InterModProcess};
 use mod_list::ModList;
 use mods_toml::ModInfo;
@@ -283,15 +283,45 @@ impl ModInit {
         }));
     }
 
-    /// See [`Context::register_event`].
+    /// Registers a handler for the event `E`, like `IEventBus#addListener` of `NeoForge`.
+    ///
+    /// The dispatch calls the blocking handlers from [`EventPriority::Highest`] to
+    /// [`EventPriority::Lowest`], in registration order inside one priority, and then the
+    /// non-blocking handlers in the same order. A blocking handler gets the event by mutable
+    /// reference, and the server acts on the fields as the last handler left them. A handler
+    /// without `receive_canceled` does not run once a handler before it cancelled the event, as a
+    /// `NeoForge` listener without `receiveCanceled`.
+    ///
+    /// Handlers are synchronous inside the async server: the future a handler returns runs to the
+    /// end before the next handler. A handler that needs a world call uses
+    /// `futures::executor::block_on(tokio::task::unconstrained(..))`, as
+    /// [`ModInit::register_service`] does, and never holds a lock of its own state across a fire.
     pub fn register_event<E: Payload + 'static, H: EventHandler<E> + 'static>(
         &mut self,
         handler: Arc<H>,
         priority: EventPriority,
         blocking: bool,
+        receive_canceled: bool,
     ) {
         self.registrations.push(Box::new(move |cx| {
-            cx.register_event::<E, H>(handler, priority, blocking);
+            cx.register_event_with::<E, H>(handler, priority, blocking, receive_canceled);
+        }));
+    }
+
+    /// Registers a handler for the concrete parent event `P` and for each event that names `P` in
+    /// `Payload::get_parent_names_static`, as a `NeoForge` listener on a parent class receives the
+    /// subclasses. The handler gets the subclass struct as `dyn Payload` and downcasts it with
+    /// `<dyn Payload>::downcast_mut`. The order and the flags are those of
+    /// [`ModInit::register_event`].
+    pub fn register_parent_event<P: Payload + 'static, H: ParentEventHandler + 'static>(
+        &mut self,
+        handler: Arc<H>,
+        priority: EventPriority,
+        blocking: bool,
+        receive_canceled: bool,
+    ) {
+        self.registrations.push(Box::new(move |cx| {
+            cx.register_parent_event::<P, H>(handler, priority, blocking, receive_canceled);
         }));
     }
 
@@ -620,7 +650,11 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         let mut init = init_mod_as(loaded.native_mod, loaded.mod_id)
             .unwrap_or_else(|err| refuse_to_start(&err));
-        configs.extend(init.configs.drain(..).map(|config| (config, loaded.native_mod)));
+        configs.extend(
+            init.configs
+                .drain(..)
+                .map(|config| (config, loaded.native_mod)),
+        );
         let metadata = PluginMetadata {
             name: info.mod_id.clone(),
             version: info.version.to_string(),

@@ -215,6 +215,36 @@ pub trait InventoryPlayer: Send + Sync {
         false
     }
 
+    /// Fires the event that announces an enchantment applied at an enchanting table. The
+    /// enchanted item is in slot 0 of `inputs`, and `enchantments` are those it got.
+    fn fire_player_enchant_item_event(
+        &self,
+        _inputs: &dyn crate::inventory::Inventory,
+        _enchantments: &[(&'static Enchantment, i32)],
+    ) {
+    }
+
+    /// Fires the anvil update event for the anvil `inputs` (left, right and result slots) when the
+    /// left input is not empty. Returns `None` when no handler listens.
+    fn fire_anvil_update_event(
+        &self,
+        _inputs: &dyn crate::inventory::Inventory,
+        _name: Option<&str>,
+        _xp_cost: i32,
+        _material_cost: i32,
+    ) -> Option<crate::anvil::AnvilUpdate> {
+        None
+    }
+
+    /// Fires the grindstone place event for the grindstone `inputs` (top and bottom slots).
+    /// Returns `None` when no handler listens.
+    fn fire_grindstone_place_event(
+        &self,
+        _inputs: &dyn crate::inventory::Inventory,
+    ) -> Option<crate::grindstone_screen_handler::GrindstonePlace> {
+        None
+    }
+
     /// Closes the player's current handled screen.
     fn close_screen_handler(&self) {}
 

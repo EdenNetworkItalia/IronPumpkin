@@ -8,6 +8,11 @@ use super::PlayerEvent;
 /// An event that occurs when a player sends a chat message.
 ///
 /// This event contains information about the sender, message, and recipients.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.ServerChatEvent`, fired by
+/// `CommonHooks.onServerChatSubmittedEvent` when the server gets a chat message. A cancelled
+/// event sends the message to nobody. `message` is the text the server formats and sends: plain
+/// text, where `NeoForge` has a component.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PlayerChatEvent {
@@ -16,6 +21,10 @@ pub struct PlayerChatEvent {
 
     /// The message being sent.
     pub message: String,
+
+    /// The message as the player sent it (`ServerChatEvent#getRawText`). Handlers do not change
+    /// it.
+    pub raw_text: String,
 
     /// The recipients of the message. If empty, the message is broadcasted to all players.
     pub recipients: Vec<Arc<Player>>,
@@ -35,7 +44,7 @@ impl PlayerChatEvent {
     ///
     /// # Returns
     /// A new instance of `PlayerChatEvent`.
-    pub const fn new(
+    pub fn new(
         player: Arc<Player>,
         message: String,
         recipients: Vec<Arc<Player>>,
@@ -43,11 +52,18 @@ impl PlayerChatEvent {
     ) -> Self {
         Self {
             player,
+            raw_text: message.clone(),
             message,
             recipients,
             signature,
             cancelled: false,
         }
+    }
+
+    /// The name of the player who sent the message (`ServerChatEvent#getUsername`).
+    #[must_use]
+    pub fn username(&self) -> &str {
+        &self.player.gameprofile.name
     }
 }
 

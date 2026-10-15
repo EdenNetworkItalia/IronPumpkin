@@ -24,6 +24,9 @@ use crate::net::{lan_broadcast::LANBroadcast, management::ManagementServer, quer
 use crate::plugin::loader::PluginLoader;
 use crate::plugin::server::server_command::ServerCommandEvent;
 use crate::server::{Server, ticker::Ticker};
+use plugin::server::server_lifecycle::{
+    ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
+};
 use plugin::server::server_load::{LoadType, ServerLoadEvent};
 use pumpkin_config::{AdvancedConfiguration, BasicConfiguration, TelemetryConfig};
 use pumpkin_util::text::TextComponent;
@@ -331,19 +334,10 @@ impl PumpkinServer {
             None
         };
 
-        // Ticker
-        {
-            let ticker_server = server.clone();
-            if let Err(err) = std::thread::Builder::new()
-                .name("Server-Ticker".into())
-                .spawn(move || {
-                    Ticker::run(&ticker_server);
-                })
-            {
-                error!("Failed to spawn Server-Ticker thread: {err}");
-                std::process::exit(1);
-            }
-        };
+        server
+            .plugin_manager
+            .fire_with(&server, || ServerStartingEvent)
+            .await;
 
         let (bedrock_status, ice_socket) = match Self::bind_bedrock_status(&server).await {
             Some((status, ice)) => (Some(status), Some(ice)),
@@ -477,6 +471,21 @@ impl PumpkinServer {
             .fire(&self.server, &mut ServerLoadEvent::new(LoadType::Startup))
             .await;
 
+        // The ticker starts after `ServerLoadEvent`, as `NeoForge` fires `ServerStartedEvent`
+        // before the first tick.
+        {
+            let ticker_server = self.server.clone();
+            if let Err(err) = std::thread::Builder::new()
+                .name("Server-Ticker".into())
+                .spawn(move || {
+                    Ticker::run(&ticker_server);
+                })
+            {
+                error!("Failed to spawn Server-Ticker thread: {err}");
+                std::process::exit(1);
+            }
+        };
+
         self.server.start_telemetry();
         self.server.management_hub.broadcast_server_started();
 
@@ -490,6 +499,10 @@ impl PumpkinServer {
         }
 
         SERVER_IS_STOPPING.store(true, Ordering::Release);
+        self.server
+            .plugin_manager
+            .fire_with(&self.server, || ServerStoppingEvent)
+            .await;
 
         if let Some(crash_report) = CRASH_REPORT.get() {
             crash_report.print_to_console();
@@ -541,6 +554,11 @@ impl PumpkinServer {
         self.server.shutdown().await;
 
         info!("Completed save!");
+
+        self.server
+            .plugin_manager
+            .fire_with(&self.server, || ServerStoppedEvent)
+            .await;
 
         if let Some((wrapper, _, _)) = LOGGER_IMPL.wait()
             && let Some(rl) = wrapper.take_readline()

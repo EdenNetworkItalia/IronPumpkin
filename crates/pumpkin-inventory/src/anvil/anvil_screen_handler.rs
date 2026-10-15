@@ -99,6 +99,19 @@ impl Slot for AnvilResultSlot {
     }
 }
 
+/// What the handlers of the anvil update event decided, as `CommonHooks.onAnvilUpdate` of
+/// `NeoForge` applies it.
+pub enum AnvilUpdate {
+    /// The anvil produces nothing and costs nothing.
+    Cancelled,
+    /// The output, its level cost and the count of right inputs it consumes.
+    Result {
+        output: ItemStack,
+        xp_cost: i32,
+        material_cost: i32,
+    },
+}
+
 pub struct AnvilScreenHandler {
     pub inventory: Arc<dyn Inventory>,
     behaviour: ScreenHandlerBehaviour,
@@ -267,6 +280,39 @@ impl AnvilScreenHandler {
     #[must_use]
     pub fn get_cost(&self) -> i32 {
         self.repair_cost.load(Ordering::Relaxed)
+    }
+
+    /// Computes the result with [`Self::create_result`] and lets the handlers of the anvil update
+    /// event change it, like the `createResult` wrapper of `NeoForge`'s `AnvilMenu`.
+    pub fn update_result(&mut self, player: &dyn InventoryPlayer) {
+        self.create_result(player.has_infinite_materials());
+        self.apply_update_event(player);
+    }
+
+    /// Fires the anvil update event for the current result when the left input is not empty, and
+    /// applies what the handlers decided (`CommonHooks.onAnvilUpdate`).
+    pub fn apply_update_event(&mut self, player: &dyn InventoryPlayer) {
+        let Some(update) = player.fire_anvil_update_event(
+            self.inventory.as_ref(),
+            self.item_name.as_deref(),
+            self.get_cost(),
+            self.repair_item_count_cost.load(Ordering::Relaxed),
+        ) else {
+            return;
+        };
+        let (output, xp_cost, material_cost) = match update {
+            AnvilUpdate::Cancelled => (ItemStack::EMPTY.clone(), 0, 0),
+            AnvilUpdate::Result {
+                output,
+                xp_cost,
+                material_cost,
+            } => (output, xp_cost.max(0), material_cost),
+        };
+        self.inventory.set_stack(2, output);
+        self.set_repair_cost(xp_cost);
+        self.repair_item_count_cost
+            .store(material_cost, Ordering::Relaxed);
+        self.send_content_updates();
     }
 
     #[allow(clippy::too_many_lines)]
@@ -508,7 +554,7 @@ impl ScreenHandler for AnvilScreenHandler {
                     }
                     slot.on_quick_move_crafted(slot_stack.clone(), stack_left.clone());
                     slot.on_take_item(player, &stack_left);
-                    self.create_result(player.has_infinite_materials());
+                    self.update_result(player);
                     self.send_content_updates();
                     return stack_left;
                 }
@@ -533,7 +579,7 @@ impl ScreenHandler for AnvilScreenHandler {
             slot.set_stack_prev(slot_stack.clone(), stack_left.clone());
             slot.on_take_item(player, &slot_stack);
             slot.mark_dirty();
-            self.create_result(player.has_infinite_materials());
+            self.update_result(player);
             self.send_content_updates();
         }
 
@@ -549,7 +595,7 @@ impl ScreenHandler for AnvilScreenHandler {
     ) {
         self.internal_on_slot_click(slot_index, button, action_type, player);
         if slot_index == 0 || slot_index == 1 || slot_index == 2 {
-            self.create_result(player.has_infinite_materials());
+            self.update_result(player);
             self.send_content_updates();
         }
     }

@@ -62,7 +62,7 @@ An event that the NeoForge inventory does not have SHALL enter `ironpumpkin-mods
 - **THEN** the event has the NeoForge semantics, its doc comment names the accepted patch it replaces, and the inventory has its row
 
 ### Requirement: No cost without listeners
-Native mods SHALL have no evident impact on Pumpkin performance. Every fire site SHALL check for registered handlers before it constructs the event, and per-entity and per-tick events SHALL sit behind the same check. Every wave that adds fire sites SHALL run the bench gate, and a regression outside the bench noise SHALL be a must-fix in the wave review. Status: planned (task 2.3 and every event task).
+Native mods SHALL have no evident impact on Pumpkin performance. Every fire site SHALL check for registered handlers before it constructs the event, and per-entity and per-tick events SHALL sit behind the same check. Every wave that adds fire sites SHALL run the bench gate, and a regression outside the bench noise SHALL be a must-fix in the wave review. Status: supported (task 2.3, #102).
 
 #### Scenario: Server without listeners
 - **WHEN** the server runs with no mod that handles the living hurt event, and an entity takes damage

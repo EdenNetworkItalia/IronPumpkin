@@ -20,6 +20,7 @@ use tracing::{debug, error, info, warn};
 
 pub mod api;
 pub mod cache;
+pub mod dispatch;
 pub mod loader;
 /// Constants for plugin permissions.
 ///
@@ -30,6 +31,7 @@ pub mod startup;
 
 use crate::{LOGGER_IMPL, server::Server};
 pub use api::*;
+pub use dispatch::{ParentEventHandler, ParentHandler};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -79,6 +81,12 @@ pub trait DynEventHandler: Send + Sync {
     fn source(&self) -> Option<&str> {
         None
     }
+
+    /// Whether the handler runs for an event that an earlier handler cancelled, like the
+    /// `receiveCanceled` flag of a `NeoForge` listener.
+    fn receive_canceled(&self) -> bool {
+        true
+    }
 }
 
 /// A trait for handling specific events.
@@ -117,6 +125,7 @@ where
     pub handler: Arc<H>,
     pub priority: EventPriority,
     pub blocking: bool,
+    pub receive_canceled: bool,
     pub source: Option<String>,
     pub _phantom: std::marker::PhantomData<E>,
 }
@@ -166,6 +175,10 @@ where
 
     fn source(&self) -> Option<&str> {
         self.source.as_deref()
+    }
+
+    fn receive_canceled(&self) -> bool {
+        self.receive_canceled
     }
 }
 
@@ -1175,36 +1188,67 @@ impl PluginManager {
         }
     }
 
-    /// Register an event handler
+    /// Register an event handler. It also receives cancelled events.
     pub fn register<E, H>(&self, handler: Arc<H>, priority: EventPriority, blocking: bool)
     where
         E: Payload + Send + Sync + 'static,
         H: EventHandler<E> + 'static,
     {
-        let typed_handler = Arc::new(TypedEventHandler {
+        self.register_with::<E, H>(handler, priority, blocking, true);
+    }
+
+    /// Register an event handler with the receive-canceled flag of a `NeoForge` listener: without
+    /// it, the handler does not run once a handler before it cancelled the event.
+    pub fn register_with<E, H>(
+        &self,
+        handler: Arc<H>,
+        priority: EventPriority,
+        blocking: bool,
+        receive_canceled: bool,
+    ) where
+        E: Payload + Send + Sync + 'static,
+        H: EventHandler<E> + 'static,
+    {
+        let typed_handler: Arc<dyn DynEventHandler> = Arc::new(TypedEventHandler {
             handler,
             priority,
             blocking,
+            receive_canceled,
             source: None,
             _phantom: std::marker::PhantomData,
         });
+        dispatch::insert_handler(&self.handlers, E::get_name_static(), &typed_handler);
+    }
 
-        self.handlers.rcu(|handlers| {
-            let mut new_handlers = (**handlers).clone();
-            new_handlers
-                .entry(E::get_name_static())
-                .or_default()
-                .push(typed_handler.clone());
-            Arc::new(new_handlers)
+    /// Register a handler for the concrete parent event `P` and every event that names `P` as a
+    /// parent.
+    pub fn register_parent<P, H>(
+        &self,
+        handler: Arc<H>,
+        priority: EventPriority,
+        blocking: bool,
+        receive_canceled: bool,
+    ) where
+        P: Payload + 'static,
+        H: ParentEventHandler + 'static,
+    {
+        let parent_handler: Arc<dyn DynEventHandler> = Arc::new(ParentHandler {
+            handler,
+            priority,
+            blocking,
+            receive_canceled,
+            source: None,
         });
+        dispatch::insert_handler(&self.handlers, P::get_name_static(), &parent_handler);
     }
 
     #[must_use]
     pub fn has_handlers<E: Payload + 'static>(&self) -> bool {
-        self.handlers
-            .load()
-            .get(E::get_name_static())
-            .is_some_and(|handlers| !handlers.is_empty())
+        dispatch::has_handlers_in(
+            &self.handlers.load(),
+            E::get_name_static(),
+            E::get_parent_names_static(),
+        )
     }
 
     /// Fire an event to all registered handlers
@@ -1213,13 +1257,20 @@ impl PluginManager {
         server: &Arc<Server>,
         event: &mut E,
     ) {
-        self.fire_dyn(server, E::get_name_static(), event).await;
+        self.fire_dyn(
+            server,
+            E::get_name_static(),
+            E::get_parent_names_static(),
+            event,
+        )
+        .await;
     }
 
     async fn fire_dyn(
         &self,
         server: &Arc<Server>,
         event_name: &'static str,
+        parent_names: &'static [&'static str],
         event: &mut (dyn Payload + Send + Sync),
     ) {
         let handlers_map = self.handlers.load();
@@ -1227,27 +1278,7 @@ impl PluginManager {
             return;
         }
 
-        let Some(handlers) = handlers_map.get(event_name) else {
-            return;
-        };
-
-        if handlers.is_empty() {
-            return;
-        }
-
-        // Process blocking handlers first
-        for handler in handlers {
-            if handler.is_blocking() {
-                handler.handle_blocking_dyn(server, event).await;
-            }
-        }
-
-        // Process non-blocking handlers
-        for handler in handlers {
-            if !handler.is_blocking() {
-                handler.handle_dyn(server, event).await;
-            }
-        }
+        dispatch::dispatch(&handlers_map, server, event_name, parent_names, event).await;
     }
 
     /// Fire an event to all registered handlers synchronously (blocking if handlers exist).
@@ -1257,25 +1288,22 @@ impl PluginManager {
         server: &Arc<Server>,
         event: &mut E,
     ) {
-        self.fire_blocking_dyn(server, E::get_name_static(), event);
+        self.fire_blocking_dyn(
+            server,
+            E::get_name_static(),
+            E::get_parent_names_static(),
+            event,
+        );
     }
 
     fn fire_blocking_dyn(
         &self,
         server: &Arc<Server>,
         event_name: &'static str,
+        parent_names: &'static [&'static str],
         event: &mut (dyn Payload + Send + Sync),
     ) {
-        let handlers_map = self.handlers.load();
-        if handlers_map.is_empty() {
-            return;
-        }
-
-        let Some(handlers) = handlers_map.get(event_name) else {
-            return;
-        };
-
-        if handlers.is_empty() {
+        if !dispatch::has_handlers_in(&self.handlers.load(), event_name, parent_names) {
             return;
         }
 
@@ -1283,12 +1311,12 @@ impl PluginManager {
             tokio::task::block_in_place(|| {
                 server
                     .runtime
-                    .block_on(self.fire_dyn(server, event_name, event));
+                    .block_on(self.fire_dyn(server, event_name, parent_names, event));
             });
         } else {
             server
                 .runtime
-                .block_on(self.fire_dyn(server, event_name, event));
+                .block_on(self.fire_dyn(server, event_name, parent_names, event));
         }
     }
 

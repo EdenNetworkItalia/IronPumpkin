@@ -8,8 +8,8 @@ use crate::{
     server::Server,
 };
 use pumpkin_gametest::GameTestRunner;
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 use tracing::{debug, warn};
 
@@ -26,6 +26,18 @@ const OVERLOADED_TICKS_WARNING_INTERVAL: i64 = 100;
 /// Vanilla's absolute clock starts far past `lastOverloadWarningNanos = 0`,
 /// so the first overload always passes the warning-interval check.
 const NEVER_WARNED: i64 = i64::MIN / 2;
+
+/// The clock of [`has_time`]. The tick loop starts it before its own base.
+static CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
+/// The deadline of the current tick in nanoseconds since [`CLOCK`].
+static TICK_DEADLINE_NANOS: AtomicI64 = AtomicI64::new(0);
+
+/// Whether the current tick has time left before its deadline, like the `haveTime` supplier that
+/// vanilla passes to `MinecraftServer.tickServer`. The tick events of `NeoForge` carry it.
+#[must_use]
+pub fn has_time() -> bool {
+    elapsed_nanos(*CLOCK) < TICK_DEADLINE_NANOS.load(Ordering::Relaxed)
+}
 
 /// Tick deadline and overload-warning clock, in nanoseconds since the loop base.
 #[derive(Clone, Copy)]
@@ -49,8 +61,10 @@ impl Ticker {
     /// Runs the main server tick loop on a dedicated thread.
     pub fn run(server: &Arc<Server>) {
         let _guard = server.runtime.enter();
+        let clock = *CLOCK;
         // Single monotonic base, the schedule is plain nanosecond arithmetic.
         let base = Instant::now();
+        let base_on_clock = base.duration_since(clock).as_nanos() as i64;
         let mut schedule = TickSchedule::new();
         let mut game_test_runner = GameTestRunner::new();
 
@@ -86,6 +100,7 @@ impl Ticker {
             // Deadline for the next wait. Work below may finish late; then the
             // following iteration catch-up-runs with no park.
             schedule.next_tick_nanos += this_tick_nanos;
+            TICK_DEADLINE_NANOS.store(base_on_clock + schedule.next_tick_nanos, Ordering::Relaxed);
 
             manager.tick();
 

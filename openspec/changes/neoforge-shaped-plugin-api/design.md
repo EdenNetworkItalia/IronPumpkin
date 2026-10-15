@@ -128,6 +128,8 @@ There is no hook catalogue, no generated accessor API and no service-seam API of
 - Surface. The surface for NeoForge behaviour is the NeoForge public API of the inventory in this document, and nothing more. No hook, accessor or service seam of IronPumpkin's own is exposed to mods. The one IronPumpkin-only extension is the vanilla `display` entry of block, item and entity type properties, documented as such. The implementation can put internal hooks on Pumpkin methods to fire the events. These hooks are host code, not API: a mod cannot name them, and they can move on any upstream merge.
 - Events. The NeoForge events of the inventory are Pumpkin events (the plugin event system in `crates/pumpkin-core/src/plugin/`: `Payload`, `ModInit::register_event`, `EventPriority`, blocking handlers and cancel) with the same fire sites, fields, cancel and result rules and event names as NeoForge 26.3. A concrete NeoForge class is one struct, and a nested class is flattened with the parent prefix (`ServerTickEventPost`). One event per fire site: where Pumpkin has an event for the fire site, the mapping table maps the NeoForge event to it and the missing fields are added to it (`BlockBreakEvent` for `BreakBlockEvent`), as an upstream parity candidate. A new struct with the NeoForge name exists only where Pumpkin has no event for that fire site. There is no second dispatch layer.
 - Priority. `PluginManager::fire_dyn` (`crates/pumpkin-core/src/plugin/mod.rs`) stores `EventPriority` and never reads it. The dispatch is changed to honour it: blocking handlers sorted by priority, then non-blocking handlers. This is an IronPumpkin change and an upstream parity candidate. The registration also gets the NeoForge `receiveCanceled` flag: a handler does not run for a cancelled event unless it sets the flag. Priority between v0.2 Wasm plugins and native mods then follows from the single dispatch. The reentry depth of 64 of `pumpkin-plugin-runtime` is a limit of Wasm plugins and is not part of the native API.
+- Parent events. A concrete NeoForge class with concrete subclasses is a struct, and each subclass struct names it in `Payload::get_parent_names_static`. A handler on the parent is a `ParentEventHandler` that a mod registers with `ModInit::register_parent_event`: it gets the parent struct and every subclass struct as `dyn Payload` and downcasts it. The dispatch merges the handlers of the subclass and of its parents in one priority order, the subclass handlers first inside one rank. An abstract NeoForge class has no struct, so nobody can listen to it.
+- Guardrail helpers. `PluginManager::fire_with` and `fire_blocking_with` take a closure that builds the event, and call it only when `has_handlers` finds a handler of the event or of a parent.
 - Synchronous handlers. Handlers are synchronous inside the async host of Pumpkin. A handler that needs a world call uses `block_on(unconstrained(..))`, as `ModInit::register_service` does (`crates/ironpumpkin-mods/src/lib.rs`), and never holds a lock across a fire.
 - Lifecycle. The lifecycle events (`FMLCommonSetupEvent`, `FMLLoadCompleteEvent` and the others) are methods of the `NativeMod` trait with a default no-op. `init_mods` calls them in NeoForge order after the last `init`. Inter-mod messages are a queue on `ironpumpkin-mods`. `neoforge.mods.toml` is optional through `NativeMod::mods_toml()`, and the trait methods are the fallback. A mod with a mods.toml uses the NeoForge id charset (FancyModLoader `ModInfo.VALID_MODID`, `^(?=.{2,64}$)[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`), and its registry namespace can differ from its mod id. `init` runs in the load order of FancyModLoader `ModSorter`: the `BEFORE` and `AFTER` orderings of the dependencies, with the mod id as tie-break. The mod list API (`is_loaded`, `get_mods`, the sorted mods and the container by id) lives in `ironpumpkin-mods`.
 - Registration. The M2 builders are the API: `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag` with `content::BlockBuilder` and the other builders (`crates/ironpumpkin-mods/src/content.rs`, backed by `crates/pumpkin-data/src/dynamic.rs`). Entries apply at init and bind at the single freeze. The mapping table maps the typed registers of NeoForge to these functions, and lookups after the freeze go through the frozen tables. `RegistryError::RegistryFrozen` is `registry-frozen` and `RegistryError::Duplicate` is `duplicate`. The `creative_mode_tab` registration is accepted and ignored.
@@ -239,7 +241,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 86 | 176 | 0 | 20 |
+| Events, server and common | 282 | 90 | 172 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 0 | 137 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
@@ -252,20 +254,20 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 6 | 40 | 0 | 41 |
-| Total | 1093 | 107 | 628 | 210 | 148 |
+| Total | 1093 | 111 | 624 | 210 | 148 |
 
 ### Events
 
 Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or common: 282. Client: 189. Abstract classes: 71.
 
-#### `event` (38: 6 supported, 23 planned, 9 not supported)
+#### `event` (38: 5 supported, 24 planned, 9 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | AddAttributeTooltipsEvent | game | both | no | - | not supported | - | tooltip text is built for display; the client renders tooltips from item components |
 | AddPackFindersEvent | mod | both | no | - | planned | datapack manager (`datapack.wit`) | ship the mod data folder as a plugin-bundled datapack |
 | AddServerReloadListenersEvent | game | server | no | - | planned | datapack reload (`datapack-manager.reload`) | needs a reload hook for plugin data |
-| AnvilUpdateEvent | game | both | yes | - | supported | `PrepareAnvilEvent` | fired in `entity/player.rs`; WIT v0.2 |
+| AnvilUpdateEvent | game | both | yes | - | supported | `PrepareAnvilEvent` | fired by `AnvilScreenHandler::update_result` after the vanilla result, with output, level cost and material cost write-back and cancel; test `change_a_settable_field_anvil_update_event`; WIT v0.2 |
 | BlockEntityTypeAddBlocksEvent | mod | both | no | - | planned | block entities (phase 6) | custom block entity types come with phase 6 |
 | BuildCreativeModeTabContentsEvent | mod | both | no | - | not supported | - | creative tab contents are client UI; the server never reads them |
 | CommandEvent | game | server | yes | - | planned | `PlayerCommandPreprocessEvent` | Pumpkin defines PlayerCommandPreprocessEvent but never fires it; ServerCommandEvent for the console |
@@ -274,7 +276,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | GameShuttingDownEvent | game | both | no | - | planned | plugin `on-unload` | Pumpkin calls on-unload; no event |
 | GatherSkippedAttributeTooltipsEvent | game | both | no | - | not supported | - | tooltip display only, see AddAttributeTooltipsEvent |
 | GrindstoneEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| GrindstoneEvent.OnPlaceItem | game | both | yes | - | supported | `PrepareGrindstoneEvent` | fired in `entity/player.rs`; WIT v0.2 |
+| GrindstoneEvent.OnPlaceItem | game | both | yes | - | supported | `PrepareGrindstoneEvent` | fired by `GrindstoneScreenHandler::update_result`, with output and experience write-back and cancel; test `one_event_per_fire_site_grindstone_event_on_place_item`; WIT v0.2 |
 | GrindstoneEvent.OnTakeItem | game | both | yes | - | planned | grindstone screen handler (pumpkin-inventory) | no event when the result is taken |
 | ItemAttributeModifierEvent | game | both | no | - | planned | attribute modifiers data component | needs a hook where Pumpkin reads item attribute modifiers |
 | ItemStackedOnOtherEvent | game | both | yes | - | planned | slot click handling (pumpkin-inventory) | no event for stacking one item onto another in a slot |
@@ -288,18 +290,18 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | RegisterCauldronInteractionEvent (abstract) | mod | both | no | - | planned | shared fields of 2 subclasses | M5 engine extension: abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
 | RegisterCauldronInteractionEvent.Dispatcher | mod | both | no | - | planned | engine extension point (M5) | M5 engine extension: cauldron interactions are hard-coded in the cauldron BlockBehaviour |
 | RegisterCauldronInteractionEvent.Interaction | mod | both | no | - | planned | engine extension point (M5) | M5 engine extension: cauldron interactions are hard-coded in the cauldron BlockBehaviour |
-| RegisterCommandsEvent | game | server | no | - | supported | `Context::register_command` (API, no event) | API call instead of an event |
+| RegisterCommandsEvent | game | server | no | - | supported | `ModInit::register_command` (API, no event) | API call instead of an event; commands are not rebuilt on reload; test `one_event_per_fire_site_register_commands_event` |
 | RegisterGameRuleCategoryEvent | mod | both | no | - | not supported | - | game rule categories group rules in the client UI only |
 | RegisterGameTestsEvent | mod | both | no | - | not supported | - | NeoForge game tests run inside the Java server; pumpkin-gametest is a separate harness |
 | RegisterRecipePropertiesEvent | mod | both | no | - | not supported | - | recipe property sets feed client recipe displays; Pumpkin derives them from generated data |
 | RegisterStructureConversionsEvent | game | both | no | - | not supported | - | converts pre-1.18.2 structure ids; Pumpkin does not upgrade old worlds |
 | RegisterTooltipAppendersEvent | mod | both | no | - | not supported | - | tooltip display only |
-| ServerChatEvent | game | server | yes | - | supported | `PlayerChatEvent` | fired in `net/bedrock/play/chat_message.rs`, `net/java/play/chat_message.rs`; WIT v0.2 |
+| ServerChatEvent | game | server | yes | - | supported | `PlayerChatEvent` | fired in `net/bedrock/play/chat_message.rs`, `net/java/play/chat_message.rs`; `message` is plain text, not a component; test `cancel_server_chat_event`; WIT v0.2 |
 | SortedReloadListenerEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 planned, 1 client-only |
-| StatAwardEvent | game | both | yes | - | supported | `PlayerStatisticIncrementEvent` | fired in `entity/player.rs`; WIT v0.2 |
+| StatAwardEvent | game | both | yes | - | supported | `PlayerStatisticIncrementEvent` | fired in `entity/player.rs`, with stat and amount write-back and cancel; test `one_event_per_fire_site_stat_award_event`; WIT v0.2 |
 | TagsUpdatedEvent | game | both | no | - | planned | datapack reload | concrete parent of the two tag update events |
 | TagsUpdatedEvent.ServerDataLoad | game | server | no | - | planned | datapack reload (`datapack-manager.reload`) | no event after tags reload |
-| VanillaGameEvent | game | both | yes | - | supported | `GenericGameEvent` | fired in `world/mod.rs`; WIT v0.2; BlockReceiveGameEvent covers the listener side |
+| VanillaGameEvent | game | both | yes | - | planned | `GenericGameEvent` | Pumpkin has no vanilla game event dispatch: `World::emit_game_event` fires it from a few call sites and a cancel stops no listener; test `one_event_per_fire_site_vanilla_game_event`; WIT v0.2 |
 
 #### `event.brewing` (4: 1 supported, 3 planned)
 
@@ -308,7 +310,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerBrewedPotionEvent | game | both | no | - | planned | brewing stand screen handler | no event when the potion is taken |
 | PotionBrewEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
 | PotionBrewEvent.Post | game | both | no | - | planned | brewing stand block entity | no post-brew event |
-| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `block/entities/brewing_stand.rs`; WIT v0.2 |
+| PotionBrewEvent.Pre | game | both | yes | - | supported | `BrewEvent` | fired in `block/entities/brewing_stand.rs`; a cancel applies `stacks`; test `one_event_per_fire_site_potion_brew_event_pre`; WIT v0.2 |
 
 #### `event.enchanting` (4: 1 supported, 3 planned)
 
@@ -316,7 +318,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | EnchantedBlockLootEvent | game | server | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
 | EnchantedEntityLootEvent | game | both | no | - | planned | loot table evaluation (`data/datapack/loot_table_loader.rs`) | no hook on enchantment level queries |
-| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired in `entity/player.rs`; WIT v0.2; enchanting table offers |
+| EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired in `entity/player.rs` once for the three rows, after the clues are chosen; test `one_event_per_fire_site_enchantment_events`; WIT v0.2 |
 | GetEnchantmentLevelEvent | game | both | no | - | planned | enchantment level lookup on `ItemStack` | no hook |
 
 #### `event.entity` (21: 8 supported, 13 planned)
@@ -436,7 +438,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerContainerEvent.Close | game | both | no | - | supported | `InventoryCloseEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerContainerEvent.Open | game | both | no | - | supported | `InventoryOpenEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerDestroyItemEvent | game | both | no | - | supported | `PlayerItemBreakEvent` | fired in `entity/player.rs`; WIT v0.2 |
-| PlayerEnchantItemEvent | game | both | no | - | supported | `EnchantItemEvent` | fired in `entity/player.rs`; WIT v0.2 |
+| PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `EnchantingTableScreenHandler::on_button_click` after the enchantments apply; test `one_event_per_fire_site_enchantment_events` |
 | PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 26 supported, 26 planned, 5 not supported, 2 client-only |
 | PlayerEvent.BreakSpeed | game | both | yes | - | planned | mining speed in block breaking | no hook; the client also predicts break speed |
 | PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | no event that pairs the old and the new player |
@@ -534,34 +536,34 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | CropGrowEvent.Post | game | both | no | - | planned | crop random tick | no post-growth event |
 | CropGrowEvent.Pre | game | both | no | setResult(Result) | supported | `BlockGrowEvent` | fired in `block/blocks/plant/crop/mod.rs`; WIT v0.2; NeoForge uses a result; Pumpkin uses cancel |
 
-#### `event.server` (7: 1 supported, 6 planned)
+#### `event.server` (7: 4 supported, 3 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | RegisterRpcSchemaEvent | game | server | no | - | planned | management JSON-RPC server (`net/management/rpc.rs`) | the method set is fixed; no plugin hook adds methods |
 | ServerAboutToStartEvent | game | server | no | - | planned | plugin `on-load` | plugins load before worlds; no separate event |
 | ServerLifecycleEvent (abstract) | game | server | no | - | planned | shared fields of 5 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 4 planned |
-| ServerStartedEvent | game | server | no | - | supported | `ServerLoadEvent` | fired in `lib.rs`; WIT v0.2 |
-| ServerStartingEvent | game | server | no | - | planned | plugin `on-load` | no event between world load and the first tick |
-| ServerStoppedEvent | game | server | no | - | planned | plugin `on-unload` | no event after shutdown |
-| ServerStoppingEvent | game | server | no | - | planned | plugin `on-unload` | no event before shutdown starts |
+| ServerStartedEvent | game | server | no | - | supported | `ServerLoadEvent` | fired in `lib.rs` after the plugins load and before the ticker starts, as on `NeoForge`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
+| ServerStartingEvent | game | server | no | - | supported | `ServerStartingEvent` | fired in `lib.rs` after the worlds load and before the ticker starts; Wasm plugins load later; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| ServerStoppedEvent | game | server | no | - | supported | `ServerStoppedEvent` | fired in `lib.rs` after the worlds save; Wasm plugins are unloaded before it; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| ServerStoppingEvent | game | server | no | - | supported | `ServerStoppingEvent` | fired in `lib.rs` when the server stops accepting connections; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 
-#### `event.tick` (12: 2 supported, 10 planned)
+#### `event.tick` (12: 4 supported, 8 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | EntityTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
 | EntityTickEvent.Post | game | both | no | - | planned | entity tick in `EntityBase` | same cost concern as EntityTickEvent.Pre |
 | EntityTickEvent.Pre | game | both | yes | - | planned | entity tick in `EntityBase` | a call into Wasm per entity per tick is expensive; needs a filter by entity type |
-| LevelTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
-| LevelTickEvent.Post | game | both | no | - | planned | `World` tick | only server-wide tick events exist |
-| LevelTickEvent.Pre | game | both | no | - | planned | `World` tick | only server-wide tick events exist |
+| LevelTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| LevelTickEvent.Post | game | both | no | - | supported | `LevelTickEventPost` | fired in `server/mod.rs` after each world ticks; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
+| LevelTickEvent.Pre | game | both | no | - | supported | `LevelTickEventPre` | fired in `server/mod.rs` before each world ticks; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | PlayerTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
 | PlayerTickEvent.Post | game | both | no | - | planned | `Player` tick | no per-player tick event |
 | PlayerTickEvent.Pre | game | both | no | - | planned | `Player` tick | no per-player tick event |
 | ServerTickEvent (abstract) | game | server | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
-| ServerTickEvent.Post | game | server | no | - | supported | `ServerTickEndEvent` | fired in `server/ticker.rs`; WIT v0.2 |
-| ServerTickEvent.Pre | game | server | no | - | supported | `ServerTickStartEvent` | fired in `server/ticker.rs`; WIT v0.2 |
+| ServerTickEvent.Post | game | server | no | - | supported | `ServerTickEndEvent` | fired in `server/ticker.rs`; `has_time()`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
+| ServerTickEvent.Pre | game | server | no | - | supported | `ServerTickStartEvent` | fired in `server/ticker.rs`; `has_time()`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
 
 #### `event.village` (1: 1 not supported)
 

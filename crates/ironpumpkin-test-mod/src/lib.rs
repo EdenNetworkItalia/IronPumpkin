@@ -1,17 +1,34 @@
 //! Native mod for the boot tests of the root workspace. It registers one block, one item and one
-//! entity type, each with a vanilla display entry, the synced config [`SYNCED_CONFIG`] and the
-//! startup config [`STARTUP_CONFIG`]. A test binary links it by using one of its items, such as
+//! entity type, each with a vanilla display entry, the synced config [`SYNCED_CONFIG`], the
+//! startup config [`STARTUP_CONFIG`], and a handler for each server lifecycle and tick event that
+//! logs [`EVENT_LOG_PREFIX`] and the event name the first time the event fires. A test binary links
+//! it by using one of its items, such as
 //! `use ironpumpkin_test_mod::BLOCK;`, and starts the server with `pumpkin::run`.
 
-use std::sync::Arc;
+use std::{
+    marker::PhantomData,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
     config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     content::{BlockBuilder, EntityTypeBuilder, ItemBuilder, RegistryError},
     entity::{Entity, EntityBase},
+    event::{
+        BoxFuture, EventHandler, EventPriority, Payload,
+        server::{
+            ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
+            ServerTickEndEvent, ServerTickStartEvent,
+        },
+        world::{LevelTickEventPost, LevelTickEventPre},
+    },
     pumpkin_data::{Block, entity::EntityType, item::Item},
     register_mod,
+    server::Server,
     tracing::{error, info},
 };
 
@@ -27,6 +44,8 @@ pub const STARTUP_CONFIG: &str = "test-mod-startup.toml";
 pub const STARTUP_GREETING: &str = "test-mod startup greeting: ";
 /// The log line of the reloading hook for the synced config.
 pub const SYNCED_RELOADED: &str = "test-mod reloaded test-mod-synced.toml";
+/// The start of the log line of an event handler, followed by the `NeoForge` event name.
+pub const EVENT_LOG_PREFIX: &str = "[test-mod] event ";
 
 struct TestMod;
 
@@ -49,6 +68,7 @@ impl NativeMod for TestMod {
         }
         // `ModInit` keeps the first content error, and the server stops on it after `init`.
         let _ = register_content(cx);
+        register_events(cx);
     }
 
     fn config_reloading(&self, config: &ModConfig) {
@@ -86,6 +106,46 @@ fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
 
 fn spawn(entity: Entity) -> Arc<dyn EntityBase> {
     Arc::new(entity)
+}
+
+/// Logs `name` the first time its event fires.
+struct LogOnce<E> {
+    name: &'static str,
+    logged: AtomicBool,
+    _event: PhantomData<fn() -> E>,
+}
+
+impl<E: Payload + Send + Sync + 'static> EventHandler<E> for LogOnce<E> {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        _event: &'a mut E,
+    ) -> BoxFuture<'a, ()> {
+        if !self.logged.swap(true, Ordering::Relaxed) {
+            info!("{EVENT_LOG_PREFIX}{}", self.name);
+        }
+        Box::pin(async {})
+    }
+}
+
+fn log_once<E: Payload + Send + Sync + 'static>(cx: &mut ModInit, name: &'static str) {
+    let handler = Arc::new(LogOnce::<E> {
+        name,
+        logged: AtomicBool::new(false),
+        _event: PhantomData,
+    });
+    cx.register_event::<E, _>(handler, EventPriority::Normal, true, false);
+}
+
+fn register_events(cx: &mut ModInit) {
+    log_once::<ServerStartingEvent>(cx, "ServerStartingEvent");
+    log_once::<ServerLoadEvent>(cx, "ServerStartedEvent");
+    log_once::<ServerTickStartEvent>(cx, "ServerTickEventPre");
+    log_once::<ServerTickEndEvent>(cx, "ServerTickEventPost");
+    log_once::<LevelTickEventPre>(cx, "LevelTickEventPre");
+    log_once::<LevelTickEventPost>(cx, "LevelTickEventPost");
+    log_once::<ServerStoppingEvent>(cx, "ServerStoppingEvent");
+    log_once::<ServerStoppedEvent>(cx, "ServerStoppedEvent");
 }
 
 register_mod!(TestMod);

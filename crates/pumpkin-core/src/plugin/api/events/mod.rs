@@ -46,6 +46,23 @@ pub trait Payload: Send + Sync {
     /// # Returns
     /// A mutable reference to the payload as a `dyn Any` trait object.
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    /// Whether a handler cancelled the event. `#[derive(Event)]` reads the `cancelled` field that
+    /// `#[cancellable]` adds; any other payload is never cancelled.
+    fn is_cancelled(&self) -> bool {
+        false
+    }
+
+    /// The names of the concrete parent events, nearest first. The dispatch also delivers the
+    /// event to the handlers of each parent, as `NeoForge` delivers a subclass to a listener on
+    /// its parent class. A parent handler is a [`ParentEventHandler`](crate::plugin::ParentEventHandler).
+    #[must_use]
+    fn get_parent_names_static() -> &'static [&'static str]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
 }
 
 /// Helper functions for safe downcasting of Payload implementations.
@@ -127,8 +144,9 @@ pub trait Cancellable: Send + Sync {
 }
 /// An enumeration representing the priority levels of events.
 ///
-/// Events with lower priority values are executed first, allowing higher priority events
-/// to override their changes.
+/// The dispatch calls the blocking handlers from `Highest` to `Lowest`, in registration order
+/// inside one priority, and then the non-blocking handlers in the same order, as `NeoForge`
+/// orders `EventPriority`.
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone)]
 pub enum EventPriority {
     /// Highest priority level.

@@ -375,10 +375,11 @@ impl ScreenHandler for EnchantingTableScreenHandler {
             self.inventory.set_stack(1, lapis_stack);
         }
 
-        for (enchant, level) in enchantments {
+        for &(enchant, level) in &enchantments {
             item_stack.add_enchantment(enchant, level as u16);
         }
         self.inventory.set_stack(0, item_stack);
+        player.fire_player_enchant_item_event(self.inventory.as_ref(), &enchantments);
 
         // Update seed
         player.set_enchantment_seed(rand::random());

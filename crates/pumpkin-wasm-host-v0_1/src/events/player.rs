@@ -320,10 +320,17 @@ impl ToFromWasmEvent for PlayerChatEvent {
         })
     }
 
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        let raw_text = std::mem::take(&mut self.raw_text);
+        *self = Self::from_wasm_event(event, state);
+        self.raw_text = raw_text;
+    }
+
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
             Event::PlayerChatEvent(data) => Self {
                 player: consume_player(state, &data.player),
+                raw_text: data.message.clone(),
                 message: data.message,
                 recipients: data
                     .recipients
@@ -2095,10 +2102,13 @@ impl ToFromWasmEvent for PlayerStatisticIncrementEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
+            // `apply_wasm_event` keeps the category and the stat of the native event.
             Event::PlayerStatisticIncrementEvent(data) => Self {
                 player: consume_player(state, &data.player),
                 statistic_id: data.statistic_id,
                 amount: data.amount,
+                category: pumpkin_data::statistic::StatisticCategory::Custom,
+                stat: 0,
                 cancelled: data.cancelled,
             },
             _ => panic!("unexpected event type"),
