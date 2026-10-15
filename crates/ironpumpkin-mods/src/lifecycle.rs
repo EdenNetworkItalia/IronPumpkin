@@ -1,22 +1,37 @@
 //! The mod lifecycle after construction.
 //!
-//! The order is that of `NeoForge` 26.3 `CommonModLoader.load`: common setup, sided setup (`FMLDedicatedServerSetupEvent` on a
-//! dedicated server), enqueue IMC, process IMC, load complete. Each step calls the method of
-//! every mod in load order before the next step starts, and each method runs on its own mod
-//! only, as each `NeoForge` mod has its own mod bus.
+//! The order is that of `NeoForge` 26.3 on a dedicated server. `CommonModLoader.begin` loads the
+//! local configs, then `CommonModLoader.load` runs common setup, sided setup
+//! (`FMLDedicatedServerSetupEvent` on a dedicated server), enqueue IMC, process IMC and load
+//! complete, and `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
+//! step calls the method of every mod in load order before the next step starts, and each method
+//! runs on its own mod only, as each `NeoForge` mod has its own mod bus.
 //!
 //! The server lifecycle events (`ServerAboutToStartEvent`, `ServerStartingEvent` and the others)
 //! are game bus events: a mod registers them as Pumpkin events with
 //! [`ModInit::register_event`](crate::ModInit::register_event).
 
+use std::sync::Arc;
+
 use crate::{
     LoadedMod,
+    config::{self, ConfigType, ModConfig},
     imc::{ImcQueue, InterModEnqueue, InterModProcess},
     mod_list::ModList,
 };
 
-/// Runs the lifecycle steps after the last [`NativeMod::init`](crate::NativeMod::init).
-pub(crate) fn run(mods: &[LoadedMod<'_>], mod_list: &ModList) {
+/// Runs the lifecycle steps after the last [`NativeMod::init`](crate::NativeMod::init), with the
+/// local configs loaded before them and the synced configs after them.
+///
+/// # Errors
+///
+/// Returns the reason when a config cannot load.
+pub(crate) fn run(
+    mods: &[LoadedMod<'_>],
+    mod_list: &ModList,
+    configs: &[Arc<ModConfig>],
+) -> Result<(), String> {
+    config::load(configs, ConfigType::Local)?;
     for loaded in mods {
         loaded.native_mod.common_setup();
     }
@@ -40,19 +55,30 @@ pub(crate) fn run(mods: &[LoadedMod<'_>], mod_list: &ModList) {
     for loaded in mods {
         loaded.native_mod.load_complete();
     }
+    config::load(configs, ConfigType::Synced)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex, OnceLock};
 
     use super::run;
     use crate::{
         LoadedMod, ModInit, NativeMod,
+        config::{ConfigSpec, ConfigType, ModConfig},
         imc::{InterModEnqueue, InterModProcess},
         mod_list::{ModList, system_mods},
         mods_toml::parse,
     };
+
+    fn mod_list(ids: &[&str]) -> ModList {
+        let mut infos = system_mods();
+        for id in ids {
+            let text = format!("license = \"MIT\"\n[[mods]]\nmodId = \"{id}\"\n");
+            infos.push(parse(&text, id, "1").unwrap());
+        }
+        ModList::new(infos)
+    }
 
     static CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
@@ -119,11 +145,7 @@ mod tests {
 
     #[test]
     fn lifecycle_runs_in_neoforge_order_on_each_mod_and_delivers_imc() {
-        let mut infos = system_mods();
-        for id in ["alpha", "beta"] {
-            infos.push(parse(&format!("[[mods]]\nmodId = \"{id}\"\n"), id, "1").unwrap());
-        }
-        let mod_list = ModList::new(infos);
+        let mod_list = mod_list(&["alpha", "beta"]);
         let mods = [
             LoadedMod {
                 native_mod: &ALPHA,
@@ -134,7 +156,7 @@ mod tests {
                 mod_id: "beta",
             },
         ];
-        run(&mods, &mod_list);
+        run(&mods, &mod_list, &[]).unwrap();
         assert_eq!(
             *CALLS.lock().unwrap(),
             [
@@ -149,6 +171,91 @@ mod tests {
                 "inter_mod_process beta",
                 "load_complete alpha",
                 "load_complete beta",
+            ]
+        );
+    }
+
+    static CONFIG_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static LOCAL: OnceLock<Arc<ModConfig>> = OnceLock::new();
+    static SYNCED: OnceLock<Arc<ModConfig>> = OnceLock::new();
+
+    /// Registers a local and a synced config and records what `common_setup` reads from them.
+    struct ConfigMod;
+
+    fn flag_spec() -> ConfigSpec {
+        let mut builder = ConfigSpec::builder();
+        builder.define("flag", true);
+        builder.build().unwrap()
+    }
+
+    impl NativeMod for ConfigMod {
+        fn id(&self) -> &'static str {
+            "configmod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Config mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0"
+        }
+
+        fn init(&self, cx: &mut ModInit) {
+            let local = cx.register_config(ConfigType::Local, flag_spec()).unwrap();
+            let synced = cx.register_config(ConfigType::Synced, flag_spec()).unwrap();
+            LOCAL.set(local).unwrap();
+            SYNCED.set(synced).unwrap();
+        }
+
+        fn common_setup(&self) {
+            let local = LOCAL.get().unwrap().get::<bool>("flag");
+            let synced = SYNCED.get().unwrap().get::<bool>("flag");
+            CONFIG_CALLS
+                .lock()
+                .unwrap()
+                .push(format!("common_setup local {local:?} synced {synced:?}"));
+        }
+
+        fn load_complete(&self) {
+            CONFIG_CALLS
+                .lock()
+                .unwrap()
+                .push("load_complete".to_owned());
+        }
+
+        fn config_loading(&self, config: &ModConfig) {
+            CONFIG_CALLS
+                .lock()
+                .unwrap()
+                .push(format!("config_loading {}", config.config_type()));
+        }
+    }
+
+    static CONFIG_MOD: ConfigMod = ConfigMod;
+
+    /// `CommonModLoader.begin` loads `LOCAL` before `FMLCommonSetupEvent`, and
+    /// `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED` after `FMLLoadCompleteEvent`.
+    #[test]
+    fn local_configs_load_before_common_setup_and_synced_after_load_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = ModInit::new("configmod");
+        init.config_dir = dir.path().join("config");
+        init.owner = Some(&CONFIG_MOD);
+        CONFIG_MOD.init(&mut init);
+        let mod_list = mod_list(&["configmod"]);
+        let mods = [LoadedMod {
+            native_mod: &CONFIG_MOD,
+            mod_id: "configmod",
+        }];
+        run(&mods, &mod_list, &init.configs).unwrap();
+        assert_eq!(
+            *CONFIG_CALLS.lock().unwrap(),
+            [
+                "config_loading local",
+                "common_setup local Ok(true) synced Err(NotLoaded(\"configmod-synced.toml\"))",
+                "load_complete",
+                "config_loading synced",
             ]
         );
     }

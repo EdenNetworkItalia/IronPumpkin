@@ -1,9 +1,14 @@
 //! The `neoforge.mods.toml` of a native mod ([`NativeMod::mods_toml`](crate::NativeMod::mods_toml)).
 //!
-//! The keys and defaults follow `FancyModLoader` 12.0.8 `ModInfo` and `ModInfo.ModVersion`: the
-//! `[[mods]]` entry gives the id, namespace, version, display name, description and authors, and
-//! `[[dependencies.<modId>]]` gives the dependencies. The other keys (`modLoader`,
-//! `loaderVersion`, `mixins`, `accessTransformers`, the client display keys) are read by nothing:
+//! The keys and defaults follow `FancyModLoader` 12.0.8 `ModFileInfo`, `ModInfo` and
+//! `ModInfo.ModVersion`: the `[[mods]]` entry gives the id, namespace, version, display name,
+//! description and authors, and `[[dependencies.<modId>]]` gives the dependencies. `license` must
+//! be set and not blank, as `ModFileInfo` requires ("Missing license"); its value is not kept.
+//!
+//! The host does not read the other keys: `modLoader`, `loaderVersion`, `showAsResourcePack`,
+//! `showAsDataPack`, `services`, `properties`, `issueTrackerURL`, `[[mixins]]`,
+//! `[[accessTransformers]]`; in a `[[mods]]` entry `logoFile`, `logoBlur`, `updateJSONURL`,
+//! `modUrl`, `credits`, `displayURL`, `features`, `modproperties`; in a dependency `referralUrl`.
 //! design.md lists why for each one.
 
 use toml::{Table, Value};
@@ -107,11 +112,14 @@ pub fn is_valid_namespace(namespace: &str) -> bool {
 ///
 /// # Errors
 ///
-/// Returns the reason when the text is not TOML, a key has the wrong type, the entry is missing,
-/// or the mod id, namespace, version, dependency type, ordering, side or version range is
-/// invalid.
+/// Returns the reason when the text is not TOML, a key has the wrong type, the license or the
+/// entry is missing, or the mod id, namespace, version, dependency type, ordering, side or
+/// version range is invalid.
 pub fn parse(text: &str, id: &str, jar_version: &str) -> Result<ModInfo, String> {
     let file: Table = toml::from_str(text).map_err(|err| err.message().to_owned())?;
+    if string(&file, "license")?.is_none_or(|license| license.trim().is_empty()) {
+        return Err("Missing license".to_owned());
+    }
     let entries = tables(&file, "mods")?;
     let entry = match entries
         .iter()
@@ -307,7 +315,7 @@ mod tests {
     #[test]
     fn applies_the_fml_defaults() {
         let info = parse(
-            "[[mods]]\nmodId = \"examplemod\"\nnamespace = \"example\"\nversion = \"${file.jarVersion}\"\n\
+            "license = \"MIT\"\n[[mods]]\nmodId = \"examplemod\"\nnamespace = \"example\"\nversion = \"${file.jarVersion}\"\n\
              [[dependencies.examplemod]]\nmodId = \"geckolib\"\ntype = \"optional\"\n",
             "examplemod",
             "2.1.0",
@@ -327,29 +335,41 @@ mod tests {
 
     #[test]
     fn picks_the_entry_of_the_mod() {
-        let text = "[[mods]]\nmodId = \"first\"\n[[mods]]\nmodId = \"second\"\n";
+        let text = "license = \"MIT\"\n[[mods]]\nmodId = \"first\"\n[[mods]]\nmodId = \"second\"\n";
         assert_eq!(parse(text, "second", "1").unwrap().mod_id, "second");
         let none = parse(text, "third", "1").unwrap_err();
         assert!(none.contains("\"third\""), "{none}");
     }
 
+    const LICENSE: &str = "license = \"MIT\"\n";
+
     #[test]
     fn rejects_invalid_descriptors() {
-        let bad_id = parse("[[mods]]\nmodId = \"My-Mod\"\n", "x", "1").unwrap_err();
+        let parse = |text: &str| parse(&format!("{LICENSE}{text}"), "ok", "1");
+        let bad_id = parse("[[mods]]\nmodId = \"My-Mod\"\n").unwrap_err();
         assert!(bad_id.contains("\"My-Mod\""), "{bad_id}");
-        assert!(parse("[[mods]]\nmodId = \"ok\"\nversion = \"v1\"\n", "ok", "1").is_err());
-        assert!(parse("[[mods]]\nmodId = \"ok\"\nnamespace = \"-x\"\n", "ok", "1").is_err());
-        assert!(parse("license = \"MIT\"\n", "ok", "1").is_err());
+        assert!(parse("[[mods]]\nmodId = \"ok\"\nversion = \"v1\"\n").is_err());
+        assert!(parse("[[mods]]\nmodId = \"ok\"\nnamespace = \"-x\"\n").is_err());
+        assert!(parse("").is_err());
         let ordering =
             "[[mods]]\nmodId = \"ok\"\n[[dependencies.ok]]\nmodId = \"b\"\nordering = \"after\"\n";
-        assert!(
-            parse(ordering, "ok", "1")
-                .unwrap_err()
-                .contains("\"after\"")
-        );
+        assert!(parse(ordering).unwrap_err().contains("\"after\""));
         let range =
             "[[mods]]\nmodId = \"ok\"\n[[dependencies.ok]]\nmodId = \"b\"\nversionRange = \"[1\"\n";
-        assert!(parse(range, "ok", "1").unwrap_err().starts_with("b: "));
+        assert!(parse(range).unwrap_err().starts_with("b: "));
+    }
+
+    /// `ModFileInfo` reads a missing license as "" and rejects a blank one.
+    #[test]
+    fn a_missing_or_blank_license_is_rejected() {
+        let entry = "[[mods]]\nmodId = \"ok\"\n";
+        for license in ["", "license = \"\"\n", "license = \" \"\n"] {
+            assert_eq!(
+                parse(&format!("{license}{entry}"), "ok", "1").unwrap_err(),
+                "Missing license"
+            );
+        }
+        assert!(parse(&format!("{LICENSE}{entry}"), "ok", "1").is_ok());
     }
 
     #[test]

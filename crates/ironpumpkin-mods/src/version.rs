@@ -260,8 +260,9 @@ impl VersionRange {
     ///
     /// # Errors
     ///
-    /// Returns the reason when a bracket is not closed, an exact range is not `[x]`, or a bound
-    /// is missing on both sides.
+    /// Returns the reason when a bracket is not closed, an exact range is not `[x]`, a bound is
+    /// missing on both sides, or the upper bound is below the lower bound (or equal to it in a
+    /// range that excludes a bound).
     pub fn parse(spec: &str) -> Result<Self, String> {
         let mut restrictions = Vec::new();
         let mut rest = spec.trim();
@@ -323,6 +324,15 @@ fn parse_restriction(text: &str, spec: &str) -> Result<Restriction, String> {
     let (lower, upper) = (bound(lower), bound(upper));
     if lower.is_none() && upper.is_none() {
         return Err(format!("a range needs at least one bound: {spec}"));
+    }
+    // `VersionRange.parseRestriction` of maven-artifact 3.9.
+    if let (Some(lower), Some(upper)) = (&lower, &upper) {
+        let order = upper.cmp(lower);
+        if order == Ordering::Less
+            || (order == Ordering::Equal && !(lower_inclusive && upper_inclusive))
+        {
+            return Err(format!("the range defies version ordering: {spec}"));
+        }
     }
     Ok(Restriction {
         lower: lower.map(|version| (version, lower_inclusive)),
@@ -397,5 +407,12 @@ mod tests {
         assert!(VersionRange::parse("[1.0").is_err());
         assert!(VersionRange::parse("(1.0)").is_err());
         assert!(VersionRange::parse("[,]").is_err());
+        assert!(VersionRange::parse("[2.0,1.0]").is_err());
+        assert!(VersionRange::parse("[1.0,1.0)").is_err());
+        assert!(
+            VersionRange::parse("[1.0,1.0]")
+                .unwrap()
+                .contains(&v("1.0"))
+        );
     }
 }

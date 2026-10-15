@@ -134,7 +134,8 @@ mod porting_guide {
 /// A mod compiled into the server binary.
 ///
 /// The lifecycle methods have a default that does nothing. The server calls them after the last
-/// `init`, in the order of [`lifecycle`], each on its own mod.
+/// `init`, in the order of [`lifecycle`], each on its own mod. The config hooks run when a config
+/// loads or reloads ([`config`]).
 pub trait NativeMod: Sync {
     /// Unique id, also the namespace of the mod's commands and permissions. Without a
     /// [`NativeMod::mods_toml`], use only `a-z 0-9 _ . -`.
@@ -173,11 +174,15 @@ pub trait NativeMod: Sync {
     fn inter_mod_process(&self, _imc: &mut InterModProcess) {}
     /// `FMLLoadCompleteEvent`: the last lifecycle step before the first world loads.
     fn load_complete(&self) {}
-    /// Called when a config of this mod has loaded, like `ModConfigEvent.Loading`. See
-    /// [`config`] for when each type loads.
+    /// Called when a config of this mod has loaded, like `ModConfigEvent.Loading`: a startup
+    /// config inside [`ModInit::register_config`], a local config before `common_setup`, a synced
+    /// config after `load_complete`. See [`config`].
     fn config_loading(&self, _config: &config::ModConfig) {}
     /// Called when a config of this mod reloads after an edit of its file, or after
     /// [`ModConfig::save`](config::ModConfig::save), like `ModConfigEvent.Reloading`.
+    ///
+    /// The config hooks of every mod run one at a time. A `save` of the same config from inside
+    /// this method writes the file and does not call this method again.
     fn config_reloading(&self, _config: &config::ModConfig) {}
 }
 
@@ -218,6 +223,8 @@ pub struct ModInit {
     content_error: Option<ContentRegistrationError>,
     config_dir: PathBuf,
     configs: Vec<Arc<config::ModConfig>>,
+    /// The mod whose config hooks run, `None` when a test drives `init` without a server.
+    owner: Option<&'static dyn NativeMod>,
 }
 
 /// The first content registration that failed in a mod's [`NativeMod::init`].
@@ -262,6 +269,7 @@ impl ModInit {
             // `FMLPaths.CONFIGDIR`: the `config` folder in the working directory of the server.
             config_dir: PathBuf::from("config"),
             configs: Vec::new(),
+            owner: None,
         }
     }
 
@@ -611,14 +619,13 @@ fn is_valid_id(id: &str) -> bool {
 /// registration error. [`init_mods`] stops the server on that error.
 #[doc(hidden)]
 pub fn init_mod(native_mod: &dyn NativeMod) -> Result<ModInit, ContentRegistrationError> {
-    init_mod_as(native_mod, native_mod.id())
+    run_init(native_mod, ModInit::new(native_mod.id()))
 }
 
-fn init_mod_as(
+fn run_init(
     native_mod: &dyn NativeMod,
-    mod_id: &'static str,
+    mut init: ModInit,
 ) -> Result<ModInit, ContentRegistrationError> {
-    let mut init = ModInit::new(mod_id);
     native_mod.init(&mut init);
     init.content_error.take().map_or(Ok(init), Err)
 }
@@ -642,7 +649,8 @@ fn native_mod_infos(mods: &[LoadedMod], mod_list: &ModList) -> Vec<NativeModInfo
         .collect()
 }
 
-/// Initializes every linked mod against `server` in load order and then runs the [`lifecycle`].
+/// Initializes every linked mod against `server` in load order, then runs the [`lifecycle`] and
+/// the config loads around it.
 ///
 /// It stops the process if the mods conflict, a dependency is unmet or a mod fails to register
 /// its content. Set as the startup hook of `pumpkin-core`.
@@ -657,13 +665,11 @@ pub fn init_mods(server: &Arc<Server>) {
         let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
             continue;
         };
-        let mut init = init_mod_as(loaded.native_mod, loaded.mod_id)
-            .unwrap_or_else(|err| refuse_to_start(&err));
-        configs.extend(
-            init.configs
-                .drain(..)
-                .map(|config| (config, loaded.native_mod)),
-        );
+        let mut init = ModInit::new(loaded.mod_id);
+        init.owner = Some(loaded.native_mod);
+        let mut init =
+            run_init(loaded.native_mod, init).unwrap_or_else(|err| refuse_to_start(&err));
+        configs.append(&mut init.configs);
         let metadata = PluginMetadata {
             name: info.mod_id.clone(),
             version: info.version.to_string(),
@@ -674,9 +680,7 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         init.apply(&startup::create_context(server, metadata));
     }
-    lifecycle::run(&mods, mod_list);
-    // Local and synced configs load after the lifecycle steps of every mod and before the server
-    // starts, as on a NeoForge server: keep this after the load-complete step.
+    lifecycle::run(&mods, mod_list, &configs).unwrap_or_else(|err| refuse_to_start(&err));
     config::start(server, configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()
@@ -845,18 +849,18 @@ mod tests {
 
     static EXAMPLE: TomlMod = TomlMod(
         "example-mod",
-        "[[mods]]\nmodId = \"examplemod\"\nnamespace = \"example\"\n\
+        "license = \"MIT\"\n[[mods]]\nmodId = \"examplemod\"\nnamespace = \"example\"\n\
          version = \"${file.jarVersion}\"\ndisplayName = \"Example Mod\"\n",
     );
-    static BAD_ID: TomlMod = TomlMod("bad", "[[mods]]\nmodId = \"My-Mod\"\n");
+    static BAD_ID: TomlMod = TomlMod("bad", "license = \"MIT\"\n[[mods]]\nmodId = \"My-Mod\"\n");
     static NEEDS_GECKOLIB: TomlMod = TomlMod(
         "needy",
-        "[[mods]]\nmodId = \"needy\"\n[[dependencies.needy]]\nmodId = \"geckolib\"\n\
+        "license = \"MIT\"\n[[mods]]\nmodId = \"needy\"\n[[dependencies.needy]]\nmodId = \"geckolib\"\n\
          versionRange = \"[4.0,5.0)\"\n",
     );
     static ALPHA_AFTER_ZETA: TomlMod = TomlMod(
         "alpha",
-        "[[mods]]\nmodId = \"alpha\"\n[[dependencies.alpha]]\nmodId = \"zeta\"\n\
+        "license = \"MIT\"\n[[mods]]\nmodId = \"alpha\"\n[[dependencies.alpha]]\nmodId = \"zeta\"\n\
          ordering = \"AFTER\"\n",
     );
     static ZETA: TestMod = TestMod("zeta");

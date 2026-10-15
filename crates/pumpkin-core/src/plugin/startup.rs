@@ -67,7 +67,8 @@ pub trait SyncedConfigSource: Send + Sync {
 
 static SYNCED_CONFIGS: OnceLock<Vec<Arc<dyn SyncedConfigSource>>> = OnceLock::new();
 
-/// Records the synced configs of the native mods, once, in mod id order.
+/// Records the synced configs of the native mods, once, in load order: the mods in load order,
+/// the configs of a mod in registration order.
 ///
 /// # Errors
 ///
@@ -92,7 +93,7 @@ fn check_synced_config_names<'a>(names: impl Iterator<Item = &'a str>) -> Result
     Ok(())
 }
 
-/// The current contents of the synced configs of the native mods in mod id order. Empty before
+/// The current contents of the synced configs of the native mods in load order. Empty before
 /// [`set_synced_configs`].
 #[must_use]
 pub fn synced_configs() -> Vec<SyncedConfig> {

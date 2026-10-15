@@ -248,7 +248,7 @@ mod tests {
 
     fn mod_info(id: &str, version: &str, dependencies: &str) -> ModInfo {
         let text = format!(
-            "[[mods]]\nmodId = \"{id}\"\nversion = \"{version}\"\n{}",
+            "license = \"MIT\"\n[[mods]]\nmodId = \"{id}\"\nversion = \"{version}\"\n{}",
             dependencies.replace("DEP", &format!("[[dependencies.{id}]]"))
         );
         parse(&text, id, version).unwrap()

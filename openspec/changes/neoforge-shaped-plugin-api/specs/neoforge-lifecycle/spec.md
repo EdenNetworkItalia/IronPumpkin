@@ -30,7 +30,7 @@ A mod that has a `neoforge.mods.toml` SHALL use the mod id pattern of FancyModLo
 
 #### Scenario: Other namespace
 - **WHEN** mod `examplemod` sets the namespace `example` in its `[[mods]]` entry
-- **THEN** its content registers under `example:` and the mod list still names the mod `examplemod`
+- **THEN** `ModList::get_mod_container_by_id("examplemod")` returns a `ModInfo` whose `namespace` is `example`, and the mod list still names the mod `examplemod`; the namespace is metadata, and each block, item, entity type or tag keeps the full name that its builder gets
 
 ### Requirement: Dependencies
 A `required` dependency that is missing or outside its Maven version range SHALL stop the server with an error naming the dependency; an `optional` one that is present outside its range and an `incompatible` one that is present in its range SHALL do the same; a `discouraged` one that is present in its range SHALL log a warning; `CLIENT` dependencies SHALL be ignored, as in FancyModLoader 12.0.8 `ModSorter.verifyDependencyVersions`. Status: implemented (#103).

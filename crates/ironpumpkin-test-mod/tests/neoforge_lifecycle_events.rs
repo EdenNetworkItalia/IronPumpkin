@@ -1,5 +1,6 @@
 //! Boots a server with the test mod in a child process, stops it with SIGTERM, and checks that
-//! the test mod's handlers of the server lifecycle and tick events ran, in `NeoForge` order. The
+//! the test mod's lifecycle methods, config loading hooks and handlers of the server lifecycle and
+//! tick events ran, in `NeoForge` order. The
 //! child reruns this test binary with `SERVER_DIR` set and starts the server from that directory.
 #![expect(
     clippy::unwrap_used,
@@ -20,9 +21,16 @@ const TEST_NAME: &str = "neoforge_lifecycle_events";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
 const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
-/// The events in the order `NeoForge` 26.3 fires them: `ServerStartedEvent` before the first
-/// tick, and the level tick inside the server tick.
-const EVENTS: [&str; 8] = [
+/// The events in the order `NeoForge` 26.3 fires them: the local configs load before the common
+/// setup, the synced configs after the load complete, `ServerStartedEvent` before the first tick,
+/// and the level tick inside the server tick.
+const EVENTS: [&str; 14] = [
+    "FMLConstructModEvent",
+    "ModConfigEvent.Loading STARTUP",
+    "ModConfigEvent.Loading LOCAL",
+    "FMLCommonSetupEvent",
+    "FMLLoadCompleteEvent",
+    "ModConfigEvent.Loading SYNCED",
     "ServerStartingEvent",
     "ServerStartedEvent",
     "ServerTickEventPre",

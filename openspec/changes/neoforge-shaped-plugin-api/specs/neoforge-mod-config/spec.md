@@ -57,8 +57,15 @@ A `ConfigType::Synced` config SHALL feed the `neoforge:config_file` payload of t
 - **THEN** the client receives the edited contents
 
 ### Requirement: Startup configs load before registration
-A `ConfigType::Startup` config SHALL be loaded in `ModInit::register_config`, before the host calls the first content registration of a mod, so registration code can read it. `ConfigType::Local` and `ConfigType::Synced` configs SHALL load after the last `init` and the lifecycle steps (`FMLCommonSetupEvent`, `FMLLoadCompleteEvent`) and before the server starts, the order of a NeoForge 26.3 dedicated server. Status: planned (task 2.8).
+A `ConfigType::Startup` config SHALL be loaded in `ModInit::register_config`, before the host calls the first content registration of a mod, so registration code can read it, and its `NativeMod::config_loading` SHALL run before `register_config` returns, like `ConfigTracker.registerConfig`. Status: planned (task 2.8).
 
 #### Scenario: Toggle content
 - **WHEN** a mod reads a startup flag in its `init` before it registers content
 - **THEN** it gets the value from the file, not the default
+
+### Requirement: Local and synced configs load around the lifecycle
+`ConfigType::Local` configs SHALL load after the last `init` and before `common_setup`, as NeoForge 26.3 `CommonModLoader.begin` loads `LOCAL` before `FMLCommonSetupEvent`. `ConfigType::Synced` configs SHALL load after `load_complete` and before the server starts, as `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED`. Status: planned (task 2.8).
+
+#### Scenario: Local config in common setup
+- **WHEN** a mod reads its local config and its synced config in `common_setup`
+- **THEN** it gets the local value from the file, and the synced read fails with `ConfigError::NotLoaded`

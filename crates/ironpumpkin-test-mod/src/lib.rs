@@ -1,14 +1,15 @@
 //! Native mod for the boot tests of the root workspace. It registers one block, one item and one
-//! entity type, each with a vanilla display entry, the synced config [`SYNCED_CONFIG`], the
-//! startup config [`STARTUP_CONFIG`], and a handler for each server lifecycle and tick event that
-//! logs [`EVENT_LOG_PREFIX`] and the event name the first time the event fires. A test binary links
-//! it by using one of its items, such as
+//! entity type, each with a vanilla display entry, the startup config [`STARTUP_CONFIG`], the
+//! local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and a handler for each
+//! server lifecycle and tick event. Its `init`, mod lifecycle methods, config loading hook and
+//! event handlers log [`EVENT_LOG_PREFIX`] and the `NeoForge` event name, an event handler only
+//! the first time its event fires. A test binary links it by using one of its items, such as
 //! `use ironpumpkin_test_mod::BLOCK;`, and starts the server with `pumpkin::run`.
 
 use std::{
     marker::PhantomData,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -41,11 +42,16 @@ pub const SYNCED_CONFIG: &str = "test-mod-synced.toml";
 /// The default file name of the startup config, in `config/`. Its `greeting` is logged from
 /// `init` after [`STARTUP_GREETING`].
 pub const STARTUP_CONFIG: &str = "test-mod-startup.toml";
+/// The default file name of the local config, in `config/`. `common_setup` reads it.
+pub const LOCAL_CONFIG: &str = "test-mod-local.toml";
 pub const STARTUP_GREETING: &str = "test-mod startup greeting: ";
 /// The log line of the reloading hook for the synced config.
 pub const SYNCED_RELOADED: &str = "test-mod reloaded test-mod-synced.toml";
 /// The start of the log line of an event handler, followed by the `NeoForge` event name.
 pub const EVENT_LOG_PREFIX: &str = "[test-mod] event ";
+
+/// The local config, which `common_setup` reads.
+static LOCAL: OnceLock<Arc<ModConfig>> = OnceLock::new();
 
 struct TestMod;
 
@@ -63,12 +69,32 @@ impl NativeMod for TestMod {
     }
 
     fn init(&self, cx: &mut ModInit) {
+        info!("{EVENT_LOG_PREFIX}FMLConstructModEvent");
         if let Err(err) = register_configs(cx) {
             error!("{ID}: {err}");
         }
         // `ModInit` keeps the first content error, and the server stops on it after `init`.
         let _ = register_content(cx);
         register_events(cx);
+    }
+
+    fn common_setup(&self) {
+        info!("{EVENT_LOG_PREFIX}FMLCommonSetupEvent");
+        // NeoForge loads the local configs before the common setup.
+        if let Some(Err(err)) = LOCAL.get().map(|local| local.get::<bool>("verbose")) {
+            error!("{ID}: the common setup cannot read {LOCAL_CONFIG}: {err}");
+        }
+    }
+
+    fn load_complete(&self) {
+        info!("{EVENT_LOG_PREFIX}FMLLoadCompleteEvent");
+    }
+
+    fn config_loading(&self, config: &ModConfig) {
+        info!(
+            "{EVENT_LOG_PREFIX}ModConfigEvent.Loading {}",
+            config.config_type().extension().to_ascii_uppercase()
+        );
     }
 
     fn config_reloading(&self, config: &ModConfig) {
@@ -83,6 +109,12 @@ fn register_configs(cx: &mut ModInit) -> Result<(), ConfigError> {
         .define("greeting", "hello".to_owned());
     let startup = cx.register_config(ConfigType::Startup, startup.build()?)?;
     info!("{STARTUP_GREETING}{}", startup.get::<String>("greeting")?);
+
+    let mut local = ConfigSpec::builder();
+    local
+        .comment(" Read by the common setup")
+        .define("verbose", false);
+    let _ = LOCAL.set(cx.register_config(ConfigType::Local, local.build()?)?);
 
     let mut synced = ConfigSpec::builder();
     synced.comment(" General settings").push("general");

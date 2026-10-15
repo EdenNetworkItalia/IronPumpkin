@@ -17,7 +17,7 @@
 //!     builder.pop();
 //!     let Ok(spec) = builder.build() else { return };
 //!     if let Ok(config) = cx.register_config(ConfigType::Synced, spec) {
-//!         // A synced config loads after the last `init`: keep `config` and read it later.
+//!         // A synced config loads after `load_complete`: keep `config` and read it later.
 //!         let _ = config;
 //!     }
 //! }
@@ -37,31 +37,43 @@
 //! While the server runs, the host checks the files every `mod_config_reload_ticks` ticks
 //! (`pumpkin.toml`, 100 by default, 0 turns it off) and reloads a file that changed. This replaces
 //! the file watcher of `FancyModLoader` (`ConfigWatcher`). A reload calls
-//! [`NativeMod::config_reloading`](crate::NativeMod::config_reloading).
+//! [`NativeMod::config_reloading`](crate::NativeMod::config_reloading). The host reads at most
+//! 1 MiB of a file: a larger file fails to load.
 //!
 //! # When each type loads
 //!
-//! - [`ConfigType::Startup`] loads in [`ModInit::register_config`], like `ConfigTracker.registerConfig`,
-//!   so `init` reads it before it registers content.
-//! - [`ConfigType::Local`] and [`ConfigType::Synced`] load at the end of `init_mods`, after the
-//!   last `init` and the lifecycle steps, and before the server starts and the first world loads.
-//!   A `NeoForge` 26.3 dedicated server has the same order (trace of the parity harness,
-//!   `tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`): construct,
-//!   `RegisterEvent`, `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
-//!   `RegisterPayloadHandlersEvent`, then `ModConfigEvent.Loading` of the synced config, then
-//!   `ServerAboutToStartEvent`. `CommonModLoader` loads `LOCAL` in its "Config loading" step and
-//!   `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED`.
+//! The order is that of `NeoForge` 26.3 on a dedicated server:
 //!
-//! [`NativeMod::config_loading`](crate::NativeMod::config_loading) runs for every config after it
-//! loads; for a startup config, after `init` returns.
+//! 1. [`ConfigType::Startup`] loads in [`ModInit::register_config`], like
+//!    `ConfigTracker.registerConfig`, so `init` reads it before it registers content.
+//! 2. [`ConfigType::Local`] loads after the last `init` and before `common_setup`, as
+//!    `CommonModLoader.begin` loads `LOCAL` after the registries and before
+//!    `FMLCommonSetupEvent`. `common_setup` reads it.
+//! 3. [`ConfigType::Synced`] loads after `load_complete` and before the server starts, as
+//!    `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED`. The parity harness trace
+//!    (`tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`) shows
+//!    `FMLLoadCompleteEvent`, then `ModConfigEvent.Loading` of the synced config, then
+//!    `ServerAboutToStartEvent`.
+//!
+//! [`NativeMod::config_loading`](crate::NativeMod::config_loading) runs for every config when it
+//! loads: for a startup config, before `register_config` returns.
+//!
+//! # Hooks
+//!
+//! The config hooks run one at a time, under one lock for every mod (`FancyModLoader` takes one
+//! lock per mod), so a poll reload and a [`ModConfig::save`] on another thread never overlap. A
+//! `save` from inside a hook of the same config writes the file and does not call the hook
+//! again, so a reloading hook that saves does not recurse.
 
 use std::{
+    cell::RefCell,
     collections::BTreeSet,
     fmt::{self, Write as _},
-    fs, io,
+    fs,
+    io::{self, Read as _},
     path::{Component, Path, PathBuf},
     sync::{
-        Arc, Mutex, OnceLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
+        Arc, Mutex, MutexGuard, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard,
         atomic::{AtomicU32, Ordering},
     },
     time::SystemTime,
@@ -82,10 +94,11 @@ use crate::{ModInit, NativeMod, server::Server};
 /// `FancyModLoader` also has `CLIENT`, which a dedicated server never loads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ConfigType {
-    /// Loaded on each side and never synced, like `ModConfig.Type.LOCAL`.
+    /// Loaded on each side and never synced, like `ModConfig.Type.LOCAL`. Loaded before
+    /// `common_setup`.
     Local,
     /// Sent to every `NeoForge` client during configuration as `neoforge:config_file`, like
-    /// `ModConfig.Type.SYNCED`.
+    /// `ModConfig.Type.SYNCED`. Loaded after `load_complete`.
     Synced,
     /// Loaded at registration, before the mod registers content, like `ModConfig.Type.STARTUP`.
     /// Never synced: a value that changes content must agree with the client by other means.
@@ -123,7 +136,8 @@ pub enum ConfigError {
     InvalidSpec(String),
     /// Another config already uses this file.
     Duplicate(String),
-    /// The config has not loaded yet: a local or synced config loads after the last `init`.
+    /// The config has not loaded yet: a local config loads after the last `init`, a synced
+    /// config after `load_complete`.
     NotLoaded(String),
     /// The file cannot be read or written.
     Io { path: PathBuf, reason: String },
@@ -159,8 +173,15 @@ pub trait TomlValue: Sized {
 }
 
 impl TomlValue for bool {
+    /// Also accepts the strings `"true"` and `"false"` in any case, like the validator of
+    /// `ModConfigSpec.Builder.define(String, boolean)`.
     fn from_toml(value: &Value) -> Option<Self> {
-        value.as_bool()
+        match value {
+            Value::Boolean(value) => Some(*value),
+            Value::String(text) if text.eq_ignore_ascii_case("true") => Some(true),
+            Value::String(text) if text.eq_ignore_ascii_case("false") => Some(false),
+            _ => None,
+        }
     }
 
     fn into_toml(self) -> Value {
@@ -477,9 +498,13 @@ fn split(path: &str) -> Vec<String> {
 }
 
 impl ConfigSpecBuilder {
-    /// Adds a comment line for the next value or section. A line is written as `#<line>`.
-    pub fn comment(&mut self, line: impl Into<String>) -> &mut Self {
-        self.pending.comment.push(line.into());
+    /// Adds a comment for the next value or section. Each line of the comment is written as
+    /// `#<line>`.
+    pub fn comment(&mut self, comment: impl Into<String>) -> &mut Self {
+        let comment = comment.into();
+        self.pending
+            .comment
+            .extend(comment.split('\n').map(|line| line.replace('\r', "")));
         self
     }
 
@@ -738,6 +763,9 @@ fn stamp(path: &Path) -> Stamp {
     Some((metadata.modified().ok()?, metadata.len()))
 }
 
+/// The largest config file the host reads, in bytes.
+const MAX_FILE_SIZE: usize = 1 << 20;
+
 #[derive(Default)]
 struct State {
     /// `None` until the config loads.
@@ -746,7 +774,6 @@ struct State {
     pinned: Vec<Option<Value>>,
     /// The file as the host last read or wrote it, which is also the synced body.
     text: String,
-    stamp: Stamp,
 }
 
 /// A registered config of a mod with its loaded values, like `ModConfig` and its
@@ -757,8 +784,13 @@ pub struct ModConfig {
     file_name: String,
     path: PathBuf,
     spec: ConfigSpec,
+    /// Held only to read or swap the values, never across file I/O: the `SyncConfig` task reads
+    /// the text from a Tokio worker.
     state: RwLock<State>,
-    owner: OnceLock<&'static dyn NativeMod>,
+    /// Serialises the reads and writes of the file. It holds the stamp taken before the host last
+    /// read or wrote the file, so an edit during that I/O shows at the next poll.
+    disk: Mutex<Stamp>,
+    owner: Option<&'static dyn NativeMod>,
 }
 
 impl fmt::Debug for ModConfig {
@@ -806,6 +838,10 @@ impl ModConfig {
 
     fn write_state(&self) -> RwLockWriteGuard<'_, State> {
         self.state.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn lock_disk(&self) -> MutexGuard<'_, Stamp> {
+        self.disk.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     fn convert<T: TomlValue>(&self, index: usize, value: &Value) -> Result<T, ConfigError> {
@@ -872,23 +908,30 @@ impl ModConfig {
         Ok(())
     }
 
-    /// Writes the values to the file with the comments of the spec, then calls the reloading hook
-    /// of the mod, like `ModConfigSpec.save`.
+    /// Writes the values to the file with the comments of the spec, then calls
+    /// [`NativeMod::config_reloading`] of the mod, like `ModConfigSpec.save`.
+    ///
+    /// A `save` from inside a hook of this same config writes the file but does not call the hook
+    /// again, so a reloading hook that saves does not recurse (see the [module](crate::config)).
     ///
     /// # Errors
     ///
     /// [`ConfigError::NotLoaded`] or [`ConfigError::Io`].
     pub fn save(&self) -> Result<(), ConfigError> {
-        let mut state = self.write_state();
-        let values = state
-            .values
-            .as_ref()
-            .ok_or_else(|| ConfigError::NotLoaded(self.file_name.clone()))?;
-        let text = self.spec.write(values);
+        let mut disk = self.lock_disk();
+        let text = {
+            let state = self.read_state();
+            let values = state
+                .values
+                .as_ref()
+                .ok_or_else(|| ConfigError::NotLoaded(self.file_name.clone()))?;
+            self.spec.write(values)
+        };
+        let before = stamp(&self.path);
         self.write_file(&text)?;
-        state.stamp = stamp(&self.path);
-        state.text = text;
-        drop(state);
+        *disk = before;
+        self.write_state().text = text;
+        drop(disk);
         self.fire(|owner, config| owner.config_reloading(config));
         Ok(())
     }
@@ -910,6 +953,26 @@ impl ModConfig {
         fs::write(&temporary, text)
             .and_then(|()| fs::rename(&temporary, &self.path))
             .map_err(|error| self.io_error(&error))
+    }
+
+    /// The bytes of the file, or `None` when it does not exist.
+    fn read_file(&self) -> Result<Option<Vec<u8>>, ConfigError> {
+        let file = match fs::File::open(&self.path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(self.io_error(&error)),
+        };
+        let mut bytes = Vec::new();
+        file.take(MAX_FILE_SIZE as u64 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| self.io_error(&error))?;
+        if bytes.len() > MAX_FILE_SIZE {
+            return Err(ConfigError::Io {
+                path: self.path.clone(),
+                reason: format!("the file is larger than {MAX_FILE_SIZE} bytes"),
+            });
+        }
+        Ok(Some(bytes))
     }
 
     /// Copies the file to `<stem>-1.<ext>.bak` and shifts older backups up to five, like
@@ -942,20 +1005,17 @@ impl ModConfig {
         }
     }
 
-    /// Reads the file, corrects it and rewrites it when it differs, like
-    /// `ConfigTracker.loadConfig`.
-    fn load_into(&self, state: &mut State) -> Result<(), ConfigError> {
-        // `None`: no file. `Some(None)`: a file that is not UTF-8.
-        let on_disk: Option<Option<String>> = match fs::read(&self.path) {
-            Ok(bytes) => Some(String::from_utf8(bytes).ok()),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(self.io_error(&error)),
-        };
-        let parsed = on_disk
-            .as_ref()
-            .map(|text| text.as_deref().and_then(|text| text.parse::<Table>().ok()));
-        let values = match &parsed {
-            Some(Some(table)) => self.spec.correct(table),
+    /// The corrected values of the file bytes and the text the file must hold, like
+    /// `ConfigTracker.loadConfig`. A missing file, or one that is not UTF-8 TOML, gets the
+    /// defaults.
+    fn corrected(&self, on_disk: Option<&[u8]>) -> (Vec<Value>, String) {
+        let parsed = on_disk.map(|bytes| {
+            str::from_utf8(bytes)
+                .ok()
+                .and_then(|text| text.parse::<Table>().ok())
+        });
+        let values = match parsed {
+            Some(Some(table)) => self.spec.correct(&table),
             Some(None) => {
                 warn!(
                     "[ironpumpkin] the config file {} is not valid TOML; recreating it",
@@ -965,19 +1025,28 @@ impl ModConfig {
             }
             None => self.spec.defaults(),
         };
-        let canonical = self.spec.write(&values);
-        if let Some(text) = &on_disk {
-            if text.as_deref() != Some(canonical.as_str()) {
+        let text = self.spec.write(&values);
+        (values, text)
+    }
+
+    /// Writes `text` when the file does not hold it, after a backup of the old file.
+    fn rewrite(&self, on_disk: Option<&[u8]>, text: &str) -> Result<(), ConfigError> {
+        match on_disk {
+            Some(bytes) if bytes == text.as_bytes() => Ok(()),
+            Some(_) => {
                 warn!(
                     "[ironpumpkin] the config file {} is not correct; correcting it",
                     self.path.display()
                 );
                 self.back_up();
-                self.write_file(&canonical)?;
+                self.write_file(text)
             }
-        } else {
-            self.write_file(&canonical)?;
+            None => self.write_file(text),
         }
+    }
+
+    fn apply(&self, values: Vec<Value>, text: String) {
+        let mut state = self.write_state();
         if state.values.is_none() {
             state.pinned = self
                 .spec
@@ -988,43 +1057,97 @@ impl ModConfig {
                 .collect();
         }
         state.values = Some(values);
-        state.stamp = stamp(&self.path);
-        state.text = canonical;
-        Ok(())
+        state.text = text;
     }
 
+    /// Reads the file, corrects it and rewrites it when it differs, like
+    /// `ConfigTracker.loadConfig`.
     fn load(&self) -> Result<(), ConfigError> {
-        let mut state = self.write_state();
-        self.load_into(&mut state)
+        let mut disk = self.lock_disk();
+        let before = stamp(&self.path);
+        let on_disk = self.read_file()?;
+        let (values, text) = self.corrected(on_disk.as_deref());
+        self.rewrite(on_disk.as_deref(), &text)?;
+        *disk = before;
+        // Swap the values under the disk lock, so a `save` never writes values older than the file.
+        self.apply(values, text);
+        drop(disk);
+        Ok(())
     }
 
     /// Reloads the file if it changed on disk since the host last read or wrote it. Returns
     /// whether it reloaded.
+    ///
+    /// When the host cannot rewrite a corrected file, as on a read-only mount, the corrected
+    /// values apply and the host tries again only after the next edit of the file.
     fn reload_if_changed(&self) -> Result<bool, ConfigError> {
-        let now = stamp(&self.path);
-        {
-            let state = self.read_state();
-            if state.values.is_none() || state.stamp == now {
-                return Ok(false);
-            }
+        let mut disk = self.lock_disk();
+        let before = stamp(&self.path);
+        if *disk == before || self.read_state().values.is_none() {
+            return Ok(false);
         }
-        let mut state = self.write_state();
-        if fs::read(&self.path).is_ok_and(|bytes| bytes == state.text.as_bytes()) {
-            state.stamp = now;
+        *disk = before;
+        let on_disk = self.read_file()?;
+        let unchanged = {
+            let state = self.read_state();
+            on_disk.as_deref() == Some(state.text.as_bytes())
+        };
+        if unchanged {
             return Ok(false);
         }
         info!(
             "[ironpumpkin] the config file {} changed; reloading it",
             self.path.display()
         );
-        self.load_into(&mut state)?;
+        let (values, text) = self.corrected(on_disk.as_deref());
+        if let Err(error) = self.rewrite(on_disk.as_deref(), &text) {
+            error!(
+                "[ironpumpkin] cannot correct the config file: {error}; the corrected values \
+                 apply until the file changes again"
+            );
+        }
+        self.apply(values, text);
+        drop(disk);
         Ok(true)
     }
 
+    /// Calls `hook` on the mod that registered this config. The hooks of every config run one at
+    /// a time; a hook of this config that runs on this thread already makes this a no-op.
     fn fire(&self, hook: impl FnOnce(&dyn NativeMod, &Self)) {
-        if let Some(owner) = self.owner.get() {
-            hook(*owner, self);
+        let Some(owner) = self.owner else {
+            return;
+        };
+        let address = std::ptr::from_ref(self).addr();
+        let (nested, outermost) =
+            FIRING.with_borrow(|firing| (firing.contains(&address), firing.is_empty()));
+        if nested {
+            return;
         }
+        // A hook that saves another config already holds the lock on this thread.
+        let _serial = outermost.then(|| HOOKS.lock().unwrap_or_else(PoisonError::into_inner));
+        FIRING.with_borrow_mut(|firing| firing.push(address));
+        let _firing = Firing;
+        hook(owner, self);
+    }
+}
+
+/// Serialises the config hooks of every mod, like the lock of `ModConfig` in `FancyModLoader`:
+/// a poll reload and a `save` on another thread never run a hook at the same time.
+static HOOKS: Mutex<()> = Mutex::new(());
+
+thread_local! {
+    /// The configs, by address, whose hook runs on this thread.
+    static FIRING: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Removes the innermost entry of [`FIRING`] when the hook returns or panics.
+struct Firing;
+
+impl Drop for Firing {
+    fn drop(&mut self) {
+        FIRING.with_borrow_mut(|firing| {
+            firing.pop();
+        });
     }
 }
 
@@ -1040,6 +1163,10 @@ impl SyncedConfigSource for ModConfig {
 
 /// The files of every registered config, so that two configs never share one.
 static FILES: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
+fn files() -> MutexGuard<'static, BTreeSet<PathBuf>> {
+    FILES.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn check_file_name(file_name: &str) -> Result<(), ConfigError> {
     let relative = Path::new(file_name)
@@ -1101,11 +1228,7 @@ impl ModInit {
             )));
         }
         let path = self.config_dir.join(&file_name);
-        if !FILES
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(path.clone())
-        {
+        if !files().insert(path.clone()) {
             return Err(ConfigError::Duplicate(file_name));
         }
         let config = Arc::new(ModConfig {
@@ -1115,10 +1238,17 @@ impl ModInit {
             path,
             spec,
             state: RwLock::new(State::default()),
-            owner: OnceLock::new(),
+            disk: Mutex::new(None),
+            owner: self.owner,
         });
         if config_type == ConfigType::Startup {
-            config.load()?;
+            if let Err(error) = config.load() {
+                files().remove(&config.path);
+                return Err(error);
+            }
+            // `ConfigTracker.registerConfig` loads a startup config and posts its loading event
+            // before it returns.
+            config.fire(|owner, config| owner.config_loading(config));
         }
         self.configs.push(config.clone());
         Ok(config)
@@ -1133,6 +1263,16 @@ struct Poller {
 }
 
 impl Poller {
+    /// The poller of `configs`, or `None` when the polling is off (`interval` 0) or there is no
+    /// config.
+    fn new(configs: Vec<Arc<ModConfig>>, interval: u32) -> Option<Self> {
+        (interval > 0 && !configs.is_empty()).then(|| Self {
+            configs,
+            interval,
+            ticks: AtomicU32::new(0),
+        })
+    }
+
     fn tick(&self) {
         let ticks = self.ticks.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
         if !ticks.is_multiple_of(self.interval) {
@@ -1159,13 +1299,26 @@ impl EventHandler<ServerTickEndEvent> for Poller {
     }
 }
 
-/// Loads the local and synced configs after the last `init`, calls the loading hooks, publishes
-/// the synced configs to the `SyncConfig` configuration task and starts the polling.
-pub(crate) fn start(
-    server: &Arc<Server>,
-    configs: Vec<(Arc<ModConfig>, &'static dyn NativeMod)>,
-) -> Result<(), String> {
-    let configs = load_all(configs)?;
+/// Loads the configs of `config_type` in registration order and calls the loading hook of each.
+pub(crate) fn load(configs: &[Arc<ModConfig>], config_type: ConfigType) -> Result<(), String> {
+    for config in configs
+        .iter()
+        .filter(|config| config.config_type == config_type)
+    {
+        config.load().map_err(|error| {
+            format!(
+                "native mod \"{}\" cannot load its config: {error}",
+                config.mod_id
+            )
+        })?;
+        config.fire(|owner, config| owner.config_loading(config));
+    }
+    Ok(())
+}
+
+/// Publishes the synced configs to the `SyncConfig` configuration task and starts the polling of
+/// every config. Runs after [`load`] of the synced configs.
+pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) -> Result<(), String> {
     startup::set_synced_configs(
         configs
             .iter()
@@ -1173,40 +1326,14 @@ pub(crate) fn start(
             .map(|config| config.clone() as Arc<dyn SyncedConfigSource>)
             .collect(),
     )?;
-    let interval = server.basic_config.mod_config_reload_ticks;
-    if interval > 0 && !configs.is_empty() {
+    if let Some(poller) = Poller::new(configs, server.basic_config.mod_config_reload_ticks) {
         server.plugin_manager.register::<ServerTickEndEvent, _>(
-            Arc::new(Poller {
-                configs,
-                interval,
-                ticks: AtomicU32::new(0),
-            }),
+            Arc::new(poller),
             EventPriority::Normal,
             false,
         );
     }
     Ok(())
-}
-
-fn load_all(
-    configs: Vec<(Arc<ModConfig>, &'static dyn NativeMod)>,
-) -> Result<Vec<Arc<ModConfig>>, String> {
-    configs
-        .into_iter()
-        .map(|(config, owner)| {
-            let _ = config.owner.set(owner);
-            if config.config_type != ConfigType::Startup {
-                config.load().map_err(|error| {
-                    format!(
-                        "native mod \"{}\" cannot load its config: {error}",
-                        config.mod_id
-                    )
-                })?;
-            }
-            config.fire(|owner, config| owner.config_loading(config));
-            Ok(config)
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -1216,15 +1343,15 @@ mod tests {
         path::Path,
         sync::{
             Arc,
-            atomic::{AtomicU32, AtomicUsize, Ordering},
+            atomic::{AtomicUsize, Ordering},
         },
     };
 
     use toml::{Table, Value};
 
     use super::{
-        ConfigEnum, ConfigError, ConfigSpec, ConfigType, ModConfig, Poller, SyncedConfigSource,
-        load_all,
+        ConfigEnum, ConfigError, ConfigSpec, ConfigType, MAX_FILE_SIZE, ModConfig, Poller,
+        SyncedConfigSource, load,
     };
     use crate::{ModInit, NativeMod};
 
@@ -1517,10 +1644,13 @@ mod tests {
     fn an_edit_reloads_within_the_interval_and_changes_the_synced_body() {
         let dir = tempfile::tempdir().unwrap();
         let mut init = init_in(dir.path(), "hookmod");
+        init.owner = Some(&HOOK_MOD);
         let config = init
             .register_config(ConfigType::Synced, general_spec())
             .unwrap();
-        let configs = load_all(vec![(config.clone(), &HOOK_MOD)]).unwrap();
+        load(&init.configs, ConfigType::Local).unwrap();
+        assert_eq!(LOADINGS.load(Ordering::Relaxed), 0);
+        load(&init.configs, ConfigType::Synced).unwrap();
         assert_eq!(LOADINGS.load(Ordering::Relaxed), 1);
         let file = fs::read(config.path()).unwrap();
         assert_eq!(*config.contents(), *file);
@@ -1529,11 +1659,7 @@ mod tests {
             .unwrap()
             .replace("damage = 10", "damage = 7");
         fs::write(config.path(), &edited).unwrap();
-        let poller = Poller {
-            configs,
-            interval: 3,
-            ticks: AtomicU32::new(0),
-        };
+        let poller = Poller::new(init.configs.clone(), 3).unwrap();
         poller.tick();
         poller.tick();
         assert_eq!(config.get::<i64>("general.damage"), Ok(10));
@@ -1552,7 +1678,164 @@ mod tests {
             poller.tick();
         }
         assert_eq!(RELOADINGS.load(Ordering::Relaxed), 1);
-        assert!(Arc::strong_count(&config) >= 2);
+        assert!(Arc::ptr_eq(&poller.configs[0], &config));
+    }
+
+    #[test]
+    fn no_poller_without_an_interval_or_a_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = init_in(dir.path(), "pollmod");
+        init.register_config(ConfigType::Synced, general_spec())
+            .unwrap();
+        // `mod_config_reload_ticks = 0` turns the polling off: no tick handler is registered.
+        assert!(Poller::new(init.configs.clone(), 0).is_none());
+        assert!(Poller::new(Vec::new(), 100).is_none());
+        assert!(Poller::new(init.configs.clone(), 100).is_some());
+    }
+
+    static SAVES: AtomicUsize = AtomicUsize::new(0);
+
+    /// Saves its config again from the reloading hook.
+    struct SaveMod;
+
+    impl NativeMod for SaveMod {
+        fn id(&self) -> &'static str {
+            "savehookmod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Save hook mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0.0"
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+
+        fn config_reloading(&self, config: &ModConfig) {
+            SAVES.fetch_add(1, Ordering::Relaxed);
+            config.save().unwrap();
+        }
+    }
+
+    static SAVE_MOD: SaveMod = SaveMod;
+
+    #[test]
+    fn save_calls_the_reloading_hook_once_even_when_the_hook_saves() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = init_in(dir.path(), "savehookmod");
+        init.owner = Some(&SAVE_MOD);
+        let config = init
+            .register_config(ConfigType::Local, general_spec())
+            .unwrap();
+        load(&init.configs, ConfigType::Local).unwrap();
+        config.set("general.damage", 20i64).unwrap();
+        config.save().unwrap();
+        assert_eq!(SAVES.load(Ordering::Relaxed), 1);
+        config.save().unwrap();
+        assert_eq!(SAVES.load(Ordering::Relaxed), 2);
+        assert_eq!(table(&config)["general"]["damage"], Value::Integer(20));
+    }
+
+    #[test]
+    fn a_comment_with_line_breaks_writes_one_comment_line_each() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut builder = ConfigSpec::builder();
+        builder
+            .comment(" first\r\n second\nthird")
+            .define("value", 1i64);
+        let mut init = init_in(dir.path(), "commentmod");
+        let config = init
+            .register_config(ConfigType::Startup, builder.build().unwrap())
+            .unwrap();
+        let text = fs::read_to_string(config.path()).unwrap();
+        assert_eq!(text, "# first\n# second\n#third\nvalue = 1\n");
+        assert_eq!(table(&config)["value"], Value::Integer(1));
+    }
+
+    #[test]
+    fn a_boolean_accepts_the_strings_true_and_false() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("boolmod-startup.toml"),
+            "[general]\nenabled = \"FALSE\"\n",
+        )
+        .unwrap();
+        let mut init = init_in(dir.path(), "boolmod");
+        let config = init
+            .register_config(ConfigType::Startup, general_spec())
+            .unwrap();
+        assert_eq!(config.get::<bool>("general.enabled"), Ok(false));
+        assert!(config.set("general.enabled", "maybe".to_owned()).is_err());
+    }
+
+    #[test]
+    fn a_failed_startup_load_releases_the_file_name() {
+        let dir = tempfile::tempdir().unwrap();
+        // A file where the config folder should be makes the load fail.
+        fs::write(dir.path().join("config"), "").unwrap();
+        let mut init = init_in(dir.path(), "retrymod");
+        let error = init
+            .register_config(ConfigType::Startup, general_spec())
+            .unwrap_err();
+        assert!(matches!(error, ConfigError::Io { .. }), "{error}");
+        fs::remove_file(dir.path().join("config")).unwrap();
+        assert!(
+            init.register_config(ConfigType::Startup, general_spec())
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_file_larger_than_the_limit_does_not_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = dir.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        let mut text = "# padding\n".repeat(MAX_FILE_SIZE / 10 + 1);
+        text.push_str("value = 2\n");
+        fs::write(config_dir.join("bigmod-startup.toml"), text).unwrap();
+        let mut builder = ConfigSpec::builder();
+        builder.define("value", 1i64);
+        let mut init = init_in(dir.path(), "bigmod");
+        let error = init
+            .register_config(ConfigType::Startup, builder.build().unwrap())
+            .unwrap_err();
+        assert!(matches!(error, ConfigError::Io { .. }), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_file_that_cannot_be_rewritten_is_read_once_per_edit() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = init_in(dir.path(), "readonlymod");
+        let config = init
+            .register_config(ConfigType::Local, general_spec())
+            .unwrap();
+        load(&init.configs, ConfigType::Local).unwrap();
+        let config_dir = dir.path().join("config");
+        let edited = fs::read_to_string(config.path())
+            .unwrap()
+            .replace("damage = 10", "damage = 500");
+        fs::write(config.path(), edited).unwrap();
+        // The folder is read-only, so the corrected file cannot replace the edited one.
+        fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o555)).unwrap();
+        let writable = fs::write(config_dir.join("probe"), "").is_ok();
+        let first = config.reload_if_changed();
+        let second = config.reload_if_changed();
+        fs::set_permissions(&config_dir, fs::Permissions::from_mode(0o755)).unwrap();
+        if writable {
+            // A root user writes through the permissions: nothing to check.
+            return;
+        }
+        assert_eq!(first, Ok(true));
+        assert_eq!(config.get::<i64>("general.damage"), Ok(100));
+        // No new edit: the host neither reads the file again nor retries the write.
+        assert_eq!(second, Ok(false));
     }
 
     static STARTUP_FLAG: AtomicUsize = AtomicUsize::new(0);
