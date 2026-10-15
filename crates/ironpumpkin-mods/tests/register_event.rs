@@ -2,15 +2,16 @@
 //! the frozen tables (`openspec/changes/neoforge-shaped-plugin-api`, spec
 //! `neoforge-registration`). The server runs `init_mods` as its startup hook and freezes the
 //! content registry once per process, so this file is its own test binary. The server lives in a
-//! directory under `CARGO_TARGET_TMPDIR`, runs no ticker and binds no port.
+//! directory of the process under `CARGO_TARGET_TMPDIR`, runs no ticker and binds no port.
 #![expect(
     clippy::unwrap_used,
     reason = "a test fails on the first missing value"
 )]
 
 use std::{
-    path::PathBuf,
-    sync::{Arc, LazyLock, Mutex, PoisonError},
+    fs::File,
+    path::{Path, PathBuf},
+    sync::{Arc, LazyLock, Mutex, OnceLock, PoisonError},
 };
 
 use ironpumpkin_mods::{
@@ -145,11 +146,65 @@ static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
         .unwrap()
 });
 
-static SERVER: LazyLock<Arc<Server>> = LazyLock::new(|| {
+/// The lock that marks the directory of this process as in use. The OS releases it when the
+/// process ends, however it ends.
+static DIR_LOCK: OnceLock<File> = OnceLock::new();
+
+/// Creates the directory of this process and removes the directories of ended processes of the
+/// same binary. A test runner with one process per test (`cargo nextest`) starts many processes
+/// of one binary at once, so they cannot share a directory. Same logic as `process_dir` in
+/// `crates/pumpkin-core/tests/support/mod.rs`.
+fn process_dir() -> PathBuf {
     let binary = std::env::current_exe().unwrap();
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(binary.file_stem().unwrap());
+    let name = binary.file_stem().unwrap().to_string_lossy().into_owned();
+    let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    std::fs::create_dir_all(&root).unwrap();
+    remove_ended_dirs(&root, &name);
+
+    let id = format!("{name}-{}", std::process::id());
+    // The lock comes before the directory, so the scan never finds a directory in creation.
+    let lock = File::create(root.join(format!("{id}.lock"))).unwrap();
+    lock.lock().unwrap();
+    DIR_LOCK.set(lock).unwrap();
+    let dir = root.join(id);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// Removes each `<name>-<pid>` directory in `root` whose lock nobody holds.
+fn remove_ended_dirs(root: &Path, name: &str) {
+    let prefix = format!("{name}-");
+    for entry in std::fs::read_dir(root).unwrap().flatten() {
+        let lock = entry.path();
+        let Some(id) = lock
+            .file_name()
+            .and_then(|file| file.to_str())
+            .and_then(|file| file.strip_suffix(".lock"))
+        else {
+            continue;
+        };
+        let Some(pid) = id.strip_prefix(&prefix) else {
+            continue;
+        };
+        if pid.is_empty() || !pid.bytes().all(|byte| byte.is_ascii_digit()) {
+            continue;
+        }
+        let Ok(file) = File::options().write(true).open(&lock) else {
+            continue;
+        };
+        if file.try_lock().is_err() {
+            continue;
+        }
+        // Windows refuses to delete a file that is open.
+        drop(file);
+        let _ = std::fs::remove_dir_all(root.join(id));
+        let _ = std::fs::remove_file(&lock);
+    }
+}
+
+static SERVER: LazyLock<Arc<Server>> = LazyLock::new(|| {
+    let dir = process_dir();
     // `VanillaData::load`, the configs and the plugin data folders use the working directory.
     std::env::set_current_dir(&dir).unwrap();
     STARTUP_HOOK.set(ironpumpkin_mods::init_mods).unwrap();
