@@ -12,8 +12,9 @@ repository. It holds this blueprint with an empty mod list.
 
 1. Create a repository from this blueprint (fork it, or use it as a template).
 2. Edit `modpack.toml`: the pack name and the mods. Keep the IronPumpkin commit: the template and
-   this blueprint pin a commit that has the whole mod API, so a new pack changes no pin. Set a
-   newer commit only to move the pack to a newer IronPumpkin.
+   this blueprint pin a commit that has the mod API of the porting guide (content builders, registry
+   lookups, lifecycle, config API and events), so a new pack changes no pin. Set a newer commit only
+   to move the pack to a newer IronPumpkin.
    Run `cargo xtask check` and commit `bin/Cargo.lock` and `bin/Cargo.lock.commit` with it.
 3. Open a pull request. The `Build modpack` workflow runs `cargo xtask check` and a debug build.
 4. Merge, then push a tag that starts with `v`, for example `git tag v1.0.0 && git push --tags`.

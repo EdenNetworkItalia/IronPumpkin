@@ -144,7 +144,7 @@ The template has no mod and no patch. Its files are:
 
 ### 2. Check the template
 
-The template pins IronPumpkin commit `a2753a0ecd1c59e98dd00bc3a37f4db47923d690`. That commit has the content builders, the lifecycle, the config API and the events that this guide uses. A new pack keeps the pin. You change it only to [move to a newer IronPumpkin](#the-rules-of-a-pack).
+The template pins IronPumpkin commit `0d1e8ebfdb56f2f69084cbdd27b2efa141eccd88`. That commit has the content builders, the registry lookups, the lifecycle and the config API. It also has the events that this guide uses, with `RegisterEvent` and the player events. A new pack keeps the pin. You change it only to [move to a newer IronPumpkin](#the-rules-of-a-pack).
 
 ```sh
 cargo xtask check
@@ -153,8 +153,8 @@ cargo xtask check
 The first run compiles the build tool. The tool then fetches IronPumpkin at the pinned commit into `.ironpumpkin/`, and it prints:
 
 ```text
-[xtask] fetching IronPumpkin a2753a0ecd1c59e98dd00bc3a37f4db47923d690 from https://github.com/EdenNetworkItalia/IronPumpkin
-[xtask] my-pack: IronPumpkin a2753a0ecd1c, 0 mod(s), 0 patch(es) applied
+[xtask] fetching IronPumpkin 0d1e8ebfdb56f2f69084cbdd27b2efa141eccd88 from https://github.com/EdenNetworkItalia/IronPumpkin
+[xtask] my-pack: IronPumpkin 0d1e8ebfdb56, 0 mod(s), 0 patch(es) applied
 ```
 
 ### 3. Add the mod
@@ -179,7 +179,7 @@ cargo xtask check
 ```text
      Locking 1 package to latest Rust 1.98.1 compatible version
       Adding greeter v0.1.0 (/path/to/my-pack/mods/greeter)
-[xtask] my-pack: IronPumpkin a2753a0ecd1c, 1 mod(s), 0 patch(es) applied
+[xtask] my-pack: IronPumpkin 0d1e8ebfdb56, 1 mod(s), 0 patch(es) applied
 ```
 
 The `Locking` line names your Rust version, and the `Adding` line shows your path. The template commits `bin/Cargo.lock`, seeded from the IronPumpkin lock file of the pinned commit. The tool adds the dependencies of the mods to it. The tool also writes `bin/Cargo.toml` and `bin/src/mods.rs`. Git ignores both files. `bin/src/mods.rs` holds one `use greeter as _;` for each mod, so the linker keeps the mod.
