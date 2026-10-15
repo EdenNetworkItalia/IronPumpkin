@@ -13,16 +13,16 @@ How to read it:
 - A `not supported` row with a "contract only" counterpart: the API defines it so a port compiles against the final shape, and the host rejects the registration until a phase backs it.
 - M2 to M5 are the milestones: M2 Content registry, M3 NeoForge handshake and registry sync, M4 Native API with NeoForge semantics, M5 Modded gameplay parity.
 - Task numbers (task 2.x) are the items of `tasks.md` in this change.
-- The status of a row follows design.md. Where the two differ, design.md is right.
+- The status of a row follows design.md. Where the two differ, design.md is right. The command `python3 -I tools/openspec-sync/mapping_status.py` copies the statuses from design.md into the Status column and recomputes the first three rows of the Coverage table. Run it after each change to a status in design.md. `--check` exits 1 when the files differ. Do not edit these cells by hand.
 - The M4 implementation tasks check each supported row with a test, as design.md requires.
 
 ## Coverage
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 108 | 108 | 0 | 0 | 0 | 89 | 13 |
-| Inventory, planned | 487 | 444 | 43 | 0 | 0 | 386 | 108 |
-| Inventory, not supported | 288 | 0 | 0 | 3 | 285 | 132 | 12 |
+| Inventory, supported | 107 | 107 | 0 | 0 | 0 | 88 | 12 |
+| Inventory, planned | 628 | 583 | 43 | 2 | 0 | 465 | 111 |
+| Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
 
@@ -62,7 +62,7 @@ How to read it:
 | `LevelTickEvent.Post` | 32 | event class | `event-bus.event::level-tick-event-post` | planned |
 | `LivingDropsEvent` | 31 | event class | `event-bus.event::living-drops-event` | supported |
 | `InterModEnqueueEvent` | 31 | event class | `event-bus.event::inter-mod-enqueue-event` | planned |
-| `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | not supported |
+| `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
 | `LevelEvent.Unload` | 30 | event class | `event-bus.event::level-event-unload` | supported |
 | `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | planned |
 | `EntityAttributeCreationEvent` | 29 | event class | `event-bus.event::entity-attribute-creation-event` (resource `registration.entity-attribute-creation-event`) | planned |
@@ -124,7 +124,7 @@ How to read it:
 | `ChunkEvent.Load` | 10 | event class | `event-bus.event::chunk-event-load` | planned |
 | `ExplosionEvent.Detonate` | 10 | event class | `event-bus.event::explosion-event-detonate` | supported |
 | `InterModProcessEvent` | 10 | event class | `event-bus.event::inter-mod-process-event` | planned |
-| `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | not supported |
+| `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | planned |
 | `AnvilUpdateEvent` | 9 | event class | `event-bus.event::anvil-update-event` | supported |
 | `EntityInvulnerabilityCheckEvent` | 9 | event class | `event-bus.event::entity-invulnerability-check-event` | planned |
 | `EntityLeaveLevelEvent` | 9 | event class | `event-bus.event::entity-leave-level-event` | planned |
@@ -146,7 +146,7 @@ How to read it:
 | `PlayerXpEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BlockEvent.BlockToolModificationEvent` | 7 | event class | `event-bus.event::block-event-block-tool-modification-event` | planned |
 | `RegisterConfigurationTasksEvent` | 7 | event class | `event-bus.event::register-configuration-tasks-event` (resource `network.register-configuration-tasks-event`) | planned |
-| `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | not supported |
+| `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | planned |
 | `ServerChatEvent` | 6 | event class | `event-bus.event::server-chat-event` | supported |
 | `EntityTeleportEvent.TeleportCommand` | 6 | event class | `event-bus.event::entity-teleport-event-teleport-command` | supported |
 | `EntityTravelToDimensionEvent` | 6 | event class | `event-bus.event::entity-travel-to-dimension-event` | supported |
@@ -191,7 +191,7 @@ How to read it:
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `event-bus.event::grindstone-event-on-place-item` | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `event-bus.event::grindstone-event-on-take-item` | planned |
-| `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | not supported |
+| `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
 | `EntityMobGriefingEvent` | 3 | event class | `event-bus.event::entity-mob-griefing-event` | planned |
 | `ArmorHurtEvent` | 3 | event class | `event-bus.event::armor-hurt-event` | supported |
 | `BabyEntitySpawnEvent` | 3 | event class | `event-bus.event::baby-entity-spawn-event` | supported |
@@ -201,7 +201,7 @@ How to read it:
 | `LivingDestroyBlockEvent` | 3 | event class | `event-bus.event::living-destroy-block-event` | planned |
 | `PlayerRespawnPositionEvent` | 3 | event class | `event-bus.event::player-respawn-position-event` | planned |
 | `PlayerSpawnPhantomsEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
-| `ChunkTicketLevelUpdatedEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
+| `ChunkTicketLevelUpdatedEvent` | 3 | event class | `event-bus` doc, not supported | planned |
 | `NoteBlockEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `NoteBlockEvent.Play` | 3 | event class | `event-bus.event::note-block-event-play` | supported |
 | `VillageSiegeEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
@@ -232,7 +232,7 @@ How to read it:
 | `FMLDedicatedServerSetupEvent` | 2 | event class | `event-bus.event::fml-dedicated-server-setup-event` | planned |
 | `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
-| `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | not supported |
+| `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
 | `StatAwardEvent` | 1 | event class | `event-bus.event::stat-award-event` | supported |
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
@@ -254,15 +254,15 @@ How to read it:
 | `PistonEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PistonEvent.Pre` | 1 | event class | `event-bus.event::piston-event-pre` | supported |
 | `CropGrowEvent.Pre` | 1 | event class | `event-bus.event::crop-grow-event-pre` | supported |
-| `RegisterCauldronFluidContentEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
+| `RegisterCauldronFluidContentEvent` | 1 | event class | `event-bus` doc, not supported | planned |
 | `AddAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
-| `DefaultDataComponentsBoundEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
+| `DefaultDataComponentsBoundEvent` | 0 | event class | `event-bus` doc, not supported | planned |
 | `DifficultyChangeEvent` | 0 | event class | `event-bus.event::difficulty-change-event` | planned |
 | `GatherSkippedAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `ModMismatchEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
-| `RegisterCauldronInteractionEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
-| `RegisterCauldronInteractionEvent.Dispatcher` | 0 | event class | `event-bus` doc, not supported | not supported |
-| `RegisterCauldronInteractionEvent.Interaction` | 0 | event class | `event-bus` doc, not supported | not supported |
+| `RegisterCauldronInteractionEvent` | 0 | event class | `event-bus` doc, not supported | planned |
+| `RegisterCauldronInteractionEvent.Dispatcher` | 0 | event class | `event-bus` doc, not supported | planned |
+| `RegisterCauldronInteractionEvent.Interaction` | 0 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameRuleCategoryEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `RegisterRecipePropertiesEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `RegisterStructureConversionsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
@@ -299,7 +299,7 @@ How to read it:
 | `PlayerSwitchHotbarSlotEvent.Pre` | 0 | event class | `event-bus.event::player-switch-hotbar-slot-event-pre` | supported |
 | `PlayerXpEvent.LevelChange` | 0 | event class | `event-bus.event::player-xp-event-level-change` | supported |
 | `SweepAttackEvent` | 0 | event class | `event-bus.event::sweep-attack-event` | planned |
-| `AlterGroundEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
+| `AlterGroundEvent` | 0 | event class | `event-bus` doc, not supported | planned |
 | `GameRuleChangedEvent` | 0 | event class | `event-bus.event::game-rule-changed-event` | planned |
 | `LevelEvent.CreateSpawnPosition` | 0 | event class | `event-bus.event::level-event-create-spawn-position` | planned |
 | `NoteBlockEvent.Change` | 0 | event class | `event-bus.event::note-block-event-change` | planned |
@@ -312,7 +312,7 @@ How to read it:
 | `GatherDataEvent.Client` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `GatherDataEvent.Server` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `XpOrbTargetingEvent` | 0 | event class | `event-bus.event::xp-orb-targeting-event` | planned |
-| `NewDatapackRegistryEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
+| `NewDatapackRegistryEvent` | 0 | event class | `event-bus` doc, not supported | planned |
 | `PermissionGatherEvent.Handler` | 0 | event class | `event-bus` doc, not supported | not supported |
 
 ### Registries
@@ -334,140 +334,140 @@ How to read it:
 | `menu` | 78 | Static registries a `DeferredRegister` can target | `registration.entry-definition::menu` | planned |
 | `NeoForgeRegistries.Keys` | 77 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
 | `DeferredRegister.Items#register` | 76 | Registration API | `registration.deferred-register-items.register-item` | planned |
-| `recipe_serializer` | 74 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `recipe_serializer` | 74 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#createBlocks` | 66 | Registration API | `registration.deferred-register-blocks.create-blocks` | planned |
 | `DeferredRegister.Blocks#register` | 60 | Registration API | `registration.deferred-register-blocks.register-block` | planned |
 | `sound_event` | 55 | Static registries a `DeferredRegister` can target | `registration.entry-definition::sound-event`; played by id with the v0.2 `play-custom-sound` (task 2.6) | planned |
 | `neoforge:attachment_types` | 54 | Registries NeoForge adds | `registration.entry-definition::attachment-type` | planned |
-| `recipe_type` | 49 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `RegistryBuilder` | 47 | Registration API | `registration` doc, not supported | not supported |
+| `recipe_type` | 49 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `RegistryBuilder` | 47 | Registration API | `registration` doc, not supported | planned |
 | `entity_type` | 46 | Static registries a `DeferredRegister` can target | `registration.entry-definition::entity-type` | planned |
 | `DeferredRegister#createDataComponents` | 45 | Registration API | `registration.deferred-register-data-components.create-data-components` (task 2.6) | planned |
-| `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getEntries` | 36 | Registration API | `registration.deferred-register.get-entries` | planned |
 | `IRegistryExtension` | 31 | Registration API | `registration.registry-contains`, `registry-get-id`, `registry-get-key`, `registry-max-id`, `registry-resolve-alias` | planned |
 | `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `registration.deferred-register-data-components.register-component-type`; values through `data-components` (task 2.6) | planned |
 | `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `loot.register-loot-modifier-type` | planned |
-| `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `mob_effect` | 19 | Static registries a `DeferredRegister` can target | `registration.entry-definition::mob-effect`; applied through `mob-effects` (task 2.6) | planned |
-| `trigger_type` | 19 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `trigger_type` | 19 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `RegisterEvent.RegisterHelper#register` | 18 | Registration API | `registration.register-event.register` | planned |
 | `DeferredRegister.Items#registerItem` | 17 | Registration API | `registration.deferred-register-items.register-item` | planned |
 | `DeferredRegister.Items#registerSimpleBlockItem` | 16 | Registration API | `registration.deferred-register-items.register-simple-block-item` | planned |
-| `neoforge:fluid_type` | 16 | Registries NeoForge adds | `registration.entry-definition::fluid-type` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | not supported |
-| `neoforge:condition_codecs` | 16 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `fluid` | 16 | Static registries a `DeferredRegister` can target | `registration.entry-definition::fluid` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | not supported |
-| `loot_function_type` | 16 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `neoforge:fluid_type` | 16 | Registries NeoForge adds | `registration.entry-definition::fluid-type` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | planned |
+| `neoforge:condition_codecs` | 16 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `fluid` | 16 | Static registries a `DeferredRegister` can target | `registration.entry-definition::fluid` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | planned |
+| `loot_function_type` | 16 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `attribute` | 13 | Static registries a `DeferredRegister` can target | `registration.entry-definition::attribute`; values through `entity-attributes` (task 2.6) | planned |
-| `DeferredRegister#makeRegistry` | 12 | Registration API | `registration` doc, not supported | not supported |
+| `DeferredRegister#makeRegistry` | 12 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#addAlias` | 11 | Registration API | `registration.deferred-register.add-alias` | planned |
-| `neoforge:biome_modifier_serializers` | 10 | Registries NeoForge adds | `registration` doc, not supported | not supported |
+| `neoforge:biome_modifier_serializers` | 10 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `DeferredRegister.Blocks#registerBlock` | 9 | Registration API | `registration.deferred-register-blocks.register-block` | planned |
-| `neoforge:entity_data_serializers` | 9 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `point_of_interest_type` | 9 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/structure_type` | 8 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/placement_modifier_type` | 8 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `loot_pool_entry_type` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `loot_condition_type` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/structure_processor` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `registries.callback` | 7 | Other registry packages | `registration` doc, not supported | not supported |
+| `neoforge:entity_data_serializers` | 9 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `point_of_interest_type` | 9 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/structure_type` | 8 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/placement_modifier_type` | 8 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `loot_pool_entry_type` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `loot_condition_type` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/structure_processor` | 7 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `registries.callback` | 7 | Other registry packages | `registration` doc, not supported | planned |
 | `GameData` | 6 | Registration API | `registration` doc, not supported | not supported |
-| `villager_profession` | 6 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/structure_piece` | 6 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `potion` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `custom_stat` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `registries.holdersets` | 5 | Other registry packages | `registration` doc, not supported | not supported |
-| `worldgen/chunk_generator` | 4 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `villager_profession` | 6 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/structure_piece` | 6 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `potion` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `custom_stat` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `registries.holdersets` | 5 | Other registry packages | `registration` doc, not supported | planned |
+| `worldgen/chunk_generator` | 4 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getRegistry` | 3 | Registration API | `registration.registry-*` functions | planned |
-| `worldgen/structure_placement` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_effect_component_type` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `worldgen/structure_placement` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_effect_component_type` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getNamespace` | 2 | Registration API | `registration.deferred-register.get-namespace` | planned |
 | `DeferredRegister.Blocks#registerSimpleBlock` | 2 | Registration API | `registration.deferred-register-blocks.register-simple-block` | planned |
-| `memory_module_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `sensor_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `height_provider_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/trunk_placer_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/structure_pool_element` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `map_decoration_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `memory_module_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `sensor_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `height_provider_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/trunk_placer_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/structure_pool_element` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `map_decoration_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DataPackRegistriesHooks` | 1 | Registration API | `registration` doc, not supported | not supported |
 | `DeferredRegister#getRegistryKey` | 1 | Registration API | `registration.deferred-register.get-registry-name` | planned |
 | `DeferredRegister.Items#registerSimpleItem` | 1 | Registration API | `registration.deferred-register-items.register-simple-item` | planned |
 | `RegistryManager` | 1 | Registration API | `registration` doc, not supported | not supported |
 | `RegistrySnapshot` | 1 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
-| `neoforge:structure_modifier_serializers` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `neoforge:holder_set_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `neoforge:fluid_ingredient_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `rule_test` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `int_provider_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/block_state_provider_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/foliage_placer_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/tree_decorator_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/biome_source` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/density_function_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `entity_sub_predicate_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_entity_effect_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `neoforge:structure_modifier_serializers` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `neoforge:holder_set_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `neoforge:fluid_ingredient_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `rule_test` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `int_provider_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/block_state_provider_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/foliage_placer_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/tree_decorator_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/biome_source` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/density_function_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `entity_sub_predicate_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_entity_effect_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `BaseMappedRegistry` | 0 | Registration API | `registration` doc, not supported | not supported |
 | `DataMapLoader` | 0 | Registration API | `data-maps` (host loader of `data_maps` JSON) | planned |
-| `DatapackRegistryBuilder` | 0 | Registration API | `registration` doc, not supported | not supported |
+| `DatapackRegistryBuilder` | 0 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#createEntities` | 0 | Registration API | `registration.deferred-register-entities.create-entities` | planned |
 | `DeferredRegister#createTagKey` | 0 | Registration API | `registration.deferred-register.create-tag-key` | planned |
 | `DeferredRegister#getRegistryName` | 0 | Registration API | `registration.deferred-register.get-registry-name` | planned |
 | `DeferredRegister.Entities#registerEntityType` | 0 | Registration API | `registration.deferred-register-entities.register-entity-type` | planned |
 | `NeoForgeRegistriesSetup` | 0 | Registration API | `registration` doc, not supported | not supported |
 | `RegistryManager.SnapshotType` | 0 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
-| `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `neoforge:biome_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
-| `neoforge:structure_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | not supported |
+| `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `neoforge:biome_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
+| `neoforge:structure_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:synced_attachment_types` | 0 | Registries NeoForge adds | `attachments.attachment-type-definition.sync` | planned |
-| `game_event` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `game_event` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `debug_subscription` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `chunk_status` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `rule_block_entity_modifier` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `pos_rule_test` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `position_source_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `stat_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `villager_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `activity` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `context_float_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `context_int_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `loot_nbt_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `loot_score_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `float_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `block_predicate_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/carver_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/feature_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/root_placer_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/feature_size_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/material_condition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/material_rule_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `worldgen/pool_alias_binding` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `number_format_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `game_rule` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `data_component_predicate_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_level_based_value_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_location_based_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_value_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `enchantment_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `consume_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `recipe_display` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `slot_display` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `recipe_book_category` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `ticket_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `chunk_status` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `rule_block_entity_modifier` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `pos_rule_test` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `position_source_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `stat_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `villager_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `activity` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `context_float_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `context_int_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `loot_nbt_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `loot_score_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `float_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `block_predicate_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/carver_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/feature_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/root_placer_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/feature_size_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/material_condition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/material_rule_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `worldgen/pool_alias_binding` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `number_format_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `game_rule` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `data_component_predicate_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_level_based_value_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_location_based_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_value_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `enchantment_provider_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `consume_effect_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `recipe_display` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `slot_display` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `recipe_book_category` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `ticket_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `incoming_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | `lifecycle.register-rpc-schema-event` | planned |
 | `outgoing_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | `lifecycle.register-rpc-schema-event` | planned |
 | `test_environment_definition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 | `test_instance_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `spawn_condition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `spawn_condition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `dialog_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 | `dialog_action_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `input_control_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `input_control_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `dialog_body_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `permission_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `permission_check_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `environment_attribute` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `attribute_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `slot_source_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
-| `context_key_set` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
+| `permission_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `permission_check_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `environment_attribute` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `attribute_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `slot_source_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
+| `context_key_set` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `test_function` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 
 ### Capabilities
@@ -657,7 +657,7 @@ How to read it:
 | `neoforge:advanced_add_entity` | 0 | Payloads | `registration.entity-type-builder` (host payload, M3) | planned |
 | `neoforge:advanced_container_set_data` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
 | `neoforge:advanced_open_screen` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
-| `neoforge:auxiliary_light_data` | 0 | Payloads | `network` doc, not supported | not supported |
+| `neoforge:auxiliary_light_data` | 0 | Payloads | `network` doc, not supported | planned |
 | `c:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `c:version` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:config_file` | 0 | Payloads | `mod-config.config-type::synced` (host payload) | planned |
@@ -736,7 +736,7 @@ How to read it:
 | `EventPriority` | 99 | Event bus and mod container | `pumpkin:plugin/event.event-priority` | supported |
 | `IEventBus#post` | 86 | Event bus and mod container | `event-bus.post` | planned |
 | `@Mod(dist)` | 77 | Entry point annotations | `types.dist` (always `dedicated-server`) | planned |
-| `@SubscribeEvent(priority)` | 76 | Entry point annotations | `event-bus.add-listener` `priority` (`pumpkin:plugin/event.event-priority`) | supported |
+| `@SubscribeEvent(priority)` | 76 | Entry point annotations | `event-bus.add-listener` `priority` (`pumpkin:plugin/event.event-priority`) | planned |
 | `ModList#getModContainerById` | 69 | Event bus and mod container | `lifecycle.get-mod-container-by-id` | planned |
 | `ModContainer#getModInfo` | 61 | Event bus and mod container | `lifecycle.mod-container.get-mod-info` | supported |
 | `file accessTransformers` | 55 | `neoforge.mods.toml` keys | `lifecycle` doc, not supported | not supported |
@@ -785,30 +785,30 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `ICondition` | 42 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `ICondition.IContext` | 32 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
+| `ICondition` | 42 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `ICondition.IContext` | 32 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `IGlobalLootModifier` | 29 | Loot modifiers, loot conditions and data conditions | `callbacks.decode-loot-modifier`, `callbacks.apply-loot-modifier` | planned |
 | `LootModifier` | 25 | Loot modifiers, loot conditions and data conditions | `loot.loot-modifier-entry` (`conditions`, `priority` in the JSON) | planned |
-| `ConditionalOps` | 12 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `WithConditions` | 8 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `ModLoadedCondition` | 7 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
+| `ConditionalOps` | 12 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `WithConditions` | 8 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `ModLoadedCondition` | 7 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `AddTableLootModifier` | 2 | Loot modifiers, loot conditions and data conditions | `loot` built-in type `neoforge:add_table`; `loot.roll-loot-table` | planned |
-| `CanItemPerformAbility` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
+| `CanItemPerformAbility` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `LootTableIdCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` built-in condition `neoforge:loot_table_id` | planned |
-| `AndCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
+| `AndCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `LootModifierManager` | 1 | Loot modifiers, loot conditions and data conditions | `loot.get-loot-modifiers` (host loader) | planned |
 | `LootTableIdCondition.Builder` | 1 | Loot modifiers, loot conditions and data conditions | `loot` built-in condition `neoforge:loot_table_id` | planned |
-| `ConditionContext` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `NotCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `OrCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `TagEmptyCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `NeoForgeLootContextParams` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `AlwaysCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `FeatureFlagsEnabledCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `NeoForgeConditions` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `NeverCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `RegisteredCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
-| `WithConditions.Builder` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
+| `ConditionContext` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `NotCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `OrCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `TagEmptyCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `NeoForgeLootContextParams` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `AlwaysCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `FeatureFlagsEnabledCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `NeoForgeConditions` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `NeverCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `RegisteredCondition` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
+| `WithConditions.Builder` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `GlobalLootModifierProvider` | 0 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | not supported |
 
 ### Extension interfaces NeoForge adds to `net.minecraft`
@@ -884,49 +884,49 @@ How to read it:
 | `transfer.item` | 149 | Packages outside the families above | `capabilities.handler-type::item-resource-handler`, `types.item-resource` | planned |
 | `common.util` | 133 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `transfer.fluid` | 130 | Packages outside the families above | `capabilities.handler-type::fluid-resource-handler`, `types.fluid-resource` | planned |
-| `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `transfer.energy` | 78 | Packages outside the families above | `capabilities.handler-type::energy-handler` | planned |
 | `Tags` | 77 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `Tags.Items` | 51 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
-| `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `common.crafting` | 43 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
+| `common.crafting` | 43 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `CommonHooks` | 42 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `ItemAbilities` | 41 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `ItemAbilities` | 41 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `NeoForgeMod` | 30 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `Tags.Blocks` | 30 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
-| `fluids.crafting` | 28 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `fluids.crafting` | 28 | Packages outside the families above | `types` doc (other packages), not supported | planned |
+| `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
+| `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `entity` | 20 | Packages outside the families above | gap: `IEntityWithComplexSpawn` spawn data needs the M3 `advanced_add_entity` payload; `PartEntity` has no target (documented in `types`) | planned |
 | `MutableDataComponentHolder` | 20 | Types in the root `common` package | `pumpkin:plugin/item-stack` component methods; `types.component-value` | planned |
-| `SoundActions` | 20 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `SoundActions` | 20 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `Tags.EntityTypes` | 20 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
 | `common.damagesource` | 18 | Packages outside the families above | `types.damage-container`, `damage-reduction`, `event-bus.reduction-modifier`, `callbacks.apply-reduction-modifier` | planned |
-| `common.world.chunk` | 13 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `common.world.chunk` | 13 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `Tags.Fluids` | 12 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
 | `IShearable` | 11 | Types in the root `common` package | gap: shear behaviour hook; documented in `types` (extension interfaces) | planned |
 | `Tags.DamageTypes` | 11 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
 | `UsernameCache` | 10 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `server.command` | 9 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `resource` | 8 | Packages outside the families above | `lifecycle.add-server-reload-listeners-event`, `callbacks.on-server-reload` | planned |
-| `SpecialPlantable` | 8 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `SpecialPlantable` | 8 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `server.permission` | 7 | Packages outside the families above | `pumpkin:plugin/player.has-permission` (`PermissionAPI.getPermission`) | supported |
 | `server.permission.nodes` | 7 | Packages outside the families above | `pumpkin:plugin/permission.permission` via `event-bus` `permission-gather-event-nodes` | planned |
-| `PercentageAttribute` | 7 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `PercentageAttribute` | 7 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `Tags.Biomes` | 4 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
-| `BooleanAttribute` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `BooleanAttribute` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `CreativeModeTabRegistry` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `TranslatableEnum` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `common.world.poi` | 2 | Packages outside the families above | `registration.extend-poi-types-event` | planned |
-| `FarmlandWaterManager` | 2 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `FarmlandWaterManager` | 2 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.enums` | 1 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `common.ticket` | 1 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `common.ticket` | 1 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `internal` | 1 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `IOUtilities` | 1 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `LenientUnboundedMapCodec` | 1 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `common.advancements.critereon` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `common.command` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
+| `common.advancements.critereon` | 0 | Packages outside the families above | `types` doc (other packages), not supported | planned |
+| `common.command` | 0 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `common.data` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `common.data.fixes` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `common.data.internal` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
@@ -955,7 +955,7 @@ How to read it:
 | `world.inventory` | 0 | Packages outside the families above | gap: custom menu slots are M5 (`registration.menu-type-definition`) | planned |
 | `CommonHooks.BiomeCallbackFunction` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `DataMapHooks` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `IMinecartCollisionHandler` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
+| `IMinecartCollisionHandler` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `IOUtilities.WriteCallback` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `MonsterRoomHooks` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `NeoForgeBuildType` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
