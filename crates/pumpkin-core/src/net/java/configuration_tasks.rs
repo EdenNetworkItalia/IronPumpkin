@@ -9,7 +9,10 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, OnceLock};
 
-use pumpkin_data::dynamic::{self, ContentIds, ContentTables};
+use pumpkin_data::{
+    dynamic::{self, ContentIds, ContentTables},
+    translation,
+};
 use pumpkin_protocol::{
     java::{
         client::config::CFinishConfig,
@@ -561,24 +564,29 @@ impl PendingConnection {
             return true;
         };
         let reason = if let TaskReply::ModTask(requested) = reply {
-            // The `IllegalStateException` of `ServerConfigurationPacketListenerImpl.finishCurrentTask`.
+            // `ServerConfigurationPacketListenerImpl.finishCurrentTask` throws on the network
+            // thread, and `Connection.exceptionCaught` disconnects with `disconnect.genericReason`.
             let current = current.map_or("null", ConfigurationTask::id);
-            format!(
-                "Unexpected request for task finish, current task: {current}, requested: {requested}"
+            TextComponent::translate(
+                translation::java::DISCONNECT_GENERICREASON,
+                [TextComponent::text(format!(
+                    "Internal Exception: java.lang.IllegalStateException: Unexpected request for \
+                     task finish, current task: {current}, requested: {requested}"
+                ))],
             )
         } else {
             let current = current.map_or("none", ConfigurationTask::id);
-            format!(
+            TextComponent::text(format!(
                 "Unexpected configuration reply {} during task {current}",
                 reply.name()
-            )
+            ))
         };
         info!(
             "Client {} sent {reply:?} while the configuration task was {}, disconnecting",
             self.id,
             current.map_or("none", ConfigurationTask::id)
         );
-        self.kick(TextComponent::text(reason)).await;
+        self.kick(reason).await;
         false
     }
 
@@ -1124,8 +1132,9 @@ mod tests {
         fn run(&self, _context: &mut crate::plugin::api::events::network::TaskContext<'_>) {}
     }
 
-    /// Scenario "Two mod tasks" of `neoforge-network`: the tasks of `RegisterConfigurationTasksEvent`
-    /// run after the tasks of `NeoForge`, in registration order, before `JoinWorldTask`.
+    /// Scenario "Two mod tasks" of `neoforge-network`: the tasks of
+    /// `RegisterConfigurationTasksEvent` run after the tasks of `NeoForge`, in registration order,
+    /// before `JoinWorldTask`.
     #[test]
     fn mod_tasks_run_after_the_neoforge_tasks_in_registration_order() {
         let mut tasks = queue(&run_b_client(), false);
