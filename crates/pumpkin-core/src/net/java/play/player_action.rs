@@ -177,7 +177,6 @@ impl JavaClient {
                     self.update_sequence(player_action.sequence.0);
                 }
                 Status::FinishedDigging => {
-                    // TODO: do validation
                     let location = player_action.position;
                     if !player.can_interact_with_block_at(&location, 1.0) {
                         warn!(
@@ -188,10 +187,24 @@ impl JavaClient {
                         return;
                     }
 
-                    // Block break & play sound
                     let entity = &player.get_entity();
                     let world = entity.world.load_full();
 
+                    // ServerPlayerGameMode.handleBlockBreakAction breaks on STOP only at the
+                    // started dig, and a cancelled start leaves none. 0.7 progress check: #119.
+                    let dig_started_here = player.mining.load(Ordering::Relaxed)
+                        && *player
+                            .mining_pos
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            == location;
+                    if !dig_started_here {
+                        self.sync_block_state_to_client(&world, location);
+                        self.update_sequence(player_action.sequence.0);
+                        return;
+                    }
+
+                    // Block break & play sound
                     player.mining.store(false, Ordering::Relaxed);
                     world.set_block_breaking(entity, location, BlockBreakingProgress::Stop);
 
