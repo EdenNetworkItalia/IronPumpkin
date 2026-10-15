@@ -7,14 +7,14 @@ Lets a ported mod register blocks, items, entity types and tags through the `Mod
 ## ADDED Requirements
 
 ### Requirement: Registration through ModInit
-A mod SHALL register content from its `NativeMod::init` with `ModInit::register_block`, `ModInit::register_item`, `ModInit::register_entity_type` and `ModInit::register_tag`. Each function SHALL take a builder (`content::BlockBuilder`, `ItemBuilder`, `EntityTypeBuilder`, `TagBuilder`) and return a `Result` with a `RegistryError`. The mapping table SHALL map `DeferredRegister.Blocks.register` to `ModInit::register_block`, and the other typed registers in the same way. Status: planned (task 2.5).
+A mod SHALL register content from its `NativeMod::init` with `ModInit::register_block`, `register_item`, `register_entity_type` and `register_tag`. Each function SHALL take a builder (`content::BlockBuilder`, `ItemBuilder`, `EntityTypeBuilder`, `TagBuilder`) and return a `Result` with a `RegistryError`. The mapping table SHALL map `DeferredRegister.Blocks.register` to `ModInit::register_block`, and the other typed registers in the same way. Status: supported (task 2.5, #109).
 
 #### Scenario: Register a block
 - **WHEN** a mod calls `register_block` with a `BlockBuilder` named `examplemod:mithril_block` in `init`
 - **THEN** the call returns `Ok`, and the block has no numeric id yet
 
 ### Requirement: Entries apply at init and bind at the freeze
-The registry SHALL apply each content registration at once in `init`, and SHALL bind the entries and allocate their numeric ids at the single freeze, after the last mod's `init` and before the first world loads. Lookups after the freeze SHALL go through the frozen tables. A registration after the freeze SHALL fail with `RegistryError::RegistryFrozen`. Status: planned (task 2.5).
+The registry SHALL apply each content registration at once in `init`, and SHALL bind the entries and allocate their numeric ids at the single freeze, after the last mod's `init` and before the first world loads. Lookups after the freeze SHALL go through the frozen tables. A registration after the freeze SHALL fail with `RegistryError::RegistryFrozen`. Status: supported (task 2.5, #109).
 
 #### Scenario: Entries bind
 - **WHEN** the freeze has run
@@ -25,7 +25,7 @@ The registry SHALL apply each content registration at once in `init`, and SHALL 
 - **THEN** the call fails with `RegistryError::RegistryFrozen`
 
 ### Requirement: Builders validate definitions
-The registry SHALL reject a definition with a `RegistryError` when a field is out of range or names an unknown entry. The vanilla `display` entry of block, item and entity type properties SHALL be the one IronPumpkin-only extension of the NeoForge properties, and the docs SHALL name it as such. Status: planned (task 2.5).
+The registry SHALL reject a definition with a `RegistryError` when a field is out of range or names an unknown entry. The vanilla `display` entry of block, item and entity type properties SHALL be the one IronPumpkin-only extension of the NeoForge properties, and the docs SHALL name it as such. Status: supported (task 2.5, #109).
 
 #### Scenario: Unknown block item target
 - **WHEN** an item builder names a block that is not registered
@@ -47,7 +47,7 @@ A custom block SHALL run the `BlockBehaviour` implementation that the mod sets o
 - **THEN** the server calls that implementation for the block, as for a vanilla block with a Pumpkin behaviour
 
 ### Requirement: Registries without backing are explicit
-`ModInit` SHALL offer a register function only for a registry that a phase backs. A registry without backing SHALL have the status `planned` with the reason prefix `M5 engine extension:` in the inventory, or `not supported` when it is Java-only or display-only. A registration of `minecraft:creative_mode_tab` SHALL be accepted and ignored. Status: planned (task 2.5).
+`ModInit` SHALL offer a register function only for a registry that a phase backs. A registry without backing SHALL have the status `planned` with the reason prefix `M5 engine extension:` in the inventory, or `not supported` when it is Java-only or display-only. A registration of `minecraft:creative_mode_tab` through `ModInit::register_creative_mode_tab` SHALL be accepted, logged in one line and ignored. Status: supported (task 2.5, #109).
 
 #### Scenario: Fluid before its phase
 - **WHEN** a mod author looks for a way to register a fluid and no phase backs `minecraft:fluid`
@@ -58,24 +58,31 @@ A custom block SHALL run the `BlockBehaviour` implementation that the mod sets o
 - **THEN** the call is accepted and the server sends nothing for it
 
 ### Requirement: Duplicate ids
-A second entry with the same id in one registry SHALL fail with `RegistryError::Duplicate`. Status: planned (task 2.5).
+A second entry with the same id in one registry SHALL fail with `RegistryError::Duplicate`. Status: supported (task 2.5, #109).
 
 #### Scenario: Same name twice
 - **WHEN** a mod registers `examplemod:ruby` twice as an item
 - **THEN** the second call fails with `RegistryError::Duplicate`
 
 ### Requirement: Registration events
-The NeoForge events `EntityAttributeCreationEvent`, `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent`, `BlockEntityTypeAddBlocksEvent` and `ExtendPoiTypesEvent` SHALL be `NativeMod` methods that receive a registration handle, and the host SHALL apply what the mod registered through the handle when the method returns. `RegisterEvent` SHALL have no separate equivalent: `ModInit::register_*` does its work. Status: planned (task 2.5).
+The NeoForge events `EntityAttributeCreationEvent`, `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent`, `BlockEntityTypeAddBlocksEvent` and `ExtendPoiTypesEvent` SHALL be `NativeMod` methods that receive a registration handle, and the host SHALL apply what the mod registered through the handle when the method returns. Status: planned (task 2.5).
 
 #### Scenario: Attributes of a mod entity
 - **WHEN** the attribute creation method of a mod calls `put` for a mod entity type with a max health of 40
 - **THEN** a spawned entity of that type has 40 max health
 
+### Requirement: RegisterEvent
+`RegisterEvent` SHALL be a Pumpkin event that fires once per backed registry, `minecraft:block`, `minecraft:entity_type` and `minecraft:item` in that order, after the last `init` and before the first `common_setup`. A handler SHALL register content through `content::RegisterEventExt`, which registers only on the fire of its own registry and binds at the same freeze. A failed registration SHALL stop the server after the last fire. Status: supported (task 2.5, #109).
+
+#### Scenario: Register from the event
+- **WHEN** a handler of `RegisterEvent` calls `register_block` with a `BlockBuilder` named `examplemod:mithril_block`
+- **THEN** the block registers on the fire of `minecraft:block` only, and the frozen tables hold it
+
 ### Requirement: Registry lookups
-`registry-contains`, `registry-get-id`, `registry-get-key`, `registry-keys`, `is-in-tag` and `tag-entries` SHALL answer for vanilla and mod entries alike, from the frozen tables after the freeze, including the `c:` and `neoforge:` tags of NeoForge `Tags`. Status: planned (task 2.5).
+`registry::contains`, `id_of`, `key_of`, `keys`, `is_in_tag` and `tag_entries` of `ironpumpkin-mods` SHALL answer for vanilla and mod entries alike, from the frozen tables after the freeze, including the `c:` and `neoforge:` tags of NeoForge `Tags` that pumpkin-data generates. An unknown entry, id or tag SHALL return `None` or `false`. Status: supported (task 2.5, #109).
 
 #### Scenario: Conventional tag
-- **WHEN** a mod asks `is-in-tag("minecraft:iron_ingot", c:ingots)`
+- **WHEN** a mod asks `registry::is_in_tag(ContentKind::Item, "minecraft:iron_ingot", "c:ingots")`
 - **THEN** the answer is true
 
 ### Requirement: Data components, sound events, mob effects and attributes

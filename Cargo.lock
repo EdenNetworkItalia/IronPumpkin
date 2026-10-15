@@ -2138,6 +2138,7 @@ version = "0.2.0+26.3-26.51"
 dependencies = [
  "futures",
  "inventory",
+ "pumpkin-config",
  "pumpkin-core",
  "pumpkin-data",
  "pumpkin-macros",
@@ -2147,6 +2148,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

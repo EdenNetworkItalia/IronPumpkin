@@ -2,7 +2,7 @@
 
 In NeoForge, a mod creates one `DeferredRegister` for each registry. It adds entries as lambdas and registers the `DeferredRegister` on the mod bus. The game calls the lambdas when the registry opens. The mod keeps a `DeferredHolder` for each entry and calls `get()` later.
 
-In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `register_entity_type` or `register_tag` from `NativeMod::init`. Each call takes a builder and checks the definition at once. The server freezes the registry after the lifecycle steps of all mods. The freeze gives each entry its numeric id.
+In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `register_entity_type` or `register_tag` from `NativeMod::init`, or registers from a `RegisterEvent` handler. Each call takes a builder and checks the definition at once. The server freezes the registry after the lifecycle steps of all mods. The freeze gives each entry its numeric id. After the freeze, the module `ironpumpkin_mods::registry` looks up entries and tags.
 
 ---
 
@@ -11,14 +11,14 @@ In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `registe
 | Feature | NeoForge | IronPumpkin |
 | :--- | :--- | :--- |
 | **Register object** | One `DeferredRegister` for each registry (`Blocks`, `Items`, `Entities`) | `ModInit`, one handle for all registries |
-| **When the code runs** | The mod bus fires `RegisterEvent`, and the game calls the lambdas | Each `register_*` call runs at once inside `NativeMod::init` |
+| **When the code runs** | The mod bus fires `RegisterEvent`, and the game calls the lambdas | Each `register_*` call runs at once inside `NativeMod::init`, or inside a `RegisterEvent` handler |
 | **Definition** | `BlockBehaviour.Properties`, `Item.Properties`, `EntityType.Builder` | `BlockBuilder`, `ItemBuilder`, `EntityTypeBuilder`, `TagBuilder` |
-| **Handle** | `DeferredHolder`, `DeferredBlock`, `DeferredItem` | No handle. Keep the name and look it up after the freeze. |
+| **Handle** | `DeferredHolder`, `DeferredBlock`, `DeferredItem` | No handle. Keep the name and look it up after the freeze with `ironpumpkin_mods::registry`. |
 | **Behaviour** | A subclass of `Block` or `Item` | An implementation of `BlockBehaviour` or `ItemBehaviour`, set with `.behaviour(..)` |
 | **Look on a vanilla client** | A model and a texture from the mod | The `display` entry: the vanilla block state, item or entity type that the client shows. IronPumpkin only. |
 | **Error** | An exception when the game opens the registry | `Err(RegistryError)`. The server stops after `init` returns. |
 | **Tags** | JSON files in a data pack | `.tag(..)` on a builder, and `TagBuilder` for a tag of the mod |
-| **Creative tab** | The `creative_mode_tab` registry | No function today. Accept-and-ignore for the registration is planned (task 2.5). |
+| **Creative tab** | The `creative_mode_tab` registry | `ModInit::register_creative_mode_tab` accepts the tab, logs one line and ignores it. A creative tab is client UI. |
 | **Other registries** | Sound events, mob effects, data components, attributes | Planned (task 2.6). Fluids, recipe types and similar registries wait for M5. |
 
 ---
@@ -134,6 +134,7 @@ The mapping from the Java code to the Rust code:
 | `builder.sized(0.9F, 0.9F)` | `.dimensions(0.9, 0.9)` |
 | `BLOCKS.register(modBus)` | Nothing. `init` runs once, and each call applies at once. |
 | `GREETER.get()` | A lookup by name after the freeze. See "The freeze and lookups". |
+| `modBus.addListener(RegisterEvent.class, ..)` | `cx.register_event::<RegisterEvent, _>(..)`. See "RegisterEvent". |
 
 ---
 
@@ -191,32 +192,91 @@ Content does not inherit the behaviour of its `display` entry. Without `.behavio
 The server runs the registration in this order:
 
 1. It calls `init` of each mod, in load order: dependency order, with the mod id as tie-break. Each `register_*` call applies at once.
-2. It runs the other lifecycle steps and loads the configs. See [Lifecycle](./lifecycle.md). A mod has no `ModInit` there, so it registers no content.
-3. It freezes the registry. A mod tag that no mod registers fails here. An item that places an unknown block fails here.
-4. The freeze gives numeric ids to the custom entries, after the ids of the vanilla entries. The order is the order of the names, so the mod load order does not change an id.
-5. The first world loads. Look up custom content from this point, for example in a `ServerStartingEvent` handler.
+2. It fires `RegisterEvent` once for each registry: `minecraft:block`, then `minecraft:entity_type`, then `minecraft:item`. A handler can register content. See "RegisterEvent".
+3. It runs the other lifecycle steps and loads the configs. See [Lifecycle](./lifecycle.md). A mod has no `ModInit` there, so it registers no content.
+4. It freezes the registry. A mod tag that no mod registers fails here. An item that places an unknown block fails here.
+5. The freeze gives numeric ids to the custom entries, after the ids of the vanilla entries. The order is the order of the names, so the mod load order does not change an id.
+6. The first world loads. Look up custom content from this point, for example in a `ServerStartingEvent` handler.
 
-After the freeze, the generated lookups of Pumpkin answer for custom entries too. A mod looks up an entry by name. It does not hold a handle.
+After the freeze, the lookups answer for custom entries too. A mod looks up an entry by name. It does not hold a handle. The module `ironpumpkin_mods::registry` has the `Registry` and tag lookups of NeoForge for the block, item and entity type registries:
+
+| NeoForge | `ironpumpkin_mods::registry` |
+| :--- | :--- |
+| `Registry#containsKey` | `contains(kind, name)` |
+| `Registry#getId` | `id_of(kind, name)`, `None` for an unknown name |
+| `Registry#getKey` | `key_of(kind, id)`, `None` for an unknown id |
+| `Registry#keySet` | `keys(kind)` |
+| `Holder#is(TagKey)`, `ItemStack#is(TagKey)` | `is_in_tag(kind, name, tag)` |
+| `Registry#get(TagKey)`, a `HolderSet.Named` | `tag_entries(kind, tag)`, `None` for an unknown tag |
+
+The generated lookups of Pumpkin, such as `Block::from_name`, answer for custom entries too.
 
 ```rust
 use ironpumpkin_mods::{
-    content::DynamicTaggable,
+    content::ContentKind,
     pumpkin_data::{Block, item::Item},
+    registry,
 };
 
 /// Call this after the freeze, for example from a command.
 fn lamp_is_registered() -> bool {
-    Block::from_name("hello-mod:greeter_lamp").is_some()
+    registry::contains(ContentKind::Block, "hello-mod:greeter_lamp")
         && Item::from_registry_key("hello-mod:greeter_lamp").is_some()
 }
 
 fn lamp_breaks_with_a_pickaxe() -> bool {
-    Block::from_name("hello-mod:greeter_lamp")
-        .is_some_and(|block| block.has_tag_dynamic("minecraft:mineable/pickaxe"))
+    registry::is_in_tag(
+        ContentKind::Block,
+        "hello-mod:greeter_lamp",
+        "minecraft:mineable/pickaxe",
+    )
+}
+
+fn lamp_state() -> Option<u16> {
+    Block::from_name("hello-mod:greeter_lamp").map(|block| block.default_state.id.as_u16())
 }
 ```
 
-Lookups by tag work for generated tags and for tags of mods. A tag of a mod is not visible to clients and data packs.
+Lookups by tag work for generated tags (vanilla, and the `c:` and `neoforge:` tags that Pumpkin generates) and for tags of mods. A tag of a mod is not visible to clients and data packs.
+
+### RegisterEvent
+
+A mod that registers its content from a `RegisterEvent` listener keeps that shape. The handler gets `RegisterEvent` once per registry, and the methods of `content::RegisterEventExt` register only on the fire of their own registry, as `RegisterEvent#register(ResourceKey, ..)` does. Register the handler in `init`.
+
+```rust
+use std::sync::Arc;
+
+use ironpumpkin_mods::{
+    ModInit,
+    content::{BlockBuilder, ItemBuilder, RegisterEventExt},
+    event::{BoxFuture, EventHandler, EventPriority, registries::RegisterEvent},
+    pumpkin_data::{Block, item::Item},
+    server::Server,
+};
+
+const LAMP: &str = "hello-mod:greeter_lamp";
+
+struct RegisterContent;
+
+impl EventHandler<RegisterEvent> for RegisterContent {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut RegisterEvent,
+    ) -> BoxFuture<'a, ()> {
+        // The event keeps the first error. The server logs it and stops after the last fire.
+        let _ = event.register_block(BlockBuilder::new(LAMP, Block::REDSTONE_LAMP.default_state.id));
+        let _ = event.register_item(ItemBuilder::new(LAMP, &Item::REDSTONE_LAMP).places(LAMP));
+        Box::pin(async {})
+    }
+}
+
+fn init(cx: &mut ModInit) {
+    cx.register_event::<RegisterEvent, _>(Arc::new(RegisterContent), EventPriority::Normal, true, false);
+}
+```
+
+`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three.
 
 ## Errors
 
@@ -248,7 +308,7 @@ ERROR [ironpumpkin] native mod "greeter" cannot register the block "greeter:lamp
 
 **Do**
 
-- Register all content from `NativeMod::init`. The registry accepts content only until the freeze.
+- Register all content from `NativeMod::init` or from a `RegisterEvent` handler. The registry accepts content only until the freeze.
 - Return the `RegistryError` with `?` and stop at the first error.
 - Use the namespace and the names of the Java mod. A NeoForge client matches the registry by name.
 - Choose a `display` entry that looks like the content. A vanilla client shows it.
@@ -259,9 +319,9 @@ ERROR [ironpumpkin] native mod "greeter" cannot register the block "greeter:lamp
 **Don't**
 
 - Do not call `unwrap` or `expect` on a registration `Result`, and do not panic. The panic hook of the server writes a crash report and exits at once.
-- Do not register content from an event handler or a command. The registry is frozen by then, and the call fails with `RegistryFrozen`.
+- Do not register content from another event handler or from a command. The registry is frozen by then, and the call fails with `RegistryFrozen`.
 - Do not store numeric ids. The server allocates them at the freeze.
 - Do not use the `minecraft` namespace.
-- Do not expect a handle like `DeferredHolder`. No such type exists today.
-- Do not register a creative tab. No function exists for it. Accept-and-ignore is planned (task 2.5).
+- Do not expect a handle like `DeferredHolder`. Keep the name and use `ironpumpkin_mods::registry`.
+- Do not expect a creative tab on the server. `register_creative_mode_tab` accepts it and ignores it.
 - Do not expect a custom block to run the behaviour of its `display` block.

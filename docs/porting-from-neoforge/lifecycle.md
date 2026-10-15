@@ -16,7 +16,7 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | **`FMLDedicatedServerSetupEvent`** | A listener on the mod bus | `NativeMod::dedicated_server_setup` |
 | **`InterModEnqueueEvent`, `InterModProcessEvent`** | Listeners that call `InterModComms` | `NativeMod::inter_mod_enqueue` and `inter_mod_process` |
 | **`FMLLoadCompleteEvent`** | A listener on the mod bus | `NativeMod::load_complete` |
-| **`RegisterEvent`** | One event for each registry | No event. Content registers at once in `init`. See [Registration](./registration.md). |
+| **`RegisterEvent`** | One event for each registry | A Pumpkin event, once for each of the block, entity type and item registries, after `init`. Content also registers at once in `init`. See [Registration](./registration.md). |
 | **Client events** | `FMLClientSetupEvent` and the other client dist events | Never fire. The server has no client dist. |
 | **Mod descriptor** | `neoforge.mods.toml` in the jar | `NativeMod::mods_toml()`: optional text, usually `include_str!` of the file |
 | **Mod list** | `ModList.get()` | `ModList::get()` in `ironpumpkin_mods::mod_list` |
@@ -191,17 +191,19 @@ The mapping from the Java code to the Rust code:
 The server runs these steps once at startup. Each step calls the method of every mod, in load order, before the next step starts.
 
 1. It reads the metadata of every mod and checks the ids and the dependencies. It stops the server on an error.
-2. It calls `NativeMod::init` of each mod.
-3. It calls `common_setup`.
-4. It calls `dedicated_server_setup`.
-5. It calls `inter_mod_enqueue`.
-6. It calls `inter_mod_process`.
-7. It calls `load_complete`.
-8. It loads the Local and Synced configs. It then calls `config_loading` for every config of every mod, Startup configs too. A Startup config loads earlier, in `register_config`.
-9. It freezes the content registry.
-10. It loads the worlds. The server events, such as `ServerStartingEvent`, fire after this step.
+2. It calls `NativeMod::init` of each mod. A Startup config loads inside `register_config`, and its `config_loading` runs there.
+3. It fires `RegisterEvent` for `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, in that order. A registration error stops the server after the last fire.
+4. It loads the Local configs and calls `config_loading` for each.
+5. It calls `common_setup`.
+6. It calls `dedicated_server_setup`.
+7. It calls `inter_mod_enqueue`.
+8. It calls `inter_mod_process`.
+9. It calls `load_complete`.
+10. It loads the Synced configs and calls `config_loading` for each.
+11. It freezes the content registry.
+12. It loads the worlds. The server events, such as `ServerStartingEvent`, fire after this step.
 
-The order of steps 2 to 7 is the order of `CommonModLoader.load` in NeoForge 26.3. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
+The order of steps 2 to 9 is the order of `CommonModLoader.begin` and `CommonModLoader.load` in NeoForge 26.3. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
 
 ## Load order
 

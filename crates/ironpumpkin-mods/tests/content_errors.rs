@@ -245,3 +245,20 @@ fn a_mod_tag_that_the_registry_cannot_hold_is_rejected() {
         })
     );
 }
+
+/// Scenario "Display entry" of `neoforge-registration`. A mod cannot build a block state id that
+/// is not vanilla before the freeze, but `Item` has pub fields, so a forged item stands in.
+#[test]
+fn a_display_entry_that_is_not_vanilla_is_rejected() {
+    let forged: &'static Item = Box::leak(Box::new(Item {
+        id: Item::COUNT + 7,
+        ..Item::STICK
+    }));
+    assert_eq!(
+        init().register_item(ItemBuilder::new("error-mod:forged_display", forged)),
+        Err(RegistryError::DisplayNotVanilla {
+            kind: ContentKind::Item,
+            name: "error-mod:forged_display".to_string(),
+        })
+    );
+}

@@ -1,36 +1,63 @@
 //! The mod lifecycle after construction.
 //!
-//! The order is that of `NeoForge` 26.3 on a dedicated server. `CommonModLoader.begin` loads the
-//! local configs, then `CommonModLoader.load` runs common setup, sided setup
+//! The order is that of `NeoForge` 26.3 on a dedicated server. `CommonModLoader.begin` fires
+//! `RegisterEvent` once per registry (`GameData.postRegisterEvents`) and loads the local configs,
+//! then `CommonModLoader.load` runs common setup, sided setup
 //! (`FMLDedicatedServerSetupEvent` on a dedicated server), enqueue IMC, process IMC and load
 //! complete, and `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
 //! step calls the method of every mod in load order before the next step starts, and each method
 //! runs on its own mod only, as each `NeoForge` mod has its own mod bus.
 //!
-//! The server lifecycle events (`ServerAboutToStartEvent`, `ServerStartingEvent` and the others)
-//! are game bus events: a mod registers them as Pumpkin events with
-//! [`ModInit::register_event`](crate::ModInit::register_event).
+//! `RegisterEvent` is a Pumpkin event, because a `NeoForge` mod registers its listener on the mod
+//! bus: a mod registers a handler with [`ModInit::register_event`](crate::ModInit::register_event)
+//! and registers content through [`RegisterEventExt`](crate::content::RegisterEventExt). The
+//! server lifecycle events (`ServerAboutToStartEvent`, `ServerStartingEvent` and the others) are
+//! game bus events, registered the same way.
 
 use std::sync::Arc;
 
 use crate::{
     LoadedMod,
     config::{self, ConfigType, ModConfig},
+    content::ContentKind,
+    event::registries::RegisterEvent,
     imc::{ImcQueue, InterModEnqueue, InterModProcess},
     mod_list::ModList,
 };
 
-/// Runs the lifecycle steps after the last [`NativeMod::init`](crate::NativeMod::init), with the
-/// local configs loaded before them and the synced configs after them.
+/// The registries that `RegisterEvent` fires for, in the order of
+/// `GameData.getRegistrationOrder`: the vanilla registration order puts `minecraft:block` before
+/// `minecraft:entity_type` and `minecraft:item`.
+pub(crate) const REGISTRIES: [ContentKind; 3] = [
+    ContentKind::Block,
+    ContentKind::EntityType,
+    ContentKind::Item,
+];
+
+/// Runs the steps after the last [`NativeMod::init`](crate::NativeMod::init): `RegisterEvent`
+/// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
+/// handlers or `None` when no handler listens, then the lifecycle steps, with the local configs
+/// loaded before them and the synced configs after them.
 ///
 /// # Errors
 ///
-/// Returns the reason when a config cannot load.
+/// Returns the reason when a `RegisterEvent` handler fails to register content, after the last
+/// fire, or when a config cannot load.
 pub(crate) fn run(
     mods: &[LoadedMod<'_>],
     mod_list: &ModList,
     configs: &[Arc<ModConfig>],
+    mut fire_register: impl FnMut(ContentKind) -> Option<RegisterEvent>,
 ) -> Result<(), String> {
+    let mut register_error = None;
+    for registry in REGISTRIES {
+        if let Some(error) = fire_register(registry).and_then(|mut event| event.take_error()) {
+            register_error.get_or_insert(error);
+        }
+    }
+    if let Some(error) = register_error {
+        return Err(error.to_string());
+    }
     config::load(configs, ConfigType::Local)?;
     for loaded in mods {
         loaded.native_mod.common_setup();
@@ -60,16 +87,26 @@ pub(crate) fn run(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex, OnceLock};
+    use std::sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    };
 
     use super::run;
     use crate::{
         LoadedMod, ModInit, NativeMod,
         config::{ConfigSpec, ConfigType, ModConfig},
+        content::{ContentKind, RegistryError},
+        event::registries::RegisterEvent,
         imc::{InterModEnqueue, InterModProcess},
         mod_list::{ModList, system_mods},
         mods_toml::parse,
     };
+
+    /// Fires nothing: no handler listens to `RegisterEvent`.
+    fn no_handler(_: ContentKind) -> Option<RegisterEvent> {
+        None
+    }
 
     fn mod_list(ids: &[&str]) -> ModList {
         let mut infos = system_mods();
@@ -156,10 +193,18 @@ mod tests {
                 mod_id: "beta",
             },
         ];
-        run(&mods, &mod_list, &[]).unwrap();
+        run(&mods, &mod_list, &[], |registry| {
+            let event = RegisterEvent::new(registry);
+            record(format!("RegisterEvent {}", event.registry_key()));
+            Some(event)
+        })
+        .unwrap();
         assert_eq!(
             *CALLS.lock().unwrap(),
             [
+                "RegisterEvent minecraft:block",
+                "RegisterEvent minecraft:entity_type",
+                "RegisterEvent minecraft:item",
                 "common_setup alpha",
                 "common_setup beta",
                 "dedicated_server_setup alpha",
@@ -248,7 +293,7 @@ mod tests {
             native_mod: &CONFIG_MOD,
             mod_id: "configmod",
         }];
-        run(&mods, &mod_list, &init.configs).unwrap();
+        run(&mods, &mod_list, &init.configs, no_handler).unwrap();
         assert_eq!(
             *CONFIG_CALLS.lock().unwrap(),
             [
@@ -258,5 +303,68 @@ mod tests {
                 "config_loading synced",
             ]
         );
+    }
+
+    static SETUP_RAN: AtomicBool = AtomicBool::new(false);
+
+    struct SetupMod;
+
+    impl NativeMod for SetupMod {
+        fn id(&self) -> &'static str {
+            "setupmod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Setup mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0"
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+
+        fn common_setup(&self) {
+            SETUP_RAN.store(true, Ordering::Relaxed);
+        }
+    }
+
+    static SETUP_MOD: SetupMod = SetupMod;
+
+    /// `GameData.postRegisterEvents` posts every registry, then throws the collected errors before
+    /// `FMLCommonSetupEvent`.
+    #[test]
+    fn a_failed_register_event_registration_stops_before_common_setup() {
+        let mod_list = mod_list(&["setupmod"]);
+        let mods = [LoadedMod {
+            native_mod: &SETUP_MOD,
+            mod_id: "setupmod",
+        }];
+        let mut fired = Vec::new();
+        let error = run(&mods, &mod_list, &[], |registry| {
+            fired.push(registry);
+            let event = RegisterEvent::new(registry);
+            // Only the fire of the block registry runs the registration.
+            let result = event.register(ContentKind::Block, "setupmod:late", || {
+                Err(RegistryError::RegistryFrozen)
+            });
+            assert_eq!(result.is_err(), registry == ContentKind::Block);
+            Some(event)
+        })
+        .unwrap_err();
+        assert_eq!(
+            fired,
+            [
+                ContentKind::Block,
+                ContentKind::EntityType,
+                ContentKind::Item
+            ]
+        );
+        assert_eq!(
+            error,
+            "a RegisterEvent handler cannot register the block \"setupmod:late\": the content \
+             registry is frozen"
+        );
+        assert!(!SETUP_RAN.load(Ordering::Relaxed));
     }
 }

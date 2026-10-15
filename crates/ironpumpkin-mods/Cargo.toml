@@ -19,7 +19,10 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+pumpkin-config.workspace = true
 tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

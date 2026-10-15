@@ -44,7 +44,7 @@ The tick events are counted and only the first `ServerTickEvent.Pre` and the fir
 | Event | Bus | Fields | IronPumpkin today |
 |:--|:--|:--|:--|
 | `FMLConstructModEvent` | mod | none | `NativeMod::init` |
-| `RegisterEvent` | mod | `registry`: only `minecraft:block`, `minecraft:item`, `minecraft:entity_type` | not yet: the registration task (2.5 in `tasks.md`) |
+| `RegisterEvent` | mod | `registry`: only `minecraft:block`, `minecraft:item`, `minecraft:entity_type` | `RegisterEvent` (`registries::RegisterEvent`) |
 | `FMLCommonSetupEvent` | mod | none | `NativeMod::common_setup` |
 | `FMLLoadCompleteEvent` | mod | none | `NativeMod::load_complete` |
 | `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | not yet: the network task (2.11 in `tasks.md`) |
@@ -69,14 +69,15 @@ recorded again.
 
 `captures/ironpumpkin/diff.txt` is the input for the event tasks:
 
-- IronPumpkin fires 10 of the 16 events of the Java trace, in the order of NeoForge and with the
-  same fields: `FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
+- IronPumpkin fires 13 of the 16 events of the Java trace, in the order of NeoForge and with the
+  same fields: `FMLConstructModEvent`, the three `RegisterEvent` lines (`minecraft:block`,
+  `minecraft:entity_type`, `minecraft:item`), `FMLCommonSetupEvent`, `FMLLoadCompleteEvent`,
   `ModConfigEvent.Loading`, `ServerStartingEvent`, `ServerStartedEvent`, `ServerTickEvent.Pre`,
   `ServerTickEvent.Post`, `ServerStoppingEvent` and `ServerStoppedEvent`. The diff has no `moved`
   and no `fields` line.
-- The other 6 events are `missing`: the three `RegisterEvent` lines (the registration task, 2.5 in
-  `tasks.md`), `RegisterPayloadHandlersEvent` and `RegisterConfigurationTasksEvent` (the network
-  task, 2.11 in `tasks.md`), and `ServerAboutToStartEvent`, which has no Pumpkin event yet.
+- The other 3 events are `missing`: `RegisterPayloadHandlersEvent` and
+  `RegisterConfigurationTasksEvent` (the network task, 2.11 in `tasks.md`), and
+  `ServerAboutToStartEvent`, which has no Pumpkin event yet.
 
 On NeoForge 26.3.0.64-beta, `ModConfigEvent.Loading` of a `SYNCED` config fires at startup,
 after `RegisterPayloadHandlersEvent` and before `ServerAboutToStartEvent`, and

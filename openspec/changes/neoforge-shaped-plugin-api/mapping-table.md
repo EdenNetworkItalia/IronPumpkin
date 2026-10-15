@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 161 | 161 | 0 | 0 | 0 | 142 | 41 |
-| Inventory, planned | 574 | 529 | 43 | 2 | 0 | 411 | 82 |
+| Inventory, supported | 183 | 183 | 0 | 0 | 0 | 161 | 52 |
+| Inventory, planned | 552 | 507 | 43 | 2 | 0 | 392 | 71 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -48,7 +48,7 @@ How to read it:
 | `EntityJoinLevelEvent` | 49 | event class | `event-bus.event::entity-join-level-event` | supported |
 | `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` (after a poll reload and after `ModConfig::save`; a `save` inside the hook does not call it again) | supported |
 | `LivingDeathEvent` | 46 | event class | `event-bus.event::living-death-event` | supported |
-| `RegisterEvent` | 46 | event class | `event-bus.event::register-event` (resource `registration.register-event`) | planned |
+| `RegisterEvent` | 46 | event class | `pumpkin_core::plugin::registries::RegisterEvent`; a handler registers through `content::RegisterEventExt` | supported |
 | `ServerTickEvent.Post` | 43 | event class | `pumpkin_core::plugin::server::ServerTickEndEvent` | supported |
 | `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` (Startup inside `ModInit::register_config`, Local before `NativeMod::common_setup`, Synced after `NativeMod::load_complete`) | supported |
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -319,41 +319,41 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `DeferredHolder` | 224 | Registration API | `registration.deferred-holder` | planned |
-| `DeferredRegister#register` | 203 | Registration API | `registration.deferred-register.register` | planned |
-| `DeferredRegister#create` | 201 | Registration API | `registration.deferred-register.create` | planned |
-| `item` | 132 | Static registries a `DeferredRegister` can target | `registration.entry-definition::item` | planned |
+| `DeferredHolder` | 224 | Registration API | no handle type: the name, looked up with `registry::id_of`, `key_of` and `is_in_tag` after the freeze | supported |
+| `DeferredRegister#register` | 203 | Registration API | `ModInit::register_block`, `register_item`, `register_entity_type` | supported |
+| `DeferredRegister#create` | 201 | Registration API | `ModInit`, one handle for the block, item and entity type registries | supported |
+| `item` | 132 | Static registries a `DeferredRegister` can target | `ModInit::register_item`, `content::RegisterEventExt::register_item` | supported |
 | `data_component_type` | 113 | Static registries a `DeferredRegister` can target | `registration.entry-definition::data-component-type`; values through `data-components` (task 2.6) | planned |
-| `creative_mode_tab` | 112 | Static registries a `DeferredRegister` can target | `registration.entry-definition::creative-mode-tab` (contract only: the host accepts the entry and ignores it) | not supported |
+| `creative_mode_tab` | 112 | Static registries a `DeferredRegister` can target | `ModInit::register_creative_mode_tab` (contract only: the host logs the entry and ignores it) | not supported |
 | `NeoForgeRegistries` | 111 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
-| `DeferredItem` | 104 | Registration API | `registration.deferred-item` | planned |
-| `block` | 98 | Static registries a `DeferredRegister` can target | `registration.entry-definition::block` | planned |
+| `DeferredItem` | 104 | Registration API | no handle type: the name, looked up with `Item::from_registry_key` or `registry::id_of` after the freeze | supported |
+| `block` | 98 | Static registries a `DeferredRegister` can target | `ModInit::register_block`, `content::RegisterEventExt::register_block` | supported |
 | `block_entity_type` | 90 | Static registries a `DeferredRegister` can target | `registration.entry-definition::block-entity-type` | planned |
-| `DeferredRegister#createItems` | 85 | Registration API | `registration.deferred-register-items.create-items` | planned |
-| `DeferredBlock` | 78 | Registration API | `registration.deferred-block` | planned |
+| `DeferredRegister#createItems` | 85 | Registration API | `ModInit::register_item` with `content::ItemBuilder` | supported |
+| `DeferredBlock` | 78 | Registration API | no handle type: the name, looked up with `Block::from_name` or `registry::id_of` after the freeze | supported |
 | `menu` | 78 | Static registries a `DeferredRegister` can target | `registration.entry-definition::menu` | planned |
 | `NeoForgeRegistries.Keys` | 77 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
-| `DeferredRegister.Items#register` | 76 | Registration API | `registration.deferred-register-items.register-item` | planned |
+| `DeferredRegister.Items#register` | 76 | Registration API | `ModInit::register_item` with `content::ItemBuilder` | supported |
 | `recipe_serializer` | 74 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#createBlocks` | 66 | Registration API | `registration.deferred-register-blocks.create-blocks` | planned |
-| `DeferredRegister.Blocks#register` | 60 | Registration API | `registration.deferred-register-blocks.register-block` | planned |
+| `DeferredRegister#createBlocks` | 66 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
+| `DeferredRegister.Blocks#register` | 60 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
 | `sound_event` | 55 | Static registries a `DeferredRegister` can target | `registration.entry-definition::sound-event`; played by id with the v0.2 `play-custom-sound` (task 2.6) | planned |
 | `neoforge:attachment_types` | 54 | Registries NeoForge adds | `registration.entry-definition::attachment-type` | planned |
 | `recipe_type` | 49 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `RegistryBuilder` | 47 | Registration API | `registration` doc, not supported | planned |
-| `entity_type` | 46 | Static registries a `DeferredRegister` can target | `registration.entry-definition::entity-type` | planned |
+| `entity_type` | 46 | Static registries a `DeferredRegister` can target | `ModInit::register_entity_type`, `content::RegisterEventExt::register_entity_type` | supported |
 | `DeferredRegister#createDataComponents` | 45 | Registration API | `registration.deferred-register-data-components.create-data-components` (task 2.6) | planned |
 | `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getEntries` | 36 | Registration API | `registration.deferred-register.get-entries` | planned |
-| `IRegistryExtension` | 31 | Registration API | `registration.registry-contains`, `registry-get-id`, `registry-get-key`, `registry-max-id`, `registry-resolve-alias` | planned |
+| `IRegistryExtension` | 31 | Registration API | `registry::contains`, `id_of`, `key_of`; the alias and max id queries are a gap | planned |
 | `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `registration.deferred-register-data-components.register-component-type`; values through `data-components` (task 2.6) | planned |
 | `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `loot.register-loot-modifier-type` | planned |
 | `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `mob_effect` | 19 | Static registries a `DeferredRegister` can target | `registration.entry-definition::mob-effect`; applied through `mob-effects` (task 2.6) | planned |
 | `trigger_type` | 19 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `RegisterEvent.RegisterHelper#register` | 18 | Registration API | `registration.register-event.register` | planned |
-| `DeferredRegister.Items#registerItem` | 17 | Registration API | `registration.deferred-register-items.register-item` | planned |
-| `DeferredRegister.Items#registerSimpleBlockItem` | 16 | Registration API | `registration.deferred-register-items.register-simple-block-item` | planned |
+| `RegisterEvent.RegisterHelper#register` | 18 | Registration API | `content::RegisterEventExt::register_block`, `register_item`, `register_entity_type` | supported |
+| `DeferredRegister.Items#registerItem` | 17 | Registration API | `ModInit::register_item` with `ItemBuilder::behaviour` | supported |
+| `DeferredRegister.Items#registerSimpleBlockItem` | 16 | Registration API | `ModInit::register_item` with `ItemBuilder::places` | supported |
 | `neoforge:fluid_type` | 16 | Registries NeoForge adds | `registration.entry-definition::fluid-type` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | planned |
 | `neoforge:condition_codecs` | 16 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `fluid` | 16 | Static registries a `DeferredRegister` can target | `registration.entry-definition::fluid` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | planned |
@@ -362,7 +362,7 @@ How to read it:
 | `DeferredRegister#makeRegistry` | 12 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#addAlias` | 11 | Registration API | `registration.deferred-register.add-alias` | planned |
 | `neoforge:biome_modifier_serializers` | 10 | Registries NeoForge adds | `registration` doc, not supported | planned |
-| `DeferredRegister.Blocks#registerBlock` | 9 | Registration API | `registration.deferred-register-blocks.register-block` | planned |
+| `DeferredRegister.Blocks#registerBlock` | 9 | Registration API | `ModInit::register_block` with `BlockBuilder::behaviour` | supported |
 | `neoforge:entity_data_serializers` | 9 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `point_of_interest_type` | 9 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `worldgen/structure_type` | 8 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -378,11 +378,11 @@ How to read it:
 | `custom_stat` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `registries.holdersets` | 5 | Other registry packages | `registration` doc, not supported | planned |
 | `worldgen/chunk_generator` | 4 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#getRegistry` | 3 | Registration API | `registration.registry-*` functions | planned |
+| `DeferredRegister#getRegistry` | 3 | Registration API | `registry::*` functions | planned |
 | `worldgen/structure_placement` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `enchantment_effect_component_type` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getNamespace` | 2 | Registration API | `registration.deferred-register.get-namespace` | planned |
-| `DeferredRegister.Blocks#registerSimpleBlock` | 2 | Registration API | `registration.deferred-register-blocks.register-simple-block` | planned |
+| `DeferredRegister.Blocks#registerSimpleBlock` | 2 | Registration API | `ModInit::register_block` with `BlockBuilder::new` | supported |
 | `memory_module_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `sensor_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `height_provider_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -391,7 +391,7 @@ How to read it:
 | `map_decoration_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DataPackRegistriesHooks` | 1 | Registration API | `registration` doc, not supported | not supported |
 | `DeferredRegister#getRegistryKey` | 1 | Registration API | `registration.deferred-register.get-registry-name` | planned |
-| `DeferredRegister.Items#registerSimpleItem` | 1 | Registration API | `registration.deferred-register-items.register-simple-item` | planned |
+| `DeferredRegister.Items#registerSimpleItem` | 1 | Registration API | `ModInit::register_item` with `ItemBuilder::new` | supported |
 | `RegistryManager` | 1 | Registration API | `registration` doc, not supported | not supported |
 | `RegistrySnapshot` | 1 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
 | `neoforge:structure_modifier_serializers` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -409,10 +409,10 @@ How to read it:
 | `BaseMappedRegistry` | 0 | Registration API | `registration` doc, not supported | not supported |
 | `DataMapLoader` | 0 | Registration API | `data-maps` (host loader of `data_maps` JSON) | planned |
 | `DatapackRegistryBuilder` | 0 | Registration API | `registration` doc, not supported | planned |
-| `DeferredRegister#createEntities` | 0 | Registration API | `registration.deferred-register-entities.create-entities` | planned |
-| `DeferredRegister#createTagKey` | 0 | Registration API | `registration.deferred-register.create-tag-key` | planned |
+| `DeferredRegister#createEntities` | 0 | Registration API | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | supported |
+| `DeferredRegister#createTagKey` | 0 | Registration API | the tag name: `content::TagBuilder`, `registry::is_in_tag`, `registry::tag_entries` | supported |
 | `DeferredRegister#getRegistryName` | 0 | Registration API | `registration.deferred-register.get-registry-name` | planned |
-| `DeferredRegister.Entities#registerEntityType` | 0 | Registration API | `registration.deferred-register-entities.register-entity-type` | planned |
+| `DeferredRegister.Entities#registerEntityType` | 0 | Registration API | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | supported |
 | `NeoForgeRegistriesSetup` | 0 | Registration API | `registration` doc, not supported | not supported |
 | `RegistryManager.SnapshotType` | 0 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
 | `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -858,8 +858,8 @@ How to read it:
 | `ICommandSourceExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/command` `command-sender`; overriding hooks is a gap (documented in `types`) | planned |
 | `IEnchantmentExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `IFallableExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.block-definition.block-type`; overriding hooks is a gap (documented in `types`) | planned |
-| `IHolderSetExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.tag-entries`; overriding hooks is a gap (documented in `types`) | planned |
-| `IHolderSetExtension.SerializationType` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.tag-entries`; overriding hooks is a gap (documented in `types`) | planned |
+| `IHolderSetExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
+| `IHolderSetExtension.SerializationType` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
 | `IMenuProviderExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `menus.menu-definition` (`writeClientSideData` is `extra-data`); overriding hooks is a gap (documented in `types`) | planned |
 | `IPlayerListExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/server`; overriding hooks is a gap (documented in `types`) | planned |
 | `IRecipeOutputExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
@@ -886,27 +886,27 @@ How to read it:
 | `transfer.fluid` | 130 | Packages outside the families above | `capabilities.handler-type::fluid-resource-handler`, `types.fluid-resource` | planned |
 | `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `transfer.energy` | 78 | Packages outside the families above | `capabilities.handler-type::energy-handler` | planned |
-| `Tags` | 77 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `Tags.Items` | 51 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.crafting` | 43 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `CommonHooks` | 42 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `ItemAbilities` | 41 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `NeoForgeMod` | 30 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `Tags.Blocks` | 30 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags.Blocks` | 30 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `fluids.crafting` | 28 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `entity` | 20 | Packages outside the families above | gap: `IEntityWithComplexSpawn` spawn data needs the M3 `advanced_add_entity` payload; `PartEntity` has no target (documented in `types`) | planned |
 | `MutableDataComponentHolder` | 20 | Types in the root `common` package | `pumpkin:plugin/item-stack` component methods; `types.component-value` | planned |
 | `SoundActions` | 20 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
-| `Tags.EntityTypes` | 20 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
+| `Tags.EntityTypes` | 20 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `common.damagesource` | 18 | Packages outside the families above | `types.damage-container`, `damage-reduction`, `event-bus.reduction-modifier`, `callbacks.apply-reduction-modifier` | planned |
 | `common.world.chunk` | 13 | Packages outside the families above | `types` doc (other packages), not supported | planned |
-| `Tags.Fluids` | 12 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
+| `Tags.Fluids` | 12 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `IShearable` | 11 | Types in the root `common` package | gap: shear behaviour hook; documented in `types` (extension interfaces) | planned |
-| `Tags.DamageTypes` | 11 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags.DamageTypes` | 11 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `UsernameCache` | 10 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `server.command` | 9 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `resource` | 8 | Packages outside the families above | `lifecycle.add-server-reload-listeners-event`, `callbacks.on-server-reload` | planned |
@@ -914,7 +914,7 @@ How to read it:
 | `server.permission` | 7 | Packages outside the families above | `pumpkin:plugin/player.has-permission` (`PermissionAPI.getPermission`) | supported |
 | `server.permission.nodes` | 7 | Packages outside the families above | `pumpkin:plugin/permission.permission` via `event-bus` `permission-gather-event-nodes` | planned |
 | `PercentageAttribute` | 7 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
-| `Tags.Biomes` | 4 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags.Biomes` | 4 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `BooleanAttribute` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `CreativeModeTabRegistry` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `TranslatableEnum` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
@@ -961,10 +961,10 @@ How to read it:
 | `NeoForgeBuildType` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `NeoForgeEventHandler` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `OnlyInWarningsHandler` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `Tags.Enchantments` | 0 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
-| `Tags.Potions` | 0 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
-| `Tags.Structures` | 0 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | supported |
-| `Tags.WorldClocks` | 0 | Types in the root `common` package | `registration.tag-entries`, `is-in-tag` (tag ids) | planned |
+| `Tags.Enchantments` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
+| `Tags.Potions` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
+| `Tags.Structures` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
+| `Tags.WorldClocks` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 
 ## Modpack coverage
 
@@ -1024,12 +1024,12 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.neoforged.neoforge.registries.DeferredHolder` | 224 | same | `registration.deferred-holder` |
+| `net.neoforged.neoforge.registries.DeferredHolder` | 224 | same | no handle type: the name and `registry::id_of`, `key_of`, `is_in_tag` |
 | `net.neoforged.neoforge.registries.DeferredRegister` | 207 | same | `registration.deferred-register` |
 | `net.neoforged.neoforge.registries.NeoForgeRegistries` | 111 | same | `registration` registry ids (`neoforge:*`) |
-| `net.neoforged.neoforge.registries.DeferredItem` | 104 | same | `registration.deferred-item` |
+| `net.neoforged.neoforge.registries.DeferredItem` | 104 | same | no handle type: the name and `Item::from_registry_key`, `registry::id_of` |
 | `net.neoforged.neoforge.registries.DeferredRegister$Items` | 86 | same | `registration.deferred-register-items` |
-| `net.neoforged.neoforge.registries.DeferredBlock` | 78 | same | `registration.deferred-block` |
+| `net.neoforged.neoforge.registries.DeferredBlock` | 78 | same | no handle type: the name and `Block::from_name`, `registry::id_of` |
 | `net.neoforged.neoforge.registries.NeoForgeRegistries$Keys` | 77 | same | `registration` registry ids (`neoforge:*`) |
 | `net.neoforged.neoforge.registries.DeferredRegister$Blocks` | 67 | same | `registration.deferred-register-blocks` |
 | `net.neoforged.neoforge.registries.DeferredRegister$DataComponents` | 47 | same | `registration.deferred-register-data-components` (planned, task 2.6) |
@@ -1137,13 +1137,13 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.neoforged.neoforge.common.Tags` | 77 | same | `registration.tag-entries`, `is-in-tag` |
+| `net.neoforged.neoforge.common.Tags` | 77 | same | `registry::tag_entries`, `registry::is_in_tag` |
 | `net.neoforged.neoforge.common.extensions.IMenuTypeExtension` | 70 | same | `registration.menu-type-definition.extra-data`, `menus.menu-definition.extra-data` |
 | `net.neoforged.neoforge.common.util.FakePlayer` | 63 | same | gap: not supported (Pumpkin has no fake players); documented in `types` |
-| `net.neoforged.neoforge.common.Tags$Items` | 51 | same | `registration.tag-entries`, `is-in-tag` |
+| `net.neoforged.neoforge.common.Tags$Items` | 51 | same | `registry::tag_entries`, `registry::is_in_tag` |
 | `net.neoforged.neoforge.common.ItemAbility` | 45 | same | gap: not supported; `item-ability` name on `block-event-block-tool-modification-event` |
 | `net.neoforged.neoforge.common.ItemAbilities` | 41 | same | gap: not supported (item abilities); documented in `types` |
-| `net.neoforged.neoforge.common.Tags$Blocks` | 30 | same | `registration.tag-entries`, `is-in-tag` |
+| `net.neoforged.neoforge.common.Tags$Blocks` | 30 | same | `registry::tag_entries`, `registry::is_in_tag` |
 | `net.neoforged.neoforge.common.SoundAction` | 23 | same | `registration.fluid-sound.action` |
 | `net.neoforged.neoforge.common.SoundActions` | 20 | same | `registration.fluid-sound.action` |
 | `net.neoforged.neoforge.common.DeferredSpawnEggItem` | 19 | CHANGED | `registration.item-properties.spawn-egg` (class removed in 26.3) |
@@ -1170,32 +1170,32 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.minecraft.resources.ResourceLocation` | 367 | CHANGED | `types.identifier` (`Identifier` in 26.3) |
 | `net.minecraft.resources.ResourceKey` | 306 | same | `types.resource-key` |
 | `net.minecraft.core.BlockPos` | 296 | same | `pumpkin:plugin/common` (`block-pos`) |
-| `net.minecraft.core.registries.Registries` | 265 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
+| `net.minecraft.core.registries.Registries` | 265 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
 | `net.minecraft.core.Holder` | 258 | same | `types.identifier`; `registration.deferred-holder` |
-| `net.minecraft.core.registries.BuiltInRegistries` | 257 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
+| `net.minecraft.core.registries.BuiltInRegistries` | 257 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
 | `net.minecraft.core.Direction` | 249 | same | `types.direction` |
-| `net.minecraft.core.HolderLookup` | 245 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.HolderLookup$Provider` | 239 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.DefaultedRegistry` | 239 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.Registry` | 239 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.tags.TagKey` | 232 | same | `types.tag-key` |
-| `net.minecraft.core.RegistryAccess` | 198 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.Holder$Reference` | 177 | same | `registration.deferred-holder` |
+| `net.minecraft.core.HolderLookup` | 245 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.HolderLookup$Provider` | 239 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.DefaultedRegistry` | 239 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.Registry` | 239 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.tags.TagKey` | 232 | same | the tag name, for `registry::is_in_tag` and `registry::tag_entries` |
+| `net.minecraft.core.RegistryAccess` | 198 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.Holder$Reference` | 177 | same | no handle type: the name and `registry::id_of`, `key_of`, `is_in_tag` |
 | `net.minecraft.core.NonNullList` | 172 | same | a list of `item-stack` (`list<item-stack>`) |
 | `net.minecraft.core.particles.ParticleOptions` | 133 | same | `pumpkin:plugin/particles` |
 | `net.minecraft.core.particles.SimpleParticleType` | 114 | same | `pumpkin:plugin/particles` |
 | `net.minecraft.core.particles.ParticleTypes` | 113 | same | `pumpkin:plugin/particles` |
-| `net.minecraft.tags.BlockTags` | 96 | same | `registration.is-in-tag` (tag ids) |
-| `net.minecraft.core.HolderSet` | 94 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.HolderLookup$RegistryLookup` | 81 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
+| `net.minecraft.tags.BlockTags` | 96 | same | `registry::is_in_tag` (tag ids) |
+| `net.minecraft.core.HolderSet` | 94 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.HolderLookup$RegistryLookup` | 81 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
 | `net.minecraft.core.Position` | 75 | same | `pumpkin:plugin/common` (`position`) |
-| `net.minecraft.tags.ItemTags` | 74 | same | `registration.is-in-tag` (tag ids) |
+| `net.minecraft.tags.ItemTags` | 74 | same | `registry::is_in_tag` (tag ids) |
 | `net.minecraft.core.BlockPos$MutableBlockPos` | 67 | same | `pumpkin:plugin/common` (`block-pos`) |
-| `net.minecraft.core.HolderSet$Named` | 63 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.core.HolderGetter` | 46 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.tags.DamageTypeTags` | 34 | same | `registration.is-in-tag` (tag ids) |
-| `net.minecraft.core.HolderSet$Direct` | 32 | same | `registration` lookup functions (`registry-*`, `tag-entries`) |
-| `net.minecraft.tags.BiomeTags` | 9 | same | `registration.is-in-tag` (tag ids) |
+| `net.minecraft.core.HolderSet$Named` | 63 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.core.HolderGetter` | 46 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.tags.DamageTypeTags` | 34 | same | `registry::is_in_tag` (tag ids) |
+| `net.minecraft.core.HolderSet$Direct` | 32 | same | `ironpumpkin_mods::registry` (`contains`, `id_of`, `key_of`, `keys`, `tag_entries`) |
+| `net.minecraft.tags.BiomeTags` | 9 | same | `registry::is_in_tag` (tag ids) |
 
 #### Minecraft data components
 
@@ -1237,13 +1237,13 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.minecraft.world.item.ItemStack` | 327 | same | `pumpkin:plugin/item-stack`; `registration.item-definition` |
 | `net.minecraft.world.item.Item` | 312 | same | `pumpkin:plugin/item-stack`; `registration.item-definition` |
 | `net.minecraft.world.item.Item$Properties` | 217 | same | `registration.item-properties` |
-| `net.minecraft.world.item.CreativeModeTab` | 183 | same | `registration.creative-mode-tab-definition` (ignored on the server) |
+| `net.minecraft.world.item.CreativeModeTab` | 183 | same | `ModInit::register_creative_mode_tab` (ignored on the server) |
 | `net.minecraft.world.item.Items` | 180 | same | `pumpkin:plugin/item-stack`; `registration.item-definition` |
 | `net.minecraft.world.item.BlockItem` | 179 | same | `registration.item-definition.block` |
-| `net.minecraft.world.item.CreativeModeTab$Builder` | 142 | same | `registration.creative-mode-tab-definition` |
-| `net.minecraft.world.item.CreativeModeTab$Output` | 131 | same | `registration.creative-mode-tab-definition.items` |
-| `net.minecraft.world.item.CreativeModeTab$ItemDisplayParameters` | 127 | same | `registration.creative-mode-tab-definition.items` |
-| `net.minecraft.world.item.CreativeModeTab$DisplayItemsGenerator` | 121 | same | `registration.creative-mode-tab-definition.items` |
+| `net.minecraft.world.item.CreativeModeTab$Builder` | 142 | same | `ModInit::register_creative_mode_tab` (takes the name; the builder is client UI) |
+| `net.minecraft.world.item.CreativeModeTab$Output` | 131 | same | `ModInit::register_creative_mode_tab` (the tab contents are client UI) |
+| `net.minecraft.world.item.CreativeModeTab$ItemDisplayParameters` | 127 | same | `ModInit::register_creative_mode_tab` (the tab contents are client UI) |
+| `net.minecraft.world.item.CreativeModeTab$DisplayItemsGenerator` | 121 | same | `ModInit::register_creative_mode_tab` (the tab contents are client UI) |
 | `net.minecraft.world.item.DyeColor` | 82 | same | `pumpkin:plugin/world` (`dye-color`) |
 | `net.minecraft.world.item.CreativeModeTabs` | 73 | same | `types.identifier` (tab ids) |
 | `net.minecraft.world.item.Rarity` | 70 | same | `registration.rarity` |
@@ -1286,7 +1286,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.minecraft.world.item.crafting.Ingredient` | 141 | same | `pumpkin:plugin/recipe` `ingredient`; tests with the item id and `registration.is-in-tag` (documented in `types`) |
+| `net.minecraft.world.item.crafting.Ingredient` | 141 | same | `pumpkin:plugin/recipe` `ingredient`; tests with the item id and `registry::is_in_tag` (documented in `types`) |
 | `net.minecraft.world.item.trading.MerchantOffer` | 19 | same | `event-bus.merchant-offer` |
 | `net.minecraft.world.item.trading.ItemCost` | 17 | same | gap: 26.3 trades are `minecraft:villager_trade` datapack entries; no code API |
 | `net.minecraft.world.item.trading.MerchantOffers` | 10 | same | `event-bus.merchant-offer`; trades are datapack data in 26.1 |

@@ -220,6 +220,7 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 
 | NeoForge event | IronPumpkin event | Notes |
 | :--- | :--- | :--- |
+| `RegisterEvent` | `registries::RegisterEvent` | Once for `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, after the last `init` and before `common_setup`. Register content with `content::RegisterEventExt`. See [Registration](./registration.md). |
 | `ServerStartingEvent` | `server::ServerStartingEvent` | After the worlds load, before the first tick and the first connection |
 | `ServerStartedEvent` | `server::ServerLoadEvent` | Before the first tick |
 | `ServerStoppingEvent` | `server::ServerStoppingEvent` | After the ticker thread exits (bound 30 s), before the server saves the players and the worlds |

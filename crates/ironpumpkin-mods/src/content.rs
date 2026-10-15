@@ -5,7 +5,8 @@
 //! [`ModInit::register_block`](crate::ModInit::register_block),
 //! [`ModInit::register_item`](crate::ModInit::register_item),
 //! [`ModInit::register_entity_type`](crate::ModInit::register_entity_type) or
-//! [`ModInit::register_tag`](crate::ModInit::register_tag).
+//! [`ModInit::register_tag`](crate::ModInit::register_tag), or, from a handler of `RegisterEvent`,
+//! to a method of [`RegisterEventExt`]. After the freeze, [`crate::registry`] looks the entries up.
 //!
 //! A builder does not validate. The registry validates when the mod registers the content and
 //! returns a [`RegistryError`].
@@ -95,7 +96,9 @@
 
 use std::{fmt, sync::Arc};
 
-use pumpkin_core::content::behaviour;
+use pumpkin_core::{
+    content::behaviour, entity::custom, plugin::api::events::registries::RegisterEvent,
+};
 use pumpkin_data::{
     BlockStateId,
     dynamic::{
@@ -349,6 +352,105 @@ impl TagBuilder {
 impl From<TagBuilder> for TagDefinition {
     fn from(builder: TagBuilder) -> Self {
         builder.0
+    }
+}
+
+/// Registration from a handler of [`RegisterEvent`], the `NeoForge` pattern
+/// `event.register(Registries.BLOCK, helper -> helper.register(..))`.
+///
+/// The server fires `RegisterEvent` once per registry after the `init` of every mod and before
+/// `common_setup`: `minecraft:block`, then `minecraft:entity_type`, then `minecraft:item`. Each
+/// method registers only on the fire of its own registry, and does nothing and returns `Ok` on
+/// the other fires, as `RegisterEvent#register(ResourceKey, Identifier, Supplier)` does. So one
+/// handler can register blocks, items and entity types.
+///
+/// A registration applies at once, like [`ModInit::register_block`](crate::ModInit::register_block),
+/// and binds at the freeze. The event keeps the first error. The server logs it and stops after
+/// the last fire, before `common_setup`.
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// use ironpumpkin_mods::{
+///     content::{BlockBuilder, ItemBuilder, RegisterEventExt},
+///     event::{BoxFuture, EventHandler, registries::RegisterEvent},
+///     pumpkin_data::{Block, item::Item},
+///     server::Server,
+/// };
+///
+/// struct RegisterLamp;
+///
+/// impl EventHandler<RegisterEvent> for RegisterLamp {
+///     fn handle_blocking<'a>(
+///         &'a self,
+///         _server: &'a Arc<Server>,
+///         event: &'a mut RegisterEvent,
+///     ) -> BoxFuture<'a, ()> {
+///         // The event keeps an error, so the `Result` can be ignored here.
+///         let _ = event.register_block(BlockBuilder::new(
+///             "lamps:copper_lamp",
+///             Block::REDSTONE_LAMP.default_state.id,
+///         ));
+///         let _ = event.register_item(
+///             ItemBuilder::new("lamps:copper_lamp", &Item::REDSTONE_LAMP)
+///                 .places("lamps:copper_lamp"),
+///         );
+///         Box::pin(async {})
+///     }
+/// }
+/// ```
+///
+/// Register the handler in `init` with
+/// `cx.register_event::<RegisterEvent, _>(Arc::new(RegisterLamp), EventPriority::Normal, true, false)`.
+pub trait RegisterEventExt {
+    /// Registers a block on the fire of `minecraft:block`. See [`ModInit::register_block`](crate::ModInit::register_block).
+    ///
+    /// # Errors
+    ///
+    /// The [`RegistryError`] of the registry.
+    fn register_block(&self, block: BlockBuilder) -> Result<(), RegistryError>;
+
+    /// Registers an item on the fire of `minecraft:item`. See [`ModInit::register_item`](crate::ModInit::register_item).
+    ///
+    /// # Errors
+    ///
+    /// The [`RegistryError`] of the registry.
+    fn register_item(&self, item: ItemBuilder) -> Result<(), RegistryError>;
+
+    /// Registers an entity type and the factory that spawns it on the fire of
+    /// `minecraft:entity_type`. See [`ModInit::register_entity_type`](crate::ModInit::register_entity_type).
+    ///
+    /// # Errors
+    ///
+    /// The [`RegistryError`] of the registry.
+    fn register_entity_type(
+        &self,
+        definition: impl Into<EntityTypeDefinition>,
+        factory: EntityFactory,
+    ) -> Result<(), RegistryError>;
+}
+
+impl RegisterEventExt for RegisterEvent {
+    fn register_block(&self, block: BlockBuilder) -> Result<(), RegistryError> {
+        let name = block.name().to_owned();
+        self.register(ContentKind::Block, &name, || block.register())
+    }
+
+    fn register_item(&self, item: ItemBuilder) -> Result<(), RegistryError> {
+        let name = item.name().to_owned();
+        self.register(ContentKind::Item, &name, || item.register())
+    }
+
+    fn register_entity_type(
+        &self,
+        definition: impl Into<EntityTypeDefinition>,
+        factory: EntityFactory,
+    ) -> Result<(), RegistryError> {
+        let definition = definition.into();
+        let name = definition.name.clone();
+        self.register(ContentKind::EntityType, &name, || {
+            custom::register_entity_type(definition, factory)
+        })
     }
 }
 

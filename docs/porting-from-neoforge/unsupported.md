@@ -18,7 +18,7 @@ The inventory in `design.md` of the change folder has one row for each element o
 | **Events** | The NeoForge event catalogue | Pumpkin events. The server, tick, chat, statistic, anvil, grindstone, brewing and enchanting events have NeoForge fire sites and fields. See [Events](./events.md). The player, level and entity families are planned (tasks 2.12, 2.13 and 2.15). |
 | **Data generation and game tests** | `runData`, `RegisterGameTestsEvent` | Not supported |
 | **Mod version records of a world** | `ModMismatchEvent` | Not supported. Pumpkin does not keep them. |
-| **Creative tabs** | `creative_mode_tab` registry, `BuildCreativeModeTabContentsEvent` | The server never reads them. Accept-and-ignore for the registry is planned (task 2.5). |
+| **Creative tabs** | `creative_mode_tab` registry, `BuildCreativeModeTabContentsEvent` | The server never reads them. `ModInit::register_creative_mode_tab` accepts a tab and ignores it. |
 
 ---
 

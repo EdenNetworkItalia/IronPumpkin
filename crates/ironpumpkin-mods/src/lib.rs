@@ -3,8 +3,8 @@
 //! A mod crate implements [`NativeMod`] and registers it with [`register_mod!`]. A modpack binary
 //! references each mod crate (`use hello_mod as _;`) and calls `pumpkin::run()`. Before the first
 //! world loads, the server reads the metadata of every linked mod, checks the dependencies, calls
-//! each [`NativeMod::init`] once in load order, and then calls the lifecycle methods
-//! ([`lifecycle`]).
+//! each [`NativeMod::init`] once in load order, fires `RegisterEvent` once per registry, and then
+//! calls the lifecycle methods ([`lifecycle`]).
 //!
 //! This crate is the only `IronPumpkin` dependency a mod needs. It re-exports the server types:
 //!
@@ -20,6 +20,7 @@
 //! | [`server`]      | `Server`                                                                  |
 //! | [`entity`]      | `Player` and the other entities                                           |
 //! | [`content`]     | builders for custom blocks, items, entity types, tags, `RegistryError`    |
+//! | [`registry`]    | registry and tag lookups for vanilla and mod entries                      |
 //! | [`mod_list`]    | `ModList`, `dist()`                                                       |
 //! | [`mods_toml`]   | `ModInfo`, `ModDependency`, the `neoforge.mods.toml` reader               |
 //! | [`imc`]         | inter-mod messages                                                        |
@@ -68,6 +69,7 @@ pub mod imc;
 pub mod lifecycle;
 pub mod mod_list;
 pub mod mods_toml;
+pub mod registry;
 pub mod version;
 
 /// The events a mod can listen to, and the traits to handle them.
@@ -94,7 +96,7 @@ macro_rules! __translate_cross {
 }
 
 use content::{ContentKind, EntityFactory, RegistryError};
-use event::{EventHandler, EventPriority, ParentEventHandler, Payload};
+use event::{EventHandler, EventPriority, ParentEventHandler, Payload, registries::RegisterEvent};
 use imc::{InterModEnqueue, InterModProcess};
 use mod_list::ModList;
 use mods_toml::ModInfo;
@@ -445,6 +447,28 @@ impl ModInit {
         self.keep_content_error(kind, name, dynamic::register_tag(definition))
     }
 
+    /// Accepts a creative mode tab and ignores it, so a port can keep its registration. The call
+    /// logs one line and returns `Ok`.
+    ///
+    /// `NeoForge`: an entry of the `minecraft:creative_mode_tab` registry, for example from
+    /// `DeferredRegister.create(Registries.CREATIVE_MODE_TAB, modid)`. A creative tab is client
+    /// UI: a dedicated server never reads it, and the server sends nothing for it.
+    ///
+    /// # Errors
+    ///
+    /// None: the `Result` keeps the shape of the other registrations.
+    pub fn register_creative_mode_tab(
+        &mut self,
+        name: impl Into<String>,
+    ) -> Result<(), RegistryError> {
+        info!(
+            "[ironpumpkin] {}: creative mode tab \"{}\" ignored: creative tabs are client UI",
+            self.id,
+            name.into()
+        );
+        Ok(())
+    }
+
     /// Passes `result` through and keeps its error if it is the first one of this mod.
     fn keep_content_error(
         &mut self,
@@ -680,7 +704,16 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         init.apply(&startup::create_context(server, metadata));
     }
-    lifecycle::run(&mods, mod_list, &configs).unwrap_or_else(|err| refuse_to_start(&err));
+    // Same blocking pattern as `ModInit::register_service`: the hook runs inside `Server::new`.
+    let fire_register = |registry| {
+        futures::executor::block_on(tokio::task::unconstrained(
+            server
+                .plugin_manager
+                .fire_with(server, || RegisterEvent::new(registry)),
+        ))
+    };
+    lifecycle::run(&mods, mod_list, &configs, fire_register)
+        .unwrap_or_else(|err| refuse_to_start(&err));
     config::start(server, configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()
@@ -708,7 +741,7 @@ mod tests {
     use std::{
         any::Any,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         },
     };
@@ -946,6 +979,46 @@ mod tests {
         let mut init = ModInit::new("test-mod");
         init.init_log();
         assert_eq!(init.registrations.len(), 1);
+    }
+
+    /// Collects the log lines of a test subscriber.
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Capture {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Scenario "Creative tab" of `neoforge-registration`.
+    #[test]
+    fn a_creative_mode_tab_is_accepted_and_ignored() {
+        let out = Arc::new(Mutex::new(Vec::new()));
+        let writer = Arc::clone(&out);
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .without_time()
+            .with_writer(move || Capture(Arc::clone(&writer)))
+            .finish();
+        let mut init = ModInit::new("tab-mod");
+        let result = tracing::subscriber::with_default(subscriber, || {
+            init.register_creative_mode_tab("tab-mod:main")
+        });
+        assert_eq!(result, Ok(()));
+        assert!(init.registrations.is_empty());
+        let log = String::from_utf8(out.lock().unwrap().clone()).unwrap();
+        assert_eq!(log.lines().count(), 1, "{log}");
+        assert!(
+            log.contains(
+                "tab-mod: creative mode tab \"tab-mod:main\" ignored: creative tabs are client UI"
+            ),
+            "{log}"
+        );
     }
 
     #[test]

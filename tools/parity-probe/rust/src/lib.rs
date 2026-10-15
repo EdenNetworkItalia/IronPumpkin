@@ -22,6 +22,7 @@ use ironpumpkin_mods::{
     config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
+        registries::RegisterEvent,
         server::{
             LoadType, ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent,
             ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
@@ -124,6 +125,12 @@ impl NativeMod for ParityProbe {
         if let Err(err) = register_config(cx) {
             error!("[{ID}] cannot register the synced config: {err}");
         }
+        cx.register_event::<RegisterEvent, _>(
+            Arc::new(Register),
+            EventPriority::Normal,
+            false,
+            false,
+        );
         cx.register_event::<ServerLoadEvent, _>(
             Arc::new(Started),
             EventPriority::Normal,
@@ -171,6 +178,25 @@ fn register_config(cx: &mut ModInit) -> Result<(), ConfigError> {
 }
 
 register_mod!(ParityProbe);
+
+/// `RegisterEvent` with the key of the registry. `IronPumpkin` fires it for the three registries
+/// that the Java probe traces, `minecraft:block`, `minecraft:entity_type` and `minecraft:item`.
+struct Register;
+
+impl EventHandler<RegisterEvent> for Register {
+    fn handle<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a RegisterEvent,
+    ) -> BoxFuture<'a, ()> {
+        Box::pin(async move {
+            trace(
+                "RegisterEvent",
+                &[("registry", Value::Text(event.registry_key().to_owned()))],
+            );
+        })
+    }
+}
 
 /// `ServerStartedEvent`: `ServerLoadEvent` with [`LoadType::Startup`].
 struct Started;
