@@ -214,6 +214,9 @@ pub struct BasicConfiguration {
     /// `NeoForge` clients and negotiates their channels. Vanilla clients see five extra packets
     /// before the brand. A loaded client-required native mod turns it on.
     pub detect_neoforge_clients: bool,
+    /// How often, in ticks, the server checks the config files of native mods in `config/` and
+    /// reloads the files that changed. 0 turns the check off.
+    pub mod_config_reload_ticks: u32,
     /// The default level name
     pub default_level_name: String,
     /// Whether chat messages should be signed or not.
@@ -248,6 +251,7 @@ impl Default for BasicConfiguration {
             favicon_path: None,
             advertise_modded: false,
             detect_neoforge_clients: false,
+            mod_config_reload_ticks: 100,
             default_level_name: "world".to_string(),
             allow_chat_reports: false,
             white_list: false,

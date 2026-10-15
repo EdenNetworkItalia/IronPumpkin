@@ -1,8 +1,9 @@
 //! Boots a server with the test mod in a child process and runs the headless client against it.
 //! A `NeoForge` client gets the registry sync with the test mod's content at the first free ids,
 //! then the modded configuration tasks with the test mod's synced config. A vanilla client gets
-//! neither: the client-required test mod gets it kicked. The child reruns this test binary with
-//! `SERVER_DIR` set and starts the server from that directory.
+//! neither: the client-required test mod gets it kicked. After an edit of the synced config file,
+//! the server reloads it and the next `NeoForge` client gets the edited file. The child reruns this
+//! test binary with `SERVER_DIR` set and starts the server from that directory.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -15,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use ironpumpkin_test_mod::{BLOCK, ENTITY_TYPE, ITEM, SYNCED_CONFIG, SYNCED_CONFIG_CONTENTS};
+use ironpumpkin_test_mod::{
+    BLOCK, ENTITY_TYPE, ITEM, STARTUP_CONFIG, STARTUP_GREETING, SYNCED_CONFIG, SYNCED_RELOADED,
+};
 use pumpkin_neoforge_client::{
     channels::ChannelMap,
     check, parse_expected,
@@ -32,6 +35,7 @@ use pumpkin_protocol::java::neoforge::{
 const SERVER_DIR: &str = "SERVER_DIR";
 const TEST_NAME: &str = "neoforge_client_syncs_custom_content";
 const NEOFORGE_PLAYER: &str = "SyncProbe";
+const RELOAD_PLAYER: &str = "ReloadProbe";
 const VANILLA_PLAYER: &str = "VanillaProbe";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
 const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
@@ -40,6 +44,7 @@ const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
 struct Server {
     child: Child,
     log: PathBuf,
+    port: u16,
 }
 
 impl Server {
@@ -48,6 +53,7 @@ impl Server {
             dir.join("pumpkin.toml"),
             format!(
                 r#"detect_neoforge_clients = true
+mod_config_reload_ticks = 2
 
 [logging]
 color = false
@@ -85,7 +91,7 @@ enabled = false
             .stderr(out)
             .spawn()
             .unwrap();
-        let mut server = Self { child, log };
+        let mut server = Self { child, log, port };
         server.wait_for_port(port);
         server
     }
@@ -182,13 +188,28 @@ fn body(entry: &Entry) -> Vec<u8> {
     hex::decode(&entry.data).unwrap()
 }
 
-fn check_neoforge_client(server: &Server, port: u16) {
-    let channels = ChannelMap::load(
+fn neoforge_channels() -> ChannelMap {
+    ChannelMap::load(
         &Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../tools/pumpkin-neoforge-client/channels/neoforge-26.3.toml"),
     )
-    .unwrap();
-    let (entries, outcome) = record(port, NEOFORGE_PLAYER, Some(channels));
+    .unwrap()
+}
+
+/// The `neoforge:config_file` payloads of a recording, in order.
+fn config_files(entries: &[Entry]) -> Vec<ConfigFilePayload> {
+    entries
+        .iter()
+        .filter(|entry| {
+            entry.direction == Direction::Clientbound
+                && entry.channel.as_deref() == Some(ConfigFilePayload::CHANNEL)
+        })
+        .map(|entry| decode_exact(&body(entry), ConfigFilePayload::read).unwrap())
+        .collect()
+}
+
+fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
+    let (entries, outcome) = record(port, NEOFORGE_PLAYER, Some(neoforge_channels()));
     let expected = parse_expected(include_str!(
         "../../../tools/pumpkin-neoforge-client/expected/pumpkin-neoforge-test-mod.txt"
     ));
@@ -254,7 +275,7 @@ fn check_neoforge_client(server: &Server, port: u16) {
         "{sent} {echo} {known_packs}"
     );
 
-    check_modded_tasks(&entries);
+    check_modded_tasks(&entries, synced_config);
 
     server.wait_for_log(&format!(
         "{NEOFORGE_PLAYER} entered play as a NeoForge client"
@@ -273,8 +294,8 @@ const MODDED_TASK_CHANNELS: [&str; 6] = [
 
 /// The modded tasks run between `update_tags` and `finish_configuration`, the bodies of
 /// `c:register` and the first `neoforge:config_file` equal run (b), and the test mod's config
-/// follows.
-fn check_modded_tasks(entries: &[Entry]) {
+/// follows with the contents of its file.
+fn check_modded_tasks(entries: &[Entry], synced_config: &[u8]) {
     let tags = position(entries, Direction::Clientbound, "update_tags", None);
     let finish = position(
         entries,
@@ -301,14 +322,7 @@ fn check_modded_tasks(entries: &[Entry]) {
         register.data,
         "0104706c6179010e6e656f666f7267653a73706c6974"
     );
-    let configs: Vec<ConfigFilePayload> = entries
-        .iter()
-        .filter(|entry| {
-            entry.direction == Direction::Clientbound
-                && entry.channel.as_deref() == Some(ConfigFilePayload::CHANNEL)
-        })
-        .map(|entry| decode_exact(&body(entry), ConfigFilePayload::read).unwrap())
-        .collect();
+    let configs = config_files(entries);
     assert_eq!(configs.len(), 2);
     assert_eq!(configs[0].file_name, "neoforge-synced.toml");
     assert_eq!(
@@ -316,7 +330,27 @@ fn check_modded_tasks(entries: &[Entry]) {
         include_bytes!("../../../assets/neoforge/neoforge-synced.toml")
     );
     assert_eq!(configs[1].file_name, SYNCED_CONFIG);
-    assert_eq!(&*configs[1].contents, SYNCED_CONFIG_CONTENTS);
+    assert_eq!(&*configs[1].contents, synced_config);
+}
+
+/// An operator edits the synced config; the server reloads it within the reload interval, and the
+/// next `NeoForge` client gets the edited file.
+fn check_reloaded_synced_config(server: &Server, config: &Path) {
+    let original = std::fs::read_to_string(config).unwrap();
+    let edited = original.replace("enabled = true", "enabled = false");
+    assert_ne!(edited, original);
+    std::fs::write(config, &edited).unwrap();
+    server.wait_for_log(SYNCED_RELOADED);
+
+    let port = server.port;
+    let (entries, outcome) = record(port, RELOAD_PLAYER, Some(neoforge_channels()));
+    let failures = check(&entries, &outcome, None, None);
+    assert!(failures.is_empty(), "{failures:#?}");
+    let configs = config_files(&entries);
+    assert_eq!(configs.len(), 2);
+    assert_eq!(configs[1].file_name, SYNCED_CONFIG);
+    assert_eq!(&*configs[1].contents, edited.as_bytes());
+    assert_eq!(std::fs::read(config).unwrap(), edited.as_bytes());
 }
 
 /// `NetworkRegistry.initializeOtherConnection` refuses a vanilla client while a client-required
@@ -350,8 +384,24 @@ fn neoforge_client_syncs_custom_content() {
     }
 
     let dir = tempfile::tempdir().unwrap();
+    let config_dir = dir.path().join("config");
+    std::fs::create_dir_all(&config_dir).unwrap();
+    std::fs::write(
+        config_dir.join(STARTUP_CONFIG),
+        "greeting = \"from the file\"\n",
+    )
+    .unwrap();
     let port = free_port();
     let server = Server::start(dir.path(), port);
-    check_neoforge_client(&server, port);
+    // The startup config loads in `init`, from the file.
+    server.wait_for_log(&format!("{STARTUP_GREETING}from the file"));
+    let synced_config = config_dir.join(SYNCED_CONFIG);
+    let contents = std::fs::read_to_string(&synced_config).unwrap();
+    assert!(
+        contents.contains("[general]\n\t# Whether the mod is on\n\tenabled = true\n"),
+        "{contents}"
+    );
+    check_neoforge_client(&server, port, contents.as_bytes());
     check_vanilla_client(port);
+    check_reloaded_synced_config(&server, &synced_config);
 }

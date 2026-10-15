@@ -438,7 +438,7 @@ impl PendingConnection {
                     .await;
                 }
                 ConfigurationTask::SyncConfig => {
-                    for file in configuration_payloads::config_files(startup::synced_configs()) {
+                    for file in configuration_payloads::config_files(&startup::synced_configs()) {
                         self.send_neoforge_payload(ConfigFilePayload::CHANNEL, |data| {
                             file.write(data)
                         })

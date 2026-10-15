@@ -54,7 +54,18 @@ pub struct SyncedConfig {
     pub contents: Box<[u8]>,
 }
 
-static SYNCED_CONFIGS: OnceLock<Vec<SyncedConfig>> = OnceLock::new();
+/// A live synced config, read for each connection.
+///
+/// The `SyncConfig` configuration task reads the contents for each connection, so a file that
+/// the host reloads reaches every client that configures afterwards, as
+/// `ConfigSync.syncAllConfigs` of `NeoForge` reads the file for each connection.
+pub trait SyncedConfigSource: Send + Sync {
+    fn file_name(&self) -> &str;
+    /// The current file contents.
+    fn contents(&self) -> Box<[u8]>;
+}
+
+static SYNCED_CONFIGS: OnceLock<Vec<Arc<dyn SyncedConfigSource>>> = OnceLock::new();
 
 /// Records the synced configs of the native mods, once, in mod id order.
 ///
@@ -63,29 +74,37 @@ static SYNCED_CONFIGS: OnceLock<Vec<SyncedConfig>> = OnceLock::new();
 /// Returns the reason when a file name is `NeoForge`'s own or appears twice: `NeoForge` collects
 /// the configs into a map by file name (`ConfigSync.syncAllConfigs`), and the client applies a
 /// file by its name.
-pub fn set_synced_configs(configs: Vec<SyncedConfig>) -> Result<(), String> {
-    check_synced_config_names(&configs)?;
+pub fn set_synced_configs(configs: Vec<Arc<dyn SyncedConfigSource>>) -> Result<(), String> {
+    check_synced_config_names(configs.iter().map(|config| config.file_name()))?;
     let _ = SYNCED_CONFIGS.set(configs);
     Ok(())
 }
 
-fn check_synced_config_names(configs: &[SyncedConfig]) -> Result<(), String> {
-    let mut names = BTreeSet::from([NEOFORGE_SYNCED_CONFIG_NAME]);
-    for config in configs {
-        if !names.insert(config.file_name.as_str()) {
+fn check_synced_config_names<'a>(names: impl Iterator<Item = &'a str>) -> Result<(), String> {
+    let mut seen = BTreeSet::from([NEOFORGE_SYNCED_CONFIG_NAME]);
+    for name in names {
+        if !seen.insert(name) {
             return Err(format!(
-                "the synced config \"{}\" is registered twice or is NeoForge's own",
-                config.file_name
+                "the synced config \"{name}\" is registered twice or is NeoForge's own"
             ));
         }
     }
     Ok(())
 }
 
-/// The synced configs of the native mods in mod id order. Empty before [`set_synced_configs`].
+/// The current contents of the synced configs of the native mods in mod id order. Empty before
+/// [`set_synced_configs`].
 #[must_use]
-pub fn synced_configs() -> &'static [SyncedConfig] {
-    SYNCED_CONFIGS.get().map_or(&[], Vec::as_slice)
+pub fn synced_configs() -> Vec<SyncedConfig> {
+    SYNCED_CONFIGS.get().map_or_else(Vec::new, |configs| {
+        configs
+            .iter()
+            .map(|config| SyncedConfig {
+                file_name: config.file_name().to_owned(),
+                contents: config.contents(),
+            })
+            .collect()
+    })
 }
 
 pub(crate) fn is_native_mod_id(name: &str) -> bool {
@@ -117,21 +136,14 @@ pub fn create_context(server: &Arc<Server>, metadata: PluginMetadata) -> Context
 
 #[cfg(test)]
 mod tests {
-    use super::{NativeModInfo, SyncedConfig, check_synced_config_names, has_mod_id, sorted_by_id};
-
-    fn config(file_name: &str) -> SyncedConfig {
-        SyncedConfig {
-            file_name: file_name.to_owned(),
-            contents: Box::from(&b"a = 1\n"[..]),
-        }
-    }
+    use super::{NativeModInfo, check_synced_config_names, has_mod_id, sorted_by_id};
 
     #[test]
     fn synced_config_names_are_unique() {
-        assert!(check_synced_config_names(&[config("a.toml"), config("b.toml")]).is_ok());
-        let twice = check_synced_config_names(&[config("a.toml"), config("a.toml")]);
+        assert!(check_synced_config_names(["a.toml", "b.toml"].into_iter()).is_ok());
+        let twice = check_synced_config_names(["a.toml", "a.toml"].into_iter());
         assert!(twice.unwrap_err().contains("a.toml"));
-        assert!(check_synced_config_names(&[config("neoforge-synced.toml")]).is_err());
+        assert!(check_synced_config_names(["neoforge-synced.toml"].into_iter()).is_err());
     }
 
     fn info(id: &str, client_required: bool) -> NativeModInfo {

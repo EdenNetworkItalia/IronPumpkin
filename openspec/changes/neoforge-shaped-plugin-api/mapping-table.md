@@ -37,7 +37,7 @@ How to read it:
 | `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `event-bus.event::register-commands-event` | supported |
-| `ModConfigEvent` | 86 | event class | `event-bus.event::mod-config-event` | planned |
+| `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` | planned |
 | `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerInteractEvent.RightClickBlock` | 67 | event class | `event-bus.event::player-interact-event-right-click-block` | supported |
@@ -46,11 +46,11 @@ How to read it:
 | `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `event-bus.event::break-block-event` | supported |
 | `ServerTickEvent` | 52 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `EntityJoinLevelEvent` | 49 | event class | `event-bus.event::entity-join-level-event` | supported |
-| `ModConfigEvent.Reloading` | 48 | event class | `event-bus.event::mod-config-event-reloading` | planned |
+| `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` | planned |
 | `LivingDeathEvent` | 46 | event class | `event-bus.event::living-death-event` | supported |
 | `RegisterEvent` | 46 | event class | `event-bus.event::register-event` (resource `registration.register-event`) | planned |
 | `ServerTickEvent.Post` | 43 | event class | `event-bus.event::server-tick-event-post` | supported |
-| `ModConfigEvent.Loading` | 43 | event class | `event-bus.event::mod-config-event-loading` | planned |
+| `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` | planned |
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | planned |
 | `ServerStartedEvent` | 40 | event class | `event-bus.event::server-started-event` | supported |
@@ -574,42 +574,42 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `ModConfigSpec` | 182 | Config API | `mod-config.mod-config-spec` | planned |
-| `ModConfig` | 165 | Config API | `mod-config.mod-config` | planned |
-| `ModConfig.Type` | 165 | Config API | `mod-config.config-type` | planned |
-| `IConfigSpec` | 162 | Config API | `mod-config.mod-config-spec` | planned |
-| `ModConfigSpec.Builder#comment` | 156 | Config API | `mod-config.value-spec.comment` | planned |
-| `ModConfigSpec.Builder#define` | 140 | Config API | `mod-config.value-kind::boolean`, `value-kind::%string` | planned |
-| `ModConfigSpec.BooleanValue` | 138 | Config API | `mod-config.value-kind::boolean` | planned |
-| `ModConfigSpec.Builder#defineInRange` | 134 | Config API | `mod-config.value-kind::*-in-range` | planned |
-| `ModConfigSpec.Builder#push` | 132 | Config API | `mod-config.value-spec.path`, `section-comment` | planned |
-| `ModConfigSpec.Builder#pop` | 130 | Config API | `mod-config.value-spec.path` | planned |
-| `ModConfigSpec.Builder#build` | 123 | Config API | `mod-config.mod-config-spec` | planned |
-| `ModConfigSpec.IntValue` | 119 | Config API | `mod-config.value-kind::int-in-range` | planned |
-| `ModConfigSpec.ConfigValue` | 104 | Config API | `mod-config.mod-config.get`, `set`, `save`, `get-default` | planned |
-| `ModConfig.Type.LOCAL` | 102 | Config types | `mod-config.config-type::local` | planned |
-| `ModConfig.Type.SYNCED` | 75 | Config types | `mod-config.config-type::synced` | planned |
-| `ModConfigSpec.DoubleValue` | 68 | Config API | `mod-config.value-kind::double-in-range` | planned |
-| `ModConfigSpec.Builder#configure` | 57 | Config API | `mod-config.mod-config-spec` | planned |
-| `ModConfigSpec.EnumValue` | 39 | Config API | `mod-config.value-kind::enum-constant` | planned |
-| `ModConfigSpec.Builder#translation` | 38 | Config API | `mod-config.value-spec.translation` | planned |
-| `ModConfigSpec.Builder#defineEnum` | 37 | Config API | `mod-config.value-kind::enum-constant` | planned |
-| `ModConfigSpec.Builder#defineList` | 31 | Config API | `mod-config.value-kind::%list` | planned |
-| `ModConfigSpec.Builder#defineListAllowEmpty` | 31 | Config API | `mod-config.list-spec.allow-empty` | planned |
-| `ModConfigSpec.LongValue` | 22 | Config API | `mod-config.value-kind::long-in-range` | planned |
-| `ModConfig.Type.STARTUP` | 17 | Config types | `mod-config.config-type::startup` | planned |
-| `ModConfigSpec.Builder#worldRestart` | 15 | Config API | `mod-config.restart-type::world` | planned |
-| `ModConfigSpec.ValueSpec` | 7 | Config API | `mod-config.value-spec` | planned |
-| `ModConfigSpec.Range` | 5 | Config API | `mod-config.int-range`, `long-range`, `double-range` | planned |
-| `IConfigSpec.ILoadedConfig` | 5 | Config API | `mod-config.mod-config` | planned |
-| `ModConfigSpec.Builder#gameRestart` | 4 | Config API | `mod-config.restart-type::game` | planned |
-| `ConfigTracker` | 4 | Config API | `mod-config` doc, not supported | not supported |
-| `ModConfigSpec.RestartType` | 3 | Config API | `mod-config.restart-type` | planned |
+| `ModConfigSpec` | 182 | Config API | `ironpumpkin_mods::config::ConfigSpec` | planned |
+| `ModConfig` | 165 | Config API | `ironpumpkin_mods::config::ModConfig` | planned |
+| `ModConfig.Type` | 165 | Config API | `ironpumpkin_mods::config::ConfigType` | planned |
+| `IConfigSpec` | 162 | Config API | `ironpumpkin_mods::config::ConfigSpec` | planned |
+| `ModConfigSpec.Builder#comment` | 156 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::comment` | planned |
+| `ModConfigSpec.Builder#define` | 140 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define`, `define_validated` | planned |
+| `ModConfigSpec.BooleanValue` | 138 | Config API | `ironpumpkin_mods::config::ModConfig::get::<bool>` | planned |
+| `ModConfigSpec.Builder#defineInRange` | 134 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_in_range` | planned |
+| `ModConfigSpec.Builder#push` | 132 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::push` | planned |
+| `ModConfigSpec.Builder#pop` | 130 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::pop` | planned |
+| `ModConfigSpec.Builder#build` | 123 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::build` | planned |
+| `ModConfigSpec.IntValue` | 119 | Config API | `ironpumpkin_mods::config::ModConfig::get::<i32>` | planned |
+| `ModConfigSpec.ConfigValue` | 104 | Config API | `ironpumpkin_mods::config::ModConfig::get`, `set`, `save`, `get_default` | planned |
+| `ModConfig.Type.LOCAL` | 102 | Config types | `ironpumpkin_mods::config::ConfigType::Local` | planned |
+| `ModConfig.Type.SYNCED` | 75 | Config types | `ironpumpkin_mods::config::ConfigType::Synced` | planned |
+| `ModConfigSpec.DoubleValue` | 68 | Config API | `ironpumpkin_mods::config::ModConfig::get::<f64>` | planned |
+| `ModConfigSpec.Builder#configure` | 57 | Config API | `ironpumpkin_mods::config::ConfigSpec::builder`, then `ConfigSpecBuilder::build` | planned |
+| `ModConfigSpec.EnumValue` | 39 | Config API | `ironpumpkin_mods::config::ConfigEnum`, `ModConfig::get::<E>` | planned |
+| `ModConfigSpec.Builder#translation` | 38 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::translation` | planned |
+| `ModConfigSpec.Builder#defineEnum` | 37 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_enum` | planned |
+| `ModConfigSpec.Builder#defineList` | 31 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` | planned |
+| `ModConfigSpec.Builder#defineListAllowEmpty` | 31 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` (an empty list in the file is kept) | planned |
+| `ModConfigSpec.LongValue` | 22 | Config API | `ironpumpkin_mods::config::ModConfig::get::<i64>` | planned |
+| `ModConfig.Type.STARTUP` | 17 | Config types | `ironpumpkin_mods::config::ConfigType::Startup` | planned |
+| `ModConfigSpec.Builder#worldRestart` | 15 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::world_restart` | planned |
+| `ModConfigSpec.ValueSpec` | 7 | Config API | `ironpumpkin_mods::config::ConfigSpec` (per value: `ModConfig::get_default`, `ConfigSpec::translation`) | planned |
+| `ModConfigSpec.Range` | 5 | Config API | `ironpumpkin_mods::config::RangeBound` (`i32`, `i64`, `f64`) | planned |
+| `IConfigSpec.ILoadedConfig` | 5 | Config API | `ironpumpkin_mods::config::ModConfig` | planned |
+| `ModConfigSpec.Builder#gameRestart` | 4 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::game_restart` | planned |
+| `ConfigTracker` | 4 | Config API | `ironpumpkin_mods::config` doc, not supported | not supported |
+| `ModConfigSpec.RestartType` | 3 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::world_restart`, `game_restart` | planned |
 | `ModConfigs` | 3 | Config API | `mod-config.get-mod-configs`, `get-file-names` | planned |
-| `ModConfigSpec.Builder#defineInList` | 1 | Config API | `mod-config.string-spec.allowed` | planned |
-| `ModConfigSpec.ListValueSpec` | 0 | Config API | `mod-config.list-spec` | planned |
-| `NeoForgeLocalConfig` | 0 | Config API | `mod-config` doc, not supported | not supported |
-| `NeoForgeSyncedConfig` | 0 | Config API | `mod-config` doc, not supported | not supported |
+| `ModConfigSpec.Builder#defineInList` | 1 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_validated` | planned |
+| `ModConfigSpec.ListValueSpec` | 0 | Config API | `ironpumpkin_mods::config::ConfigSpecBuilder::define_list` | planned |
+| `NeoForgeLocalConfig` | 0 | Config API | `ironpumpkin_mods::config` doc, not supported | not supported |
+| `NeoForgeSyncedConfig` | 0 | Config API | `ironpumpkin_mods::config` doc, not supported | not supported |
 
 ### Networking
 
@@ -660,7 +660,7 @@ How to read it:
 | `neoforge:auxiliary_light_data` | 0 | Payloads | `network` doc, not supported | planned |
 | `c:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `c:version` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:config_file` | 0 | Payloads | `mod-config.config-type::synced` (host payload) | planned |
+| `neoforge:config_file` | 0 | Payloads | `ironpumpkin_mods::config::ConfigType::Synced` (host payload, the file of each synced config) | planned |
 | `neoforge:extensible_enum_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:extensible_enum_data` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:feature_flags_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
@@ -686,7 +686,7 @@ How to read it:
 | `CommonRegisterTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
 | `CommonVersionTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
 | `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
-| `SyncConfig` | 0 | Configuration tasks and other network types | host-side M3 task for `mod-config.config-type::synced` | planned |
+| `SyncConfig` | 0 | Configuration tasks and other network types | host-side task: `ConfigurationTask::SyncConfig` reads `pumpkin_core::plugin::startup::synced_configs` for `ironpumpkin_mods::config::ConfigType::Synced` | planned |
 | `SyncRegistries` | 0 | Configuration tasks and other network types | host-side M3 task; no mod API | planned |
 | `QueuedPacket` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
 | `QueuedPacket.CustomPayload` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
@@ -730,7 +730,7 @@ How to read it:
 | `ModList#get` | 200 | Event bus and mod container | `mod_list::ModList::get` | planned |
 | `@EventBusSubscriber(modid)` | 186 | Entry point annotations | `event-bus.add-listener` of the calling mod | planned |
 | `ModList#isLoaded` | 175 | Event bus and mod container | `mod_list::ModList::is_loaded` | planned |
-| `ModContainer#registerConfig` | 159 | Event bus and mod container | `mod-config.register-config` | planned |
+| `ModContainer#registerConfig` | 159 | Event bus and mod container | `ModInit::register_config`, `ModInit::register_config_with_file_name` | planned |
 | `@EventBusSubscriber(value)` | 151 | Entry point annotations | `event-bus.add-listener` (client-dist subscribers are not registered) | planned |
 | `IEventBus#register` | 112 | Event bus and mod container | `event-bus.add-listener` | planned |
 | `EventPriority` | 99 | Event bus and mod container | `pumpkin:plugin/event.event-priority` | supported |
@@ -880,7 +880,7 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `NeoForge` | 219 | Types in the root `common` package | `event-bus.bus::game` | planned |
 | `transfer` | 189 | Packages outside the families above | `capabilities.capability-handle` | planned |
-| `ModConfigSpec` | 182 | Types in the root `common` package | `mod-config.mod-config-spec` | planned |
+| `ModConfigSpec` | 182 | Types in the root `common` package | `ironpumpkin_mods::config::ConfigSpec` | planned |
 | `transfer.item` | 149 | Packages outside the families above | `capabilities.handler-type::item-resource-handler`, `types.item-resource` | planned |
 | `common.util` | 133 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `transfer.fluid` | 130 | Packages outside the families above | `capabilities.handler-type::fluid-resource-handler`, `types.fluid-resource` | planned |
@@ -1094,14 +1094,14 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.fml.common.Mod` | 340 | same | mod registration (`register_mod!`), the mod's `init` and its embedded `neoforge.mods.toml` |
-| `net.neoforged.fml.ModContainer` | 246 | same | `lifecycle.mod-container`, `mod-config.register-config` |
+| `net.neoforged.fml.ModContainer` | 246 | same | `lifecycle.mod-container`, `ModInit::register_config` |
 | `net.neoforged.api.distmarker.Dist` | 199 | same | `types.dist` |
-| `net.neoforged.neoforge.common.ModConfigSpec` | 182 | same | `mod-config.mod-config-spec` |
-| `net.neoforged.neoforge.common.ModConfigSpec$Builder` | 178 | same | `mod-config.mod-config-spec`, `value-spec` |
-| `net.neoforged.fml.config.ModConfig` | 165 | same | `mod-config.mod-config` |
-| `net.neoforged.fml.config.ModConfig$Type` | 165 | same | `mod-config.config-type` (`SERVER` is gone in FML 12: use `synced` or `local`) |
-| `net.neoforged.fml.config.IConfigSpec` | 162 | same | `mod-config.mod-config-spec` |
-| `net.neoforged.neoforge.common.ModConfigSpec$ConfigValue` | 104 | same | `mod-config.mod-config.get`, `set`, `save` |
+| `net.neoforged.neoforge.common.ModConfigSpec` | 182 | same | `ironpumpkin_mods::config::ConfigSpec` |
+| `net.neoforged.neoforge.common.ModConfigSpec$Builder` | 178 | same | `ironpumpkin_mods::config::ConfigSpecBuilder` |
+| `net.neoforged.fml.config.ModConfig` | 165 | same | `ironpumpkin_mods::config::ModConfig` |
+| `net.neoforged.fml.config.ModConfig$Type` | 165 | same | `ironpumpkin_mods::config::ConfigType` (`SERVER` is gone in FML 12: use `Synced` or `Local`) |
+| `net.neoforged.fml.config.IConfigSpec` | 162 | same | `ironpumpkin_mods::config::ConfigSpec` |
+| `net.neoforged.neoforge.common.ModConfigSpec$ConfigValue` | 104 | same | `ironpumpkin_mods::config::ModConfig::get`, `set`, `save` |
 | `net.neoforged.fml.loading.FMLLoader` | 64 | same | `lifecycle.is-production`, `lifecycle.get-dist` |
 
 #### NeoForge attachments

@@ -23,6 +23,7 @@
 //! | [`mod_list`]    | `ModList`, `dist()`                                                       |
 //! | [`mods_toml`]   | `ModInfo`, `ModDependency`, the `neoforge.mods.toml` reader               |
 //! | [`imc`]         | inter-mod messages                                                        |
+//! | [`config`]      | TOML config specs: `ConfigSpec`, `ConfigType`, `ModConfig`                |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -42,7 +43,7 @@ use pumpkin_core::{
     entity::custom,
     plugin::{
         Context, PluginMetadata,
-        startup::{self, NativeModInfo, SyncedConfig},
+        startup::{self, NativeModInfo},
     },
 };
 use pumpkin_data::dynamic::{self, EntityTypeDefinition};
@@ -61,6 +62,7 @@ pub use tracing;
 pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
 
+pub mod config;
 pub mod content;
 pub mod imc;
 pub mod lifecycle;
@@ -162,6 +164,12 @@ pub trait NativeMod: Sync {
     fn inter_mod_process(&self, _imc: &mut InterModProcess) {}
     /// `FMLLoadCompleteEvent`: the last lifecycle step before the first world loads.
     fn load_complete(&self) {}
+    /// Called when a config of this mod has loaded, like `ModConfigEvent.Loading`. See
+    /// [`config`] for when each type loads.
+    fn config_loading(&self, _config: &config::ModConfig) {}
+    /// Called when a config of this mod reloads after an edit of its file, or after
+    /// [`ModConfig::save`](config::ModConfig::save), like `ModConfigEvent.Reloading`.
+    fn config_reloading(&self, _config: &config::ModConfig) {}
 }
 
 #[doc(hidden)]
@@ -199,7 +207,8 @@ pub struct ModInit {
     data_root: PathBuf,
     registrations: Vec<Registration>,
     content_error: Option<ContentRegistrationError>,
-    synced_configs: Vec<SyncedConfig>,
+    config_dir: PathBuf,
+    configs: Vec<Arc<config::ModConfig>>,
 }
 
 /// The first content registration that failed in a mod's [`NativeMod::init`].
@@ -241,21 +250,10 @@ impl ModInit {
             data_root: Path::new("plugins").join("data"),
             registrations: Vec::new(),
             content_error: None,
-            synced_configs: Vec::new(),
+            // `FMLPaths.CONFIGDIR`: the `config` folder in the working directory of the server.
+            config_dir: PathBuf::from("config"),
+            configs: Vec::new(),
         }
-    }
-
-    /// Registers a synced config file, like a `ModConfig.Type.SYNCED` config of `NeoForge`. During
-    /// configuration, every `NeoForge` client that has the channel `neoforge:config_file` gets
-    /// `contents` under `file_name`, after `NeoForge`'s own `neoforge-synced.toml`. The client
-    /// applies only a file name that it knows, so use the name of the client mod's config.
-    ///
-    /// The server stops after the last `init` when two configs share a file name.
-    pub fn synced_config(&mut self, file_name: impl Into<String>, contents: impl Into<Box<[u8]>>) {
-        self.synced_configs.push(SyncedConfig {
-            file_name: file_name.into(),
-            contents: contents.into(),
-        });
     }
 
     /// See [`Context::register_command`].
@@ -615,14 +613,14 @@ pub fn init_mods(server: &Arc<Server>) {
     let mod_list = ModList::get();
     let mods = in_order(&by_id, mod_list);
     startup::set_native_mods(native_mod_infos(&mods, mod_list));
-    let mut synced_configs = Vec::new();
+    let mut configs = Vec::new();
     for loaded in &mods {
         let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
             continue;
         };
         let mut init = init_mod_as(loaded.native_mod, loaded.mod_id)
             .unwrap_or_else(|err| refuse_to_start(&err));
-        synced_configs.append(&mut init.synced_configs);
+        configs.extend(init.configs.drain(..).map(|config| (config, loaded.native_mod)));
         let metadata = PluginMetadata {
             name: info.mod_id.clone(),
             version: info.version.to_string(),
@@ -633,8 +631,10 @@ pub fn init_mods(server: &Arc<Server>) {
         };
         init.apply(&startup::create_context(server, metadata));
     }
-    startup::set_synced_configs(synced_configs).unwrap_or_else(|err| refuse_to_start(&err));
     lifecycle::run(&mods, mod_list);
+    // Local and synced configs load after the lifecycle steps of every mod and before the server
+    // starts, as on a NeoForge server: keep this after the load-complete step.
+    config::start(server, configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()
         .map(|native_mod| {
@@ -892,20 +892,6 @@ mod tests {
         let mut init = ModInit::new("test-mod");
         init.register_service("test-mod:service", Arc::new(TestService));
         assert_eq!(init.registrations.len(), 1);
-    }
-
-    #[test]
-    fn records_a_synced_config() {
-        let mut init = ModInit::new("test-mod");
-        init.synced_config("testmod-server.toml", b"enabled = 1\n".as_slice());
-        let configs: Vec<(&str, &[u8])> = init
-            .synced_configs
-            .iter()
-            .map(|config| (config.file_name.as_str(), &*config.contents))
-            .collect();
-        assert_eq!(configs, [("testmod-server.toml", &b"enabled = 1\n"[..])]);
-        assert_eq!(configs[0].1.len(), 12);
-        assert!(init.registrations.is_empty());
     }
 
     #[test]

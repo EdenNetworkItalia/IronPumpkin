@@ -17,7 +17,7 @@ neoforge:frozen_registry
 neoforge:frozen_registry
 neoforge:frozen_registry_sync_completed
 # After update_tags, the RegisterConfigurationTasksEvent tasks: common version, common register,
-# the synced configs (neoforge-synced.toml, then the test mod's testmod-server.toml), data maps,
+# the synced configs (neoforge-synced.toml, then the test mod's test-mod-synced.toml), data maps,
 # enums, feature flags:
 c:version
 c:register
