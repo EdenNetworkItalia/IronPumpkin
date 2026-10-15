@@ -1,0 +1,16 @@
+{"ordinal":0,"name":"FMLConstructModEvent","fields":{}}
+{"ordinal":1,"name":"RegisterEvent","fields":{"registry":"minecraft:block"}}
+{"ordinal":2,"name":"RegisterEvent","fields":{"registry":"minecraft:entity_type"}}
+{"ordinal":3,"name":"RegisterEvent","fields":{"registry":"minecraft:item"}}
+{"ordinal":4,"name":"FMLCommonSetupEvent","fields":{}}
+{"ordinal":5,"name":"FMLLoadCompleteEvent","fields":{}}
+{"ordinal":6,"name":"RegisterPayloadHandlersEvent","fields":{}}
+{"ordinal":7,"name":"ModConfigEvent.Loading","fields":{"enabled":true,"file_name":"parityprobe-synced.toml","type":"SYNCED"}}
+{"ordinal":8,"name":"ServerAboutToStartEvent","fields":{}}
+{"ordinal":9,"name":"ServerStartingEvent","fields":{}}
+{"ordinal":10,"name":"ServerStartedEvent","fields":{}}
+{"ordinal":11,"name":"ServerTickEvent.Pre","fields":{}}
+{"ordinal":12,"name":"ServerTickEvent.Post","fields":{}}
+{"ordinal":13,"name":"RegisterConfigurationTasksEvent","fields":{"connection_type":"NEOFORGE","ping_channel":true}}
+{"ordinal":14,"name":"ServerStoppingEvent","fields":{}}
+{"ordinal":15,"name":"ServerStoppedEvent","fields":{}}

@@ -1,0 +1,15 @@
+missing  reference #0 FMLConstructModEvent {}
+missing  reference #1 RegisterEvent {"registry":"minecraft:block"}
+missing  reference #2 RegisterEvent {"registry":"minecraft:entity_type"}
+missing  reference #3 RegisterEvent {"registry":"minecraft:item"}
+missing  reference #4 FMLCommonSetupEvent {}
+missing  reference #5 FMLLoadCompleteEvent {}
+missing  reference #6 RegisterPayloadHandlersEvent {}
+missing  reference #7 ModConfigEvent.Loading {"enabled":true,"file_name":"parityprobe-synced.toml","type":"SYNCED"}
+missing  reference #8 ServerAboutToStartEvent {}
+missing  reference #9 ServerStartingEvent {}
+moved    ServerTickEvent.Pre: reference #11 after ServerStartedEvent, candidate #0 first
+missing  reference #13 RegisterConfigurationTasksEvent {"connection_type":"NEOFORGE","ping_channel":true}
+missing  reference #14 ServerStoppingEvent {}
+missing  reference #15 ServerStoppedEvent {}
+14 differences (missing 13, moved 1)

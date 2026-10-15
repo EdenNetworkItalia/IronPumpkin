@@ -2771,6 +2771,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parity-probe-rust"
+version = "0.2.0+26.3-26.51"
+dependencies = [
+ "ironpumpkin-mods",
+ "pumpkin",
+ "serde_json",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

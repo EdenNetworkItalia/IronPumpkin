@@ -1,0 +1,20 @@
+[package]
+name = "parity-probe-rust"
+version.workspace = true
+description = "Rust probe of the differential parity harness: a native mod that traces the NeoForge events IronPumpkin fires."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "parity-probe-server"
+path = "src/main.rs"
+
+[dependencies]
+ironpumpkin-mods.workspace = true
+pumpkin = { path = "../../../crates/pumpkin" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

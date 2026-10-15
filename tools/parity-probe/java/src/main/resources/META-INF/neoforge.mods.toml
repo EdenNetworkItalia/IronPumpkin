@@ -1,0 +1,24 @@
+license = "GPL-3.0"
+
+[[mods]]
+modId = "parityprobe"
+version = "1.0.0"
+displayName = "IronPumpkin parity probe"
+description = '''
+Probe of the IronPumpkin differential parity harness. It traces the lifecycle, registration,
+config, payload and server events to probe-trace.jsonl in the server directory.
+'''
+
+[[dependencies.parityprobe]]
+modId = "neoforge"
+type = "required"
+versionRange = "[26.3.0.64-beta,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.parityprobe]]
+modId = "minecraft"
+type = "required"
+versionRange = "[26.3]"
+ordering = "NONE"
+side = "BOTH"

@@ -29,6 +29,7 @@ members = [
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-neoforge-client",
+    "tools/parity-probe/rust",
 ]
 
 # [workspace.lints.rust]

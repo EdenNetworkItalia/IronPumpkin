@@ -1,0 +1,8 @@
+# The channel of the Java probe. Append it to the channel map of a NeoForge 26.3 client
+# (tools/pumpkin-neoforge-client/channels/neoforge-26.3.toml) to get the map of a client that has
+# the probe mod; README.md has the command.
+
+[[configuration]]
+id = "parityprobe:ping"
+version = "1"
+optional = true
