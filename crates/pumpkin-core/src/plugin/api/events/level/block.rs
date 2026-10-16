@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use pumpkin_data::{BlockDirection, BlockState};
+use pumpkin_data::{BlockDirection, BlockState, item_stack::ItemStack};
 use pumpkin_macros::{Event, cancellable};
 use pumpkin_util::math::position::BlockPos;
 
-use crate::entity::EntityBase;
+use crate::entity::{EntityBase, player::Player};
 use crate::world::World;
 
 /// An entity that is not a player places a block.
@@ -201,6 +201,64 @@ impl CreateFluidSourceEvent {
             state,
             vanilla_result,
             can_convert: vanilla_result,
+        }
+    }
+}
+
+/// The `ItemAbility` of `NeoForge` that lights a block with a fire starter (`firestarter_light`).
+pub const FIRESTARTER_LIGHT: &str = "firestarter_light";
+
+/// The `ItemAbility` of `NeoForge` that stops the growth of a plant with shears (`shears_trim`).
+pub const SHEARS_TRIM: &str = "shears_trim";
+
+/// A tool changes the state of a block.
+///
+/// `NeoForge`: `BlockEvent.BlockToolModificationEvent`, fired by `EventHooks.onToolUse` in
+/// `IBlockStateExtension.getToolModifiedState` for each use of a fire starter on a block
+/// ([`FIRESTARTER_LIGHT`]: flint and steel, fire charge and a dispenser of flint and steel) and
+/// of shears ([`SHEARS_TRIM`]). `NeoForge` 26.3 fires it for no other tool: axes, hoes and
+/// shovels use the data-driven block transformers. `final_state` starts at `state` and is
+/// settable; `None` means no change. When the last handler leaves `state`, the vanilla change
+/// applies. A cancel means no change: a fire starter places fire next to the block instead.
+#[cancellable]
+#[derive(Event, Clone)]
+pub struct BlockEventBlockToolModificationEvent {
+    pub world: Arc<World>,
+    pub pos: BlockPos,
+    /// The player that uses the tool, `None` for a dispenser (`getPlayer`).
+    pub player: Option<Arc<Player>>,
+    /// The tool (`getHeldItemStack`).
+    pub held_item: ItemStack,
+    /// The ability that the tool performs (`getItemAbility`), such as [`FIRESTARTER_LIGHT`].
+    pub item_ability: &'static str,
+    /// Always `false`: the server never simulates a use (`isSimulated`).
+    pub simulated: bool,
+    /// The state before the use (`getState`).
+    pub state: &'static BlockState,
+    /// The state after the use (`getFinalState`).
+    pub final_state: Option<&'static BlockState>,
+}
+
+impl BlockEventBlockToolModificationEvent {
+    #[must_use]
+    pub const fn new(
+        world: Arc<World>,
+        pos: BlockPos,
+        player: Option<Arc<Player>>,
+        held_item: ItemStack,
+        item_ability: &'static str,
+        state: &'static BlockState,
+    ) -> Self {
+        Self {
+            world,
+            pos,
+            player,
+            held_item,
+            item_ability,
+            simulated: false,
+            state,
+            final_state: Some(state),
+            cancelled: false,
         }
     }
 }

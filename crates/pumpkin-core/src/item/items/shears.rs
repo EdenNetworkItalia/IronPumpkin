@@ -54,7 +54,7 @@ const fn get_wool_item_for_color(color: u8) -> &'static Item {
 impl ItemBehaviour for ShearsItem {
     fn use_on_block(
         &self,
-        _item: &mut ItemStack,
+        item: &mut ItemStack,
         player: &Player,
         location: BlockPos,
         _face: BlockDirection,
@@ -65,7 +65,7 @@ impl ItemBehaviour for ShearsItem {
         let world = player.world();
         let state_id = world.get_block_state_id(&location);
 
-        if handle_growing_plant(player, &location, block, state_id) {
+        if handle_growing_plant(player, item, &location, block, state_id) {
             return BlockActionResult::Success;
         }
 
@@ -123,29 +123,42 @@ impl ItemBehaviour for ShearsItem {
 
 fn handle_growing_plant(
     player: &Player,
+    item: &ItemStack,
     location: &BlockPos,
     block: &Block,
     state_id: BlockStateId,
 ) -> bool {
-    let new_state_id = if KelpLikeProperties::handles_block_id(block.id) {
-        let mut props = KelpLikeProperties::from_state_id(state_id);
-        if props.age >= 25 {
-            return false;
+    let trimmed = || {
+        if KelpLikeProperties::handles_block_id(block.id) {
+            let mut props = KelpLikeProperties::from_state_id(state_id);
+            if props.age >= 25 {
+                return None;
+            }
+            props.age = 25;
+            Some(props.to_state_id(block))
+        } else if CaveVinesLikeProperties::handles_block_id(block.id) {
+            let mut props = CaveVinesLikeProperties::from_state_id(state_id);
+            if props.age >= 25 {
+                return None;
+            }
+            props.age = 25;
+            Some(props.to_state_id(block))
+        } else {
+            None
         }
-        props.age = 25;
-        props.to_state_id(block)
-    } else if CaveVinesLikeProperties::handles_block_id(block.id) {
-        let mut props = CaveVinesLikeProperties::from_state_id(state_id);
-        if props.age >= 25 {
-            return false;
-        }
-        props.age = 25;
-        props.to_state_id(block)
-    } else {
+    };
+    let world = player.world();
+    let Some(new_state_id) = crate::plugin::level_events::tool_modification(
+        &world,
+        location,
+        Some(player),
+        item,
+        crate::plugin::level::SHEARS_TRIM,
+        trimmed,
+    ) else {
         return false;
     };
 
-    let world = player.world();
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
     world.play_sound(
         Sound::BlockGrowingPlantCrop,

@@ -1,7 +1,11 @@
 use crate::block::blocks::fire::FireBlockBase;
 use crate::block::blocks::fire::fire::FireBlock;
+use crate::entity::player::Player;
+use crate::plugin::level::FIRESTARTER_LIGHT;
+use crate::plugin::level_events;
 use crate::world::World;
 use pumpkin_data::fluid::Fluid;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::Taggable;
 use pumpkin_data::{Block, BlockStateId, tag};
 use pumpkin_util::math::position::BlockPos;
@@ -11,13 +15,16 @@ pub struct Ignition;
 
 impl Ignition {
     /// Lights `block` at `location` itself if it can be lit (campfires, candles, candle
-    /// cakes), otherwise places a fire block at `fire_pos`.
+    /// cakes), otherwise places a fire block at `fire_pos`. `player` uses `item`, or a dispenser
+    /// does for `None`.
     pub fn ignite_block<F>(
         ignite_logic: F,
         world: &Arc<World>,
         location: BlockPos,
         fire_pos: BlockPos,
         block: &Block,
+        player: Option<&Player>,
+        item: &ItemStack,
     ) -> bool
     where
         F: FnOnce(Arc<World>, BlockPos, BlockStateId),
@@ -29,7 +36,14 @@ impl Ignition {
 
         let state_id = world.get_block_state_id(&location);
 
-        if let Some(new_state_id) = can_be_lit(block, state_id) {
+        if let Some(new_state_id) = level_events::tool_modification(
+            world,
+            &location,
+            player,
+            item,
+            FIRESTARTER_LIGHT,
+            || can_be_lit(block, state_id),
+        ) {
             ignite_logic(world.clone(), location, new_state_id);
             return true;
         }

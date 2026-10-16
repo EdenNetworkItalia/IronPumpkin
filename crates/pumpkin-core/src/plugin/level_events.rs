@@ -11,6 +11,7 @@ use pumpkin_data::block_properties::{
     TallSeagrassLikeProperties, WhiteBedLikeProperties,
 };
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
@@ -25,10 +26,11 @@ use crate::plugin::api::events::{
         block_place::BlockPlaceEvent,
     },
     level::{
-        BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CreateFluidSourceEvent,
-        CropGrowEventPost, EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
-        ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
-        PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
+        BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch,
+        CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
+        ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
+        NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
+        PlayerTickEventPre,
     },
     world::chunk_load::ChunkLoad,
 };
@@ -430,4 +432,41 @@ pub fn create_fluid_source(
             CreateFluidSourceEvent::new(world.clone(), *pos, BlockState::from_id(state), vanilla)
         })
         .map_or(vanilla, |event| event.can_convert)
+}
+
+/// Fires `BlockEventBlockToolModificationEvent` for a use of `item` with `ability` on the block
+/// at `pos`. Returns the state to set, or `None` for no change; `vanilla` gives the vanilla
+/// change when the handlers leave the state.
+pub fn tool_modification(
+    world: &Arc<World>,
+    pos: &BlockPos,
+    player: Option<&Player>,
+    item: &ItemStack,
+    ability: &'static str,
+    vanilla: impl FnOnce() -> Option<BlockStateId>,
+) -> Option<BlockStateId> {
+    let Some(server) = world.server.upgrade() else {
+        return vanilla();
+    };
+    let state = world.get_block_state(pos);
+    let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+        let player = player.and_then(|player| world.get_player_by_uuid(player.gameprofile.id));
+        BlockEventBlockToolModificationEvent::new(
+            world.clone(),
+            *pos,
+            player,
+            item.clone(),
+            ability,
+            state,
+        )
+    }) else {
+        return vanilla();
+    };
+    if event.cancelled {
+        return None;
+    }
+    match event.final_state {
+        Some(final_state) if final_state.id == state.id => vanilla(),
+        final_state => final_state.map(|final_state| final_state.id),
+    }
 }

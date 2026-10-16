@@ -870,6 +870,8 @@ impl DispenserBlock {
                 front,
                 front,
                 front_block,
+                None,
+                item,
             )
         };
 

@@ -29,6 +29,7 @@ use pumpkin_core::{
         mob::enderman::EndermanEntity,
         player::Player,
     },
+    item::{ItemBehaviour, items::ignite::flint_and_steel::FlintAndSteelItem},
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, Payload,
         block::{
@@ -37,10 +38,11 @@ use pumpkin_core::{
         },
         entity::entity_explode::EntityExplodeEvent,
         level::{
-            BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CreateFluidSourceEvent,
-            CropGrowEventPost, EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
-            ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
-            PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
+            BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent,
+            ChunkWatchEventUnWatch, CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost,
+            EntityTickEventPre, ExplosionEventDetonate, ExplosionKnockbackEvent, FIRESTARTER_LIGHT,
+            GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
+            PlayerTickEventPost, PlayerTickEventPre,
         },
         world::{chunk_load::ChunkLoad, chunk_unload::ChunkUnloadEvent},
     },
@@ -49,7 +51,10 @@ use pumpkin_core::{
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
-    block_properties::{NoteBlockLikeProperties, StickyPistonLikeProperties, WheatLikeProperties},
+    block_properties::{
+        CampfireLikeProperties, NoteBlockLikeProperties, StickyPistonLikeProperties,
+        WheatLikeProperties,
+    },
     entity::EntityType,
     fluid::Fluid,
     game_rules::{GameRule, GameRuleValue},
@@ -1133,4 +1138,107 @@ fn change_a_settable_field_create_fluid_source_event() {
     tick_water(pos);
 
     assert_ne!(state_at(pos), Block::WATER.default_state.id);
+}
+
+/// An unlit campfire at `pos`, with air above it.
+fn unlit_campfire_at(pos: BlockPos) -> BlockStateId {
+    let mut campfire = CampfireLikeProperties::default(&Block::CAMPFIRE);
+    campfire.lit = false;
+    let state = campfire.to_state_id(&Block::CAMPFIRE);
+    set(pos.down(), Block::STONE.default_state.id);
+    set(pos, state);
+    set(pos.up(), Block::AIR.default_state.id);
+    state
+}
+
+/// Uses a flint and steel of `player` on the top of the block at `pos`.
+fn light(player: &Player, pos: BlockPos) {
+    let mut item = ItemStack::new(1, &Item::FLINT_AND_STEEL);
+    let server = support::server();
+    FlintAndSteelItem.use_on_block(
+        &mut item,
+        player,
+        pos,
+        BlockDirection::Up,
+        Vector3::new(0.5, 1.0, 0.5),
+        &Block::CAMPFIRE,
+        server,
+    );
+}
+
+fn lit(pos: BlockPos) -> bool {
+    CampfireLikeProperties::from_state_id(state_at(pos)).lit
+}
+
+/// `BlockEvent.BlockToolModificationEvent` (`BlockEventBlockToolModificationEvent`) fires for a
+/// flint and steel on a campfire with the player, the tool and the ability, and the campfire
+/// lights.
+#[test]
+fn one_event_per_fire_site_block_tool_modification_event() {
+    let _serial = support::serial();
+    let player = builder("Lighter");
+    let pos = spot(25);
+    let unlit = unlit_campfire_at(pos);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<BlockEventBlockToolModificationEvent, _>(move |event| {
+        if event.pos == pos {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {} {} {} {}",
+                    event.player.as_ref().unwrap().gameprofile.name,
+                    event.held_item.item.registry_key,
+                    event.item_ability,
+                    event.state.id == unlit,
+                    event.final_state.map(|state| state.id) == Some(unlit),
+                ),
+            );
+        }
+    });
+
+    light(&player, pos);
+
+    assert_eq!(
+        entries(&seen),
+        ["Lighter flint_and_steel firestarter_light true true"]
+    );
+    assert!(lit(pos));
+}
+
+/// A cancelled `BlockEventBlockToolModificationEvent` leaves the campfire unlit: the flint and
+/// steel places fire above it instead.
+#[test]
+fn cancel_block_tool_modification_event() {
+    let _serial = support::serial();
+    let player = builder("CancelLighter");
+    let pos = spot(26);
+    let unlit = unlit_campfire_at(pos);
+    on::<BlockEventBlockToolModificationEvent, _>(move |event| {
+        if event.pos == pos && event.item_ability == FIRESTARTER_LIGHT {
+            event.set_cancelled(true);
+        }
+    });
+
+    light(&player, pos);
+
+    assert_eq!(state_at(pos), unlit);
+}
+
+/// The final state of `BlockEventBlockToolModificationEvent` is settable: the block takes it.
+#[test]
+fn change_a_settable_field_block_tool_modification_event() {
+    let _serial = support::serial();
+    let player = builder("SetLighter");
+    let pos = spot(27);
+    unlit_campfire_at(pos);
+    on::<BlockEventBlockToolModificationEvent, _>(move |event| {
+        if event.pos == pos {
+            event.final_state = Some(Block::GLOWSTONE.default_state);
+        }
+    });
+
+    light(&player, pos);
+
+    assert_eq!(state_at(pos), Block::GLOWSTONE.default_state.id);
 }
