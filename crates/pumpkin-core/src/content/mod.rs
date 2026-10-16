@@ -8,7 +8,10 @@
 //! The manifest also keeps the explicit tags of each entry and the mod tags with their declared
 //! values, so a placeholder keeps its tags when the mod that defined them is missing.
 
+pub mod attributes;
 pub mod behaviour;
+pub mod poi;
+pub mod spawn_placements;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
