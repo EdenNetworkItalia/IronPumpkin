@@ -14,23 +14,37 @@
 {"ordinal":13,"name":"RegisterConfigurationTasksEvent","fields":{"connection_type":"NEOFORGE","ping_channel":true}}
 {"ordinal":14,"name":"PlayerEvent.PlayerLoggedInEvent","fields":{"step":0}}
 {"ordinal":15,"name":"ServerTickEvent.Pre","fields":{"step":0}}
-{"ordinal":16,"name":"ServerTickEvent.Post","fields":{"step":0}}
-{"ordinal":17,"name":"ServerTickEvent.Pre","fields":{"step":1}}
-{"ordinal":18,"name":"ServerTickEvent.Post","fields":{"step":1}}
-{"ordinal":19,"name":"ServerChatEvent","fields":{"raw_text":"hello from the parity script","step":1}}
-{"ordinal":20,"name":"ServerTickEvent.Pre","fields":{"step":2}}
-{"ordinal":21,"name":"ServerTickEvent.Post","fields":{"step":2}}
-{"ordinal":22,"name":"PlayerInteractEvent.LeftClickBlock","fields":{"pos":"1 -1 0","step":2}}
-{"ordinal":23,"name":"ServerTickEvent.Pre","fields":{"step":3}}
-{"ordinal":24,"name":"ServerTickEvent.Post","fields":{"step":3}}
-{"ordinal":25,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
-{"ordinal":26,"name":"ServerTickEvent.Pre","fields":{"step":4}}
-{"ordinal":27,"name":"ServerTickEvent.Post","fields":{"step":4}}
-{"ordinal":28,"name":"PlayerInteractEvent.RightClickBlock","fields":{"pos":"1 -2 0","step":4}}
-{"ordinal":29,"name":"UseItemOnBlockEvent","fields":{"pos":"1 -2 0","step":4}}
-{"ordinal":30,"name":"ServerTickEvent.Pre","fields":{"step":5}}
-{"ordinal":31,"name":"ServerTickEvent.Post","fields":{"step":5}}
-{"ordinal":32,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
-{"ordinal":33,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
-{"ordinal":34,"name":"ServerStoppingEvent","fields":{}}
-{"ordinal":35,"name":"ServerStoppedEvent","fields":{}}
+{"ordinal":16,"name":"PlayerTickEvent.Pre","fields":{"step":0}}
+{"ordinal":17,"name":"PlayerTickEvent.Post","fields":{"step":0}}
+{"ordinal":18,"name":"ServerTickEvent.Post","fields":{"step":0}}
+{"ordinal":19,"name":"ServerTickEvent.Pre","fields":{"step":1}}
+{"ordinal":20,"name":"PlayerTickEvent.Pre","fields":{"step":1}}
+{"ordinal":21,"name":"PlayerTickEvent.Post","fields":{"step":1}}
+{"ordinal":22,"name":"ServerTickEvent.Post","fields":{"step":1}}
+{"ordinal":23,"name":"ServerChatEvent","fields":{"raw_text":"hello from the parity script","step":1}}
+{"ordinal":24,"name":"ServerTickEvent.Pre","fields":{"step":2}}
+{"ordinal":25,"name":"PlayerTickEvent.Pre","fields":{"step":2}}
+{"ordinal":26,"name":"PlayerTickEvent.Post","fields":{"step":2}}
+{"ordinal":27,"name":"ServerTickEvent.Post","fields":{"step":2}}
+{"ordinal":28,"name":"PlayerInteractEvent.LeftClickBlock","fields":{"pos":"1 -1 0","step":2}}
+{"ordinal":29,"name":"BreakBlockEvent","fields":{"pos":"1 -1 0","step":2}}
+{"ordinal":30,"name":"ServerTickEvent.Pre","fields":{"step":3}}
+{"ordinal":31,"name":"PlayerTickEvent.Pre","fields":{"step":3}}
+{"ordinal":32,"name":"PlayerTickEvent.Post","fields":{"step":3}}
+{"ordinal":33,"name":"ServerTickEvent.Post","fields":{"step":3}}
+{"ordinal":34,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
+{"ordinal":35,"name":"ServerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":36,"name":"PlayerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":37,"name":"PlayerTickEvent.Post","fields":{"step":4}}
+{"ordinal":38,"name":"ServerTickEvent.Post","fields":{"step":4}}
+{"ordinal":39,"name":"PlayerInteractEvent.RightClickBlock","fields":{"pos":"1 -2 0","step":4}}
+{"ordinal":40,"name":"UseItemOnBlockEvent","fields":{"pos":"1 -2 0","step":4}}
+{"ordinal":41,"name":"BlockEvent.EntityPlaceEvent","fields":{"block":"minecraft:stone","pos":"1 -1 0","step":4}}
+{"ordinal":42,"name":"ServerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":43,"name":"PlayerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":44,"name":"PlayerTickEvent.Post","fields":{"step":5}}
+{"ordinal":45,"name":"ServerTickEvent.Post","fields":{"step":5}}
+{"ordinal":46,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
+{"ordinal":47,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
+{"ordinal":48,"name":"ServerStoppingEvent","fields":{}}
+{"ordinal":49,"name":"ServerStoppedEvent","fields":{}}

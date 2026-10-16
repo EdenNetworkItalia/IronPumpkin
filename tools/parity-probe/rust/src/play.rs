@@ -1,15 +1,11 @@
 //! The play events of slice 2, as the Java probe traces them (`PlayEvents.java`): the player
-//! events, the chat and the ticks that the client script `scripts/slice2.toml` fires. Each line
-//! has the field `step`, the index of the script step. The window opens at `PlayerJoinEvent` and
-//! closes at `ServerStoppingEvent`, and positions are relative to the block of the player's feet
-//! at the join.
+//! events, the chat, the block events and the ticks that the client script `scripts/slice2.toml`
+//! fires. Each line has the field `step`, the index of the script step. The window opens at
+//! `PlayerJoinEvent` and closes at `ServerStoppingEvent`, and positions are relative to the block
+//! of the player's feet at the join.
 //!
 //! The step of an event is the number of play `ping_request` packets, the barrier of each script
 //! step, that arrived at least [`GRACE`] before it. The Java probe counts the same packet.
-//!
-//! `BreakBlockEvent` and `BlockEvent.EntityPlaceEvent` are not traced: the level and block events
-//! are the task after this one (2.13 in `tasks.md`), so `diff.py` reports them as missing.
-//! `PlayerTickEvent` has no Pumpkin event.
 
 use std::{
     sync::{Arc, Mutex, MutexGuard, PoisonError},
@@ -21,6 +17,8 @@ use ironpumpkin_mods::{
     entity::EntityBase,
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
+        block::{block_break::BlockBreakEvent, block_place::BlockPlaceEvent},
+        level::{PlayerTickEventPost, PlayerTickEventPre},
         player::{
             ClientInformationUpdatedEvent, PlayerEventBreakSpeed, PlayerEventHarvestCheck,
             PlayerEventLoadFromFile, PlayerEventNameFormat, PlayerEventSaveToFile,
@@ -213,6 +211,36 @@ pub fn register(cx: &mut ModInit) {
         trace_once_per_step("ServerTickEvent.Pre");
     });
     on::<ServerTickEndEvent>(cx, |_| trace_once_per_step("ServerTickEvent.Post"));
+    on::<PlayerTickEventPre>(cx, |_| trace_once_per_step("PlayerTickEvent.Pre"));
+    on::<PlayerTickEventPost>(cx, |_| trace_once_per_step("PlayerTickEvent.Post"));
+    // `BreakBlockEvent#getPlayer` is never null: a port skips the breaks without a player, such
+    // as a plant that loses its support.
+    on::<BlockBreakEvent>(cx, |event| {
+        if event.player.is_none() {
+            return;
+        }
+        trace_play("BreakBlockEvent", |state| {
+            vec![("pos", Value::Text(state.relative(&event.block_position)))]
+        });
+    });
+    on::<BlockPlaceEvent>(cx, |event| {
+        trace_play("BlockEvent.EntityPlaceEvent", |state| {
+            vec![
+                ("block", Value::Text(block_key(event.block_placed.name))),
+                ("pos", Value::Text(state.relative(&event.block_position))),
+            ]
+        });
+    });
+}
+
+/// The registry key of a block, as `BuiltInRegistries.BLOCK.getKey`: vanilla names have no
+/// namespace in Pumpkin.
+fn block_key(name: &str) -> String {
+    if name.contains(':') {
+        name.to_owned()
+    } else {
+        format!("minecraft:{name}")
+    }
 }
 
 /// `PlayerInteractEvent` carries `PlayerInteractEvent.LeftClickBlock`, `RightClickBlock`,
