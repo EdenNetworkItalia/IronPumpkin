@@ -83,6 +83,11 @@ pub fn build() -> TokenStream {
     let mut name_to_type = TokenStream::new();
     let mut minecraft_name_to_type = TokenStream::new();
     let mut id_to_type = TokenStream::new();
+    let count = effects
+        .values()
+        .map(|effect| effect.id)
+        .max()
+        .map_or(0, |id| id + 1);
 
     for (name, effect) in effects {
         let format_name = format_ident!("{}", name.to_shouty_snake_case());
@@ -157,6 +162,9 @@ pub fn build() -> TokenStream {
         impl StatusEffect {
             #variants
 
+            /// The number of generated mob effects. Mod effects take the ids after it.
+            pub const COUNT: u8 = #count;
+
             #[must_use]
             pub const fn to_bedrock_id(&self) -> i32 {
                 match self.id {
@@ -189,7 +197,7 @@ pub fn build() -> TokenStream {
             pub fn from_minecraft_name(name: &str) -> Option<&'static Self> {
                 match name {
                     #minecraft_name_to_type
-                    _ => None
+                    _ => crate::dynamic_registries::mob_effect_by_name(name)
                 }
             }
         }
@@ -201,7 +209,7 @@ pub fn build() -> TokenStream {
             fn from_id(id: u16) -> Option<&'static Self> {
                 match id {
                     #id_to_type
-                    _ => None
+                    _ => crate::dynamic_registries::mob_effect(id)
                 }
             }
 

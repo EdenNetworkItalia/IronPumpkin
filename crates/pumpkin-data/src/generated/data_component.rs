@@ -127,6 +127,8 @@ pub enum DataComponent {
     CushionColor = 121u8,
 }
 impl DataComponent {
+    #[doc = r" The number of generated component types. Mod component types take the ids after it."]
+    pub const COUNT: u16 = 122u16;
     #[must_use]
     pub const fn to_id(self) -> u8 {
         self as u8

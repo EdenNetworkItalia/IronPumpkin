@@ -26,6 +26,7 @@ pub fn build() -> TokenStream {
 
     let mut constant_defs = Vec::new();
     let mut constant_idents = Vec::new();
+    let count = sorted_attributes.len() as u8;
 
     for (raw_name, raw_value) in sorted_attributes {
         let constant_ident = format_ident!("{}", raw_name.to_shouty_snake_case());
@@ -70,6 +71,29 @@ pub fn build() -> TokenStream {
             pub const ALL: &'static [Self] = &[
                 #(Self::#constant_idents),*
             ];
+
+            /// The number of generated attributes. Other attributes take the ids after it.
+            pub const COUNT: u8 = #count;
+
+            /// The attribute with this id: a generated attribute, or one of
+            /// [`crate::dynamic_registries`].
+            #[must_use]
+            pub fn from_id(id: u8) -> Option<&'static Self> {
+                Self::ALL
+                    .get(usize::from(id))
+                    .or_else(|| crate::dynamic_registries::attribute(id))
+            }
+
+            /// The attribute with this namespaced name. A name without a namespace is in
+            /// `minecraft`.
+            #[must_use]
+            pub fn from_name(name: &str) -> Option<&'static Self> {
+                let namespaced = crate::dynamic::namespaced_name(name);
+                Self::ALL
+                    .iter()
+                    .find(|attribute| attribute.name == namespaced)
+                    .or_else(|| crate::dynamic_registries::attribute_by_name(&namespaced))
+            }
         }
     }
 }

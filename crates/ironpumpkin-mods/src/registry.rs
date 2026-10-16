@@ -1,4 +1,4 @@
-//! Lookups in the block, item and entity type registries and their tags.
+//! Lookups in the registries that mods fill, and in the tags of blocks, items and entity types.
 //!
 //! A `NeoForge` mod reads a registry through `Registry` (for example `BuiltInRegistries.BLOCK`)
 //! and a tag through `TagKey` and `HolderSet`. Here the registry is a [`ContentKind`] and an entry
@@ -12,6 +12,9 @@
 //!
 //! A placeholder, which stands in for the content of a mod that the world has and the server
 //! lacks, is not an entry: `NeoForge` drops the entries of a missing mod.
+//!
+//! The sound event, mob effect, attribute and data component type registries have no tags here:
+//! `is_in_tag` answers `false` and `tag_entries` `None` for them.
 //!
 //! ```
 //! use ironpumpkin_mods::{content::ContentKind, registry};
@@ -28,9 +31,15 @@
 
 use pumpkin_data::{
     Block, BlockId,
+    attributes::Attributes,
+    data_component::DataComponent,
+    data_component_impl::IDSetContent,
     dynamic::{self, ContentKind, DynamicTaggable},
+    dynamic_registries,
+    effect::StatusEffect,
     entity::EntityType,
     item::Item,
+    sound::Sound,
     tag::RegistryKey,
 };
 use pumpkin_util::identifier::Identifier;
@@ -61,6 +70,24 @@ pub fn key_of(kind: ContentKind, id: u16) -> Option<Identifier> {
         ContentKind::Block => BlockId::new(id).map(|id| Block::from_id(id).name),
         ContentKind::Item => Item::from_id(id).map(|item| item.registry_key),
         ContentKind::EntityType => EntityType::from_raw(id).map(|ty| ty.resource_name),
+        ContentKind::SoundEvent => Sound::NAMES.get(usize::from(id)).copied().or_else(|| {
+            let index = usize::from(id).checked_sub(Sound::NAMES.len())?;
+            dynamic_registries::sound_events()
+                .get(index)
+                .map(|entry| entry.name)
+        }),
+        ContentKind::MobEffect => {
+            <StatusEffect as IDSetContent>::from_id(id).map(|effect| effect.minecraft_name)
+        }
+        ContentKind::Attribute => u8::try_from(id)
+            .ok()
+            .and_then(Attributes::from_id)
+            .map(|attribute| attribute.name),
+        ContentKind::DataComponentType => u8::try_from(id)
+            .ok()
+            .and_then(DataComponent::try_from_id)
+            .map(DataComponent::to_name)
+            .or_else(|| dynamic_registries::data_component_type(id).map(|entry| entry.name)),
     }?;
     is_entry(kind, name).then(|| Identifier::parse_static(name))
 }
@@ -78,6 +105,22 @@ pub fn keys(kind: ContentKind) -> Vec<Identifier> {
         ContentKind::EntityType => (
             EntityType::COUNT,
             tables.map_or(0, |t| t.entity_types().len()),
+        ),
+        ContentKind::SoundEvent => (
+            Sound::NAMES.len() as u16,
+            dynamic_registries::sound_events().len(),
+        ),
+        ContentKind::MobEffect => (
+            u16::from(StatusEffect::COUNT),
+            dynamic_registries::mob_effects().len(),
+        ),
+        ContentKind::Attribute => (
+            u16::from(Attributes::COUNT),
+            dynamic_registries::attributes().len(),
+        ),
+        ContentKind::DataComponentType => (
+            DataComponent::COUNT,
+            dynamic_registries::data_component_types().len(),
         ),
     };
     let end = usize::from(vanilla) + custom;
@@ -102,6 +145,10 @@ pub fn is_in_tag(kind: ContentKind, key: &str, tag: &str) -> bool {
             .is_some_and(|i| is_entry(kind, i.registry_key) && i.has_tag_dynamic(tag)),
         ContentKind::EntityType => EntityType::from_name(key)
             .is_some_and(|t| is_entry(kind, t.resource_name) && t.has_tag_dynamic(tag)),
+        ContentKind::SoundEvent
+        | ContentKind::MobEffect
+        | ContentKind::Attribute
+        | ContentKind::DataComponentType => false,
     }
 }
 
@@ -115,6 +162,10 @@ pub fn tag_entries(kind: ContentKind, tag: &str) -> Option<Vec<Identifier>> {
         ContentKind::Block => RegistryKey::Block,
         ContentKind::Item => RegistryKey::Item,
         ContentKind::EntityType => RegistryKey::EntityType,
+        ContentKind::SoundEvent
+        | ContentKind::MobEffect
+        | ContentKind::Attribute
+        | ContentKind::DataComponentType => return None,
     };
     let (vanilla, custom) = dynamic::tag_ids(registry, tag)?;
     Some(
@@ -132,6 +183,30 @@ fn entry(kind: ContentKind, key: &str) -> Option<(u16, &'static str)> {
         ContentKind::Block => Block::from_name(key).map(|b| (b.id.as_u16(), b.name)),
         ContentKind::Item => Item::from_registry_key(key).map(|i| (i.id, i.registry_key)),
         ContentKind::EntityType => EntityType::from_name(key).map(|t| (t.id, t.resource_name)),
+        ContentKind::SoundEvent => {
+            let name = dynamic::namespaced_name(key);
+            name.strip_prefix("minecraft:")
+                .and_then(Sound::from_name)
+                .map(|sound| (sound as u16, sound.to_name()))
+                .or_else(|| {
+                    dynamic_registries::sound_event_by_name(&name)
+                        .map(|entry| (entry.id, entry.name))
+                })
+        }
+        ContentKind::MobEffect => StatusEffect::from_minecraft_name(&dynamic::namespaced_name(key))
+            .map(|effect| (u16::from(effect.id), effect.minecraft_name)),
+        ContentKind::Attribute => {
+            Attributes::from_name(key).map(|attribute| (u16::from(attribute.id), attribute.name))
+        }
+        ContentKind::DataComponentType => {
+            let name = dynamic::namespaced_name(key);
+            DataComponent::try_from_name(&name)
+                .map(|component| (u16::from(component.to_id()), component.to_name()))
+                .or_else(|| {
+                    dynamic_registries::data_component_type_by_name(&name)
+                        .map(|entry| (entry.id, entry.name))
+                })
+        }
     }?;
     is_entry(kind, name).then_some((id, name))
 }

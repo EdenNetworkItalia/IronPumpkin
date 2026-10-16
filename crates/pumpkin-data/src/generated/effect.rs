@@ -418,6 +418,8 @@ impl StatusEffect {
         translation_key: "effect.minecraft.wither",
         attribute_modifiers: &[],
     };
+    #[doc = r" The number of generated mob effects. Mod effects take the ids after it."]
+    pub const COUNT: u8 = 40u8;
     #[must_use]
     pub const fn to_bedrock_id(&self) -> i32 {
         match self.id {
@@ -526,7 +528,7 @@ impl StatusEffect {
             "minecraft:weaving" => Some(&Self::WEAVING),
             "minecraft:wind_charged" => Some(&Self::WIND_CHARGED),
             "minecraft:wither" => Some(&Self::WITHER),
-            _ => None,
+            _ => crate::dynamic_registries::mob_effect_by_name(name),
         }
     }
 }
@@ -576,7 +578,7 @@ impl IDSetContent for StatusEffect {
             36u16 => Some(&Self::WEAVING),
             35u16 => Some(&Self::WIND_CHARGED),
             19u16 => Some(&Self::WITHER),
-            _ => None,
+            _ => crate::dynamic_registries::mob_effect(id),
         }
     }
     fn from_str(name: &str) -> Option<&'static Self> {

@@ -18,8 +18,10 @@ use pumpkin_macros::Event;
 ///
 /// `NeoForge`: `net.neoforged.neoforge.registries.RegisterEvent`, fired on the mod bus by
 /// `GameData.postRegisterEvents` once per registry, in the order of
-/// `GameData.getRegistrationOrder`. `IronPumpkin` backs `minecraft:block`, `minecraft:entity_type`
-/// and `minecraft:item`, and fires the event for them in that order. The event has no cancel.
+/// `GameData.getRegistrationOrder`. `IronPumpkin` backs `minecraft:attribute`,
+/// `minecraft:data_component_type`, `minecraft:sound_event`, `minecraft:mob_effect`,
+/// `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, and fires the event for them
+/// in that order. The event has no cancel.
 #[derive(Event)]
 pub struct RegisterEvent {
     registry: ContentKind,
@@ -67,8 +69,7 @@ impl RegisterEvent {
         self.registry
     }
 
-    /// The key of the registry of this fire: `minecraft:block`, `minecraft:entity_type` or
-    /// `minecraft:item`.
+    /// The key of the registry of this fire, for example `minecraft:block`.
     ///
     /// `NeoForge`: `RegisterEvent#getRegistryKey().identifier()`.
     #[must_use]
@@ -77,6 +78,10 @@ impl RegisterEvent {
             ContentKind::Block => "minecraft:block",
             ContentKind::Item => "minecraft:item",
             ContentKind::EntityType => "minecraft:entity_type",
+            ContentKind::SoundEvent => "minecraft:sound_event",
+            ContentKind::MobEffect => "minecraft:mob_effect",
+            ContentKind::Attribute => "minecraft:attribute",
+            ContentKind::DataComponentType => "minecraft:data_component_type",
         }
     }
 
