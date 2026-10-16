@@ -20,6 +20,8 @@ use std::{
 };
 
 use pumpkin_core::{
+    block::{BlockHitResult, RandomTickArgs, registry::BlockActionResult},
+    command::CommandSender,
     entity::{
         Entity,
         ai::goal::{Goal, place_block::PlaceBlockGoal},
@@ -34,14 +36,20 @@ use pumpkin_core::{
             block_multi_place::BlockMultiPlaceEvent, block_place::BlockPlaceEvent,
         },
         level::{
-            BlockEventEntityPlaceEvent, EntityTickEventPost, EntityTickEventPre,
+            BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
+            GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
             PlayerTickEventPost, PlayerTickEventPre,
         },
     },
     server::Server,
 };
 use pumpkin_data::{
-    Block, BlockDirection, BlockStateId, entity::EntityType, item::Item, item_stack::ItemStack,
+    Block, BlockDirection, BlockStateId,
+    block_properties::{NoteBlockLikeProperties, StickyPistonLikeProperties, WheatLikeProperties},
+    entity::EntityType,
+    game_rules::{GameRule, GameRuleValue},
+    item::Item,
+    item_stack::ItemStack,
 };
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
 use pumpkin_util::{
@@ -605,4 +613,204 @@ fn cancel_entity_tick_event_pre() {
 
     assert!(entries(&seen).is_empty());
     assert_eq!(age(&item), 0);
+}
+
+/// Uses the note block at `pos` with `player`, as a right click without an item.
+fn tune(player: &Arc<Player>, pos: BlockPos) -> BlockActionResult {
+    let server = support::server();
+    server.block_registry.on_use(
+        &Block::NOTE_BLOCK,
+        player,
+        &pos,
+        &BlockHitResult {
+            face: &BlockDirection::Up,
+            cursor_pos: &Vector3::new(0.5, 1.0, 0.5),
+        },
+        server,
+        &support::world(),
+    )
+}
+
+fn note_at(pos: BlockPos) -> u8 {
+    NoteBlockLikeProperties::from_state_id(state_at(pos)).note
+}
+
+/// A note block at `pos` with the note 0 and air above.
+fn note_block_at(pos: BlockPos) {
+    set(pos, Block::NOTE_BLOCK.default_state.id);
+    set(pos.up(), Block::AIR.default_state.id);
+    assert_eq!(note_at(pos), 0);
+}
+
+/// `NoteBlockEvent.Change` (`NoteBlockEventChange`) fires before a tune, with the old and the
+/// new note.
+#[test]
+fn one_event_per_fire_site_note_block_event_change() {
+    let _serial = support::serial();
+    let player = builder("Tuner");
+    let pos = spot(14);
+    note_block_at(pos);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<NoteBlockEventChange, _>(move |event| {
+        if event.pos == pos {
+            push(
+                &seen_by_handler,
+                format!("{} {} {}", event.old_note, event.note, note_at(pos)),
+            );
+        }
+    });
+
+    assert!(matches!(tune(&player, pos), BlockActionResult::Success));
+    assert_eq!(entries(&seen), ["0 1 0"]);
+    assert_eq!(note_at(pos), 1);
+}
+
+/// A cancelled `NoteBlockEventChange` keeps the note and fails the use.
+#[test]
+fn cancel_note_block_event_change() {
+    let _serial = support::serial();
+    let player = builder("CancelTuner");
+    let pos = spot(15);
+    note_block_at(pos);
+    on::<NoteBlockEventChange, _>(move |event| {
+        if event.pos == pos {
+            event.set_cancelled(true);
+        }
+    });
+
+    assert!(matches!(tune(&player, pos), BlockActionResult::Fail));
+    assert_eq!(note_at(pos), 0);
+}
+
+/// The note of `NoteBlockEventChange` is settable: the block takes the note of the last handler.
+#[test]
+fn change_a_settable_field_note_block_event_change() {
+    let _serial = support::serial();
+    let player = builder("SetTuner");
+    let pos = spot(16);
+    note_block_at(pos);
+    on::<NoteBlockEventChange, _>(move |event| {
+        if event.pos == pos {
+            event.note = 12;
+        }
+    });
+
+    assert!(matches!(tune(&player, pos), BlockActionResult::Success));
+    assert_eq!(note_at(pos), 12);
+}
+
+/// `CropGrowEvent.Post` (`CropGrowEventPost`) fires after a crop grew in its random tick, with
+/// the state before and after.
+#[test]
+fn one_event_per_fire_site_crop_grow_event_post() {
+    let _serial = support::serial();
+    let pos = spot(17);
+    set(pos.down(), Block::FARMLAND.default_state.id);
+    set(pos, Block::WHEAT.default_state.id);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<CropGrowEventPost, _>(move |event| {
+        if event.pos == pos {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {} {}",
+                    WheatLikeProperties::from_state_id(event.original_state.id).age,
+                    WheatLikeProperties::from_state_id(event.state.id).age,
+                    event.state.id == state_at(pos),
+                ),
+            );
+        }
+    });
+
+    let world = support::world();
+    let wheat = support::server()
+        .block_registry
+        .get_pumpkin_block(Block::WHEAT.id)
+        .unwrap();
+    // A random tick grows the crop with a chance of 1 in 26 or more.
+    for _ in 0..5000 {
+        wheat.random_tick(RandomTickArgs {
+            world: &world,
+            block: &Block::WHEAT,
+            position: &pos,
+        });
+        if !entries(&seen).is_empty() {
+            break;
+        }
+    }
+    assert_eq!(entries(&seen), ["0 1 true"]);
+}
+
+/// `PistonEvent.Post` (`PistonEventPost`) fires after a piston extended.
+#[test]
+fn one_event_per_fire_site_piston_event_post() {
+    let _serial = support::serial();
+    let pos = spot(18);
+    let mut piston = StickyPistonLikeProperties::default(&Block::PISTON);
+    piston.facing = BlockDirection::Up.to_facing();
+    set(pos, piston.to_state_id(&Block::PISTON));
+    set(pos.up(), Block::AIR.default_state.id);
+    set(pos.down(), Block::REDSTONE_BLOCK.default_state.id);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<PistonEventPost, _>(move |event| {
+        if event.pos == pos {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{:?} {:?} {}",
+                    event.move_type,
+                    event.direction,
+                    StickyPistonLikeProperties::from_state_id(event.state.id).extended,
+                ),
+            );
+        }
+    });
+
+    let world = support::world();
+    assert!(support::server().block_registry.on_synced_block_event(
+        &Block::PISTON,
+        &world,
+        &pos,
+        0,
+        BlockDirection::Up as u8,
+    ));
+    assert_eq!(
+        entries(&seen),
+        [format!(
+            "{:?} {:?} true",
+            PistonMoveType::Extend,
+            BlockDirection::Up
+        )]
+    );
+}
+
+fn rule_value(value: &GameRuleValue<i64, bool>) -> String {
+    value.to_string()
+}
+
+/// `GameRuleChangedEvent` fires after `World::set_game_rule` and after the `/gamerule` command,
+/// with the new value.
+#[test]
+fn one_event_per_fire_site_game_rule_changed_event() {
+    let _serial = support::serial();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<GameRuleChangedEvent, _>(move |event| {
+        if event.rule == GameRule::KeepInventory {
+            push(&seen_by_handler, rule_value(&event.value));
+        }
+    });
+
+    support::world().set_game_rule(&GameRule::KeepInventory, GameRuleValue::Bool(true));
+    let server = support::server();
+    let source = CommandSender::Console.into_source(server).with_silent();
+    server.command_dispatcher.load().handle_command(
+        &source,
+        &format!("gamerule {} false", GameRule::KeepInventory),
+    );
+
+    assert_eq!(entries(&seen), ["true", "false"]);
 }

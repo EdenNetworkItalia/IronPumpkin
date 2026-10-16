@@ -10,8 +10,9 @@ use pumpkin_data::block_properties::{
     BedPart, DoubleBlockHalf, OakDoorLikeProperties, SmallDripleafLikeProperties,
     TallSeagrassLikeProperties, WhiteBedLikeProperties,
 };
+use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::tag::{self, Taggable};
-use pumpkin_data::{Block, BlockState, BlockStateId};
+use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
 use pumpkin_util::math::position::BlockPos;
 
 use crate::block::BlockMetadata;
@@ -23,8 +24,9 @@ use crate::plugin::api::events::{
         block_place::BlockPlaceEvent,
     },
     level::{
-        BlockEventEntityPlaceEvent, EntityTickEventPost, EntityTickEventPre, PlayerTickEventPost,
-        PlayerTickEventPre,
+        BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
+        GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
+        PlayerTickEventPost, PlayerTickEventPre,
     },
 };
 use crate::plugin::player_events;
@@ -210,4 +212,78 @@ pub fn player_tick_pre(player: &Player) {
 /// Fires `PlayerTickEventPost` at the end of the tick of `player`.
 pub fn player_tick_post(player: &Player) {
     player_events::fire(player, PlayerTickEventPost::new);
+}
+
+/// Fires `CropGrowEventPost` after the crop at `pos` grew from `original`.
+pub fn crop_grow_post(world: &Arc<World>, pos: &BlockPos, original: BlockStateId) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    server.plugin_manager.fire_blocking_with(&server, || {
+        CropGrowEventPost::new(
+            world.clone(),
+            *pos,
+            BlockState::from_id(original),
+            world.get_block_state(pos),
+        )
+    });
+}
+
+/// The highest note id of a note block (`NoteBlock.NOTE`).
+const MAX_NOTE: u8 = 24;
+
+/// Fires `NoteBlockEventChange` for a tune of the note block at `pos` from `old` to `note`.
+/// Returns the note to set, or `None` when a handler cancelled the change.
+pub fn note_change(
+    world: &Arc<World>,
+    pos: &BlockPos,
+    state: &'static BlockState,
+    old: u8,
+    note: u8,
+) -> Option<u8> {
+    let Some(server) = world.server.upgrade() else {
+        return Some(note);
+    };
+    let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+        NoteBlockEventChange::new(world.clone(), *pos, state, old, note)
+    }) else {
+        return Some(note);
+    };
+    (!event.cancelled).then_some(if event.note <= MAX_NOTE {
+        event.note
+    } else {
+        note
+    })
+}
+
+/// Fires `PistonEventPost` after the piston at `pos` moved.
+pub fn piston_post(
+    world: &Arc<World>,
+    pos: &BlockPos,
+    direction: BlockDirection,
+    move_type: PistonMoveType,
+) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    server.plugin_manager.fire_blocking_with(&server, || {
+        PistonEventPost::new(
+            world.clone(),
+            *pos,
+            world.get_block_state(pos),
+            direction,
+            move_type,
+        )
+    });
+}
+
+/// Fires `GameRuleChangedEvent` after `rule` changed to `value`.
+pub fn game_rule_changed(
+    server: &Arc<Server>,
+    rule: &GameRule,
+    value: impl FnOnce() -> GameRuleValue<i64, bool>,
+) {
+    server
+        .plugin_manager
+        .fire_blocking_with(server, || GameRuleChangedEvent::new(rule.clone(), value()));
 }

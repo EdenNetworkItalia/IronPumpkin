@@ -902,6 +902,11 @@ impl World {
             _ => {}
         }
         self.level_info.store(Arc::new(new_info));
+        if let Some(server) = self.server.upgrade() {
+            crate::plugin::level_events::game_rule_changed(&server, rule, || {
+                self.get_game_rule(rule)
+            });
+        }
         if *rule == GameRule::AdvanceTime {
             let level_time = self
                 .level_time

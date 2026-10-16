@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use pumpkin_data::BlockState;
+use pumpkin_data::{BlockDirection, BlockState};
 use pumpkin_macros::{Event, cancellable};
 use pumpkin_util::math::position::BlockPos;
 
@@ -50,6 +50,118 @@ impl BlockEventEntityPlaceEvent {
             replaced_state,
             placed_against,
             cancelled: false,
+        }
+    }
+}
+
+/// A crop grew one age in its random tick.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.level.block.CropGrowEvent.Post`, fired by
+/// `CommonHooks.fireCropGrowPost` in `CropBlock.randomTick` after the block changed. It fires
+/// where `CropGrowEvent.Pre` (`BlockGrowEvent`) fires: the crops of `CropBlockBase`.
+#[derive(Event, Clone)]
+pub struct CropGrowEventPost {
+    pub world: Arc<World>,
+    pub pos: BlockPos,
+    /// The state before the growth (`getOriginalState`).
+    pub original_state: &'static BlockState,
+    /// The state after the growth (`getState`).
+    pub state: &'static BlockState,
+}
+
+impl CropGrowEventPost {
+    #[must_use]
+    pub const fn new(
+        world: Arc<World>,
+        pos: BlockPos,
+        original_state: &'static BlockState,
+        state: &'static BlockState,
+    ) -> Self {
+        Self {
+            world,
+            pos,
+            original_state,
+            state,
+        }
+    }
+}
+
+/// A player tunes a note block.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.level.NoteBlockEvent.Change`, fired by
+/// `CommonHooks.onNoteChange` in `NoteBlock.useWithoutItem` before the block changes. `note` is
+/// the note id of `getVanillaNoteId`, from 0 to 24, and is settable: a value above 24 keeps the
+/// vanilla note. A cancel keeps the note, plays nothing and fails the use.
+#[cancellable]
+#[derive(Event, Clone)]
+pub struct NoteBlockEventChange {
+    pub world: Arc<World>,
+    pub pos: BlockPos,
+    /// The state of the note block before the change.
+    pub state: &'static BlockState,
+    /// The note id before the change (`getOldNote` and `getOldOctave`).
+    pub old_note: u8,
+    pub note: u8,
+}
+
+impl NoteBlockEventChange {
+    #[must_use]
+    pub const fn new(
+        world: Arc<World>,
+        pos: BlockPos,
+        state: &'static BlockState,
+        old_note: u8,
+        note: u8,
+    ) -> Self {
+        Self {
+            world,
+            pos,
+            state,
+            old_note,
+            note,
+            cancelled: false,
+        }
+    }
+}
+
+/// The move of a piston (`PistonEvent.PistonMoveType`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PistonMoveType {
+    Extend,
+    Retract,
+}
+
+/// A piston moved.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.level.PistonEvent.Post`, fired by
+/// `EventHooks.onPistonMovePost` at the end of `PistonBaseBlock.triggerEvent`, after the blocks
+/// moved. `PistonEvent.Pre` is `BlockPistonExtendEvent` or `BlockPistonRetractEvent`.
+#[derive(Event, Clone)]
+pub struct PistonEventPost {
+    pub world: Arc<World>,
+    /// The position of the piston base.
+    pub pos: BlockPos,
+    /// The state of the piston base after the move.
+    pub state: &'static BlockState,
+    pub direction: BlockDirection,
+    pub move_type: PistonMoveType,
+}
+
+impl PistonEventPost {
+    #[must_use]
+    pub const fn new(
+        world: Arc<World>,
+        pos: BlockPos,
+        state: &'static BlockState,
+        direction: BlockDirection,
+        move_type: PistonMoveType,
+    ) -> Self {
+        Self {
+            world,
+            pos,
+            state,
+            direction,
+            move_type,
         }
     }
 }
