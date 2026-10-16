@@ -25,10 +25,10 @@ use crate::plugin::api::events::{
         block_place::BlockPlaceEvent,
     },
     level::{
-        BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CropGrowEventPost, EntityTickEventPost,
-        EntityTickEventPre, ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
-        NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
-        PlayerTickEventPre,
+        BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CreateFluidSourceEvent,
+        CropGrowEventPost, EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
+        ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
+        PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
     },
     world::chunk_load::ChunkLoad,
 };
@@ -411,4 +411,23 @@ pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
             LoadedChunkChange::Unloaded(pos) => world.unload_chunk(pos),
         }
     }
+}
+
+/// Fires `CreateFluidSourceEvent` for the source at `pos` and returns whether it counts toward a
+/// new source. Without a handler it returns `vanilla`.
+pub fn create_fluid_source(
+    world: &Arc<World>,
+    pos: &BlockPos,
+    state: BlockStateId,
+    vanilla: bool,
+) -> bool {
+    let Some(server) = world.server.upgrade() else {
+        return vanilla;
+    };
+    server
+        .plugin_manager
+        .fire_blocking_with(&server, || {
+            CreateFluidSourceEvent::new(world.clone(), *pos, BlockState::from_id(state), vanilla)
+        })
+        .map_or(vanilla, |event| event.can_convert)
 }

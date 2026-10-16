@@ -1,4 +1,5 @@
 use super::{pathfinder, physics};
+use crate::plugin::level_events;
 use crate::world::World;
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
@@ -228,7 +229,15 @@ pub trait FlowingFluid: Send + Sync {
             };
 
             // Count horizontal non-falling sources for infinite source formation
-            if neighbor_props.level == Level::L8 && neighbor_props.falling == Falling::False {
+            if neighbor_props.level == Level::L8
+                && neighbor_props.falling == Falling::False
+                && level_events::create_fluid_source(
+                    world,
+                    &neighbor_pos,
+                    neighbor_state_id,
+                    self.can_convert_to_source(world),
+                )
+            {
                 neighbor_source_count += 1;
             }
 
@@ -243,7 +252,8 @@ pub trait FlowingFluid: Send + Sync {
         }
 
         // Attempt infinite source formation first
-        if self.can_convert_to_source(world) && neighbor_source_count >= 2 {
+        // `CreateFluidSourceEvent` decided for each source whether it can convert.
+        if neighbor_source_count >= 2 {
             let below_pos = block_pos.down();
             let below_state = world.get_block_state(&below_pos);
             let below_state_id = below_state.id;
@@ -310,7 +320,7 @@ pub trait FlowingFluid: Send + Sync {
             }
 
             // Check for infinite source formation before quiescence checks
-            if !current_is_source && self.can_convert_to_source(world) {
+            if !current_is_source {
                 let should_convert = self.check_infinite_source_formation(world, fluid, pos);
 
                 if should_convert {
@@ -355,17 +365,13 @@ pub trait FlowingFluid: Send + Sync {
         world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
 
         // Check for infinite source formation after placing new fluid
-        if self.can_convert_to_source(world) {
-            let should_convert = self.check_infinite_source_formation(world, fluid, pos);
+        if self.check_infinite_source_formation(world, fluid, pos) {
+            let source_props = self.get_source(fluid, false);
+            let source_state_id = source_props.to_state_id(fluid);
+            world.set_block_state(pos, source_state_id, BlockFlags::NOTIFY_ALL);
 
-            if should_convert {
-                let source_props = self.get_source(fluid, false);
-                let source_state_id = source_props.to_state_id(fluid);
-                world.set_block_state(pos, source_state_id, BlockFlags::NOTIFY_ALL);
-
-                // Sources don't need ticks
-                return;
-            }
+            // Sources don't need ticks
+            return;
         }
 
         // Only schedule tick if not a source
@@ -405,6 +411,12 @@ pub trait FlowingFluid: Send + Sync {
             if self
                 .get_effective_props(fluid, neighbor_state_id)
                 .is_some_and(|p| p.level == Level::L8 && p.falling == Falling::False)
+                && level_events::create_fluid_source(
+                    world,
+                    &neighbor_pos,
+                    neighbor_state_id,
+                    self.can_convert_to_source(world),
+                )
             {
                 source_count += 1;
             }

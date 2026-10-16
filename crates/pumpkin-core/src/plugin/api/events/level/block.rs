@@ -165,3 +165,42 @@ impl PistonEventPost {
         }
     }
 }
+
+/// A fluid source counts toward a new source next to it.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.level.block.CreateFluidSourceEvent`, fired by
+/// `EventHooks.canCreateFluidSource` in `FlowingFluid.getNewLiquid` for each source next to a
+/// flowing fluid; the flowing fluid becomes a source when two of them can convert. `can_convert`
+/// is settable and starts at `vanilla_result`, the source conversion game rule of the fluid.
+/// Pumpkin checks a new source also when the fluid spreads, so the event fires more often than in
+/// vanilla.
+#[derive(Event, Clone)]
+pub struct CreateFluidSourceEvent {
+    pub world: Arc<World>,
+    /// The position of the source (`getPos`).
+    pub pos: BlockPos,
+    /// The state of the source (`getState`).
+    pub state: &'static BlockState,
+    /// `getVanillaResult`.
+    pub vanilla_result: bool,
+    /// `canConvert`.
+    pub can_convert: bool,
+}
+
+impl CreateFluidSourceEvent {
+    #[must_use]
+    pub const fn new(
+        world: Arc<World>,
+        pos: BlockPos,
+        state: &'static BlockState,
+        vanilla_result: bool,
+    ) -> Self {
+        Self {
+            world,
+            pos,
+            state,
+            vanilla_result,
+            can_convert: vanilla_result,
+        }
+    }
+}

@@ -37,8 +37,8 @@ use pumpkin_core::{
         },
         entity::entity_explode::EntityExplodeEvent,
         level::{
-            BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CropGrowEventPost,
-            EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
+            BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CreateFluidSourceEvent,
+            CropGrowEventPost, EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
             ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
             PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
         },
@@ -51,6 +51,7 @@ use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
     block_properties::{NoteBlockLikeProperties, StickyPistonLikeProperties, WheatLikeProperties},
     entity::EntityType,
+    fluid::Fluid,
     game_rules::{GameRule, GameRuleValue},
     item::Item,
     item_stack::ItemStack,
@@ -1039,4 +1040,97 @@ fn one_event_per_fire_site_chunk_load_and_unload_events() {
     }
     world.update_active_chunks();
     assert_eq!(entries(&seen), ["load", "unload"]);
+}
+
+/// Two water sources around a flowing water at `pos`, on a stone floor.
+fn water_between_sources(pos: BlockPos) {
+    let east = BlockPos::new(1, 0, 0).0;
+    let flowing = Block::WATER
+        .from_properties(&[("level", "1")])
+        .to_state_id(&Block::WATER);
+    for offset in [-1, 0, 1] {
+        let at = pos.offset(east * offset);
+        set(at.down(), Block::STONE.default_state.id);
+        set(
+            at.offset(Vector3::new(0, 0, 1)),
+            Block::STONE.default_state.id,
+        );
+        set(
+            at.offset(Vector3::new(0, 0, -1)),
+            Block::STONE.default_state.id,
+        );
+        let water = if offset == 0 {
+            flowing
+        } else {
+            Block::WATER.default_state.id
+        };
+        set(at, water);
+    }
+}
+
+/// Runs the scheduled fluid tick of the water at `pos`.
+fn tick_water(pos: BlockPos) {
+    let world = support::world();
+    support::server()
+        .block_registry
+        .get_pumpkin_fluid(Fluid::FLOWING_WATER.id)
+        .unwrap()
+        .on_scheduled_tick(&world, &Fluid::FLOWING_WATER, &pos);
+}
+
+/// `CreateFluidSourceEvent` fires for each source next to a flowing water, with the vanilla
+/// result, and the water becomes a source.
+#[test]
+fn one_event_per_fire_site_create_fluid_source_event() {
+    let _serial = support::serial();
+    let pos = spot(23);
+    water_between_sources(pos);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    let sources = [
+        pos.offset(Vector3::new(-1, 0, 0)),
+        pos.offset(Vector3::new(1, 0, 0)),
+    ];
+    on::<CreateFluidSourceEvent, _>(move |event| {
+        if sources.contains(&event.pos) {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {} {}",
+                    event.pos.0.x - pos.0.x,
+                    event.vanilla_result,
+                    event.state.id == Block::WATER.default_state.id
+                ),
+            );
+        }
+    });
+
+    tick_water(pos);
+
+    let seen = entries(&seen);
+    assert!(seen.contains(&"-1 true true".to_owned()), "{seen:?}");
+    assert!(seen.contains(&"1 true true".to_owned()), "{seen:?}");
+    assert_eq!(state_at(pos), Block::WATER.default_state.id);
+}
+
+/// `can_convert` of `CreateFluidSourceEvent` is settable: a source that cannot convert does not
+/// count, and the water stays flowing.
+#[test]
+fn change_a_settable_field_create_fluid_source_event() {
+    let _serial = support::serial();
+    let pos = spot(24);
+    water_between_sources(pos);
+    let sources = [
+        pos.offset(Vector3::new(-1, 0, 0)),
+        pos.offset(Vector3::new(1, 0, 0)),
+    ];
+    on::<CreateFluidSourceEvent, _>(move |event| {
+        if sources.contains(&event.pos) {
+            event.can_convert = false;
+        }
+    });
+
+    tick_water(pos);
+
+    assert_ne!(state_at(pos), Block::WATER.default_state.id);
 }
