@@ -601917,6 +601917,7 @@ impl BlockProperties for CactusLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CACTUS | BlockId::SUGAR_CANE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -602106,6 +602107,7 @@ impl BlockProperties for FireLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::FIRE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -602366,7 +602368,7 @@ impl BlockProperties for OakDoorLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_DOOR
                 | BlockId::WAXED_WEATHERED_COPPER_DOOR
                 | BlockId::WAXED_OXIDIZED_COPPER_DOOR
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -602599,7 +602601,7 @@ impl BlockProperties for WallTorchLikeProperties {
                 | BlockId::BLACK_GLAZED_TERRACOTTA
                 | BlockId::LOOM
                 | BlockId::STONECUTTER
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -602765,7 +602767,7 @@ impl BlockProperties for AcaciaShelfLikeProperties {
                 | BlockId::POPLAR_SHELF
                 | BlockId::SPRUCE_SHELF
                 | BlockId::WARPED_SHELF
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -602951,6 +602953,7 @@ impl BlockProperties for ChiseledBookshelfLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CHISELED_BOOKSHELF)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -603165,6 +603168,7 @@ impl BlockProperties for VaultLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::VAULT)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -603515,7 +603519,7 @@ impl BlockProperties for WhiteWoolStairsLikeProperties {
                 | BlockId::POLISHED_DEEPSLATE_STAIRS
                 | BlockId::DEEPSLATE_TILE_STAIRS
                 | BlockId::DEEPSLATE_BRICK_STAIRS
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -603680,6 +603684,7 @@ impl BlockProperties for RepeaterLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::REPEATER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -603864,7 +603869,7 @@ impl BlockProperties for CopperGolemStatueLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_GOLEM_STATUE
                 | BlockId::WAXED_WEATHERED_COPPER_GOLEM_STATUE
                 | BlockId::WAXED_OXIDIZED_COPPER_GOLEM_STATUE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604023,7 +604028,7 @@ impl BlockProperties for SkeletonWallSkullLikeProperties {
                 | BlockId::CREEPER_WALL_HEAD
                 | BlockId::DRAGON_WALL_HEAD
                 | BlockId::PIGLIN_WALL_HEAD
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604225,7 +604230,7 @@ impl BlockProperties for OakTrapdoorLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_TRAPDOOR
                 | BlockId::WAXED_WEATHERED_COPPER_TRAPDOOR
                 | BlockId::WAXED_OXIDIZED_COPPER_TRAPDOOR
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604423,7 +604428,7 @@ impl BlockProperties for OakFenceGateLikeProperties {
                 | BlockId::BAMBOO_FENCE_GATE
                 | BlockId::CRIMSON_FENCE_GATE
                 | BlockId::WARPED_FENCE_GATE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604578,6 +604583,7 @@ impl BlockProperties for LecternLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::LECTERN)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604726,6 +604732,7 @@ impl BlockProperties for TripwireHookLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TRIPWIRE_HOOK)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -604906,7 +604913,7 @@ impl BlockProperties for LeverLikeProperties {
                 | BlockId::CRIMSON_BUTTON
                 | BlockId::WARPED_BUTTON
                 | BlockId::POLISHED_BLACKSTONE_BUTTON
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605058,6 +605065,7 @@ impl BlockProperties for BellLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BELL)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605206,6 +605214,7 @@ impl BlockProperties for ComparatorLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::COMPARATOR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605374,7 +605383,7 @@ impl BlockProperties for ChestLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_CHEST
                 | BlockId::WAXED_WEATHERED_COPPER_CHEST
                 | BlockId::WAXED_OXIDIZED_COPPER_CHEST
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605526,6 +605535,7 @@ impl BlockProperties for SmallDripleafLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SMALL_DRIPLEAF)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605712,7 +605722,7 @@ impl BlockProperties for WhiteBedLikeProperties {
                 | BlockId::RED_BED
                 | BlockId::BLACK_BED
                 | BlockId::STRAW_BED
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605854,6 +605864,7 @@ impl BlockProperties for EndPortalFrameLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::END_PORTAL_FRAME)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -605997,7 +606008,7 @@ impl BlockProperties for FurnaceLikeProperties {
                 | BlockId::REDSTONE_WALL_TORCH
                 | BlockId::SMOKER
                 | BlockId::BLAST_FURNACE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -606148,6 +606159,7 @@ impl BlockProperties for CampfireLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CAMPFIRE | BlockId::SOUL_CAMPFIRE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -606302,6 +606314,7 @@ impl BlockProperties for BeeNestLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BEE_NEST | BlockId::BEEHIVE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -606459,6 +606472,7 @@ impl BlockProperties for DecoratedPotLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::DECORATED_POT)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -606681,7 +606695,7 @@ impl BlockProperties for LadderLikeProperties {
                 | BlockId::CRIMSON_WALL_SIGN
                 | BlockId::WARPED_WALL_SIGN
                 | BlockId::BIG_DRIPLEAF_STEM
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -606837,6 +606851,7 @@ impl BlockProperties for CalibratedSculkSensorLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CALIBRATED_SCULK_SENSOR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607029,6 +607044,7 @@ impl BlockProperties for DriedGhastLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::DRIED_GHAST)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607191,6 +607207,7 @@ impl BlockProperties for BigDripleafLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BIG_DRIPLEAF)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607335,6 +607352,7 @@ impl BlockProperties for GrindstoneLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::GRINDSTONE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607471,6 +607489,7 @@ impl BlockProperties for PinkPetalsLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::PINK_PETALS | BlockId::WILDFLOWERS)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607617,6 +607636,7 @@ impl BlockProperties for LeafLitterLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::LEAF_LITTER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607763,6 +607783,7 @@ impl BlockProperties for ShelfMushroomLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SHELF_MUSHROOM)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -607905,6 +607926,7 @@ impl BlockProperties for CocoaLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::COCOA)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608049,6 +608071,7 @@ impl BlockProperties for HopperLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::HOPPER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608205,6 +608228,7 @@ impl BlockProperties for RedstoneWireLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::REDSTONE_WIRE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608414,6 +608438,7 @@ impl BlockProperties for PaleMossCarpetLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::PALE_MOSS_CARPET)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608574,6 +608599,7 @@ impl BlockProperties for ScaffoldingLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SCAFFOLDING)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608740,6 +608766,7 @@ impl BlockProperties for TrialSpawnerLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TRIAL_SPAWNER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -608882,6 +608909,7 @@ impl BlockProperties for SculkShriekerLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SCULK_SHRIEKER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609020,6 +609048,7 @@ impl BlockProperties for NetherPortalLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::NETHER_PORTAL)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609135,6 +609164,7 @@ impl BlockProperties for RespawnAnchorLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::RESPAWN_ANCHOR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609281,6 +609311,7 @@ impl BlockProperties for BrewingStandLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BREWING_STAND)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609438,6 +609469,7 @@ impl BlockProperties for PistonHeadLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::PISTON_HEAD)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609579,6 +609611,7 @@ impl BlockProperties for MovingPistonLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::MOVING_PISTON)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609705,6 +609738,7 @@ impl BlockProperties for SnowLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SNOW)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609857,6 +609891,7 @@ impl BlockProperties for CrafterLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CRAFTER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -609999,6 +610034,7 @@ impl BlockProperties for DispenserLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::DISPENSER | BlockId::DROPPER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610227,7 +610263,7 @@ impl BlockProperties for ResinBrickWallLikeProperties {
                 | BlockId::POLISHED_DEEPSLATE_WALL
                 | BlockId::DEEPSLATE_TILE_WALL
                 | BlockId::DEEPSLATE_BRICK_WALL
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610381,6 +610417,7 @@ impl BlockProperties for FarmlandLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::FARMLAND)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610526,6 +610563,7 @@ impl BlockProperties for RailLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::RAIL)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610658,7 +610696,7 @@ impl BlockProperties for SuspiciousSandLikeProperties {
         matches!(
             block_id,
             BlockId::SUSPICIOUS_SAND | BlockId::SUSPICIOUS_GRAVEL
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610818,7 +610856,7 @@ impl BlockProperties for StonePressurePlateLikeProperties {
                 | BlockId::CRIMSON_PRESSURE_PLATE
                 | BlockId::WARPED_PRESSURE_PLATE
                 | BlockId::POLISHED_BLACKSTONE_PRESSURE_PLATE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -610958,7 +610996,7 @@ impl BlockProperties for CopperBulbLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_BULB
                 | BlockId::WAXED_WEATHERED_COPPER_BULB
                 | BlockId::WAXED_OXIDIZED_COPPER_BULB
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611129,6 +611167,7 @@ impl BlockProperties for TripwireLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TRIPWIRE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611294,6 +611333,7 @@ impl BlockProperties for ObserverLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::OBSERVER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611452,7 +611492,7 @@ impl BlockProperties for LightningRodLikeProperties {
                 | BlockId::WAXED_EXPOSED_LIGHTNING_ROD
                 | BlockId::WAXED_WEATHERED_LIGHTNING_ROD
                 | BlockId::WAXED_OXIDIZED_LIGHTNING_ROD
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611607,6 +611647,7 @@ impl BlockProperties for NoteBlockLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::NOTE_BLOCK)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611812,7 +611853,7 @@ impl BlockProperties for PoweredRailLikeProperties {
         matches!(
             block_id,
             BlockId::POWERED_RAIL | BlockId::DETECTOR_RAIL | BlockId::ACTIVATOR_RAIL
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -611968,7 +612009,7 @@ impl BlockProperties for SkeletonSkullLikeProperties {
                 | BlockId::CREEPER_HEAD
                 | BlockId::DRAGON_HEAD
                 | BlockId::PIGLIN_HEAD
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612130,6 +612171,7 @@ impl BlockProperties for ComposterLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::COMPOSTER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612268,6 +612310,7 @@ impl BlockProperties for CaveVinesPlantLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CAVE_VINES_PLANT)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612391,6 +612434,7 @@ impl BlockProperties for CaveVinesLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CAVE_VINES)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612588,7 +612632,7 @@ impl BlockProperties for TallSeagrassLikeProperties {
                 | BlockId::TALL_GRASS
                 | BlockId::LARGE_FERN
                 | BlockId::PITCHER_PLANT
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612713,6 +612757,7 @@ impl BlockProperties for PitcherCropLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::PITCHER_CROP)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612852,6 +612897,7 @@ impl BlockProperties for JigsawLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::JIGSAW)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -612967,6 +613013,7 @@ impl BlockProperties for TntLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TNT)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -613129,7 +613176,7 @@ impl BlockProperties for BrownMushroomBlockLikeProperties {
                 | BlockId::RED_MUSHROOM_BLOCK
                 | BlockId::MUSHROOM_STEM
                 | BlockId::CHORUS_PLANT
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -613328,7 +613375,7 @@ impl BlockProperties for GlowLichenLikeProperties {
         matches!(
             block_id,
             BlockId::GLOW_LICHEN | BlockId::RESIN_CLUMP | BlockId::SCULK_VEIN
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -613518,6 +613565,7 @@ impl BlockProperties for VineLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::VINE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -613704,7 +613752,7 @@ impl BlockProperties for RedstoneOreLikeProperties {
                 | BlockId::GREEN_CANDLE_CAKE
                 | BlockId::RED_CANDLE_CAKE
                 | BlockId::BLACK_CANDLE_CAKE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -613872,7 +613920,7 @@ impl BlockProperties for CandleLikeProperties {
                 | BlockId::GREEN_CANDLE
                 | BlockId::RED_CANDLE
                 | BlockId::BLACK_CANDLE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614019,6 +614067,7 @@ impl BlockProperties for PaleHangingMossLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::PALE_HANGING_MOSS)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614155,6 +614204,7 @@ impl BlockProperties for CreakingHeartLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CREAKING_HEART)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614290,6 +614340,7 @@ impl BlockProperties for BubbleColumnLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BUBBLE_COLUMN)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614517,7 +614568,7 @@ impl BlockProperties for OakFenceLikeProperties {
                 | BlockId::BAMBOO_FENCE
                 | BlockId::CRIMSON_FENCE
                 | BlockId::WARPED_FENCE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614674,6 +614725,7 @@ impl BlockProperties for BarrelLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BARREL)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614800,6 +614852,7 @@ impl BlockProperties for SculkCatalystLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SCULK_CATALYST)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -614921,7 +614974,7 @@ impl BlockProperties for GrassBlockLikeProperties {
         matches!(
             block_id,
             BlockId::GRASS_BLOCK | BlockId::PODZOL | BlockId::MYCELIUM
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615075,7 +615128,7 @@ impl BlockProperties for EndRodLikeProperties {
                 | BlockId::GREEN_SHULKER_BOX
                 | BlockId::RED_SHULKER_BOX
                 | BlockId::BLACK_SHULKER_BOX
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615208,7 +615261,7 @@ impl BlockProperties for AmethystClusterLikeProperties {
                 | BlockId::LARGE_AMETHYST_BUD
                 | BlockId::MEDIUM_AMETHYST_BUD
                 | BlockId::SMALL_AMETHYST_BUD
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615353,7 +615406,7 @@ impl BlockProperties for CommandBlockLikeProperties {
             BlockId::COMMAND_BLOCK
                 | BlockId::REPEATING_COMMAND_BLOCK
                 | BlockId::CHAIN_COMMAND_BLOCK
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615493,6 +615546,7 @@ impl BlockProperties for StickyPistonLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::STICKY_PISTON | BlockId::PISTON)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615619,6 +615673,7 @@ impl BlockProperties for StructureBlockLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::STRUCTURE_BLOCK)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615779,7 +615834,7 @@ impl BlockProperties for OakLeavesLikeProperties {
                 | BlockId::YELLOW_POPLAR_LEAVES
                 | BlockId::AZALEA_LEAVES
                 | BlockId::FLOWERING_AZALEA_LEAVES
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -615935,6 +615990,7 @@ impl BlockProperties for SnifferEggLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SNIFFER_EGG)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616070,6 +616126,7 @@ impl BlockProperties for TurtleEggLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TURTLE_EGG)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616259,7 +616316,7 @@ impl BlockProperties for OakHangingSignLikeProperties {
                 | BlockId::MANGROVE_HANGING_SIGN
                 | BlockId::POPLAR_HANGING_SIGN
                 | BlockId::BAMBOO_HANGING_SIGN
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616436,6 +616493,7 @@ impl BlockProperties for DaylightDetectorLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::DAYLIGHT_DETECTOR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616601,7 +616659,7 @@ impl BlockProperties for WaterCauldronLikeProperties {
         matches!(
             block_id,
             BlockId::WATER_CAULDRON | BlockId::POWDER_SNOW_CAULDRON
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616751,6 +616809,7 @@ impl BlockProperties for MangrovePropaguleLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::MANGROVE_PROPAGULE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -616938,7 +616997,7 @@ impl BlockProperties for LanternLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_LANTERN
                 | BlockId::WAXED_WEATHERED_COPPER_LANTERN
                 | BlockId::WAXED_OXIDIZED_COPPER_LANTERN
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617087,7 +617146,7 @@ impl BlockProperties for OakSaplingLikeProperties {
                 | BlockId::DARK_OAK_SAPLING
                 | BlockId::PALE_OAK_SAPLING
                 | BlockId::POPLAR_SAPLING
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617228,6 +617287,7 @@ impl BlockProperties for BambooLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::BAMBOO)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617397,6 +617457,7 @@ impl BlockProperties for PointedDripstoneLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::POINTED_DRIPSTONE | BlockId::SULFUR_SPIKE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617542,7 +617603,7 @@ impl BlockProperties for WheatLikeProperties {
                 | BlockId::MELON_STEM
                 | BlockId::CARROTS
                 | BlockId::POTATOES
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617688,6 +617749,7 @@ impl BlockProperties for SeaPickleLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SEA_PICKLE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -617894,7 +617956,7 @@ impl BlockProperties for MangroveRootsLikeProperties {
                 | BlockId::WAXED_OXIDIZED_COPPER_GRATE
                 | BlockId::HANGING_ROOTS
                 | BlockId::HEAVY_CORE
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -618034,6 +618096,7 @@ impl BlockProperties for SculkSensorLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::SCULK_SENSOR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -618240,7 +618303,7 @@ impl BlockProperties for OakSignLikeProperties {
                 | BlockId::BAMBOO_SIGN
                 | BlockId::CRIMSON_SIGN
                 | BlockId::WARPED_SIGN
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -618414,6 +618477,7 @@ impl BlockProperties for LightLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::LIGHT)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -618790,7 +618854,7 @@ impl BlockProperties for WhiteWoolSlabLikeProperties {
                 | BlockId::POLISHED_DEEPSLATE_SLAB
                 | BlockId::DEEPSLATE_TILE_SLAB
                 | BlockId::DEEPSLATE_BRICK_SLAB
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -618948,7 +619012,7 @@ impl BlockProperties for IronChainLikeProperties {
                 | BlockId::WAXED_EXPOSED_COPPER_CHAIN
                 | BlockId::WAXED_WEATHERED_COPPER_CHAIN
                 | BlockId::WAXED_OXIDIZED_COPPER_CHAIN
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619081,6 +619145,7 @@ impl BlockProperties for PotentSulfurLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::POTENT_SULFUR)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619229,7 +619294,7 @@ impl BlockProperties for WhiteBannerLikeProperties {
                 | BlockId::GREEN_BANNER
                 | BlockId::RED_BANNER
                 | BlockId::BLACK_BANNER
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619383,6 +619448,7 @@ impl BlockProperties for WaterLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::WATER | BlockId::LAVA)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619539,7 +619605,7 @@ impl BlockProperties for KelpLikeProperties {
         matches!(
             block_id,
             BlockId::KELP | BlockId::WEEPING_VINES | BlockId::TWISTING_VINES
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619718,7 +619784,7 @@ impl BlockProperties for LightWeightedPressurePlateLikeProperties {
             BlockId::LIGHT_WEIGHTED_PRESSURE_PLATE
                 | BlockId::HEAVY_WEIGHTED_PRESSURE_PLATE
                 | BlockId::TARGET
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619871,6 +619937,7 @@ impl BlockProperties for TestBlockLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TEST_BLOCK)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -619986,6 +620053,7 @@ impl BlockProperties for TorchflowerCropLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::TORCHFLOWER_CROP)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -620118,7 +620186,7 @@ impl BlockProperties for NetherWartLikeProperties {
                 | BlockId::BEETROOTS
                 | BlockId::FROSTED_ICE
                 | BlockId::SWEET_BERRY_BUSH
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -620247,6 +620315,7 @@ impl BlockProperties for CakeLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CAKE)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -620381,6 +620450,7 @@ impl BlockProperties for JukeboxLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::JUKEBOX)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -620625,7 +620695,7 @@ impl BlockProperties for PaleOakWoodLikeProperties {
                 | BlockId::OCHRE_FROGLIGHT
                 | BlockId::VERDANT_FROGLIGHT
                 | BlockId::PEARLESCENT_FROGLIGHT
-        )
+        ) || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {
@@ -620741,6 +620811,7 @@ impl BlockProperties for ChorusFlowerLikeProperties {
         Self: Sized,
     {
         matches!(block_id, BlockId::CHORUS_FLOWER)
+            || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
     }
     fn to_state_id(&self, block: &Block) -> BlockStateId {
         if !Self::handles_block_id(block.id) {

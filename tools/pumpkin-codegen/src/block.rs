@@ -459,6 +459,7 @@ impl ToTokens for BlockPropertyStruct {
                 #[allow(clippy::manual_range_patterns)]
                 fn handles_block_id(block_id: BlockId) -> bool where Self: Sized {
                     matches!(block_id, #(BlockId::#block_ids)|*)
+                        || crate::dynamic_types::block_type(block_id).is_some_and(Self::handles_block_id)
                 }
 
                 fn to_state_id(&self, block: &Block) -> BlockStateId {

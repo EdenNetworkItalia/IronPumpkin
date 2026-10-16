@@ -11,10 +11,12 @@
 //! property varies fastest.
 //!
 //! Tag membership lives in two tables. The generated tag lists hold generated ids only, so
-//! `BlockId::has_tag` and the generated [`Taggable`] methods stay branch-free on the worldgen hot
-//! path. The custom tag table holds the custom ids of each generated tag: an entry joins the tags
-//! of its display entry and the tags its definition lists. [`DynamicTaggable`] and [`tag_ids`]
-//! read both tables.
+//! `BlockId::has_tag` stays branch-free on the worldgen hot path. The generated [`Taggable`]
+//! methods answer for a custom entry through the generated entry whose tags it joins, its block
+//! type or display entry (see [`crate::dynamic_types::tag_source`]), so the server's own tag checks
+//! see custom content. The custom tag table holds the custom ids of each generated tag: an entry
+//! joins the tags of its block type or display entry and the tags its definition lists.
+//! [`DynamicTaggable`] and [`tag_ids`] read both tables.
 //!
 //! A mod can define a tag of its own with [`register_tag`]. A mod tag is a key of the custom tag
 //! table too, and its generated members live in a third map. It holds the members its definition
@@ -31,6 +33,7 @@ use pumpkin_util::identifier::{Identifier, VANILLA_NAMESPACE};
 use pumpkin_util::text::hover::HoverEvent;
 
 use crate::block_properties::{BlockProperties, BlockProperty};
+use crate::dynamic_types;
 #[cfg(feature = "entity_type")]
 use crate::entity_type::EntityType;
 #[cfg(feature = "item")]
@@ -242,6 +245,14 @@ pub enum RegistryError {
         tag: String,
         member: String,
     },
+    /// The block cannot take this block type: see [`crate::dynamic_types::register_block`].
+    InvalidBlockType {
+        block: String,
+        block_type: String,
+        reason: &'static str,
+    },
+    /// The item type is not a vanilla item.
+    UnknownItemType { item: String, item_type: String },
 }
 
 impl fmt::Display for RegistryError {
@@ -296,6 +307,18 @@ impl fmt::Display for RegistryError {
             Self::UnknownTagMember { kind, tag, member } => {
                 write!(f, "{kind} tag \"{tag}\" lists unknown {kind} \"{member}\"")
             }
+            Self::InvalidBlockType {
+                block,
+                block_type,
+                reason,
+            } => write!(
+                f,
+                "block \"{block}\" cannot take the block type \"{block_type}\": {reason}"
+            ),
+            Self::UnknownItemType { item, item_type } => write!(
+                f,
+                "item \"{item}\" cannot take the item type \"{item_type}\": it is not a vanilla item"
+            ),
         }
     }
 }
@@ -804,12 +827,23 @@ impl ContentBuilder {
         // A NeoForge client numbers block states itself, appending each synced block's states in
         // block id order. Placeholders are not synced, so live blocks after one shift down.
         let mut next_real_state = BlockStateId::STATE_COUNT;
-        for (((_, block), &block_id), &placeholder) in
+        for (((name, block), &block_id), &placeholder) in
             blocks.iter().zip(&block_ids).zip(&block_placeholders)
         {
-            let display = block.display.to_state();
-            for _ in 0..block.state_count {
+            // A typed block copies the physical data of the matching state of its block type,
+            // and shows the matching state of its display block when both share one layout.
+            let block_type = dynamic_types::pending_block_type(name).map(BlockId::to_block);
+            let display_block = block.display.to_block();
+            let display_states = block_type
+                .filter(|ty| dynamic_types::same_layout(ty, display_block))
+                .map(|_| display_block.states);
+            let block_entity_type =
+                dynamic_types::pending_block_entity_type(name).unwrap_or(u16::MAX);
+            for index in 0..block.state_count {
                 let id = BlockStateId::STATE_COUNT + states.len() as u16;
+                let display_id = display_states.map_or(block.display, |states| states[index].id);
+                let source =
+                    block_type.map_or_else(|| block.display.to_state(), |ty| &ty.states[index]);
                 real_states.push(if placeholder {
                     block.display.as_u16()
                 } else {
@@ -819,20 +853,20 @@ impl ContentBuilder {
                 });
                 states.push(BlockState {
                     id: BlockStateId::new_unchecked(id),
-                    state_flags: display.state_flags,
-                    side_flags: display.side_flags,
-                    instrument: display.instrument,
-                    luminance: display.luminance,
-                    piston_behavior: display.piston_behavior.clone(),
-                    hardness: display.hardness,
-                    collision_shapes: display.collision_shapes,
-                    outline_shapes: display.outline_shapes,
-                    opacity: display.opacity,
-                    // Custom blocks have no block entity type.
-                    block_entity_type: u16::MAX,
+                    state_flags: source.state_flags,
+                    side_flags: source.side_flags,
+                    instrument: source.instrument,
+                    luminance: source.luminance,
+                    piston_behavior: source.piston_behavior.clone(),
+                    hardness: source.hardness,
+                    collision_shapes: source.collision_shapes,
+                    outline_shapes: source.outline_shapes,
+                    opacity: source.opacity,
+                    // Only a block that a mod adds to a block entity type has one.
+                    block_entity_type,
                 });
                 state_blocks.push(block_id);
-                state_displays.push(block.display);
+                state_displays.push(display_id);
             }
         }
         let states: &'static [BlockState] = Box::leak(states.into_boxed_slice());
@@ -860,13 +894,18 @@ impl ContentBuilder {
             .map(|(_, block)| block.display.to_block().id.as_u16())
             .collect();
         let real_blocks = real_ids(BlockId::COUNT, &block_displays, &block_placeholders);
+        // A typed block joins the generated tags of its block type instead of its display block.
         let block_tags = tag_tables(
             ContentKind::Block,
             BlockId::COUNT,
             blocks
                 .iter()
                 .zip(&block_displays)
-                .map(|((name, _), &display)| (*name, display)),
+                .map(|((name, _), &display)| {
+                    let source =
+                        dynamic_types::pending_block_type(name).map_or(display, BlockId::as_u16);
+                    (*name, source)
+                }),
             &self.tags,
             &self.mod_tags,
         );
@@ -1998,9 +2037,9 @@ fn is_synced_id(key: RegistryKey, id: u16) -> bool {
     custom_index(id, generated).is_none_or(|index| real.get(index) == Some(&id))
 }
 
-/// Tag membership that includes custom content. It reads both tag tables, so it is for paths off
-/// the worldgen hot path; `BlockId::has_tag` and the generated [`Taggable`] methods answer for
-/// generated ids only.
+/// Tag membership that includes custom content and mod tags. It reads both tag tables, so it is
+/// for paths off the worldgen hot path; `BlockId::has_tag` answers for generated ids only, and the
+/// generated [`Taggable`] methods miss the tags that a definition lists.
 pub trait DynamicTaggable: Taggable {
     /// The first custom id of the registry.
     const FIRST_CUSTOM_ID: u16;
@@ -3076,12 +3115,19 @@ mod tests {
             assert_eq!(EntityType::PIG.to_java_network_id(ids), EntityType::PIG.id);
         }
 
-        // Generated tag lists hold generated ids only.
-        assert!(!alpha.has_tag(&crate::tag::Block::MINECRAFT_BASE_STONE_OVERWORLD));
+        // Generated tag lists hold generated ids only, and the generated lookups answer for a
+        // custom id through its display entry.
+        assert!(
+            !crate::tag::Block::MINECRAFT_BASE_STONE_OVERWORLD
+                .1
+                .contains(&alpha.id.as_u16())
+        );
+        assert!(alpha.has_tag(&crate::tag::Block::MINECRAFT_BASE_STONE_OVERWORLD));
         assert_eq!(
             alpha.is_tagged_with("minecraft:base_stone_overworld"),
-            Some(false)
+            Some(true)
         );
+        assert!(!alpha.has_tag(&crate::tag::Block::MINECRAFT_DIRT));
         // The custom tag table answers for custom ids: tags of the display entry plus explicit tags.
         assert!(alpha.has_tag_dynamic("minecraft:base_stone_overworld"));
         let zeta = Block::from_name("test:zeta").unwrap();
@@ -3099,7 +3145,8 @@ mod tests {
         assert!(alpha_item.has_tag_dynamic("minecraft:swords"));
         assert!(alpha_item.has_tag_dynamic("piglin_loved"));
         assert!(!Item::DIAMOND.has_tag_dynamic("minecraft:swords"));
-        assert_eq!(alpha_item.is_tagged_with("minecraft:swords"), Some(false));
+        // Through the display item.
+        assert_eq!(alpha_item.is_tagged_with("minecraft:swords"), Some(true));
         assert!(golem.has_tag_dynamic("minecraft:zombies"));
         assert!(golem.has_tag_dynamic("minecraft:skeletons"));
         assert!(!golem.has_tag_dynamic("minecraft:raiders"));
