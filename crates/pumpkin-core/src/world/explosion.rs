@@ -18,6 +18,10 @@ use crate::{
 };
 
 use super::{BlockFlags, World};
+use crate::plugin::level_events;
+
+/// The blocks that an explosion changes, with their block and state.
+pub(crate) type Blocks = FxHashMap<BlockPos, (&'static Block, &'static BlockState)>;
 
 /// Defines the type of explosion interaction with the world.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -231,10 +235,7 @@ impl Explosion {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn get_blocks_to_destroy(
-        &self,
-        world: &World,
-    ) -> FxHashMap<BlockPos, (&'static Block, &'static BlockState)> {
+    fn get_blocks_to_destroy(&self, world: &World) -> Blocks {
         let mut map = FxHashMap::default();
 
         let mut chunk_cache: FxHashMap<
@@ -352,10 +353,11 @@ impl Explosion {
         map
     }
 
-    fn damage_entities(&self, world: &Arc<World>) {
+    /// The entities around the explosion that it may damage.
+    fn entities_in_range(&self, world: &World) -> Vec<Arc<dyn EntityBase>> {
         // Explosion is too small
         if self.power < 1.0e-5 {
-            return;
+            return Vec::new();
         }
 
         let radius = self.power as f64 * 2.0;
@@ -371,8 +373,16 @@ impl Explosion {
             Vector3::new(max_x as f64, max_y as f64, max_z as f64),
         );
 
-        let entities = world.get_all_at_box(&search_box);
+        world.get_all_at_box(&search_box)
+    }
 
+    fn damage_entities(
+        &self,
+        world: &Arc<World>,
+        entities: Vec<Arc<dyn EntityBase>>,
+        blocks: &Blocks,
+    ) {
+        let radius = self.power as f64 * 2.0;
         let default_calc = DefaultExplosionDamageCalculator;
         let calc: &dyn ExplosionDamageCalculator = match &self.damage_calculator {
             Some(c) => c.as_ref(),
@@ -424,7 +434,14 @@ impl Explosion {
             let direction = (dir_pos - self.pos).normalize();
 
             let knockback_power = (1.0 - distance) * exposure * knockback_multiplier;
-            let knockback = direction * knockback_power;
+            let knockback = level_events::explosion_knockback(
+                world,
+                self.pos,
+                self.power,
+                &entity_base,
+                direction * knockback_power,
+                blocks,
+            );
             // Vanilla `ServerExplosion.hurtEntities`: creative flyers get no knockback.
             if entity_base
                 .get_player()
@@ -498,12 +515,21 @@ impl Explosion {
 
     /// Returns the removed block count
     pub fn explode(&self, world: &Arc<World>) -> u32 {
-        self.damage_entities(world);
+        // Vanilla `ServerExplosion.explode` finds the blocks before it damages the entities.
+        let mut blocks = if self.block_interaction == BlockInteraction::Keep
+            && !level_events::listens_to_explosion_detonate(world)
+        {
+            Blocks::default()
+        } else {
+            self.get_blocks_to_destroy(world)
+        };
+        let mut entities = self.entities_in_range(world);
+        level_events::explosion_detonate(world, self.pos, self.power, &mut blocks, &mut entities);
+        self.damage_entities(world, entities, &blocks);
 
         match self.block_interaction {
             BlockInteraction::Keep => 0,
             BlockInteraction::TriggerBlock => {
-                let blocks = self.get_blocks_to_destroy(world);
                 for (pos, (block, _state)) in &blocks {
                     let pumpkin_block = world.block_registry.get_pumpkin_block(block.id);
                     if let Some(pumpkin_block) = pumpkin_block {
@@ -534,7 +560,6 @@ impl Explosion {
                     return 0;
                 }
 
-                let blocks = self.get_blocks_to_destroy(world);
                 let decay_drops = self.block_interaction == BlockInteraction::DestroyWithDecay;
                 let explosion_radius = decay_drops.then_some(self.power);
 

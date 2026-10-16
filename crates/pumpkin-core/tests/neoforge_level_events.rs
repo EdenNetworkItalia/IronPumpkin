@@ -35,13 +35,16 @@ use pumpkin_core::{
             block_break::BlockBreakEvent, block_exp::BlockExpEvent,
             block_multi_place::BlockMultiPlaceEvent, block_place::BlockPlaceEvent,
         },
+        entity::entity_explode::EntityExplodeEvent,
         level::{
             BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
-            GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
-            PlayerTickEventPost, PlayerTickEventPre,
+            ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
+            NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
+            PlayerTickEventPre,
         },
     },
     server::Server,
+    world::ExplosionInteraction,
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
@@ -813,4 +816,138 @@ fn one_event_per_fire_site_game_rule_changed_event() {
     );
 
     assert_eq!(entries(&seen), ["true", "false"]);
+}
+
+fn center(pos: BlockPos) -> Vector3<f64> {
+    Vector3::new(
+        f64::from(pos.0.x) + 0.5,
+        f64::from(pos.0.y) + 0.5,
+        f64::from(pos.0.z) + 0.5,
+    )
+}
+
+/// Dirt at `pos` and air around it, for an explosion at its center.
+fn dirt_at(pos: BlockPos) {
+    for dx in -2..=2 {
+        for dy in -2..=2 {
+            for dz in -2..=2 {
+                set(
+                    pos.offset(Vector3::new(dx, dy, dz)),
+                    Block::AIR.default_state.id,
+                );
+            }
+        }
+    }
+    set(pos, Block::DIRT.default_state.id);
+}
+
+fn explode(pos: BlockPos) {
+    support::world().explode(center(pos), 4.0, ExplosionInteraction::Tnt);
+}
+
+/// `ExplosionEvent.Start` (`EntityExplodeEvent`) fires before the explosion with its world,
+/// center and power, and a cancel keeps the blocks and fires no `ExplosionEventDetonate`.
+#[test]
+fn cancel_explosion_event_start() {
+    let _serial = support::serial();
+    let pos = spot(19);
+    dirt_at(pos);
+    let seen = log();
+    let start = seen.clone();
+    let world_name = support::world().dimension.minecraft_name;
+    on::<EntityExplodeEvent, _>(move |event| {
+        if event.position == center(pos) {
+            push(
+                &start,
+                format!(
+                    "start {} {}",
+                    event.world.dimension.minecraft_name == world_name,
+                    event.yield_rate
+                ),
+            );
+            event.set_cancelled(true);
+        }
+    });
+    let detonate = seen.clone();
+    on::<ExplosionEventDetonate, _>(move |event| {
+        if event.center == center(pos) {
+            push(&detonate, "detonate");
+        }
+    });
+
+    explode(pos);
+
+    assert_eq!(entries(&seen), ["start true 4"]);
+    assert_eq!(state_at(pos), Block::DIRT.default_state.id);
+}
+
+/// `ExplosionEvent.Detonate` (`ExplosionEventDetonate`) fires with the blocks and the entities
+/// of the explosion, and the explosion changes only the blocks that the handler left.
+#[test]
+fn change_a_settable_field_explosion_event_detonate() {
+    let _serial = support::serial();
+    let pos = spot(20);
+    dirt_at(pos);
+    let item = item_at(pos.up());
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<ExplosionEventDetonate, _>(move |event| {
+        if event.center != center(pos) {
+            return;
+        }
+        push(
+            &seen_by_handler,
+            format!(
+                "{} {}",
+                event.affected_blocks.contains(&pos),
+                event
+                    .affected_entities
+                    .iter()
+                    .any(|entity| entity.get_entity().entity_id == id),
+            ),
+        );
+        event.affected_blocks.clear();
+    });
+
+    explode(pos);
+
+    assert_eq!(entries(&seen), ["true true"]);
+    assert_eq!(state_at(pos), Block::DIRT.default_state.id);
+}
+
+/// `ExplosionKnockbackEvent` fires for an entity that the explosion pushes, and the entity takes
+/// the knockback of the last handler.
+#[test]
+fn change_a_settable_field_explosion_knockback_event() {
+    let _serial = support::serial();
+    let pos = spot(21);
+    dirt_at(pos);
+    // The explosion is in the air above the dirt, so the dirt does not hide the item.
+    let item = item_at(pos.up().offset(Vector3::new(1, 0, 0)));
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<ExplosionKnockbackEvent, _>(move |event| {
+        if event.entity.get_entity().entity_id != id {
+            return;
+        }
+        push(
+            &seen_by_handler,
+            format!(
+                "{} {}",
+                event.knockback.x > 0.0,
+                event.affected_blocks.contains(&pos)
+            ),
+        );
+        event.knockback = Vector3::new(0.0, 7.0, 0.0);
+    });
+
+    explode(pos.up());
+
+    assert_eq!(entries(&seen), ["true true"]);
+    // The damage of the explosion adds a small push of its own; the vanilla push of a power 4
+    // explosion stays far below 7.
+    let velocity = item.get_entity().velocity.load();
+    assert!(velocity.y >= 7.0 && velocity.x < 1.0, "{velocity:?}");
 }

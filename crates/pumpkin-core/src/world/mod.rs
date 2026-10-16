@@ -3848,13 +3848,19 @@ impl World {
     }
 
     fn run_explosion(self: &Arc<Self>, explosion: &Explosion, position: Vector3<f64>, power: f32) {
-        let mut event = crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
-            0, position, power,
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if let Some(server) = self.server.upgrade()
+            && server
+                .plugin_manager
+                .fire_blocking_with(&server, || {
+                    crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
+                        0,
+                        position,
+                        power,
+                        self.clone(),
+                    )
+                })
+                .is_some_and(|event| event.cancelled)
+        {
             return;
         }
 

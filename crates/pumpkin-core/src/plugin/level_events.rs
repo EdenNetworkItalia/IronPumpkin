@@ -13,7 +13,7 @@ use pumpkin_data::block_properties::{
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
-use pumpkin_util::math::position::BlockPos;
+use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 
 use crate::block::BlockMetadata;
 use crate::block::blocks::plant::tall_plant::TallPlantBlock;
@@ -25,13 +25,15 @@ use crate::plugin::api::events::{
     },
     level::{
         BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
-        GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
-        PlayerTickEventPost, PlayerTickEventPre,
+        ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
+        NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
+        PlayerTickEventPre,
     },
 };
 use crate::plugin::player_events;
 use crate::server::Server;
 use crate::world::World;
+use crate::world::explosion::Blocks;
 
 /// Fires `BlockBreakEvent` before the break of `state` at `pos`. Returns `None` when a handler
 /// cancelled it, else whether the block drops items and the experience to drop. The experience
@@ -286,4 +288,79 @@ pub fn game_rule_changed(
     server
         .plugin_manager
         .fire_blocking_with(server, || GameRuleChangedEvent::new(rule.clone(), value()));
+}
+
+/// Whether a handler listens to `ExplosionEventDetonate`: an explosion that keeps the blocks
+/// finds them only for it.
+pub fn listens_to_explosion_detonate(world: &World) -> bool {
+    world.server.upgrade().is_some_and(|server| {
+        server
+            .plugin_manager
+            .has_handlers::<ExplosionEventDetonate>()
+    })
+}
+
+/// Fires `ExplosionEventDetonate` and keeps the blocks and the entities that the last handler
+/// left in the lists.
+pub fn explosion_detonate(
+    world: &Arc<World>,
+    center: Vector3<f64>,
+    power: f32,
+    blocks: &mut Blocks,
+    entities: &mut Vec<Arc<dyn EntityBase>>,
+) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+        ExplosionEventDetonate::new(
+            world.clone(),
+            center,
+            power,
+            blocks.keys().copied().collect(),
+            entities.clone(),
+        )
+    }) else {
+        return;
+    };
+    *entities = event.affected_entities;
+    *blocks = event
+        .affected_blocks
+        .into_iter()
+        .map(|pos| {
+            let entry = blocks
+                .get(&pos)
+                .copied()
+                .unwrap_or_else(|| world.get_block_and_state(&pos));
+            (pos, entry)
+        })
+        .collect();
+}
+
+/// Fires `ExplosionKnockbackEvent` for the push of `entity` and returns the knockback that the
+/// last handler left.
+pub fn explosion_knockback(
+    world: &Arc<World>,
+    center: Vector3<f64>,
+    power: f32,
+    entity: &Arc<dyn EntityBase>,
+    knockback: Vector3<f64>,
+    blocks: &Blocks,
+) -> Vector3<f64> {
+    let Some(server) = world.server.upgrade() else {
+        return knockback;
+    };
+    server
+        .plugin_manager
+        .fire_blocking_with(&server, || {
+            ExplosionKnockbackEvent::new(
+                world.clone(),
+                center,
+                power,
+                entity.clone(),
+                knockback,
+                blocks.keys().copied().collect(),
+            )
+        })
+        .map_or(knockback, |event| event.knockback)
 }
