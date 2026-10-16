@@ -33,7 +33,7 @@
 //! - [ ] A Wasm plugin cancels the break of a native mod's block: task 2.18
 //! - [ ] A native handler cancels, a Wasm handler observes: task 2.18
 //! - [ ] A Wasm handler cancels, a native handler observes: task 2.18
-//! - [ ] One event pipeline scenarios: task 2.4
+//! - [x] One event pipeline scenarios: `neoforge_event_pipeline.rs` (task 2.4)
 //!
 //! `server_without_listeners_builds_no_event` covers the scenario "Server without listeners" of
 //! `specs/neoforge-native-channel/spec.md`. The boot test `neoforge_lifecycle_events` of

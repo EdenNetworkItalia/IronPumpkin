@@ -4842,10 +4842,14 @@ impl World {
         removed_player
     }
 
+    /// Spawns `entity` without `EntityBase::init_data_tracker`. Fires [`EntitySpawnEvent`] as
+    /// [`World::spawn_entity`] does, and spawns nothing when a plugin cancels it.
+    ///
+    /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     #[expect(clippy::needless_pass_by_value)]
-    pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
-        let _base_entity = entity.get_entity();
-        if entity.get_entity().entity_type.is_placeholder() {
+    pub fn spawn_entity_non_save(self: &Arc<Self>, entity: Arc<dyn EntityBase>) {
+        if entity.get_entity().entity_type.is_placeholder() || self.spawn_cancelled(entity.as_ref())
+        {
             return;
         }
         self.entity_tracker.add_entity(&entity, self);
@@ -5388,6 +5392,93 @@ impl World {
         }
 
         Some(broken_state_id)
+    }
+
+    /// Breaks the block at `position` as vanilla `Level.destroyBlock` does: a break without a
+    /// player dig, by a projectile, a mob or a machine. Fires [`BlockBreakEvent`] with the player
+    /// behind `breaker`: the breaker itself, or the player that owns it, as the shooter of a
+    /// projectile. A block entity passes no breaker. Returns `false` when the block is air or a
+    /// handler cancels the break.
+    pub fn destroy_block(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        drop: bool,
+        breaker: Option<&dyn EntityBase>,
+    ) -> bool {
+        let (block, state) = self.get_block_and_state(position);
+        if state.is_air() {
+            return false;
+        }
+
+        let mut drop = drop;
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                let player = breaker.and_then(|breaker| self.get_player_by_id(cause_id(breaker)));
+                BlockBreakEvent::new(player, block, *position, 0, drop)
+            })
+        {
+            if event.cancelled {
+                return false;
+            }
+            drop = event.drop;
+        }
+
+        // Vanilla skips the break effect for a `BaseFireBlock`.
+        if block != &Block::FIRE && block != &Block::SOUL_FIRE {
+            self.sync_world_event(
+                WorldEvent::ParticlesAndSoundDestroyBlock,
+                *position,
+                i32::from(state.id.as_u16()),
+            );
+        }
+        if drop {
+            let params = crate::world::loot::LootContextParameters {
+                block_state: Some(state),
+                position: Some(position.to_f64()),
+                this_entity: breaker.map(|breaker| breaker.get_entity().entity_type),
+                ..Default::default()
+            };
+            crate::block::drop_loot(self, block, position, true, &params);
+        }
+        let new_state_id = if block.is_waterlogged(state.id) {
+            Block::WATER.default_state.id
+        } else {
+            Block::AIR.default_state.id
+        };
+        self.set_block_state(position, new_state_id, BlockFlags::NOTIFY_ALL);
+        self.emit_game_event(
+            pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+            position.to_centered_f64(),
+        );
+        true
+    }
+
+    /// Places `state_id` at `position` for `placer`, as `NeoForge` `EventHooks.onBlockPlace` before
+    /// `Level.setBlock`. Fires [`EntityPlaceEvent`] with the entity behind `placer`: the placer
+    /// itself, or the entity that owns it. Returns `false` when a handler cancels the place.
+    ///
+    /// [`EntityPlaceEvent`]: crate::plugin::api::events::entity::entity_place::EntityPlaceEvent
+    pub fn place_block(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        state_id: BlockStateId,
+        placer: &dyn EntityBase,
+    ) -> bool {
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::entity_place::EntityPlaceEvent::new(
+                    cause_id(placer),
+                    *position,
+                    pumpkin_data::dynamic::namespaced_name(Block::from_state_id(state_id).name)
+                        .into_owned(),
+                )
+            })
+            && event.cancelled
+        {
+            return false;
+        }
+        self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
+        true
     }
 
     #[must_use]
@@ -7435,6 +7526,14 @@ fn merge_entity_records(data: &mut Vec<NbtCompound>, live: bool, fresh: Vec<NbtC
         }
         data.push(record);
     }
+}
+
+/// The id of the entity that acts through `entity`: its owner, as the shooter of a projectile,
+/// else `entity` itself. Pumpkin has no fake players, so a mutator resolves its cause with it.
+fn cause_id(entity: &dyn EntityBase) -> i32 {
+    entity
+        .get_owner_id()
+        .unwrap_or(entity.get_entity().entity_id)
 }
 
 #[cfg(test)]
