@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 233 | 233 | 0 | 0 | 0 | 203 | 58 |
-| Inventory, planned | 502 | 457 | 43 | 2 | 0 | 350 | 65 |
+| Inventory, supported | 241 | 241 | 0 | 0 | 0 | 211 | 60 |
+| Inventory, planned | 494 | 449 | 43 | 2 | 0 | 342 | 63 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -320,10 +320,10 @@ How to read it:
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `DeferredHolder` | 224 | Registration API | no handle type: the name, looked up with `registry::id_of`, `key_of` and `is_in_tag` after the freeze | supported |
-| `DeferredRegister#register` | 203 | Registration API | `ModInit::register_block`, `register_item`, `register_entity_type` | supported |
-| `DeferredRegister#create` | 201 | Registration API | `ModInit`, one handle for the block, item and entity type registries | supported |
+| `DeferredRegister#register` | 203 | Registration API | `ModInit::register_block`, `register_item`, `register_entity_type`, `register_sound_event`, `register_mob_effect`, `register_attribute`, `register_data_component_type` | supported |
+| `DeferredRegister#create` | 201 | Registration API | `ModInit`, one handle for the block, item, entity type, sound event, mob effect, attribute and data component type registries | supported |
 | `item` | 132 | Static registries a `DeferredRegister` can target | `ModInit::register_item`, `content::RegisterEventExt::register_item` | supported |
-| `data_component_type` | 113 | Static registries a `DeferredRegister` can target | `registration.entry-definition::data-component-type`; values through `data-components` (task 2.6) | planned |
+| `data_component_type` | 113 | Static registries a `DeferredRegister` can target | `ModInit::register_data_component_type`, `data_components::RegisterDataComponentType`; values through `data_components::DataComponentType` | supported |
 | `creative_mode_tab` | 112 | Static registries a `DeferredRegister` can target | `ModInit::register_creative_mode_tab` (contract only: the host logs the entry and ignores it) | not supported |
 | `NeoForgeRegistries` | 111 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
 | `DeferredItem` | 104 | Registration API | no handle type: the name, looked up with `Item::from_registry_key` or `registry::id_of` after the freeze | supported |
@@ -337,19 +337,19 @@ How to read it:
 | `recipe_serializer` | 74 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#createBlocks` | 66 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
 | `DeferredRegister.Blocks#register` | 60 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
-| `sound_event` | 55 | Static registries a `DeferredRegister` can target | `registration.entry-definition::sound-event`; played by id with the v0.2 `play-custom-sound` (task 2.6) | planned |
+| `sound_event` | 55 | Static registries a `DeferredRegister` can target | `ModInit::register_sound_event`, `sound_events::RegisterSoundEvent`; played with `sound_events::play_sound` | supported |
 | `neoforge:attachment_types` | 54 | Registries NeoForge adds | `registration.entry-definition::attachment-type` | planned |
 | `recipe_type` | 49 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `RegistryBuilder` | 47 | Registration API | `registration` doc, not supported | planned |
 | `entity_type` | 46 | Static registries a `DeferredRegister` can target | `ModInit::register_entity_type`, `content::RegisterEventExt::register_entity_type` | supported |
-| `DeferredRegister#createDataComponents` | 45 | Registration API | `registration.deferred-register-data-components.create-data-components` (task 2.6) | planned |
+| `DeferredRegister#createDataComponents` | 45 | Registration API | `ModInit::register_data_component_type` with `data_components::DataComponentTypeBuilder` | supported |
 | `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#getEntries` | 36 | Registration API | `registration.deferred-register.get-entries` | planned |
 | `IRegistryExtension` | 31 | Registration API | `registry::contains`, `id_of`, `key_of`; the alias and max id queries are a gap | planned |
-| `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `registration.deferred-register-data-components.register-component-type`; values through `data-components` (task 2.6) | planned |
+| `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `ModInit::register_data_component_type` with `DataComponentTypeBuilder::<T>::new`, the codec is `T`; values through `data_components::DataComponentType` | supported |
 | `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `loot.register-loot-modifier-type` | planned |
 | `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `mob_effect` | 19 | Static registries a `DeferredRegister` can target | `registration.entry-definition::mob-effect`; applied through `mob-effects` (task 2.6) | planned |
+| `mob_effect` | 19 | Static registries a `DeferredRegister` can target | `ModInit::register_mob_effect`, `mob_effects::RegisterMobEffect`; applied through `mob_effects::add_effect` | supported |
 | `trigger_type` | 19 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `RegisterEvent.RegisterHelper#register` | 18 | Registration API | `content::RegisterEventExt::register_block`, `register_item`, `register_entity_type` | supported |
 | `DeferredRegister.Items#registerItem` | 17 | Registration API | `ModInit::register_item` with `ItemBuilder::behaviour` | supported |
@@ -358,7 +358,7 @@ How to read it:
 | `neoforge:condition_codecs` | 16 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `fluid` | 16 | Static registries a `DeferredRegister` can target | `registration.entry-definition::fluid` (contract only: fails with `registration-error::unsupported-registry` until a phase backs it) | planned |
 | `loot_function_type` | 16 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `attribute` | 13 | Static registries a `DeferredRegister` can target | `registration.entry-definition::attribute`; values through `entity-attributes` (task 2.6) | planned |
+| `attribute` | 13 | Static registries a `DeferredRegister` can target | `ModInit::register_attribute`, `entity_attributes::RegisterAttribute`; values through `entity_attributes` | supported |
 | `DeferredRegister#makeRegistry` | 12 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#addAlias` | 11 | Registration API | `registration.deferred-register.add-alias` | planned |
 | `neoforge:biome_modifier_serializers` | 10 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -820,7 +820,7 @@ How to read it:
 | `IItemStackExtension` | 122 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/item-stack`; overriding hooks is a gap (documented in `types`) | planned |
 | `ICommandSourceStackExtension` | 104 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/command` `command-sender`; overriding hooks is a gap (documented in `types`) | planned |
 | `ICommonPacketListener` | 97 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `network.has-channel`, `network.payload-context`; overriding hooks is a gap (documented in `types`) | planned |
-| `IDataComponentHolderExtension` | 90 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `data-components` and the `pumpkin:plugin/item-stack` components; overriding hooks is a gap (documented in `types`) | planned |
+| `IDataComponentHolderExtension` | 90 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `data_components` (mod component types) and the typed components of Pumpkin's `ItemStack`; overriding hooks is a gap (documented in `types`) | planned |
 | `IEntityExtension` | 87 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world` `entity`; overriding hooks is a gap (documented in `types`) | planned |
 | `IBlockEntityExtension` | 85 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/block-entity`; overriding hooks is a gap (documented in `types`) | planned |
 | `IPlayerExtension` | 85 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/player` and `menus.open-menu` (`openMenu`); overriding hooks is a gap (documented in `types`) | planned |
@@ -844,7 +844,7 @@ How to read it:
 | `IAttributeExtension` | 5 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `IBaseRailBlockExtension` | 4 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.block-definition.block-type`; overriding hooks is a gap (documented in `types`) | planned |
 | `IOwnedSpawner` | 3 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
-| `ILivingEntityExtension` | 2 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world` `living-entity`, `mob-effects` and `entity-attributes`; overriding hooks is a gap (documented in `types`) | planned |
+| `ILivingEntityExtension` | 2 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `LivingEntity`, `mob_effects` and `entity_attributes`; overriding hooks is a gap (documented in `types`) | planned |
 | `IMobEffectExtension` | 1 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.mob-effect-definition`; overriding hooks is a gap (documented in `types`) | planned |
 | `ITagBuilderExtension` | 1 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `ITransformationExtension` | 1 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
@@ -913,9 +913,9 @@ How to read it:
 | `SpecialPlantable` | 8 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `server.permission` | 7 | Packages outside the families above | `pumpkin:plugin/player.has-permission` (`PermissionAPI.getPermission`) | supported |
 | `server.permission.nodes` | 7 | Packages outside the families above | `pumpkin:plugin/permission.permission` via `event-bus` `permission-gather-event-nodes` | planned |
-| `PercentageAttribute` | 7 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
+| `PercentageAttribute` | 7 | Types in the root `common` package | `entity_attributes::AttributeBuilder::ranged` | supported |
 | `Tags.Biomes` | 4 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
-| `BooleanAttribute` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
+| `BooleanAttribute` | 3 | Types in the root `common` package | `entity_attributes::AttributeBuilder::boolean` | supported |
 | `CreativeModeTabRegistry` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `TranslatableEnum` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `common.world.poi` | 2 | Packages outside the families above | `registration.extend-poi-types-event` | planned |
@@ -980,7 +980,7 @@ Gaps as section 11.2 of the scan groups them, by the number of mods that need at
 | 2 | Mixins | 291 | [[mixins]] config(291), file mixins(278), [[mixins]] requiredMods(2), [[mixins]] behaviorVersion(0) | plan, native channel: source patch. A server mixin, and a use of reflection such as `ObfuscationReflectionHelper`, becomes a NeoForge event listener where it injects at the start or the end of a target method that fires an inventory event (94 of 2674 server-side mixin members in the scan of #51), and a source patch that the modpack build applies otherwise (2580 members, among them every change inside a method body; task 2.1.2); a patch is accepted only with a justification file next to it that says what it does, why a NeoForge event or API is not enough, and that it is bound to the IronPumpkin commit it names; every accepted patch is a candidate event with NeoForge semantics for a later version. `@Unique` state becomes an attachment (task 2.14). Client mixins and mixins that change generated data: out of scope by nature (below) |
 | 3 | DFU codecs | 278 | Codec(244), MapCodec(220), PrimitiveCodec(196), Products(195) | out of scope by nature (below) |
 | 4 | Stream codecs and byte buffers | 263 | StreamCodec(252), RegistryFriendlyByteBuf(226), ByteBufCodecs(204) | out of scope by nature (below): a payload is the bytes the mod encodes |
-| 5 | Registries the host rejects | 247 | DataComponentType(232), data_component_type(113), creative_mode_tab(112), sound_event(55) | add now: `data_component_type`, `sound_event`, `mob_effect` and `attribute` become planned definitions with the new interfaces `data-components`, `mob-effects` and `entity-attributes` (task 2.6, M4); `creative_mode_tab` stays accepted and ignored (client UI); `fluid` and `neoforge:fluid_type`: plan, M5, no task yet (custom fluids) |
+| 5 | Registries the host rejects | 247 | DataComponentType(232), data_component_type(113), creative_mode_tab(112), sound_event(55) | supported (task 2.6, #123): `data_component_type`, `sound_event`, `mob_effect` and `attribute` register through `ModInit` and `RegisterEvent` and are used through the `data_components`, `sound_events`, `mob_effects` and `entity_attributes` modules of `ironpumpkin-mods`; `creative_mode_tab` stays accepted and ignored (client UI); `fluid` and `neoforge:fluid_type`: plan, M5, no task yet (custom fluids) |
 | 6 | Access transformers | 183 | file accessTransformers(55), [[accessTransformers]] file(55) | plan, native channel: source patch. A member that an access transformer widens is made visible by a source patch of the mod (task 2.1.2); a patch is accepted only with a justification file next to it that says what it does, why a NeoForge event or API is not enough, and that it is bound to the IronPumpkin commit it names; every accepted patch is a candidate event with NeoForge semantics for a later version |
 | 7 | Container menus | 176 | AbstractContainerMenu(172), MenuProvider(121), MenuConstructor(51), SimpleMenuProvider(45) | add now: interface `menus` (resource `menu`, `open-menu`, `get-open-menu`) and the callbacks `menu-clicked`, `menu-quick-move-stack`, `menu-still-valid`, `menu-click-button`, `menu-slots-changed`, `menu-removed`, `menu-slot-may-place`, `menu-slot-on-take` (task 2.9; vanilla menu types in M4, mod menu types in M5) |
 | 8 | Block shapes | 170 | VoxelShape(167), CollisionContext(134) | add now: interface `shapes` (`get-block-shape`, `get-state-shape`, `is-face-sturdy`, `no-collision`) and the `block-properties` methods `shape` and `collision-shape` (task 2.10, M4 over the M2 content registry) |
@@ -1003,7 +1003,7 @@ Gaps as section 11.2 of the scan groups them, by the number of mods that need at
 | 25 | Package network.codec | 34 | network.codec(34) | out of scope by nature (stream codec helpers; payloads are bytes) |
 | 26 | NeoForge registries without API | 32 | neoforge:condition_codecs(16), neoforge:biome_modifier_serializers(10), neoforge:entity_data_serializers(9), neoforge:structure_modifier_serializers(1) | out of scope: codec and serializer registries for Java types (`condition_codecs`, `biome_modifier_serializers`, `entity_data_serializers`, `structure_modifier_serializers`, `holder_set_type`, `ingredient_serializer`) |
 | 27 | ModList file data | 30 | ModList#getModFileById(16), ModList#getAllScanData(16), ModList#getModFiles(3), ModList#forEachModFile(2) | out of scope: mod files and scan data describe Java jars, and a Rust mod has none; the `lifecycle` mod list gives the mod metadata |
-| 28 | NeoForgeMod constants | 30 | NeoForgeMod(30) | plan, task 2.6: the ids are constants of `ironpumpkin-mods`, and the host registers `neoforge:swim_speed` and `neoforge:creative_flight` in its attribute storage; the milk fluid follows custom fluids (M5, no task yet) |
+| 28 | NeoForgeMod constants | 30 | NeoForgeMod(30) | partly supported (task 2.6, #123): the host registers `neoforge:swim_speed`, `neoforge:creative_flight` and `neoforge:gliding_flight` with the ids of a `NeoForge` server, `entity_attributes::SWIM_SPEED`, `CREATIVE_FLIGHT` and `GLIDING_FLIGHT` name them, swim speed and creative flight apply, gliding flight has no reader yet; the milk fluid follows custom fluids (M5, no task yet) |
 | 29 | Tooltip events | 28 | ItemTooltipEvent(28), AddAttributeTooltipsEvent(0), GatherSkippedAttributeTooltipsEvent(0) | out of scope by nature (client rendering: the client builds tooltips) |
 | 30 | ArmorMaterial.Layer | 24 | ArmorMaterial.Layer(24) | out of scope by nature (client rendering: equipment layers are a client asset; armor is the `minecraft:equippable` component) |
 
@@ -1032,7 +1032,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.registries.DeferredBlock` | 78 | same | no handle type: the name and `Block::from_name`, `registry::id_of` |
 | `net.neoforged.neoforge.registries.NeoForgeRegistries$Keys` | 77 | same | `registration` registry ids (`neoforge:*`) |
 | `net.neoforged.neoforge.registries.DeferredRegister$Blocks` | 67 | same | `registration.deferred-register-blocks` |
-| `net.neoforged.neoforge.registries.DeferredRegister$DataComponents` | 47 | same | `registration.deferred-register-data-components` (planned, task 2.6) |
+| `net.neoforged.neoforge.registries.DeferredRegister$DataComponents` | 47 | same | `ModInit::register_data_component_type` |
 
 #### NeoForge events and event bus
 
@@ -1201,10 +1201,10 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.minecraft.core.component.DataComponentType` | 232 | same | `registration.data-component-type-definition` (planned, task 2.6); values through `data-components` |
-| `net.minecraft.core.component.DataComponents` | 153 | same | `types.component-value`; `data-components` by id; `pumpkin:plugin/item-stack` components |
-| `net.minecraft.core.component.DataComponentType$Builder` | 148 | same | `registration.data-component-type-definition` (planned, task 2.6) |
-| `net.minecraft.core.component.DataComponentMap` | 103 | same | `types.component-value`; `data-components.get-components-patch` |
+| `net.minecraft.core.component.DataComponentType` | 232 | same | `data_components::DataComponentType<T>`; registered with `DataComponentTypeBuilder` |
+| `net.minecraft.core.component.DataComponents` | 153 | same | `pumpkin_data::data_component::DataComponent` and the typed components of `ItemStack`; mod types through `data_components` |
+| `net.minecraft.core.component.DataComponentType$Builder` | 148 | same | `data_components::DataComponentTypeBuilder` (`persistent`; the stream codec is the NBT form of the codec) |
+| `net.minecraft.core.component.DataComponentMap` | 103 | same | the components of `ItemStack` (`patch` for vanilla types, `custom_components` for mod types) |
 | `net.minecraft.core.component.TypedDataComponent` | 27 | same | `types.component-value`; `pumpkin:plugin/item-stack` components |
 
 #### Minecraft utilities
@@ -1226,7 +1226,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.minecraft.sounds.SoundEvent` | 190 | same | `registration.entry-definition::sound-event` (planned, task 2.6); played by id with the v0.2 `play-custom-sound` |
+| `net.minecraft.sounds.SoundEvent` | 190 | same | `sound_events::SoundEvent`, registered with `SoundEventBuilder`; played with `sound_events::play_sound` |
 | `net.minecraft.sounds.SoundSource` | 165 | same | `types.sound-source` |
 | `net.minecraft.sounds.SoundEvents` | 162 | same | `types.identifier` (sound ids); `pumpkin:plugin/sounds` |
 
@@ -1377,23 +1377,23 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.minecraft.world.entity.ai.attributes.Attributes` | 79 | same | `pumpkin:plugin/attributes`; `types.attribute-modifier`, `attribute-value` |
-| `net.minecraft.world.entity.ai.attributes.AttributeModifier` | 73 | same | `types.attribute-modifier` |
+| `net.minecraft.world.entity.ai.attributes.Attributes` | 79 | same | `entity_attributes::Attributes` (the generated constants), `entity_attributes::attribute` by name |
+| `net.minecraft.world.entity.ai.attributes.AttributeModifier` | 73 | same | `entity_attributes::AttributeModifier` |
 | `net.minecraft.world.entity.ai.attributes.AttributeModifier$Operation` | 65 | same | `types.attribute-operation` |
-| `net.minecraft.world.entity.ai.attributes.AttributeInstance` | 62 | same | `entity-attributes`; `pumpkin:plugin/attributes` for vanilla attributes; `types.attribute-modifier` |
-| `net.minecraft.world.entity.ai.attributes.Attribute` | 56 | same | `pumpkin:plugin/attributes` (vanilla); `entity-attributes` by id; `registration.entry-definition::attribute` (planned, task 2.6) |
+| `net.minecraft.world.entity.ai.attributes.AttributeInstance` | 62 | same | `entity_attributes::base_value`, `set_base_value`, `modifiers`, `add_modifier`, `remove_modifier`, `value` |
+| `net.minecraft.world.entity.ai.attributes.Attribute` | 56 | same | `entity_attributes::Attributes`, `entity_attributes::attribute` by name; registered with `entity_attributes::AttributeBuilder` |
 | `net.minecraft.world.entity.ai.attributes.AttributeSupplier` | 38 | same | `registration.entity-attribute-creation-event` |
 | `net.minecraft.world.entity.ai.attributes.AttributeSupplier$Builder` | 38 | same | `types.attribute-value` |
 | `net.minecraft.world.entity.ai.attributes.AttributeMap` | 31 | same | `pumpkin:plugin/attributes`; `types.attribute-modifier`, `attribute-value` |
-| `net.minecraft.world.entity.ai.attributes.RangedAttribute` | 23 | same | `registration.attribute-definition` |
+| `net.minecraft.world.entity.ai.attributes.RangedAttribute` | 23 | same | `entity_attributes::AttributeBuilder::ranged` |
 
 #### Minecraft effects and damage
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.minecraft.world.damagesource.DamageSource` | 113 | same | `types.damage-source` |
-| `net.minecraft.world.effect.MobEffectInstance` | 94 | same | `types.mob-effect-instance`; applied through `mob-effects` |
-| `net.minecraft.world.effect.MobEffect` | 72 | same | `registration.mob-effect-definition` (planned, task 2.6), `callbacks.mob-effect-apply-tick` |
+| `net.minecraft.world.effect.MobEffectInstance` | 94 | same | `mob_effects::Effect` (`mob_effects::instance`); applied with `mob_effects::add_effect` |
+| `net.minecraft.world.effect.MobEffect` | 72 | same | `mob_effects::MobEffectBuilder` and the `mob_effects::MobEffect` trait (`apply_effect_tick`) |
 | `net.minecraft.world.effect.MobEffects` | 67 | same | `pumpkin:plugin/status-effect`; `types.mob-effect-instance`, `damage-source` |
 | `net.minecraft.world.damagesource.DamageSources` | 62 | same | `pumpkin:plugin/world` (`living-entity.damage`) |
 | `net.minecraft.world.damagesource.DamageType` | 43 | same | `pumpkin:plugin/damage-types`; custom types are datapack JSON |

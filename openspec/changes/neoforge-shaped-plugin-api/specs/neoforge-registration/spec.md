@@ -86,19 +86,19 @@ The NeoForge events `EntityAttributeCreationEvent`, `EntityAttributeModification
 - **THEN** the answer is true
 
 ### Requirement: Data components, sound events, mob effects and attributes
-Registrations into `minecraft:data_component_type`, `minecraft:sound_event`, `minecraft:mob_effect` and `minecraft:attribute` SHALL succeed and bind like the other backed registries, and the host SHALL NOT send mod components, effects or attributes to vanilla clients. Status: planned (task 2.6).
+Registrations into `minecraft:data_component_type`, `minecraft:sound_event`, `minecraft:mob_effect` and `minecraft:attribute` SHALL succeed and bind like the other backed registries, and the host SHALL NOT send mod components, effects or attributes to vanilla clients. Status: supported (task 2.6, #123).
 
 #### Scenario: A played mod sound
-- **WHEN** a mod registers the sound event `examplemod:zap` and plays it with the v0.2 `play-custom-sound`
+- **WHEN** a mod registers the sound event `examplemod:zap` and plays it with `sound_events::play_sound`
 - **THEN** clients near the position receive the sound by id
 
 ### Requirement: Access to mod components, effects and attributes
-The `data-components` module of `ironpumpkin-mods` SHALL read, set and remove component values on item stacks in the JSON form of their codec, the `mob-effects` module SHALL add, read and remove effects and run the tick callbacks of mod effects, and the `entity-attributes` module SHALL read and change the attributes an entity has, for vanilla and mod entries alike. Status: planned (task 2.6).
+The `data_components` module of `ironpumpkin-mods` SHALL read, set and remove the values of mod component types on item stacks, typed and in the JSON form of their codec, the `mob_effects` module SHALL add, read and remove effects and run the tick callbacks of mod effects, and the `entity_attributes` module SHALL read and change the attributes an entity has, for vanilla and mod entries alike. Status: supported (task 2.6, #123).
 
 #### Scenario: A mod component on an item
-- **WHEN** a mod registers the persistent component type `examplemod:charge`, sets it to `5` on a stack with `set-component`, and the stack is saved and loaded
-- **THEN** `get-component` returns `5`
+- **WHEN** a mod registers the persistent component type `examplemod:charge`, sets it to `5` on a stack with `DataComponentType::set`, and the stack is saved and loaded
+- **THEN** `DataComponentType::get` returns `5`
 
 #### Scenario: A mod effect ticks
-- **WHEN** a mod registers a mob effect with a tick callback and applies it with `mob-effects.add-effect`
-- **THEN** the host calls `mob-effect-apply-tick` while the effect lasts, and `has-effect` returns true until it ends
+- **WHEN** a mod registers a mob effect with a tick callback and applies it with `mob_effects::add_effect`
+- **THEN** the host calls `MobEffect::apply_effect_tick` while the effect lasts, and `mob_effects::has_effect` returns true until it ends

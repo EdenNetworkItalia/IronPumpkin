@@ -128,6 +128,9 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/registration.md")]
     struct Registration;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/components-effects-attributes.md")]
+    struct ComponentsEffectsAttributes;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/lifecycle.md")]
     struct Lifecycle;
 
