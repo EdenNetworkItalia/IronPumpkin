@@ -23,6 +23,7 @@ use pumpkin_core::{
     entity::{
         Entity,
         ai::goal::{Goal, place_block::PlaceBlockGoal},
+        item::ItemEntity,
         mob::enderman::EndermanEntity,
         player::Player,
     },
@@ -32,11 +33,16 @@ use pumpkin_core::{
             block_break::BlockBreakEvent, block_exp::BlockExpEvent,
             block_multi_place::BlockMultiPlaceEvent, block_place::BlockPlaceEvent,
         },
-        level::BlockEventEntityPlaceEvent,
+        level::{
+            BlockEventEntityPlaceEvent, EntityTickEventPost, EntityTickEventPre,
+            PlayerTickEventPost, PlayerTickEventPre,
+        },
     },
     server::Server,
 };
-use pumpkin_data::{Block, BlockDirection, BlockStateId, entity::EntityType};
+use pumpkin_data::{
+    Block, BlockDirection, BlockStateId, entity::EntityType, item::Item, item_stack::ItemStack,
+};
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
 use pumpkin_util::{
     math::{position::BlockPos, vector3::Vector3},
@@ -476,4 +482,127 @@ fn cancel_entity_place_event_of_an_entity() {
         enderman.get_carried_block(),
         Some(Block::DIRT.default_state.id)
     );
+}
+
+/// `PlayerTickEvent.Pre` and `.Post` (`PlayerTickEventPre`, `PlayerTickEventPost`) fire at the
+/// start and at the end of the tick of the player, once each.
+#[test]
+fn one_event_per_fire_site_player_tick_events() {
+    let _serial = support::serial();
+    let player = support::player("Ticker");
+    let seen = log();
+    let (pre, post) = (seen.clone(), seen.clone());
+    on::<PlayerTickEventPre, _>(move |event| {
+        if event.player.gameprofile.name == "Ticker" {
+            push(&pre, "pre");
+        }
+    });
+    on::<PlayerTickEventPost, _>(move |event| {
+        if event.player.gameprofile.name == "Ticker" {
+            push(&post, "post");
+        }
+    });
+
+    player.tick(support::server());
+
+    assert_eq!(entries(&seen), ["pre", "post"]);
+}
+
+/// An item entity at `pos`, in a chunk that the world ticks.
+fn item_at(pos: BlockPos) -> Arc<ItemEntity> {
+    load(pos);
+    let world = support::world();
+    world
+        .forced_chunks
+        .lock()
+        .unwrap()
+        .insert(pos.chunk_position());
+    let entity = Entity::new(
+        world.clone(),
+        Vector3::new(
+            f64::from(pos.0.x) + 0.5,
+            f64::from(pos.0.y),
+            f64::from(pos.0.z) + 0.5,
+        ),
+        &EntityType::ITEM,
+    );
+    let item = Arc::new(ItemEntity::new(entity, ItemStack::new(1, &Item::STICK)));
+    world.spawn_entity(item.clone());
+    item
+}
+
+fn age(item: &ItemEntity) -> i32 {
+    item.get_entity()
+        .age
+        .load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// `EntityTickEvent.Pre` and `.Post` (`EntityTickEventPre`, `EntityTickEventPost`) fire around
+/// the tick of an entity in the world tick.
+#[test]
+fn one_event_per_fire_site_entity_tick_events() {
+    let _serial = support::serial();
+    let item = item_at(spot(12));
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let (pre, post) = (seen.clone(), seen.clone());
+    on::<EntityTickEventPre, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            push(
+                &pre,
+                format!(
+                    "pre {}",
+                    event
+                        .entity
+                        .get_entity()
+                        .age
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                ),
+            );
+        }
+    });
+    on::<EntityTickEventPost, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            push(
+                &post,
+                format!(
+                    "post {}",
+                    event
+                        .entity
+                        .get_entity()
+                        .age
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                ),
+            );
+        }
+    });
+
+    support::world().tick(support::server());
+
+    assert_eq!(entries(&seen), ["pre 0", "post 1"]);
+}
+
+/// A cancelled `EntityTickEventPre` skips the tick and `EntityTickEventPost`.
+#[test]
+fn cancel_entity_tick_event_pre() {
+    let _serial = support::serial();
+    let item = item_at(spot(13));
+    let id = item.get_entity().entity_id;
+    let seen = log();
+    let post = seen.clone();
+    on::<EntityTickEventPre, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            event.set_cancelled(true);
+        }
+    });
+    on::<EntityTickEventPost, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            push(&post, "post");
+        }
+    });
+
+    support::world().tick(support::server());
+
+    assert!(entries(&seen).is_empty());
+    assert_eq!(age(&item), 0);
 }

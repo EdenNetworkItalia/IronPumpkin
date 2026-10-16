@@ -22,8 +22,12 @@ use crate::plugin::api::events::{
         block_break::BlockBreakEvent, block_multi_place::BlockMultiPlaceEvent,
         block_place::BlockPlaceEvent,
     },
-    level::BlockEventEntityPlaceEvent,
+    level::{
+        BlockEventEntityPlaceEvent, EntityTickEventPost, EntityTickEventPre, PlayerTickEventPost,
+        PlayerTickEventPre,
+    },
 };
+use crate::plugin::player_events;
 use crate::server::Server;
 use crate::world::World;
 
@@ -181,4 +185,29 @@ pub fn entity_place(
             )
         })
         .is_some_and(|event| event.cancelled)
+}
+
+/// Fires `EntityTickEventPre` before `entity` ticks. Returns `false` when a handler cancelled it.
+pub fn entity_tick_pre(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) -> bool {
+    !server
+        .plugin_manager
+        .fire_blocking_with(server, || EntityTickEventPre::new(entity.clone()))
+        .is_some_and(|event| event.cancelled)
+}
+
+/// Fires `EntityTickEventPost` after `entity` ticked.
+pub fn entity_tick_post(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) {
+    server
+        .plugin_manager
+        .fire_blocking_with(server, || EntityTickEventPost::new(entity.clone()));
+}
+
+/// Fires `PlayerTickEventPre` at the start of the tick of `player`.
+pub fn player_tick_pre(player: &Player) {
+    player_events::fire(player, PlayerTickEventPre::new);
+}
+
+/// Fires `PlayerTickEventPost` at the end of the tick of `player`.
+pub fn player_tick_post(player: &Player) {
+    player_events::fire(player, PlayerTickEventPost::new);
 }

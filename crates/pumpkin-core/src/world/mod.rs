@@ -1616,8 +1616,11 @@ impl World {
                 let _guard = entity_handle.enter();
 
                 for (entity, entity_chunk) in batch {
-                    entity.get_entity().age.fetch_add(1, Relaxed);
-                    entity.tick(entity.as_ref(), server_ref);
+                    if crate::plugin::level_events::entity_tick_pre(server, entity) {
+                        entity.get_entity().age.fetch_add(1, Relaxed);
+                        entity.tick(entity.as_ref(), server_ref);
+                        crate::plugin::level_events::entity_tick_post(server, entity);
+                    }
 
                     let entity_inner = entity.get_entity();
                     let entity_pos = entity_inner.pos.load();

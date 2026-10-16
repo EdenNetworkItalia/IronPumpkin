@@ -2716,6 +2716,7 @@ impl Player {
     #[expect(clippy::too_many_lines)]
     pub fn tick<'a>(&'a self, server: &'a Server) {
         self.process_inbound_packets();
+        crate::plugin::level_events::player_tick_pre(self);
 
         if self.is_spectator() {
             self.living_entity
@@ -3025,6 +3026,7 @@ impl Player {
                 );
             }
         }
+        crate::plugin::level_events::player_tick_post(self);
     }
 
     fn continue_mining(

@@ -4,5 +4,7 @@
 //! event at the fire site, the `NeoForge` event maps to it (`mapping-table.md`).
 
 pub mod block;
+pub mod tick;
 
 pub use block::*;
+pub use tick::*;
