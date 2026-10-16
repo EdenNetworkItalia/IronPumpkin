@@ -162,7 +162,9 @@ impl ItemRegistry {
     #[must_use]
     pub fn get_pumpkin_item(&self, item: u16) -> Option<&Arc<dyn ItemBehaviour>> {
         if item >= Item::COUNT {
-            return crate::content::behaviour::item_behaviour(item);
+            // A custom item without its own behaviour runs the one of the item it names.
+            return crate::content::behaviour::item_behaviour(item)
+                .or_else(|| self.items.get(&crate::content::behaviour::item_type(item)?));
         }
         self.items.get(&item)
     }

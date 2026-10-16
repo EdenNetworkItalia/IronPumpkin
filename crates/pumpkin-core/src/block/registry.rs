@@ -1394,7 +1394,10 @@ impl BlockRegistry {
     #[must_use]
     pub fn get_pumpkin_block(&self, block: BlockId) -> Option<&Arc<dyn BlockBehaviour>> {
         let Some(&idx) = self.block_indices.get(block.as_u16() as usize) else {
-            return crate::content::behaviour::block_behaviour(block);
+            // A custom block without its own behaviour runs the one of its block type.
+            return crate::content::behaviour::block_behaviour(block).or_else(|| {
+                self.get_pumpkin_block(pumpkin_data::dynamic_types::block_type(block)?)
+            });
         };
         if idx == NO_BEHAVIOUR {
             None
