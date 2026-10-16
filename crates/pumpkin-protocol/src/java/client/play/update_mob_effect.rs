@@ -1,9 +1,11 @@
+use pumpkin_data::dynamic::ContentIds;
+use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::packet::clientbound::play::UPDATE_MOB_EFFECT;
 use pumpkin_macros::java_packet;
 
 use crate::ClientPacket;
 use crate::codec::var_int::VarInt;
-use crate::ser::NetworkWriteExt;
+use crate::ser::{NetworkWriteExt, WritingError};
 use pumpkin_util::version::JavaMinecraftVersion;
 
 #[java_packet(UPDATE_MOB_EFFECT)]
@@ -39,7 +41,15 @@ impl ClientPacket for CUpdateMobEffect {
         &self,
         mut write: impl std::io::Write,
         version: &crate::EncodingKey,
-    ) -> Result<(), crate::ser::WritingError> {
+    ) -> Result<(), WritingError> {
+        if version.content_ids() == ContentIds::Display
+            && self.effect_id.0 >= i32::from(StatusEffect::COUNT)
+        {
+            return Err(WritingError::UnknownToClient(format!(
+                "mob effect {}",
+                self.effect_id.0
+            )));
+        }
         if *version <= JavaMinecraftVersion::V_1_7_6 {
             write.write_i32_be(self.entity_id.0)?;
         } else {

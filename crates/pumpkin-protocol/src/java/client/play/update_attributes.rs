@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use pumpkin_data::attributes::Attributes;
+use pumpkin_data::dynamic::ContentIds;
 use pumpkin_data::packet::clientbound::play::UPDATE_ATTRIBUTES;
 use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
@@ -309,13 +310,23 @@ impl ClientPacket for CUpdateAttributes {
             write.write_var_int(&self.entity_id)?;
         }
 
+        // A client with display ids knows the generated attributes only.
+        let properties: Vec<&Property> = self
+            .properties
+            .iter()
+            .filter(|prop| {
+                version.content_ids() == ContentIds::Real
+                    || prop.id.0 < i32::from(Attributes::COUNT)
+            })
+            .collect();
+
         if *version >= JavaMinecraftVersion::V_1_17 {
-            write.write_var_int(&VarInt(self.properties.len() as i32))?;
+            write.write_var_int(&VarInt(properties.len() as i32))?;
         } else {
-            write.write_i32_be(self.properties.len() as i32)?;
+            write.write_i32_be(properties.len() as i32)?;
         }
 
-        for prop in &self.properties {
+        for prop in properties {
             if *version >= JavaMinecraftVersion::V_1_20_5 {
                 write.write_var_int(&prop.id)?;
             } else if *version >= JavaMinecraftVersion::V_1_16 {
