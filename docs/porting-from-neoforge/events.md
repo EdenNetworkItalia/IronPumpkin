@@ -266,6 +266,47 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 
 `PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
 
+## Causes: what a `FakePlayer` did
+
+A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a fake player, so the break events fire with that player. IronPumpkin has no fake players. A mod calls the Pumpkin method of the vanilla action with the entity that acts, and the method fires the Pumpkin event of that action, with the same dispatch as for a real player. Native mods and v0.2 Wasm plugins see the event and can cancel it.
+
+The server resolves the cause of the event:
+
+- A player is its own cause.
+- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`.
+- A block entity has no entity. A machine calls the method without a cause, and the event has no player, as for a piston.
+
+| NeoForge call | IronPumpkin method | Event |
+| :--- | :--- | :--- |
+| `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`. Returns `false` when cancelled. |
+| `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `EntityPlaceEvent`. Returns `false` when cancelled. |
+| `level.addFreshEntity(entity)` | `World::spawn_entity(entity)` | `EntitySpawnEvent`. Returns `false` when cancelled. |
+| `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`. A death fires `EntityDeathEvent`. |
+| `level.setBlock(pos, state, flags)` | `World::set_block_state(&pos, state, flags)` | No event, as in vanilla. Use it for the internal state of a machine. |
+
+A mining laser that breaks the block it hits:
+
+```java
+@Override
+protected void onHitBlock(BlockHitResult hit) {
+    super.onHitBlock(hit);
+    level().destroyBlock(hit.getBlockPos(), true, this);
+}
+```
+
+```rust
+use std::sync::Arc;
+
+use ironpumpkin_mods::{entity::EntityBase, math::position::BlockPos, world::World};
+
+// `BlockBreakEvent` fires with the player that shot the laser.
+fn on_hit_block(world: &Arc<World>, laser: &dyn EntityBase, pos: BlockPos) {
+    world.destroy_block(&pos, true, Some(laser));
+}
+```
+
+The table "Mutators and their events" of `design.md` in the change folder lists every method and its event.
+
 ---
 
 ## Do and don't

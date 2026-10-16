@@ -160,6 +160,7 @@ These Pumpkin events that upstream already has get a new contract here. A plugin
 - `PrepareItemEnchantEvent` and `EnchantItemEvent` fire after the enchanting-table screen-handler lock is released. The rows and the enchantments apply only if the table did not change while the event fired.
 - `PlayerSpawnLocationEvent` (NeoForge `PlayerRespawnPositionEvent`) has new fields: `yaw`, `pitch`, `dimension`, `original_spawn_pos`, `original_dimension`, `from_end_fight` and `copy_original_spawn_position`. `new()` takes the player, the position, the yaw, the pitch, the dimension, `from_end_fight` and `copy_original_spawn_position`. The respawn writes back the position, the yaw, the pitch and the dimension. `copy_original_spawn_position` set to `false` clears the respawn point of the player. A cancel keeps the vanilla position and the respawn point.
 - `InventoryOpenEvent` and `InventoryCloseEvent` also reach the handlers of their parent `PlayerContainerEvent`.
+- `EntitySpawnEvent` also fires from `World::spawn_entity_non_save`, as NeoForge fires `EntityJoinLevelEvent` from every `addFreshEntity`: a falling block, a split slime, a ghast fireball, a shulker bullet, a hatched turtle, a mob from a nether portal, and the drops and eggs of an armadillo or a sniffer. A cancel spawns nothing.
 - `BrewEvent` (NeoForge `PotionBrewEvent.Pre`): a cancel takes the changed `stacks` if the stand inventory did not change while the event fired, and `PotionBrewEventPost` fires after it.
 - `PlayerCustomPayloadEvent` and `ConfigCustomPayloadEvent` no longer fire for a payload on a channel that a native mod registered with `PayloadRegistrar`: the payload goes to the handler of its channel only, as NeoForge hands a modded payload to its handler. Every other channel still reaches them. The server also disconnects a client in two cases. A payload on a required mod channel that the client did not negotiate disconnects it with `multiplayer.disconnect.incompatible` ("No Channel for <id>"). A payload on any mod channel before the negotiation disconnects it too ("No Payload Setup"). Upstream Pumpkin hands such a payload only to `ConfigCustomPayloadEvent` or `PlayerCustomPayloadEvent`.
 - `PlayerInteractEvent` with the action left click block fires at the dig start in `player_action.rs`, as NeoForge does. An arm swing into a block fires nothing, so a plugin that listened on the swing sees different behaviour. A cancel at the dig start stops the dig and sends the block back. It no longer suppresses the swing broadcast, which always plays. In adventure mode nothing fires, because the vanilla client sends no dig start.
@@ -238,6 +239,36 @@ The condition of the owner: no evident impact on Pumpkin performance.
 - Every new fire site checks for registered handlers before it constructs the event. When no mod listens, the site allocates nothing and clones no stack or position. `fire_dyn` already returns early on an empty handler map, but the call site builds the event first, so the check moves in front of the construction. `PluginManager::has_handlers::<E>()` is the check.
 - Per-entity and per-tick events sit behind the same check.
 - Every wave that adds fire sites runs `cargo bench -p pumpkin-world` (`noise_generation`, `full_chunk_generation`) and a criterion bench of event dispatch with zero listeners in `pumpkin-core`. The first event task adds the dispatch bench. A regression outside the bench noise is a must-fix in the wave review.
+
+### Mutators and their events
+
+A mod changes the world through the Pumpkin types that `ironpumpkin-mods` re-exports (`world`, `entity`), and a v0.2 Wasm plugin through the `pumpkin:plugin/world` imports. Each mutator of the table fires the Pumpkin event of the vanilla action before the change, and makes no change when a handler cancels it (spec `neoforge-event-bus`, requirement "One event pipeline"). There is no second path: native mods and v0.2 plugins get the same event from the same fire site. Each fire site calls `PluginManager::fire_blocking_with`, so no event is built when no handler listens.
+
+Cause resolution. A mutator with a cause takes the entity that acts. A player is its own cause. Another entity resolves to its owner through `EntityBase::get_owner_id`, so a projectile resolves to its shooter. `BlockBreakEvent` has only a `player` field, so the cause is the owner when the owner is a player, and none otherwise. A block entity has no entity: a machine calls the mutator without a cause, and the event carries no player, as for a piston. This replaces the `FakePlayer` of NeoForge (row 16 of `mapping-table.md`).
+
+| Mutator | Event fired | Cause resolution | Test |
+|:--|:--|:--|:--|
+| `World::set_block_state`, `World::set_block_state_if` | no event, as vanilla `Level.setBlock` | none | `a_cause_less_set_block_state_fires_no_event` |
+| `World::break_block(pos, cause, flags)` | `BlockBreakEvent` | `cause` is the player | `a_player_breaks_a_block_through_the_world` |
+| `World::destroy_block(pos, drop, breaker)` (vanilla `Level.destroyBlock`) | `BlockBreakEvent`; `drop` is settable | the breaker, or the player that owns it | `a_projectile_of_a_mod_breaks_a_block` |
+| `World::place_block(pos, state, placer)` (NeoForge `EventHooks.onBlockPlace`, then `Level.setBlock`) | `EntityPlaceEvent` | `entity_id` is the placer, or the entity that owns it | `a_mod_places_a_block_through_the_world` |
+| `World::spawn_entity` | `EntitySpawnEvent` (NeoForge `EntityJoinLevelEvent`); `false` when cancelled | no cause field | `a_mod_spawns_damages_and_kills_an_entity` |
+| `World::spawn_entity_non_save` | `EntitySpawnEvent` | no cause field | `a_mod_spawns_damages_and_kills_an_entity` |
+| `World::spawn_creature(entity, reason, player)` | `CreatureSpawnEvent`, then `EntitySpawnEvent` | `player` | - |
+| `World::drop_stack`, `World::drop_stack_from_face` | `ItemSpawnEvent`, then `EntitySpawnEvent` | no cause field | `a_mod_drops_an_item` |
+| `World::scatter_stack`, `World::scatter_inventory` | `EntitySpawnEvent` for each stack | no cause field | - |
+| `World::strike_lightning` | `LightningStrikeEvent`, then `EntitySpawnEvent` | no cause field | - |
+| `World::explode`, `World::explode_with_calculator` | `EntityExplodeEvent` with entity id 0 | none: the source entity of an explosion comes with `ExplosionEvent` (task 2.13, #120) | - |
+| `EntityBase::damage`, `EntityBase::damage_with_context`, `LivingEntity::damage`, `Player::damage` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent` | the caller passes `source` (the direct entity) and `cause` (its owner); `damager_id` is `source`, else `cause` | `a_mod_spawns_damages_and_kills_an_entity` |
+| the damage that kills | `EntityDeathEvent`; `PlayerDeathEvent` for a player | as the damage | `a_mod_spawns_damages_and_kills_an_entity` |
+| `EntityBase::kill`, `Player::kill` | the damage events and `EntityDeathEvent` of a kill damage | none | `a_mod_spawns_damages_and_kills_an_entity` |
+| `LivingEntity::heal`, `Player::heal` | `EntityRegainHealthEvent` | none | - |
+| `LivingEntity::set_health`, `Player::set_health` | no event, as vanilla `setHealth` | none | - |
+| `Entity::remove`, `World::remove_entity` | no event: `EntityLeaveLevelEvent` is planned (task 2.15) | none | - |
+| `World::add_entity_silent` | no event: the host path for entities loaded from a chunk and for riders; `EntityJoinLevelEvent` on a load is planned (task 2.15) | none | - |
+| `World::add_block_entity`, `World::remove_block_entity`, `World::update_block_entity` | no event, as vanilla `Level.setBlockEntity` | none | - |
+
+A projectile hit is not a mutator: arrows fire `ProjectileHitEvent`, and `ProjectileImpactEvent` for every projectile is planned (task 2.15). A mod projectile acts through the mutators above with itself as the cause.
 
 ### API shape
 
