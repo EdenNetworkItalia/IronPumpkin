@@ -592,7 +592,8 @@ fn stone_at(pos: BlockPos) {
         loading.add_force_ticket(chunk);
         loading.send_change();
     };
-    let deadline = Instant::now() + Duration::from_secs(30);
+    // A debug build generates a chunk in more than 30 s on a loaded CI runner.
+    let deadline = Instant::now() + Duration::from_secs(120);
     while !world.level.is_chunk_loaded(&chunk) {
         assert!(Instant::now() < deadline, "the chunk of {pos} did not load");
         std::thread::sleep(Duration::from_millis(10));
@@ -713,9 +714,10 @@ fn finished_digging_breaks_only_the_started_dig() {
     player.set_client_loaded(true);
     player.permission_lvl.store(PermissionLvl::Four);
     let feet = player.get_entity().block_pos.load();
+    // The spawn is at x 0, z 0: only offsets of zero or more keep both blocks in one chunk.
     let (started, other) = (
         feet.offset(Vector3::new(0, -1, 1)),
-        feet.offset(Vector3::new(-1, -1, 0)),
+        feet.offset(Vector3::new(1, -1, 0)),
     );
     stone_at(started);
     stone_at(other);
