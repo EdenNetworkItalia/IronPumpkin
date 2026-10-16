@@ -72,7 +72,7 @@ enum Mode {
     },
     /// Compare a recording with a capture of a real `NeoForge` server: the clientbound channel
     /// order from `neoforge:frozen_registry_sync_start` to `finish_configuration`, with the
-    /// registries limited to block, item and entity type, and the bodies of the modded task
+    /// registries limited to the ones `IronPumpkin` syncs, and the bodies of the modded task
     /// payloads.
     Compare {
         /// The capture, JSONL or gzipped JSONL.

@@ -1,5 +1,6 @@
 //! Boots a server with the test mod in a child process and runs the headless client against it.
-//! A `NeoForge` client gets the registry sync with the test mod's content at the first free ids,
+//! A `NeoForge` client gets the registry sync with the test mod's content at the first free ids
+//! (its mob effect, attribute and data component type too; its sound event travels by name),
 //! then the modded configuration tasks with the test mod's synced config. A vanilla client gets
 //! neither: the client-required test mod gets it kicked. After an edit of the synced config file,
 //! the server reloads it and the next `NeoForge` client gets the edited file. The child reruns this
@@ -17,7 +18,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use ironpumpkin_test_mod::{
-    BLOCK, ENTITY_TYPE, ITEM, STARTUP_CONFIG, STARTUP_GREETING, SYNCED_CONFIG, SYNCED_RELOADED,
+    ATTRIBUTE, BLOCK, DATA_COMPONENT_TYPE, ENTITY_TYPE, ITEM, MOB_EFFECT, STARTUP_CONFIG,
+    STARTUP_GREETING, SYNCED_CONFIG, SYNCED_RELOADED,
 };
 use pumpkin_neoforge_client::{
     channels::ChannelMap,
@@ -235,7 +237,14 @@ fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
         .collect();
     assert_eq!(
         names,
-        ["minecraft:block", "minecraft:item", "minecraft:entity_type"]
+        [
+            "minecraft:block",
+            "minecraft:item",
+            "minecraft:entity_type",
+            "minecraft:mob_effect",
+            "minecraft:attribute",
+            "minecraft:data_component_type",
+        ]
     );
     assert_eq!(start.len(), 1);
     let listed: Vec<String> = start[0].to_access.iter().map(ToString::to_string).collect();
@@ -252,7 +261,17 @@ fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
     ))
     .unwrap();
     let custom: Vec<&str> = expectations.0.iter().map(|r| r.last.as_str()).collect();
-    assert_eq!(custom, [BLOCK, ITEM, ENTITY_TYPE]);
+    assert_eq!(
+        custom,
+        [
+            BLOCK,
+            ITEM,
+            ENTITY_TYPE,
+            MOB_EFFECT,
+            ATTRIBUTE,
+            DATA_COMPONENT_TYPE
+        ]
+    );
     let failures = check_registries(&entries, &expectations);
     assert!(failures.is_empty(), "{failures:#?}");
 

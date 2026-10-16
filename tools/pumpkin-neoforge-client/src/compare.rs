@@ -14,8 +14,14 @@ use crate::registries::decode_frozen_registry;
 /// The other `frozen_registry` payloads of the reference capture are left out of the comparison. A
 /// recording is never filtered: a registry that `IronPumpkin` sends outside this list is a
 /// difference.
-pub const SYNCED_REGISTRIES: [&str; 3] =
-    ["minecraft:block", "minecraft:item", "minecraft:entity_type"];
+pub const SYNCED_REGISTRIES: [&str; 6] = [
+    "minecraft:block",
+    "minecraft:item",
+    "minecraft:entity_type",
+    "minecraft:mob_effect",
+    "minecraft:attribute",
+    "minecraft:data_component_type",
+];
 
 /// The channels whose clientbound bodies must equal the capture. See [`comparable_body`].
 pub const SAME_BODY_CHANNELS: [&str; 6] = [

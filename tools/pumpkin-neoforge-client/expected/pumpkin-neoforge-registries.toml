@@ -20,3 +20,22 @@ name = "minecraft:entity_type"
 ids = 161
 first = "minecraft:acacia_boat"
 last = "minecraft:fishing_bobber"
+
+[[registry]]
+name = "minecraft:mob_effect"
+ids = 40
+first = "minecraft:speed"
+last = "minecraft:breath_of_the_nautilus"
+
+[[registry]]
+name = "minecraft:attribute"
+ids = 43
+first = "minecraft:air_drag_modifier"
+last = "neoforge:gliding_flight"
+at = { 40 = "neoforge:swim_speed", 41 = "neoforge:creative_flight" }
+
+[[registry]]
+name = "minecraft:data_component_type"
+ids = 122
+first = "minecraft:custom_data"
+last = "minecraft:cushion/color"

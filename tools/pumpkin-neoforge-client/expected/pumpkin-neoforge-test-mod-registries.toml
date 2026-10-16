@@ -23,3 +23,24 @@ ids = 162
 first = "minecraft:acacia_boat"
 last = "test-mod:test_entity"
 at = { 160 = "minecraft:fishing_bobber" }
+
+[[registry]]
+name = "minecraft:mob_effect"
+ids = 41
+first = "minecraft:speed"
+last = "test-mod:test_effect"
+at = { 39 = "minecraft:breath_of_the_nautilus" }
+
+[[registry]]
+name = "minecraft:attribute"
+ids = 44
+first = "minecraft:air_drag_modifier"
+last = "test-mod:test_attribute"
+at = { 40 = "neoforge:swim_speed", 41 = "neoforge:creative_flight", 42 = "neoforge:gliding_flight" }
+
+[[registry]]
+name = "minecraft:data_component_type"
+ids = 123
+first = "minecraft:custom_data"
+last = "test-mod:test_component"
+at = { 121 = "minecraft:cushion/color" }
