@@ -7,13 +7,16 @@ rust-version.workspace = true
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+pumpkin-codecs.workspace = true
 pumpkin-core.workspace = true
 pumpkin-data.workspace = true
 pumpkin-macros.workspace = true
+pumpkin-nbt.workspace = true
 pumpkin-util.workspace = true
 pumpkin-world.workspace = true
 futures = { workspace = true, features = ["executor"] }
 inventory.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["rt"] }
 toml.workspace = true
 tracing.workspace = true

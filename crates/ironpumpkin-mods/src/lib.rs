@@ -27,6 +27,10 @@
 //! | [`imc`]         | inter-mod messages                                                        |
 //! | [`config`]      | TOML config specs: `ConfigSpec`, `ConfigType`, `ModConfig`                |
 //! | [`network`]     | payload channels, payload handlers, configuration tasks, send helpers     |
+//! | [`data_components`] | mod data component types and their values on item stacks          |
+//! | [`sound_events`]  | mod sound events and playing sounds near a position                       |
+//! | [`mob_effects`]   | mod mob effects and the effects of living entities                        |
+//! | [`entity_attributes`] | mod and `NeoForge` attributes and the attributes of living entities |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -67,12 +71,16 @@ pub use pumpkin_util::{identifier, math, permission};
 
 pub mod config;
 pub mod content;
+pub mod data_components;
+pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
+pub mod mob_effects;
 pub mod mod_list;
 pub mod mods_toml;
 pub mod network;
 pub mod registry;
+pub mod sound_events;
 pub mod version;
 
 /// The events a mod can listen to, and the traits to handle them.
