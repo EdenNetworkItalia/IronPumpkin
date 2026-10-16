@@ -1,4 +1,4 @@
-use pumpkin_data::Block;
+use pumpkin_data::{Block, BlockState};
 use pumpkin_macros::{Event, cancellable};
 use pumpkin_util::math::position::BlockPos;
 use std::sync::Arc;
@@ -11,6 +11,9 @@ use super::BlockEvent;
 ///
 /// This event contains information about the player placing the block, the block being placed,
 /// the block being placed against, and whether the player can build.
+///
+/// `NeoForge`: `BlockEvent.EntityPlaceEvent` placed by a player, fired in
+/// `BlockRegistry::place_block` before the block changes.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct BlockPlaceEvent {
@@ -28,6 +31,12 @@ pub struct BlockPlaceEvent {
 
     /// A boolean indicating whether the player can build.
     pub can_build: bool,
+
+    /// The state that the placement sets (`EntityPlaceEvent#getPlacedBlock`).
+    pub placed_state: &'static BlockState,
+
+    /// The state that the placement replaces (`getBlockSnapshot().getState()`).
+    pub replaced_state: &'static BlockState,
 }
 
 impl BlockPlaceEvent {
@@ -38,6 +47,8 @@ impl BlockPlaceEvent {
         block_placed_against: &'static Block,
         block_position: BlockPos,
         can_build: bool,
+        placed_state: &'static BlockState,
+        replaced_state: &'static BlockState,
     ) -> Self {
         Self {
             player,
@@ -45,6 +56,8 @@ impl BlockPlaceEvent {
             block_placed_against,
             block_position,
             can_build,
+            placed_state,
+            replaced_state,
             cancelled: false,
         }
     }

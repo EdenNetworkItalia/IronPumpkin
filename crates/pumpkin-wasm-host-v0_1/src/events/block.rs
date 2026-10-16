@@ -1,4 +1,4 @@
-use pumpkin_data::BlockStateId;
+use pumpkin_data::{Block, BlockStateId};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -122,16 +122,27 @@ impl ToFromWasmEvent for BlockBreakEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::BlockBreakEvent(data) => Self {
-                player: data.player.map(|player| consume_player(state, &player)),
-                block: from_wasm_block_name(&data.block),
-                block_position: from_wasm_block_position(data.block_pos),
-                exp: data.exp,
-                drop: data.should_drop,
-                cancelled: data.cancelled,
-            },
+            Event::BlockBreakEvent(data) => {
+                let block = from_wasm_block_name(&data.block);
+                Self {
+                    player: data.player.map(|player| consume_player(state, &player)),
+                    block,
+                    state: block.default_state,
+                    block_position: from_wasm_block_position(data.block_pos),
+                    exp: data.exp,
+                    drop: data.should_drop,
+                    cancelled: data.cancelled,
+                }
+            }
             _ => panic!("unexpected event type"),
         }
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has no block state: keep the native one.
+        let block_state = self.state;
+        *self = Self::from_wasm_event(event, state);
+        self.state = block_state;
     }
 }
 
@@ -243,16 +254,29 @@ impl ToFromWasmEvent for BlockPlaceEvent {
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::BlockPlaceEvent(data) => Self {
-                player: consume_player(state, &data.player),
-                block_placed: from_wasm_block_name(&data.block_placed),
-                block_placed_against: from_wasm_block_name(&data.block_placed_against),
-                block_position: from_wasm_block_position(data.block_pos),
-                can_build: data.can_build,
-                cancelled: data.cancelled,
-            },
+            Event::BlockPlaceEvent(data) => {
+                let block_placed = from_wasm_block_name(&data.block_placed);
+                Self {
+                    player: consume_player(state, &data.player),
+                    block_placed,
+                    block_placed_against: from_wasm_block_name(&data.block_placed_against),
+                    block_position: from_wasm_block_position(data.block_pos),
+                    can_build: data.can_build,
+                    placed_state: block_placed.default_state,
+                    replaced_state: Block::AIR.default_state,
+                    cancelled: data.cancelled,
+                }
+            }
             _ => panic!("unexpected event type"),
         }
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has no block states: keep the native ones.
+        let (placed_state, replaced_state) = (self.placed_state, self.replaced_state);
+        *self = Self::from_wasm_event(event, state);
+        self.placed_state = placed_state;
+        self.replaced_state = replaced_state;
     }
 }
 

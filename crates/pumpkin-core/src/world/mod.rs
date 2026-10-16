@@ -48,12 +48,9 @@ use crate::{
     entity::{Entity, EntityBase, RemovalReason, player::Player, r#type::from_type},
     error::PumpkinError,
     net::{ClientPlatform, bedrock::BedrockClient, java::JavaClient},
-    plugin::{
-        block::block_break::BlockBreakEvent,
-        player::{
-            player_change_world::PlayerChangeWorldEvent, player_join::PlayerJoinEvent,
-            player_leave::PlayerLeaveEvent, player_respawn::PlayerRespawnEvent,
-        },
+    plugin::player::{
+        player_change_world::PlayerChangeWorldEvent, player_join::PlayerJoinEvent,
+        player_leave::PlayerLeaveEvent, player_respawn::PlayerRespawnEvent,
     },
     server::Server,
 };
@@ -5296,25 +5293,15 @@ impl World {
             flags.remove(BlockFlags::SKIP_DROPS);
         }
 
-        let mut event = BlockBreakEvent::new(
-            cause.cloned(),
+        let (drop, exp) = crate::plugin::level_events::block_break(
+            self,
+            cause,
             broken_block,
-            *position,
-            0,
+            broken_block_state,
+            position,
             !flags.contains(BlockFlags::SKIP_DROPS),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
-            return None;
-        }
-
-        if event.drop {
-            flags.remove(BlockFlags::SKIP_DROPS);
-        } else {
-            flags.insert(BlockFlags::SKIP_DROPS);
-        }
+        )?;
+        flags.set(BlockFlags::SKIP_DROPS, !drop);
 
         if !flags.contains(BlockFlags::SKIP_DROPS) {
             let tool = cause.as_ref().and_then(|p| {
@@ -5328,7 +5315,10 @@ impl World {
                 killed_by_player: Some(cause.is_some()),
                 ..Default::default()
             };
-            crate::block::drop_loot(self, broken_block, position, true, &params);
+            crate::block::drop_loot(self, broken_block, position, exp.is_none(), &params);
+            if let Some(exp) = exp {
+                crate::block::drop_experience(self, position, exp);
+            }
         }
 
         let new_state_id = if broken_block.is_waterlogged(broken_block_state.id) {

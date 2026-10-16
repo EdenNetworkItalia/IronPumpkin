@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use super::{Goal, to_goal_ticks};
+use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::mob::enderman::EndermanEntity;
+use crate::plugin::level_events;
 use pumpkin_data::Block;
 use pumpkin_data::block_properties::is_air;
 use pumpkin_util::math::boundingbox::BoundingBox;
@@ -80,6 +82,10 @@ impl Goal for PlaceBlockGoal {
             return;
         }
 
+        let enderman: Arc<dyn EntityBase> = self.enderman.clone();
+        if !level_events::entity_place(&world_clone, &enderman, target_pos, block_state_id) {
+            return;
+        }
         // TODO: also check the carried block can survive there.
         world_clone.set_block_state(&target_pos, block_state_id, BlockFlags::NOTIFY_ALL);
         self.enderman.set_carried_block(None);

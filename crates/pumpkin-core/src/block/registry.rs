@@ -785,15 +785,15 @@ impl BlockRegistry {
             return Ok(None);
         }
 
-        let mut event = crate::plugin::block::block_place::BlockPlaceEvent::new(
-            player.clone(),
+        if !crate::plugin::level_events::player_place(
+            server,
+            &world,
+            player,
             placed_block,
             clicked_block,
             final_block_pos,
-            true,
-        );
-        server.plugin_manager.fire_blocking(server, &mut event);
-        if event.cancelled {
+            new_state,
+        ) {
             return Ok(None);
         }
 
