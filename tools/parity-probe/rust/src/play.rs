@@ -24,7 +24,7 @@ use ironpumpkin_mods::{
         player::{
             ClientInformationUpdatedEvent, PlayerEventBreakSpeed, PlayerEventHarvestCheck,
             PlayerEventLoadFromFile, PlayerEventNameFormat, PlayerEventSaveToFile,
-            PlayerEventTabListNameFormat, PlayerSwitchHotbarSlotEventPost,
+            PlayerEventTabListNameFormat, PlayerSwitchHotbarSlotEventPost, UseItemOnBlockEvent,
             item_held::PlayerItemHeldEvent,
             player_chat::PlayerChatEvent,
             player_gamemode_change::PlayerGamemodeChangeEvent,
@@ -37,7 +37,12 @@ use ironpumpkin_mods::{
         },
     },
     math::position::BlockPos,
-    pumpkin_data::packet::{CURRENT_MC_VERSION, serverbound::play::PING_REQUEST},
+    pumpkin_data::{
+        BlockDirection,
+        item_stack::ItemStack,
+        packet::{CURRENT_MC_VERSION, serverbound::play::PING_REQUEST},
+    },
+    pumpkin_util::Hand,
     server::Server,
 };
 
@@ -181,6 +186,17 @@ pub fn register(cx: &mut ModInit) {
         });
     });
     on::<PlayerInteractEvent>(cx, interact);
+    on::<UseItemOnBlockEvent>(cx, |event| {
+        trace_play("UseItemOnBlockEvent", |state| {
+            vec![
+                ("face", face(Some(event.face))),
+                ("hand", hand(event.hand)),
+                ("item", item(&event.item)),
+                ("phase", lower(event.phase)),
+                ("pos", Value::Text(state.relative(&event.pos))),
+            ]
+        });
+    });
     on::<PlayerItemHeldEvent>(cx, |event| {
         trace_play("PlayerSwitchHotbarSlotEvent.Pre", |_| {
             vec![
@@ -215,24 +231,82 @@ pub fn register(cx: &mut ModInit) {
     on::<ServerTickEndEvent>(cx, |_| trace_once_per_step("ServerTickEvent.Post"));
 }
 
-/// `PlayerInteractEvent` carries `PlayerInteractEvent.LeftClickBlock`, `RightClickBlock`,
-/// `RightClickItem` and `UseItemOnBlockEvent` (design.md). It has no hand, face, item or use
-/// phase, so the lines have only the position.
+/// The name of a Rust enum value in the lower snake case of the Java probe (`lower`).
+fn lower(value: impl std::fmt::Debug) -> Value {
+    let name = format!("{value:?}");
+    let mut snake = String::new();
+    for (index, letter) in name.chars().enumerate() {
+        if letter.is_ascii_uppercase() && index > 0 {
+            snake.push('_');
+        }
+        snake.push(letter.to_ascii_lowercase());
+    }
+    Value::Text(snake)
+}
+
+/// The Java `InteractionHand` of a Pumpkin hand: `Hand::Right` is the main hand.
+fn hand(hand: Hand) -> Value {
+    Value::Text(
+        match hand {
+            Hand::Right => "main_hand",
+            Hand::Left => "off_hand",
+        }
+        .to_owned(),
+    )
+}
+
+/// The serialized name of a face, `none` without one, as the Java probe writes it.
+fn face(face: Option<BlockDirection>) -> Value {
+    face.map_or_else(|| Value::Text("none".to_owned()), lower)
+}
+
+fn item(stack: &ItemStack) -> Value {
+    Value::Text(format!("minecraft:{}", stack.item.registry_key))
+}
+
+/// `PlayerInteractEvent` carries `PlayerInteractEvent.LeftClickBlock`, `RightClickBlock` and
+/// `RightClickItem` (design.md). `UseItemOnBlockEvent` is its own event.
 fn interact(event: &PlayerInteractEvent) {
     let pos = |state: &State| {
         event
             .clicked_pos
-            .map(|pos| vec![("pos", Value::Text(state.relative(&pos)))])
-            .unwrap_or_default()
+            .map(|pos| ("pos", Value::Text(state.relative(&pos))))
     };
     match event.action {
-        InteractAction::LeftClickBlock => trace_play("PlayerInteractEvent.LeftClickBlock", pos),
+        InteractAction::LeftClickBlock => {
+            trace_play("PlayerInteractEvent.LeftClickBlock", |state| {
+                let mut fields = vec![
+                    (
+                        "action",
+                        event
+                            .left_click_action
+                            .map_or(Value::Text("none".to_owned()), lower),
+                    ),
+                    ("face", face(event.face)),
+                    ("hand", hand(event.hand)),
+                ];
+                fields.extend(pos(state));
+                fields
+            });
+        }
         InteractAction::RightClickBlock => {
-            trace_play("PlayerInteractEvent.RightClickBlock", pos);
-            trace_play("UseItemOnBlockEvent", pos);
+            trace_play("PlayerInteractEvent.RightClickBlock", |state| {
+                let mut fields = vec![
+                    ("face", face(event.face)),
+                    ("hand", hand(event.hand)),
+                    ("item", item(&event.item_stack())),
+                ];
+                fields.extend(pos(state));
+                fields
+            });
         }
         InteractAction::RightClickAir => {
-            trace_play("PlayerInteractEvent.RightClickItem", |_| Vec::new());
+            trace_play("PlayerInteractEvent.RightClickItem", |_| {
+                vec![
+                    ("hand", hand(event.hand)),
+                    ("item", item(&event.item_stack())),
+                ]
+            });
         }
         InteractAction::LeftClickAir => {}
     }
