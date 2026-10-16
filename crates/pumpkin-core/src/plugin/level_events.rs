@@ -6,10 +6,12 @@
 
 use std::sync::Arc;
 
+use pumpkin_data::biome::Spawner;
 use pumpkin_data::block_properties::{
     BedPart, DoubleBlockHalf, OakDoorLikeProperties, SmallDripleafLikeProperties,
     TallSeagrassLikeProperties, WhiteBedLikeProperties,
 };
+use pumpkin_data::entity::MobCategory;
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::{self, Taggable};
@@ -29,8 +31,8 @@ use crate::plugin::api::events::{
         BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch,
         CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
         ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
-        NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
-        PlayerTickEventPre,
+        LevelEventPotentialSpawns, NoteBlockEventChange, PistonEventPost, PistonMoveType,
+        PlayerTickEventPost, PlayerTickEventPre,
     },
     world::chunk_load::ChunkLoad,
 };
@@ -469,4 +471,23 @@ pub fn tool_modification(
         Some(final_state) if final_state.id == state.id => vanilla(),
         final_state => final_state.map(|final_state| final_state.id),
     }
+}
+
+/// Fires `LevelEventPotentialSpawns` for the spawn list of `category` at `pos`. Returns `None`
+/// without a handler, else the list that the last handler left, empty when it cancelled.
+pub fn potential_spawns(
+    world: &Arc<World>,
+    category: &'static MobCategory,
+    pos: &BlockPos,
+    spawns: &'static [Spawner],
+) -> Option<Vec<&'static Spawner>> {
+    let server = world.server.upgrade()?;
+    let event = server.plugin_manager.fire_blocking_with(&server, || {
+        LevelEventPotentialSpawns::new(world.clone(), category, *pos, spawns.iter().collect())
+    })?;
+    Some(if event.cancelled {
+        Vec::new()
+    } else {
+        event.spawns
+    })
 }

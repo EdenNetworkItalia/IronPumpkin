@@ -41,21 +41,22 @@ use pumpkin_core::{
             BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent,
             ChunkWatchEventUnWatch, CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost,
             EntityTickEventPre, ExplosionEventDetonate, ExplosionKnockbackEvent, FIRESTARTER_LIGHT,
-            GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost, PistonMoveType,
-            PlayerTickEventPost, PlayerTickEventPre,
+            GameRuleChangedEvent, LevelEventPotentialSpawns, NoteBlockEventChange, PistonEventPost,
+            PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
         },
         world::{chunk_load::ChunkLoad, chunk_unload::ChunkUnloadEvent},
     },
     server::Server,
-    world::{ExplosionInteraction, chunker},
+    world::{ExplosionInteraction, chunker, natural_spawner},
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
+    biome::Spawner,
     block_properties::{
         CampfireLikeProperties, NoteBlockLikeProperties, StickyPistonLikeProperties,
         WheatLikeProperties,
     },
-    entity::EntityType,
+    entity::{EntityType, MobCategory},
     fluid::Fluid,
     game_rules::{GameRule, GameRuleValue},
     item::Item,
@@ -1241,4 +1242,63 @@ fn change_a_settable_field_block_tool_modification_event() {
     light(&player, pos);
 
     assert_eq!(state_at(pos), Block::GLOWSTONE.default_state.id);
+}
+
+/// A spawn entry of the test, as a mod adds one.
+static TEST_SPAWNER: Spawner = Spawner {
+    r#type: "minecraft:enderman",
+    min_count: 1,
+    max_count: 1,
+};
+
+/// `LevelEvent.PotentialSpawns` (`LevelEventPotentialSpawns`) fires when the natural spawner picks
+/// a mob, with the category and the biome list, and the spawner picks from the list of the last
+/// handler.
+#[test]
+fn change_a_settable_field_level_event_potential_spawns() {
+    let _serial = support::serial();
+    let pos = spot(28);
+    load(pos);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<LevelEventPotentialSpawns, _>(move |event| {
+        if event.pos == pos {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {}",
+                    event.category.id == MobCategory::MONSTER.id,
+                    !event.spawns.is_empty()
+                ),
+            );
+            event.spawns = vec![&TEST_SPAWNER];
+        }
+    });
+
+    let spawner =
+        natural_spawner::get_random_spawn_mob_at(&support::world(), &MobCategory::MONSTER, &pos);
+
+    assert_eq!(entries(&seen), ["true true"]);
+    assert_eq!(
+        spawner.map(|spawner| spawner.r#type),
+        Some("minecraft:enderman")
+    );
+}
+
+/// A cancelled `LevelEventPotentialSpawns` spawns nothing.
+#[test]
+fn cancel_level_event_potential_spawns() {
+    let _serial = support::serial();
+    let pos = spot(29);
+    load(pos);
+    on::<LevelEventPotentialSpawns, _>(move |event| {
+        if event.pos == pos {
+            event.set_cancelled(true);
+        }
+    });
+
+    let spawner =
+        natural_spawner::get_random_spawn_mob_at(&support::world(), &MobCategory::MONSTER, &pos);
+
+    assert!(spawner.is_none());
 }
