@@ -54,7 +54,6 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
-    time::Duration,
 };
 
 use pumpkin_core::{
@@ -559,7 +558,7 @@ fn finish_within(player: &Arc<Player>, action: impl FnOnce(&Arc<Player>) + Send 
         let _ = done.send(());
     });
     finished
-        .recv_timeout(Duration::from_secs(30))
+        .recv_timeout(support::SLOW_RUNNER)
         .unwrap_or_else(|_| panic!("the action did not finish: a handler deadlocked or panicked"));
 }
 

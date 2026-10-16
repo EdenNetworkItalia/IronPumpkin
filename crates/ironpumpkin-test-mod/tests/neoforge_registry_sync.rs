@@ -38,7 +38,8 @@ const NEOFORGE_PLAYER: &str = "SyncProbe";
 const RELOAD_PLAYER: &str = "ReloadProbe";
 const VANILLA_PLAYER: &str = "VanillaProbe";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
-const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+// A full server boots, a client joins and loads chunks, on a loaded CI runner with parallel tests.
+const SESSION_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// The server child process. Dropping it kills the server.
 struct Server {

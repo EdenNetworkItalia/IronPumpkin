@@ -167,7 +167,7 @@ fn finish_within(player: &Arc<Player>, action: impl FnOnce(&Arc<Player>) + Send 
         let _ = done.send(());
     });
     finished
-        .recv_timeout(Duration::from_secs(30))
+        .recv_timeout(support::SLOW_RUNNER)
         .unwrap_or_else(|_| panic!("the action did not finish: a handler deadlocked or panicked"));
 }
 
@@ -592,8 +592,7 @@ fn stone_at(pos: BlockPos) {
         loading.add_force_ticket(chunk);
         loading.send_change();
     };
-    // A debug build generates a chunk in more than 30 s on a loaded CI runner.
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let deadline = Instant::now() + support::SLOW_RUNNER;
     while !world.level.is_chunk_loaded(&chunk) {
         assert!(Instant::now() < deadline, "the chunk of {pos} did not load");
         std::thread::sleep(Duration::from_millis(10));
@@ -942,10 +941,8 @@ fn change_a_settable_field_respawn_position_event() {
     // here; the position is set before that wait.
     support::RUNTIME.spawn(async move { world.respawn_player(&respawned, false).await });
     let expected = Vector3::new(8.5, 120.0, 8.5);
-    for _ in 0..600 {
-        if player.living_entity.entity.pos.load() == expected {
-            break;
-        }
+    let deadline = Instant::now() + support::SLOW_RUNNER;
+    while player.living_entity.entity.pos.load() != expected && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(100));
     }
 

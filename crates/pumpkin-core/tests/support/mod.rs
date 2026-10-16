@@ -12,6 +12,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, PoisonError},
+    time::Duration,
 };
 
 use arc_swap::ArcSwap;
@@ -29,6 +30,9 @@ use pumpkin_core::{
 };
 use pumpkin_util::GameMode;
 use tokio::runtime::Runtime;
+
+/// Deadline for waits on chunk generation or a server round trip: debug build, parallel tests, CI.
+pub const SLOW_RUNNER: Duration = Duration::from_secs(180);
 
 pub static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()

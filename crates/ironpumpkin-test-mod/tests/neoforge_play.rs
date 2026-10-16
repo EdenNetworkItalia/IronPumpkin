@@ -30,7 +30,8 @@ const SERVER_DIR: &str = "SERVER_DIR";
 const TEST_NAME: &str = "neoforge_client_plays_a_script";
 const PLAYER: &str = "PlayProbe";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
-const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+// A full server boots, a client joins and loads chunks, on a loaded CI runner with parallel tests.
+const SESSION_TIMEOUT: Duration = Duration::from_secs(180);
 const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// The server child process.

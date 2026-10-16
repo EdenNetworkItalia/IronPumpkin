@@ -43,7 +43,8 @@ use pumpkin_neoforge_client::{
 const SERVER_DIR: &str = "SERVER_DIR";
 const TEST_NAME: &str = "neoforge_network_with_the_headless_client";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
-const SESSION_TIMEOUT: Duration = Duration::from_secs(60);
+// A full server boots, a client joins and loads chunks, on a loaded CI runner with parallel tests.
+const SESSION_TIMEOUT: Duration = Duration::from_secs(180);
 const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
 struct Server {
