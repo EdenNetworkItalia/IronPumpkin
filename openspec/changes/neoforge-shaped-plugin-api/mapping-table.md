@@ -40,7 +40,7 @@ How to read it:
 | `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` (two hooks, no parent handler) | planned |
 | `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
-| `PlayerInteractEvent.RightClickBlock` | 67 | event class | `event-bus.event::player-interact-event-right-click-block` | supported |
+| `PlayerInteractEvent.RightClickBlock` | 67 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `RightClickBlock`, built with `right_click_block`) | supported |
 | `PlayerEvent.PlayerLoggedInEvent` | 66 | event class | `event-bus.event::player-event-player-logged-in-event` | supported |
 | `BlockEvent` | 65 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `event-bus.event::break-block-event` | supported |
@@ -69,7 +69,7 @@ How to read it:
 | `ItemTooltipEvent` | 28 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerEvent.PlayerLoggedOutEvent` | 28 | event class | `event-bus.event::player-event-player-logged-out-event` | supported |
 | `LivingDamageEvent.Pre` | 27 | event class | `event-bus.event::living-damage-event-pre` | planned |
-| `PlayerInteractEvent.LeftClickBlock` | 27 | event class | `event-bus.event::player-interact-event-left-click-block` | supported |
+| `PlayerInteractEvent.LeftClickBlock` | 27 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `LeftClickBlock`, `left_click_action`) | supported |
 | `LevelEvent.Load` | 27 | event class | `event-bus.event::level-event-load` | supported |
 | `EntityTickEvent` | 27 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PlayerEvent.PlayerChangedDimensionEvent` | 26 | event class | `event-bus.event::player-event-player-changed-dimension-event` | supported |
@@ -81,7 +81,7 @@ How to read it:
 | `PlayerTickEvent.Post` | 24 | event class | `event-bus.event::player-tick-event-post` | planned |
 | `FMLLoadCompleteEvent` | 24 | event class | `NativeMod::load_complete` (the Synced configs load right after it) | supported |
 | `PlayerEvent.Clone` | 23 | event class | `event-bus.event::player-event-clone` | planned |
-| `PlayerInteractEvent.RightClickItem` | 23 | event class | `event-bus.event::player-interact-event-right-click-item` | supported |
+| `PlayerInteractEvent.RightClickItem` | 23 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `RightClickAir`, built with `right_click_item`) | supported |
 | `BlockEvent.EntityPlaceEvent` | 23 | event class | `event-bus.event::block-event-entity-place-event` | supported |
 | `EntityTeleportEvent` | 22 | event class | `event-bus.event::entity-teleport-event` | supported |
 | `LivingEvent` | 22 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -181,7 +181,7 @@ How to read it:
 | `BonemealEvent` | 4 | event class | `event-bus.event::bonemeal-event` | supported |
 | `PlayerDestroyItemEvent` | 4 | event class | `event-bus.event::player-destroy-item-event` | supported |
 | `PlayerEvent.ItemSmeltedEvent` | 4 | event class | `event-bus.event::player-event-item-smelted-event` | supported |
-| `UseItemOnBlockEvent` | 4 | event class | `event-bus.event::use-item-on-block-event` | supported |
+| `UseItemOnBlockEvent` | 4 | event class | `pumpkin_core::plugin::player::UseItemOnBlockEvent` | supported |
 | `BlockEvent.EntityMultiPlaceEvent` | 4 | event class | `event-bus.event::block-event-entity-multi-place-event` | planned |
 | `BlockEvent.FarmlandTrampleEvent` | 4 | event class | `event-bus.event::block-event-farmland-trample-event` | planned |
 | `ChunkDataEvent.Save` | 4 | event class | `event-bus.event::chunk-data-event-save` | planned |
@@ -1059,7 +1059,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.entity.living.LivingDropsEvent` | 31 | same | `event-bus.event::living-drops-event` |
 | `net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent` | 29 | same | `event-bus.event::entity-attribute-creation-event` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$PlayerLoggedOutEvent` | 28 | same | `event-bus.event::player-event-player-logged-out-event` |
-| `net.neoforged.neoforge.event.entity.player.PlayerInteractEvent$LeftClickBlock` | 27 | same | `event-bus.event::player-interact-event-left-click-block` |
+| `net.neoforged.neoforge.event.entity.player.PlayerInteractEvent$LeftClickBlock` | 27 | same | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `LeftClickBlock`, `left_click_action`) |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$PlayerChangedDimensionEvent` | 26 | same | `event-bus.event::player-event-player-changed-dimension-event` |
 | `net.neoforged.neoforge.event.entity.living.LivingDamageEvent$Post` | 25 | same | `event-bus.event::living-damage-event-post` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$PlayerRespawnEvent` | 24 | same | `event-bus.event::player-event-player-respawn-event` |
