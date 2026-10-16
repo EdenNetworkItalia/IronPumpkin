@@ -88,6 +88,7 @@ pub mod player_container;
 pub mod player_file;
 pub mod tracking;
 pub mod trade_with_villager;
+pub mod use_item_on_block;
 
 pub use anvil_craft::*;
 pub use arrow::*;
@@ -102,6 +103,7 @@ pub use player_container::*;
 pub use player_file::*;
 pub use tracking::*;
 pub use trade_with_villager::*;
+pub use use_item_on_block::*;
 
 pub use async_player_chat::*;
 pub use async_player_pre_login::*;

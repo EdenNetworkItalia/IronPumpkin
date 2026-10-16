@@ -327,12 +327,7 @@ impl BedrockClient {
                         );
                     }
 
-                    let event = PlayerInteractEvent::new(
-                        player,
-                        InteractAction::RightClickAir,
-                        &pumpkin_data::Block::AIR,
-                        None,
-                    );
+                    let event = PlayerInteractEvent::right_click_item(player, hand);
 
                     let stack_for_use = held.clone();
 

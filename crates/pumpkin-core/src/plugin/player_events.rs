@@ -46,7 +46,7 @@ use crate::world::World;
 use pumpkin_data::dimension::Dimension;
 
 /// The server of `player` when a handler of `E` listens.
-fn listening<E: Payload + 'static>(player: &Player) -> Option<Arc<Server>> {
+pub(super) fn listening<E: Payload + 'static>(player: &Player) -> Option<Arc<Server>> {
     let server = player.world().server.upgrade()?;
     server.plugin_manager.has_handlers::<E>().then_some(server)
 }

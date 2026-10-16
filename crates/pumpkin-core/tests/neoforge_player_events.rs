@@ -48,18 +48,23 @@ use pumpkin_core::{
             PlayerEventNameFormat, PlayerEventSaveToFile, PlayerEventStartTracking,
             PlayerEventStopTracking, PlayerEventTabListNameFormat, PlayerFlyableFallEvent,
             PlayerSwitchHotbarSlotEventPost, PlayerXpEventPickupXp, SweepAttackEvent,
-            TradeWithVillagerEvent,
+            TradeWithVillagerEvent, UseItemOnBlockEvent,
             item_held::PlayerItemHeldEvent,
             player_interact_event::{InteractAction, PlayerInteractEvent},
             player_spawn_location::PlayerSpawnLocationEvent,
         },
-        results::TriState,
+        results::{InteractionResult, TriState},
     },
     server::Server,
     world::entity_tracker::TrackedEntity,
 };
 use pumpkin_data::{
-    Block, entity::EntityType, item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION,
+    Block,
+    block_properties::{AttachFace, LeverLikeProperties},
+    entity::EntityType,
+    item::Item,
+    item_stack::ItemStack,
+    packet::CURRENT_MC_VERSION,
 };
 use pumpkin_inventory::{
     SimpleInventory,
@@ -74,10 +79,11 @@ use pumpkin_protocol::{
         var_int::VarInt,
     },
     java::{
-        client::play::{CAcknowledgeBlockChange, CBlockUpdate, MerchantOffer},
+        client::play::{CAcknowledgeBlockChange, CBlockUpdate, CSwingArm, MerchantOffer},
         packet_decoder::TCPNetworkDecoder,
         server::play::{
-            SClickSlot, SClientInformationPlay, SPlayerAction, SSetHeldItem, SlotActionType, Status,
+            SClickSlot, SClientInformationPlay, SPlayerAction, SSetHeldItem, SUseItem, SUseItemOn,
+            SlotActionType, Status,
         },
     },
     packet::MultiVersionJavaPacket,
@@ -585,6 +591,13 @@ fn one_event_per_fire_site_switch_hotbar_slot_event_post() {
 /// Loads the chunk of `pos` for the rest of the process and sets `pos` to stone, so a dig has
 /// a block to break.
 fn stone_at(pos: BlockPos) {
+    block_at(pos, &Block::STONE);
+    assert!(is_stone(pos));
+}
+
+/// Loads the chunk of `pos` for the rest of the process and sets `pos` to the default state of
+/// `block`.
+fn block_at(pos: BlockPos, block: &Block) {
     let world = support::world();
     let chunk = pos.chunk_position();
     {
@@ -597,8 +610,7 @@ fn stone_at(pos: BlockPos) {
         assert!(Instant::now() < deadline, "the chunk of {pos} did not load");
         std::thread::sleep(Duration::from_millis(10));
     }
-    world.set_block_state(&pos, Block::STONE.default_state.id, BlockFlags::empty());
-    assert!(is_stone(pos));
+    world.set_block_state(&pos, block.default_state.id, BlockFlags::empty());
 }
 
 fn is_stone(pos: BlockPos) -> bool {
@@ -641,10 +653,11 @@ const fn dig(status: Status, pos: BlockPos, sequence: i32) -> SPlayerAction {
     }
 }
 
-/// `PlayerInteractEvent.LeftClickBlock` fires first at the start of a dig, as in
-/// `ServerPlayerGameMode.handleBlockBreakAction` of `NeoForge` 26.3, and a cancel stops the dig
-/// before `BlockDamageEvent`. The stop of a dig fires nothing. After a cancelled start, the
-/// finish of the dig that the client still sends breaks nothing and re-syncs the block.
+/// `PlayerInteractEvent.LeftClickBlock` fires first for each dig action (start, abort, stop)
+/// with the action, the face and the main hand, as `ServerPlayerGameMode.handleBlockBreakAction`
+/// of `NeoForge` 26.3, and a cancel at the start stops the dig before `BlockDamageEvent`. After a
+/// cancelled start, the finish of the dig that the client still sends breaks nothing and
+/// re-syncs the block.
 #[test]
 fn left_click_block_fires_at_the_dig_start() {
     let _serial = support::serial();
@@ -664,7 +677,16 @@ fn left_click_block_fires_at_the_dig_start() {
     let (clicks, cancel_flag) = (seen.clone(), cancel.clone());
     on::<PlayerInteractEvent, _>(move |event| {
         if named(&event.player, "Digger") && event.action == InteractAction::LeftClickBlock {
-            push(&clicks, format!("click {}", event.clicked_pos.unwrap()));
+            push(
+                &clicks,
+                format!(
+                    "{:?} {:?} {:?} {}",
+                    event.left_click_action.unwrap(),
+                    event.face.unwrap(),
+                    event.hand,
+                    event.clicked_pos.unwrap()
+                ),
+            );
             event.set_cancelled(cancel_flag.load(Ordering::Relaxed));
         }
     });
@@ -682,8 +704,12 @@ fn left_click_block_fires_at_the_dig_start() {
     client.handle_player_action(&player, &dig(Status::CancelledDigging, pos, 1), server);
     cancel.store(true, Ordering::Relaxed);
     client.handle_player_action(&player, &dig(Status::StartedDigging, pos, 1), server);
-    let click = format!("click {pos}");
-    assert_eq!(entries(&seen), [click.as_str(), "damage", click.as_str()]);
+    let start = format!("Start Up Right {pos}");
+    let abort = format!("Abort Up Right {pos}");
+    assert_eq!(
+        entries(&seen),
+        [start.as_str(), "damage", abort.as_str(), start.as_str()]
+    );
     let stone = Block::STONE.default_state.id.as_u16();
     let (updates, acked) = block_updates_until_ack(&player, &mut peer, pos);
     assert_eq!(
@@ -701,6 +727,10 @@ fn left_click_block_fires_at_the_dig_start() {
         block_updates_until_ack(&player, &mut peer, pos),
         (vec![stone], 2),
         "the finish re-syncs the block and acks"
+    );
+    assert_eq!(
+        entries(&seen).last().map(String::as_str),
+        Some(format!("Stop Up Right {pos}").as_str())
     );
 }
 
@@ -741,6 +771,237 @@ fn finished_digging_breaks_only_the_started_dig() {
         !is_stone(started),
         "the finish of the started dig kept the block"
     );
+}
+
+/// A right click of the main hand on the top face of `pos`, at the middle of the face.
+const fn use_on_top(pos: BlockPos, sequence: i32) -> SUseItemOn {
+    SUseItemOn {
+        hand: VarInt(0),
+        position: pos,
+        face: VarInt(1),
+        cursor_pos: Vector3::new(0.5, 1.0, 0.5),
+        inside_block: false,
+        is_against_world_border: false,
+        sequence: VarInt(sequence),
+    }
+}
+
+/// A survival player named `name` next to the spawn, with a stack of stone in the main hand.
+fn stone_holder(name: &str) -> Arc<Player> {
+    let player = support::player(name);
+    player.set_client_loaded(true);
+    // The blocks are next to the spawn.
+    player.permission_lvl.store(PermissionLvl::Four);
+    let inventory = player.inventory();
+    inventory.set_selected_slot(0);
+    inventory.set_stack(0, ItemStack::new(64, &Item::STONE));
+    player
+}
+
+/// The block at `offset` from the block of the feet of `player`.
+fn near_feet(player: &Player, offset: Vector3<i32>) -> BlockPos {
+    player.get_entity().block_pos.load().offset(offset)
+}
+
+fn use_item_on(player: &Arc<Player>, packet: &SUseItemOn) {
+    assert!(
+        java_client(player)
+            .handle_use_item_on(player, packet, support::server())
+            .is_ok()
+    );
+}
+
+/// `PlayerInteractEvent.RightClickBlock` fires first with the hand, the face, the item and the
+/// hit vector, then `UseItemOnBlockEvent` once per phase, as `ServerPlayerGameMode.useItemOn`
+/// of `NeoForge` 26.3. The item phase after the block places the stone.
+#[test]
+fn right_click_block_and_use_item_on_block_fire_each_phase() {
+    let _serial = support::serial();
+    let player = stone_holder("Placer");
+    // The spawn is at x 0, z 0: only offsets of zero or more keep the blocks in one chunk.
+    let target = near_feet(&player, Vector3::new(1, -2, 0));
+    let above = near_feet(&player, Vector3::new(1, -1, 0));
+    stone_at(target);
+    block_at(above, &Block::AIR);
+    let seen = log();
+    let (clicks, phases) = (seen.clone(), seen.clone());
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Placer") && event.action == InteractAction::RightClickBlock {
+            let hit = event.hit_vector.unwrap();
+            push(
+                &clicks,
+                format!(
+                    "click {:?} {:?} {} {} {} {} {}",
+                    event.hand,
+                    event.face.unwrap(),
+                    event.item_stack().item.registry_key,
+                    event.clicked_pos.unwrap(),
+                    hit.x,
+                    hit.y,
+                    hit.z
+                ),
+            );
+        }
+    });
+    on::<UseItemOnBlockEvent, _>(move |event| {
+        if named(&event.player, "Placer") {
+            push(
+                &phases,
+                format!(
+                    "{:?} {:?} {:?} {} {}",
+                    event.phase, event.hand, event.face, event.item.item.registry_key, event.pos
+                ),
+            );
+        }
+    });
+
+    use_item_on(&player, &use_on_top(target, 1));
+
+    let (x, y, z) = (target.0.x, target.0.y, target.0.z);
+    let click = format!(
+        "click Right Up stone {target} {} {} {}",
+        f64::from(x) + 0.5,
+        y + 1,
+        f64::from(z) + 0.5
+    );
+    let phase = |name: &str| format!("{name} Right Up stone {target}");
+    assert_eq!(
+        entries(&seen),
+        [
+            click,
+            phase("ItemBeforeBlock"),
+            phase("Block"),
+            phase("ItemAfterBlock")
+        ]
+    );
+    assert!(is_stone(above), "the item phase did not place the stone");
+}
+
+/// The decisions of a `RightClickBlock` handler, as `NeoForge` `CommonHooks` reads them in
+/// `ServerPlayerGameMode.useItemOn`: `use_block` set to `False` skips the block use (the lever
+/// stays off) and still uses the item (the stone goes on the lever); `use_item` set to `False`
+/// skips both item phases, so nothing goes on a block without a use.
+#[test]
+fn use_block_and_use_item_denials_follow_common_hooks() {
+    let _serial = support::serial();
+    let player = stone_holder("Denier");
+    let under_lever = near_feet(&player, Vector3::new(2, -2, 0));
+    let lever = near_feet(&player, Vector3::new(2, -1, 0));
+    let on_lever = near_feet(&player, Vector3::new(2, 0, 0));
+    let stone = near_feet(&player, Vector3::new(3, -1, 0));
+    let on_stone = near_feet(&player, Vector3::new(3, 0, 0));
+    let decision = Arc::new(Mutex::new((TriState::Default, TriState::Default)));
+    let decided = decision.clone();
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Denier") && event.action == InteractAction::RightClickBlock {
+            (event.use_block, event.use_item) = *decided.lock().unwrap();
+        }
+    });
+    let seen = log();
+    let phases = seen.clone();
+    on::<UseItemOnBlockEvent, _>(move |event| {
+        if named(&event.player, "Denier") {
+            push(&phases, format!("{:?}", event.phase));
+        }
+    });
+    let world = support::world();
+    let mut floor_lever = LeverLikeProperties::from_state_id(Block::LEVER.default_state.id);
+    floor_lever.face = AttachFace::Floor;
+    let lever_off = floor_lever.to_state_id(&Block::LEVER);
+    let reset = || {
+        stone_at(under_lever);
+        world.set_block_state(&lever, lever_off, BlockFlags::empty());
+        block_at(on_lever, &Block::AIR);
+        stone_at(stone);
+        block_at(on_stone, &Block::AIR);
+        seen.lock().unwrap().clear();
+    };
+
+    reset();
+    use_item_on(&player, &use_on_top(lever, 1));
+    assert_ne!(
+        world.get_block_state_id(&lever),
+        lever_off,
+        "the lever flips"
+    );
+    assert!(!is_stone(on_lever), "the lever use consumes the click");
+    assert_eq!(entries(&seen), ["ItemBeforeBlock", "Block"]);
+
+    reset();
+    *decision.lock().unwrap() = (TriState::False, TriState::Default);
+    use_item_on(&player, &use_on_top(lever, 2));
+    assert_eq!(world.get_block_state_id(&lever), lever_off);
+    assert!(is_stone(on_lever), "a block denial still uses the item");
+    assert_eq!(entries(&seen), ["ItemBeforeBlock", "ItemAfterBlock"]);
+
+    reset();
+    *decision.lock().unwrap() = (TriState::Default, TriState::False);
+    use_item_on(&player, &use_on_top(stone, 3));
+    assert!(!is_stone(on_stone), "an item denial placed the stone");
+    assert_eq!(entries(&seen), ["Block"]);
+}
+
+/// Reads the packets of `peer` until it saw `count` arm swings of the entity `entity_id`.
+fn wait_for_swings(peer: &mut Peer, entity_id: i32, count: usize) {
+    support::RUNTIME.block_on(async {
+        let mut swings = 0;
+        while swings < count {
+            let packet = tokio::time::timeout(Duration::from_secs(10), peer.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            let mut body = &packet.payload[..];
+            if packet.id == CSwingArm::to_id(CURRENT_MC_VERSION)
+                && body.get_var_int().unwrap().0 == entity_id
+            {
+                swings += 1;
+            }
+        }
+    });
+}
+
+/// A cancel of `RightClickBlock` or `RightClickItem` with the cancellation result `Success`
+/// skips the use and swings the arm for the other players, as `handleUseItemOn` and
+/// `handleUseItem` do with the result that `CommonHooks` returns.
+#[test]
+fn a_success_cancellation_result_swings_the_arm_without_the_action() {
+    let _serial = support::serial();
+    let player = stone_holder("Swinger");
+    let (_watcher, peer) = support::player_with_peer("SwingWatcher", NegotiatedState::default());
+    let mut peer = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
+    let target = near_feet(&player, Vector3::new(4, -1, 0));
+    let above = near_feet(&player, Vector3::new(4, 0, 0));
+    stone_at(target);
+    block_at(above, &Block::AIR);
+    let seen = log();
+    let clicks = seen.clone();
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Swinger") {
+            push(&clicks, format!("{:?}", event.hand));
+            event.cancellation_result = InteractionResult::Success;
+            event.set_cancelled(true);
+        }
+    });
+    let phases = seen.clone();
+    on::<UseItemOnBlockEvent, _>(move |event| {
+        if named(&event.player, "Swinger") {
+            push(&phases, "phase");
+        }
+    });
+
+    use_item_on(&player, &use_on_top(target, 1));
+    let use_item = SUseItem {
+        hand: VarInt(0),
+        sequence: VarInt(2),
+        yaw: 0.0,
+        pitch: 0.0,
+    };
+    java_client(&player).handle_use_item(&player, &use_item, support::server());
+
+    assert_eq!(entries(&seen), ["Right", "Right"], "no phase runs");
+    assert!(!is_stone(above), "a cancelled click placed the stone");
+    assert_eq!(player.inventory().held_item().item_count, 64);
+    wait_for_swings(&mut peer, player.entity_id(), 2);
 }
 
 /// `PlayerSwitchHotbarSlotEvent.Pre` (`PlayerItemHeldEvent`) fires only when the slot changes,
