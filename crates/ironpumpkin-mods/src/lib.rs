@@ -72,6 +72,7 @@ pub mod lifecycle;
 pub mod mod_list;
 pub mod mods_toml;
 pub mod network;
+pub mod registration;
 pub mod registry;
 pub mod version;
 
@@ -192,6 +193,29 @@ pub trait NativeMod: Sync {
     /// The config hooks of every mod run one at a time. A `save` of the same config from inside
     /// this method writes the file and does not call this method again.
     fn config_reloading(&self, _config: &config::ModConfig) {}
+    /// `EntityAttributeCreationEvent`: sets the default attributes of the mod's entity types.
+    /// Runs after the last `RegisterEvent`. See [`registration`].
+    fn entity_attribute_creation(&self, _event: &mut registration::EntityAttributeCreationEvent) {}
+    /// `EntityAttributeModificationEvent`: adds attributes to entity types, vanilla ones
+    /// included. Runs after the attribute creation of every mod. See [`registration`].
+    fn entity_attribute_modification(
+        &self,
+        _event: &mut registration::EntityAttributeModificationEvent,
+    ) {
+    }
+    /// `RegisterSpawnPlacementsEvent`: sets the spawn placement of entity types. Runs after the
+    /// attribute modification of every mod. See [`registration`].
+    fn register_spawn_placements(&self, _event: &mut registration::RegisterSpawnPlacementsEvent) {}
+    /// `BlockEntityTypeAddBlocksEvent`: adds mod blocks to block entity types. Runs after the
+    /// spawn placements of every mod, before the local configs load. See [`registration`].
+    fn block_entity_type_add_blocks(
+        &self,
+        _event: &mut registration::BlockEntityTypeAddBlocksEvent,
+    ) {
+    }
+    /// `ExtendPoiTypesEvent`: adds blocks to POI types. Runs after `dedicated_server_setup` of
+    /// every mod and before `inter_mod_enqueue`. See [`registration`].
+    fn extend_poi_types(&self, _event: &mut registration::ExtendPoiTypesEvent) {}
 }
 
 #[doc(hidden)]
