@@ -417,6 +417,7 @@ impl<'a> ServerPacket<'a> for CUpdateAttributes {
 #[cfg(test)]
 mod tests {
     use pumpkin_data::attributes::Attributes;
+    use pumpkin_data::dynamic::ContentIds;
     use pumpkin_data::packet::clientbound::play::UPDATE_ATTRIBUTES;
     use pumpkin_util::version::JavaMinecraftVersion;
 
@@ -492,5 +493,34 @@ mod tests {
     fn armor_attribute_encodes_for_26_2() {
         let version = JavaMinecraftVersion::V_26_2;
         assert_armor_attribute_payload(&encoded_armor_attributes(version), version);
+    }
+
+    #[test]
+    fn neoforge_attributes_reach_only_clients_that_synced_the_registries() {
+        let packet = CUpdateAttributes::new(
+            VarInt(1),
+            vec![
+                Property::new(VarInt(i32::from(Attributes::ARMOR.id)), 0.0, Vec::new()),
+                Property::new(
+                    VarInt(i32::from(Attributes::NEOFORGE_CREATIVE_FLIGHT.id)),
+                    1.0,
+                    Vec::new(),
+                ),
+            ],
+        );
+        let count = |ids| {
+            let mut buf = Vec::new();
+            packet
+                .write_packet_data(
+                    &mut buf,
+                    &crate::EncodingKey::new(JavaMinecraftVersion::V_26_3, ids),
+                )
+                .unwrap();
+            let mut cursor = &buf[..];
+            cursor.get_var_int().unwrap();
+            cursor.get_var_int().unwrap().0
+        };
+        assert_eq!(count(ContentIds::Real), 2);
+        assert_eq!(count(ContentIds::Display), 1);
     }
 }
