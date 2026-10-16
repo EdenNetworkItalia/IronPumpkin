@@ -1241,6 +1241,7 @@ impl Player {
             world.remove_entities_in_chunks(&chunks_to_clean).await;
             level.clean_entity_chunks(&chunks_to_clean);
         }
+        crate::plugin::level_events::chunk_unwatch(self, &world, cylindrical.all_chunks_within());
         // Remove left over entries from all possiblily loaded chunks
         let cleaned_chunks = level.clean_memory();
         if !cleaned_chunks.is_empty() {
@@ -4048,7 +4049,13 @@ impl Player {
                     new_list.push(player.clone());
                     new_list
                 });
+                let watched = self.watched_section.load();
                 self.unload_watched_chunks(&current_world).await;
+                crate::plugin::level_events::chunk_unwatch(
+                    &player,
+                    &current_world,
+                    watched.all_chunks_within(),
+                );
 
                 self.change_world_chunks(&current_world.level, &new_world);
                 self.living_entity.entity.set_world(new_world.clone());

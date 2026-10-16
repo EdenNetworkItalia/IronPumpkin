@@ -4,11 +4,13 @@
 //! event at the fire site, the `NeoForge` event maps to it (`mapping-table.md`).
 
 pub mod block;
+pub mod chunk;
 pub mod explosion;
 pub mod game_rule;
 pub mod tick;
 
 pub use block::*;
+pub use chunk::*;
 pub use explosion::*;
 pub use game_rule::*;
 pub use tick::*;

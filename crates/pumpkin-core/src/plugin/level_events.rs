@@ -13,7 +13,7 @@ use pumpkin_data::block_properties::{
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
-use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 
 use crate::block::BlockMetadata;
 use crate::block::blocks::plant::tall_plant::TallPlantBlock;
@@ -24,8 +24,8 @@ use crate::plugin::api::events::{
         block_place::BlockPlaceEvent,
     },
     level::{
-        BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
-        ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
+        BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CropGrowEventPost, EntityTickEventPost,
+        EntityTickEventPre, ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
         NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
         PlayerTickEventPre,
     },
@@ -363,4 +363,26 @@ pub fn explosion_knockback(
             )
         })
         .map_or(knockback, |event| event.knockback)
+}
+
+/// Fires `ChunkWatchEventUnWatch` for each of `chunks` that `player` no longer watches in
+/// `world`.
+pub fn chunk_unwatch(
+    player: &Arc<Player>,
+    world: &Arc<World>,
+    chunks: impl IntoIterator<Item = Vector2<i32>>,
+) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    if !server
+        .plugin_manager
+        .has_handlers::<ChunkWatchEventUnWatch>()
+    {
+        return;
+    }
+    for pos in chunks {
+        let mut event = ChunkWatchEventUnWatch::new(player.clone(), world.clone(), pos);
+        server.plugin_manager.fire_blocking(&server, &mut event);
+    }
 }

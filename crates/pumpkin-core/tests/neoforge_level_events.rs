@@ -37,14 +37,14 @@ use pumpkin_core::{
         },
         entity::entity_explode::EntityExplodeEvent,
         level::{
-            BlockEventEntityPlaceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
-            ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
-            NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
-            PlayerTickEventPre,
+            BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch, CropGrowEventPost,
+            EntityTickEventPost, EntityTickEventPre, ExplosionEventDetonate,
+            ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
+            PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
         },
     },
     server::Server,
-    world::ExplosionInteraction,
+    world::{ExplosionInteraction, chunker},
 };
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
@@ -56,7 +56,7 @@ use pumpkin_data::{
 };
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
 use pumpkin_util::{
-    math::{position::BlockPos, vector3::Vector3},
+    math::{position::BlockPos, vector2::Vector2, vector3::Vector3},
     permission::PermissionLvl,
 };
 use pumpkin_world::world::BlockFlags;
@@ -950,4 +950,53 @@ fn change_a_settable_field_explosion_knockback_event() {
     // explosion stays far below 7.
     let velocity = item.get_entity().velocity.load();
     assert!(velocity.y >= 7.0 && velocity.x < 1.0, "{velocity:?}");
+}
+
+/// `ChunkWatchEvent.UnWatch` (`ChunkWatchEventUnWatch`) fires for each chunk that leaves the
+/// view of a player that moves, and for each chunk of the view when the player leaves.
+#[test]
+fn one_event_per_fire_site_chunk_watch_event_unwatch() {
+    let _serial = support::serial();
+    let player = support::player("Watcher");
+    // The view change spawns the chunk watcher updates on the runtime of the server.
+    let _runtime = support::RUNTIME.enter();
+    let dropped = log();
+    let dropped_by_handler = dropped.clone();
+    on::<ChunkWatchEventUnWatch, _>(move |event| {
+        if event.player.gameprofile.name == "Watcher" {
+            push(
+                &dropped_by_handler,
+                format!("{} {}", event.pos.x, event.pos.y),
+            );
+        }
+    });
+
+    player
+        .living_entity
+        .entity
+        .set_pos(Vector3::new(8.0, 100.0, 8.0));
+    chunker::update_position(&player);
+    let first = player.watched_section.load();
+    let first_chunks: Vec<Vector2<i32>> = first.all_chunks_within().collect();
+    assert!(entries(&dropped).is_empty());
+    // Far enough that no chunk of the old view stays in the new one.
+    player
+        .living_entity
+        .entity
+        .set_pos(Vector3::new(8.0 + 16.0 * 200.0, 100.0, 8.0));
+    chunker::update_position(&player);
+
+    let mut unwatched = entries(&dropped);
+    let mut expected: Vec<String> = first_chunks
+        .iter()
+        .map(|pos| format!("{} {}", pos.x, pos.y))
+        .collect();
+    unwatched.sort();
+    expected.sort();
+    assert_eq!(unwatched, expected);
+
+    dropped.lock().unwrap().clear();
+    let second = player.watched_section.load().all_chunks_within().len();
+    support::RUNTIME.block_on(player.remove(true));
+    assert_eq!(entries(&dropped).len(), second);
 }

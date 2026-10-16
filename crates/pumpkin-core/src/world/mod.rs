@@ -4080,7 +4080,13 @@ impl World {
                         // Detach from the old world before publishing into the new one, so no
                         // observer sees the player in a world whose chunk manager doesn't match.
                         self.remove_player(player, false).await;
+                        let watched = player.watched_section.load();
                         player.unload_watched_chunks(self).await;
+                        crate::plugin::level_events::chunk_unwatch(
+                            player,
+                            self,
+                            watched.all_chunks_within(),
+                        );
                         player.change_world_chunks(&self.level, &destination);
                         player.living_entity.entity.set_world(destination.clone());
                         destination.players.rcu(|current_list| {

@@ -145,6 +145,7 @@ pub fn update_position(player: &Arc<Player>) {
             sender.enqueue_chunk(*pos);
         }
     }
+    crate::plugin::level_events::chunk_unwatch(player, &world, unloading_chunks.iter().copied());
     player.watched_section.store(new_cylindrical);
 
     // Make sure the watched section and the chunk watcher updates are async atomic. We want to
