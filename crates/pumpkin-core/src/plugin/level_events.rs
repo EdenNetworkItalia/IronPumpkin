@@ -14,6 +14,7 @@ use pumpkin_data::game_rules::{GameRule, GameRuleValue};
 use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockDirection, BlockState, BlockStateId};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
+use pumpkin_world::level::LoadedChunkChange;
 
 use crate::block::BlockMetadata;
 use crate::block::blocks::plant::tall_plant::TallPlantBlock;
@@ -29,6 +30,7 @@ use crate::plugin::api::events::{
         NoteBlockEventChange, PistonEventPost, PistonMoveType, PlayerTickEventPost,
         PlayerTickEventPre,
     },
+    world::chunk_load::ChunkLoad,
 };
 use crate::plugin::player_events;
 use crate::server::Server;
@@ -384,5 +386,29 @@ pub fn chunk_unwatch(
     for pos in chunks {
         let mut event = ChunkWatchEventUnWatch::new(player.clone(), world.clone(), pos);
         server.plugin_manager.fire_blocking(&server, &mut event);
+    }
+}
+
+/// Fires `ChunkLoad` and `ChunkUnloadEvent` for the chunks that joined or left the loaded chunks
+/// of `world` since the last world tick.
+pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
+    let Some(server) = world.server.upgrade() else {
+        return;
+    };
+    let listens_to_load = server.plugin_manager.has_handlers::<ChunkLoad>();
+    for change in changes {
+        match *change {
+            LoadedChunkChange::Loaded(pos) => {
+                // A chunk that unloaded again in the same tick fires no load.
+                let chunk = listens_to_load
+                    .then(|| world.level.loaded_chunks.get(&pos).map(|c| c.clone()))
+                    .flatten();
+                if let Some(chunk) = chunk {
+                    let mut event = ChunkLoad::new(world.clone(), chunk);
+                    server.plugin_manager.fire_blocking(&server, &mut event);
+                }
+            }
+            LoadedChunkChange::Unloaded(pos) => world.unload_chunk(pos),
+        }
     }
 }

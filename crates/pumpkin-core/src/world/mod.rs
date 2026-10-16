@@ -437,7 +437,7 @@ impl World {
         }
     }
 
-    pub fn update_active_chunks(&self) {
+    pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
         }) as i32;
@@ -493,7 +493,9 @@ impl World {
                 self.migrate_pending_block_entities(pos);
             }
         }
+        let mut changes = Vec::new();
         for change in self.level.loaded_chunk_changes() {
+            changes.push(change);
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
                     if active_chunks.contains(&pos)
@@ -522,6 +524,7 @@ impl World {
         let spawnable_chunks = tracker.loaded_active_chunks.len() as i32;
         drop(active_chunks);
         drop(tracker);
+        crate::plugin::level_events::chunk_changes(self, &changes);
 
         self.spawn_state.store(Arc::new(SpawnState::new(
             spawnable_chunks,

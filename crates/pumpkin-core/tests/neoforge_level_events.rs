@@ -42,6 +42,7 @@ use pumpkin_core::{
             ExplosionKnockbackEvent, GameRuleChangedEvent, NoteBlockEventChange, PistonEventPost,
             PistonMoveType, PlayerTickEventPost, PlayerTickEventPre,
         },
+        world::{chunk_load::ChunkLoad, chunk_unload::ChunkUnloadEvent},
     },
     server::Server,
     world::{ExplosionInteraction, chunker},
@@ -999,4 +1000,43 @@ fn one_event_per_fire_site_chunk_watch_event_unwatch() {
     let second = player.watched_section.load().all_chunks_within().len();
     support::RUNTIME.block_on(player.remove(true));
     assert_eq!(entries(&dropped).len(), second);
+}
+
+/// `ChunkEvent.Load` (`ChunkLoad`) and `ChunkEvent.Unload` (`ChunkUnloadEvent`) fire in the world
+/// tick after a chunk joined or left the loaded chunks of the world.
+#[test]
+fn one_event_per_fire_site_chunk_load_and_unload_events() {
+    let _serial = support::serial();
+    let world = support::world();
+    let chunk = spot(22).chunk_position();
+    let seen = log();
+    let loaded = seen.clone();
+    on::<ChunkLoad, _>(move |event| {
+        if event.chunk.x == chunk.x && event.chunk.z == chunk.y {
+            push(&loaded, "load");
+        }
+    });
+    let unloaded = seen.clone();
+    on::<ChunkUnloadEvent, _>(move |event| {
+        if event.chunk_pos == chunk {
+            push(&unloaded, "unload");
+        }
+    });
+
+    load(spot(22));
+    world.update_active_chunks();
+    assert_eq!(entries(&seen), ["load"]);
+
+    {
+        let mut loading = world.level.chunk_loading.lock().unwrap();
+        loading.remove_force_ticket(chunk);
+        loading.send_change();
+    };
+    let deadline = Instant::now() + support::SLOW_RUNNER;
+    while world.level.is_chunk_loaded(&chunk) {
+        assert!(Instant::now() < deadline, "the chunk did not unload");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    world.update_active_chunks();
+    assert_eq!(entries(&seen), ["load", "unload"]);
 }
