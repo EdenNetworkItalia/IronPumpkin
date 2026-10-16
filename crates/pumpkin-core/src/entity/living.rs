@@ -772,16 +772,16 @@ impl LivingEntity {
 
     pub fn heal(&self, additional_health: f32) {
         assert!(additional_health > 0.0);
-        let mut event =
-            crate::plugin::api::events::entity::entity_regain_health::EntityRegainHealthEvent::new(
-                self.entity.entity_id,
-                additional_health,
-            );
-        if let Some(server) = self.entity.world.load().server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-            if event.cancelled {
-                return;
-            }
+        if let Some(server) = self.entity.world.load().server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::entity_regain_health::EntityRegainHealthEvent::new(
+                    self.entity.entity_id,
+                    additional_health,
+                )
+            })
+            && event.cancelled
+        {
+            return;
         }
         self.set_health(self.health.load() + additional_health);
     }
@@ -2942,40 +2942,39 @@ impl LivingEntity {
             return false;
         }
 
-        let mut damage_event =
-            crate::plugin::api::events::entity::entity_damage::EntityDamageEvent::new(
-                self.entity.entity_id,
-                damage_type,
-                amount,
-            );
-        if let Some(server) = self.entity.world.load().server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut damage_event);
-        }
-        if damage_event.cancelled {
-            return false;
-        }
-        amount = damage_event.damage;
-
-        if let Some(damager) = source.or(cause) {
-            let mut by_entity_event =
-                crate::plugin::api::events::entity::entity_damage_by_entity::EntityDamageByEntityEvent {
-                    entity_id: self.entity.entity_id,
-                    damager_id: damager.get_entity().entity_id,
-                    damage: amount,
-                    cause: format!("{damage_type:?}"),
-                    cancelled: false,
-                };
-            if let Some(server) = self.entity.world.load().server.upgrade() {
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut by_entity_event);
-            }
-            if by_entity_event.cancelled {
+        let server = self.entity.world.load().server.upgrade();
+        if let Some(server) = &server
+            && let Some(damage_event) = server.plugin_manager.fire_blocking_with(server, || {
+                crate::plugin::api::events::entity::entity_damage::EntityDamageEvent::new(
+                    self.entity.entity_id,
+                    damage_type,
+                    amount,
+                )
+            })
+        {
+            if damage_event.cancelled {
                 return false;
             }
-            amount = by_entity_event.damage;
+            amount = damage_event.damage;
+        }
+
+        if let Some(damager) = source.or(cause) {
+            if let Some(server) = &server
+                && let Some(by_entity_event) = server.plugin_manager.fire_blocking_with(server, || {
+                    crate::plugin::api::events::entity::entity_damage_by_entity::EntityDamageByEntityEvent {
+                        entity_id: self.entity.entity_id,
+                        damager_id: damager.get_entity().entity_id,
+                        damage: amount,
+                        cause: format!("{damage_type:?}"),
+                        cancelled: false,
+                    }
+                })
+            {
+                if by_entity_event.cancelled {
+                    return false;
+                }
+                amount = by_entity_event.damage;
+            }
         } else if position.is_some()
             || matches!(
                 damage_type,
@@ -2993,23 +2992,22 @@ impl LivingEntity {
                     p.z.floor() as i32,
                 ))
             });
-            let mut by_block_event =
-                crate::plugin::api::events::entity::entity_damage_by_block::EntityDamageByBlockEvent {
-                    entity_id: self.entity.entity_id,
-                    damager_pos,
-                    damage: amount,
-                    cause: format!("{damage_type:?}"),
-                    cancelled: false,
-                };
-            if let Some(server) = self.entity.world.load().server.upgrade() {
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut by_block_event);
+            if let Some(server) = &server
+                && let Some(by_block_event) = server.plugin_manager.fire_blocking_with(server, || {
+                    crate::plugin::api::events::entity::entity_damage_by_block::EntityDamageByBlockEvent {
+                        entity_id: self.entity.entity_id,
+                        damager_pos,
+                        damage: amount,
+                        cause: format!("{damage_type:?}"),
+                        cancelled: false,
+                    }
+                })
+            {
+                if by_block_event.cancelled {
+                    return false;
+                }
+                amount = by_block_event.damage;
             }
-            if by_block_event.cancelled {
-                return false;
-            }
-            amount = by_block_event.damage;
         }
 
         let world = self.entity.world.load();
@@ -3307,15 +3305,13 @@ impl LivingEntity {
         }
 
         if new_health <= 0.0 {
-            let mut death_event =
-                crate::plugin::api::events::entity::entity_death::EntityDeathEvent::new(
-                    self.entity.entity_id,
-                    0,
-                );
             if let Some(server) = world.server.upgrade() {
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut death_event);
+                server.plugin_manager.fire_blocking_with(&server, || {
+                    crate::plugin::api::events::entity::entity_death::EntityDeathEvent::new(
+                        self.entity.entity_id,
+                        0,
+                    )
+                });
             }
             self.on_death(damage_type, source, cause);
         }
