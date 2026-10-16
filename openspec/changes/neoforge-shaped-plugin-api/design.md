@@ -269,7 +269,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 125 | 137 | 0 | 20 |
+| Events, server and common | 282 | 141 | 121 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 21 | 116 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
@@ -282,7 +282,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 7 | 39 | 0 | 41 |
-| Total | 1093 | 233 | 502 | 210 | 148 |
+| Total | 1093 | 249 | 486 | 210 | 148 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -510,60 +510,60 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | TradeWithVillagerEvent | game | both | no | - | supported | `TradeWithVillagerEvent` | recorded in `complete_trade` of the villager and the wandering trader, fired after the slot click released the trade screen-handler lock (`player_events::Deferral`); test `one_event_per_fire_site_trade_with_villager_event` (a villager and a wandering trader) |
 | UseItemOnBlockEvent | game | both | yes | setCancellationResult(InteractionResult) | supported | `PlayerInteractEvent` | fired in `net/java/play/use_item_on.rs` (a use on a block, also in spectator) and `net/java/play/use_item.rs` (a use whose ray hits a block); no Bedrock code fires it; WIT v0.2; action right click block; gap: one event per use, the one of `RightClickBlock`, without the use phase, hand, face or item, where `NeoForge` fires one per phase (`ITEM_BEFORE_BLOCK`, `BLOCK`, `ITEM_AFTER_BLOCK`) until a phase consumes the use (parity trace slice 2) |
 
-#### `event.level` (41: 16 supported, 24 planned, 1 not supported)
+#### `event.level` (41: 26 supported, 14 planned, 1 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | AlterGroundEvent | game | both | no | - | planned | engine extension point (M5) | M5 engine extension: tree decorator internals of world generation; Pumpkin exposes no decorator hooks |
 | BlockDropsEvent | game | server | yes | - | supported | `BlockDropItemEvent` | fired in `block/mod.rs`; WIT v0.2 |
-| BlockEvent (abstract) | game | both | no | - | planned | shared fields of 17 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 9 supported, 8 planned |
-| BlockEvent.BlockToolModificationEvent | game | both | yes | - | planned | axe, hoe and shovel `ItemBehaviour::use_on_block` | no event for stripping, tilling or flattening |
-| BlockEvent.EntityMultiPlaceEvent | game | both | yes | - | planned | `BlockMultiPlaceEvent` | Pumpkin defines BlockMultiPlaceEvent but never fires it; beds and doors |
-| BlockEvent.EntityPlaceEvent | game | both | yes | - | supported | `BlockPlaceEvent` | fired in `block/registry.rs`; WIT v0.2; Pumpkin fires it for players only |
-| BlockEvent.FarmlandTrampleEvent | game | both | yes | - | planned | farmland trample in the farmland `BlockBehaviour` | EntityChangeBlockEvent exists, but Pumpkin fires it only for the enderman block pickup |
+| BlockEvent (abstract) | game | both | no | - | planned | shared fields of 17 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 15 supported, 2 planned |
+| BlockEvent.BlockToolModificationEvent | game | both | yes | - | supported | `BlockEventBlockToolModificationEvent` (`pumpkin_core::plugin::level`) | fired by `level_events::tool_modification` at the sites of NeoForge 26.3: `Ignition::ignite_block` (flint and steel, fire charge, a dispenser of flint and steel; ability `firestarter_light`) and the shears use on a growing plant (`shears_trim`); NeoForge 26.3 fires nothing for axes, hoes and shovels, which use the data-driven block transformers; `final_state` settable (`None` is no change; the unchanged state keeps the vanilla change); a cancel is no change, so a fire starter places fire next to the block; native mods only; gap: no `getContext`, only the player, the tool and the position; the dispenser of shears (`shears_harvest`) fires nothing; tests `one_event_per_fire_site_block_tool_modification_event`, `cancel_block_tool_modification_event`, `change_a_settable_field_block_tool_modification_event` |
+| BlockEvent.EntityMultiPlaceEvent | game | both | yes | - | supported | `BlockMultiPlaceEvent` | fired by `level_events::player_place` in `BlockRegistry::place_block` after `BlockPlaceEvent` and before the blocks change, for a bed, a door, a tall plant or a small dripleaf, with `placed_blocks` and `replaced_blocks`; a cancel places no block; NeoForge posts one `EntityMultiPlaceEvent`, which an `EntityPlaceEvent` listener also gets, after the placement and restores the snapshots on a cancel; WIT v0.2 (cancel only); test `cancel_entity_multi_place_event` |
+| BlockEvent.EntityPlaceEvent | game | both | yes | - | supported | `BlockPlaceEvent`, `BlockEventEntityPlaceEvent` (`pumpkin_core::plugin::level`) | a player placement fires `BlockPlaceEvent` in `BlockRegistry::place_block` with `placed_state` and `replaced_state`; an enderman placement fires `BlockEventEntityPlaceEvent` in `PlaceBlockGoal::tick` with the entity, because `BlockPlaceEvent` needs a player; both fire before the block changes, where NeoForge fires a player placement after it and restores the snapshot on a cancel; NeoForge 26.3 builds the enderman snapshot at the block below the target, IronPumpkin gives the target; WIT v0.2 gets `BlockPlaceEvent` without the states; tests `one_event_per_fire_site_entity_place_event`, `cancel_entity_place_event`, `one_event_per_fire_site_entity_place_event_of_an_entity`, `cancel_entity_place_event_of_an_entity`; parity trace slice 2 |
+| BlockEvent.FarmlandTrampleEvent | game | both | yes | - | planned | farmland trample in the farmland `BlockBehaviour` | no fire site: Pumpkin does not port `FarmBlock.fallOn`, so farmland is never trampled; EntityChangeBlockEvent fires only for the enderman block pickup |
 | BlockEvent.FluidPlaceBlockEvent | game | both | yes | - | supported | `BlockFormEvent` | fired in `block/fluid/lava.rs`; WIT v0.2; lava and water forming stone, cobblestone or obsidian |
 | BlockEvent.NeighborNotifyEvent | game | both | yes | - | supported | `BlockPhysicsEvent` | fired in `world/mod.rs`; WIT v0.2; neighbour update |
 | BlockEvent.PortalSpawnEvent | game | both | yes | - | supported | `PortalCreateEvent` | fired in `item/items/ignite/fire_charge.rs`, `item/items/ignite/flint_and_steel.rs`; WIT v0.2; fired from flint and steel and fire charge only |
 | BlockGrowFeatureEvent | game | both | yes | - | supported | `StructureGrowEvent` | fired in `block/blocks/plant/mangrove_propagule.rs`, `block/blocks/plant/mushroom_plant.rs`, `block/blocks/plant/sapling.rs`; WIT v0.2 |
 | ChunkDataEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
-| ChunkDataEvent.Load | game | both | no | - | planned | `ChunkLoad` | Pumpkin defines ChunkLoad but never fires it; NeoForge passes the chunk NBT; ChunkLoad passes the decoded chunk |
-| ChunkDataEvent.Save | game | both | no | - | planned | `ChunkSave` | Pumpkin defines ChunkSave but never fires it; NeoForge passes the chunk NBT; ChunkSave passes the decoded chunk |
-| ChunkEvent (abstract) | game | both | no | - | planned | shared fields of 4 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 3 planned |
-| ChunkEvent.Load | game | both | no | - | planned | `ChunkLoad` | Pumpkin defines ChunkLoad but never fires it |
-| ChunkEvent.Unload | game | both | no | - | supported | `ChunkUnloadEvent` | fired in `world/mod.rs`; WIT v0.2 |
+| ChunkDataEvent.Load | game | both | no | - | planned | chunk deserialization in `pumpkin-world` | M5 engine extension: the chunk I/O runs on the `pumpkin-world` I/O threads, which have no hook into the event bus, and Pumpkin has no `SerializableChunkData` for a mod to read or extend; `ChunkEvent.Load` is `ChunkLoad` |
+| ChunkDataEvent.Save | game | both | no | - | planned | chunk serialization in `pumpkin-world` | M5 engine extension: the chunk I/O runs on the `pumpkin-world` I/O threads, which have no hook into the event bus, and Pumpkin has no `SerializableChunkData` for a mod to extend; `ChunkSave` is defined but never fired |
+| ChunkEvent (abstract) | game | both | no | - | planned | shared fields of 4 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported, 2 planned |
+| ChunkEvent.Load | game | both | no | - | supported | `ChunkLoad` | fired in `World::update_active_chunks` (the world tick) for each chunk that joined the loaded chunks of the world since the last tick; `cancelled` has no effect, the chunk is loaded; gap: no `isNewChunk`, Pumpkin does not report whether it generated or read the chunk; WIT v0.2 (chunk position); test `one_event_per_fire_site_chunk_load_and_unload_events` |
+| ChunkEvent.Unload | game | both | no | - | supported | `ChunkUnloadEvent` | fired through `World::unload_chunk` in `World::update_active_chunks` (the world tick) for each chunk that left the loaded chunks of the world since the last tick; `cancelled` has no effect; WIT v0.2; test `one_event_per_fire_site_chunk_load_and_unload_events` |
 | ChunkTicketLevelUpdatedEvent | game | server | no | - | planned | engine extension point (M5) | M5 engine extension: ticket levels are internal to the pumpkin-world chunk system |
-| ChunkWatchEvent (abstract) | game | server | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported, 1 planned |
+| ChunkWatchEvent (abstract) | game | server | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 3 supported |
 | ChunkWatchEvent.Sent | game | server | no | - | supported | `ChunkSend` | fired in `net/bedrock/mod.rs`, `net/java/mod.rs`, `world/mod.rs`; WIT v0.2 |
-| ChunkWatchEvent.UnWatch | game | server | no | - | planned | chunk forget packet to a player | no event when a player stops watching a chunk |
+| ChunkWatchEvent.UnWatch | game | server | no | - | supported | `ChunkWatchEventUnWatch` (`pumpkin_core::plugin::level`) | fired once per chunk in `chunker::update_position` for the chunks that leave the view, and for each chunk of the view when the player changes world (`Player::teleport_world`, a respawn in another dimension) and when the player leaves (`Player::remove`), as `ChunkMap.dropChunk`; native mods only; test `one_event_per_fire_site_chunk_watch_event_unwatch` |
 | ChunkWatchEvent.Watch | game | server | no | - | supported | `ChunkSend` | fired in `net/bedrock/mod.rs`, `net/java/mod.rs`, `world/mod.rs`; WIT v0.2 |
-| ExplosionEvent (abstract) | game | server | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 2 planned |
-| ExplosionEvent.Detonate | game | server | no | - | supported | `EntityExplodeEvent` | fired in `world/mod.rs`; WIT v0.2; BlockExplodeEvent for block sources |
-| ExplosionEvent.Start | game | server | yes | - | planned | explosion start in `World` explosions | ExplosionPrimeEvent exists, but Pumpkin fires it only for TNT |
-| ExplosionKnockbackEvent | game | server | no | - | planned | explosion knockback in `World` explosions | no event carries the explosion knockback |
-| GameRuleChangedEvent | game | server | no | - | planned | `/gamerule` command and game rule storage | no event on change |
-| LevelEvent (abstract) | game | both | no | - | planned | shared fields of 11 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 supported, 5 planned |
-| LevelEvent.CreateSpawnPosition | game | both | yes | - | planned | world spawn selection at world creation | WorldInitEvent carries the world only; no hook sets the spawn position |
+| ExplosionEvent (abstract) | game | server | no | - | planned | shared fields of 3 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 3 supported |
+| ExplosionEvent.Detonate | game | server | no | - | supported | `ExplosionEventDetonate` (`pumpkin_core::plugin::level`) | fired in `Explosion::explode` after the explosion found its blocks and entities and before the damage, as `ServerExplosion.hurtEntities`; `affected_blocks` and `affected_entities` settable; the explosion finds its blocks before the damage, as vanilla; native mods only; test `change_a_settable_field_explosion_event_detonate` |
+| ExplosionEvent.Start | game | server | yes | - | supported | `EntityExplodeEvent` | fired in `World::run_explosion` before the explosion, with `world`, the center (`position`) and the power (`yield_rate`); a cancel stops the explosion; `entity_id` is 0, `World::explode` has no source; gap: no `ServerExplosion` (source, damage source, block interaction); WIT v0.2 without the world; test `cancel_explosion_event_start` |
+| ExplosionKnockbackEvent | game | server | no | - | supported | `ExplosionKnockbackEvent` (`pumpkin_core::plugin::level`) | fired in `Explosion::damage_entities` for each entity that the explosion pushes, before the push; `knockback` settable; native mods only; test `change_a_settable_field_explosion_knockback_event` |
+| GameRuleChangedEvent | game | server | no | - | supported | `GameRuleChangedEvent` (`pumpkin_core::plugin::level`) | fired after the `/gamerule` command (the rules of the server) and after `World::set_game_rule` (the rules of one world), with `rule` and `value`; native mods only; test `one_event_per_fire_site_game_rule_changed_event` |
+| LevelEvent (abstract) | game | both | no | - | planned | shared fields of 11 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 8 supported, 3 planned |
+| LevelEvent.CreateSpawnPosition | game | both | yes | - | planned | world spawn selection at world creation | no fire site: Pumpkin picks the spawn in `Server::new` (`LevelData::from_world_generator`) before the server and its worlds exist, so no handler can get the level |
 | LevelEvent.Load | game | both | no | - | supported | `WorldLoadEvent` | fired in `server/mod.rs`; WIT v0.2 |
-| LevelEvent.PotentialSpawns | game | both | yes | - | planned | natural spawner (`world/natural_spawner.rs`) | no hook on the spawn list |
+| LevelEvent.PotentialSpawns | game | both | yes | - | supported | `LevelEventPotentialSpawns` (`pumpkin_core::plugin::level`) | fired in `natural_spawner::get_random_spawn_mob_at` and `can_spawn_mob_at`, the two users of `NaturalSpawner.mobsAt`; `spawns` settable, a new entry is a `&'static Spawner`; a cancel spawns nothing; gap: the biome lists of Pumpkin have no weights and no nether fortress list; native mods only; tests `change_a_settable_field_level_event_potential_spawns`, `cancel_level_event_potential_spawns` |
 | LevelEvent.Save | game | both | no | - | supported | `WorldSaveEvent` | fired in `world/mod.rs`; WIT v0.2 |
 | LevelEvent.Unload | game | both | no | - | supported | `WorldUnloadEvent` | fired in `world/mod.rs`; WIT v0.2 |
 | ModifyCustomSpawnersEvent | game | server | no | - | not supported | - | Pumpkin has no custom spawner list (phantom, patrol, cat, trader, siege) to modify |
-| NoteBlockEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| NoteBlockEvent.Change | game | both | yes | - | planned | note block `BlockBehaviour` use | no event when the note is tuned |
+| NoteBlockEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| NoteBlockEvent.Change | game | both | yes | - | supported | `NoteBlockEventChange` (`pumpkin_core::plugin::level`) | fired in the note block `normal_use` before the note changes; `note` settable, the note id 0 to 24 of `getVanillaNoteId` (the `Note` and `Octave` enums are not ported); a cancel keeps the note and fails the use; native mods only; tests `one_event_per_fire_site_note_block_event_change`, `cancel_note_block_event_change`, `change_a_settable_field_note_block_event_change` |
 | NoteBlockEvent.Play | game | both | yes | - | supported | `NotePlayEvent` | fired in `block/blocks/note.rs`; WIT v0.2 |
-| PistonEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| PistonEvent.Post | game | both | no | - | planned | piston block entity | no event after the move |
+| PistonEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| PistonEvent.Post | game | both | no | - | supported | `PistonEventPost` (`pumpkin_core::plugin::level`) | fired at the end of the piston synced block event after an extend or a retract moved the blocks; native mods only; gap: no `getStructureHelper`; test `one_event_per_fire_site_piston_event_post` |
 | PistonEvent.Pre | game | both | yes | - | supported | `BlockPistonExtendEvent` | fired in `block/blocks/piston/piston.rs`; WIT v0.2; BlockPistonRetractEvent for retraction |
 | SleepFinishedTimeEvent | game | server | yes | - | supported | `TimeSkipEvent` | fired in `world/mod.rs`; WIT v0.2; night skip reason |
 
-#### `event.level.block` (5: 2 supported, 3 planned)
+#### `event.level.block` (5: 4 supported, 1 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
-| BreakBlockEvent | game | both | yes | - | supported | `BlockBreakEvent` | fired in `world/mod.rs`; WIT v0.2 |
-| CreateFluidSourceEvent | game | server | no | - | planned | `FluidBehaviour` source conversion | no event |
-| CropGrowEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 1 supported, 1 planned |
-| CropGrowEvent.Post | game | both | no | - | planned | crop random tick | no post-growth event |
+| BreakBlockEvent | game | both | yes | - | supported | `BlockBreakEvent` | fired in `World::break_block` before the block changes, with `player`, `state`, `block_position`, `exp` and `drop`; `exp` is the experience that the break drops when it drops items and is settable (NeoForge 26.3 sets it in `BlockDropsEvent`); Pumpkin also fires it without a player for a block that loses its support, where NeoForge posts nothing, so a port skips the events without a player; gap: no `notifyClient` (the Java client always gets the block back), and no pre-cancelled event for a held item that cannot break the block or a game master block; WIT v0.2 without the state; tests `one_event_per_fire_site_break_block_event`, `cancel_break_block_event`, `change_a_settable_field_break_block_event`, `a_mod_cancels_the_break_of_another_mods_block` (`crates/ironpumpkin-mods/tests`); parity trace slice 2 |
+| CreateFluidSourceEvent | game | server | no | - | supported | `CreateFluidSourceEvent` (`pumpkin_core::plugin::level`) | fired in `FlowingFluid::get_new_liquid` and `check_infinite_source_formation` for each source next to a flowing fluid; `can_convert` settable; Pumpkin also checks a new source when the fluid spreads, so the event fires more often than in NeoForge; native mods only; tests `one_event_per_fire_site_create_fluid_source_event`, `change_a_settable_field_create_fluid_source_event` |
+| CropGrowEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| CropGrowEvent.Post | game | both | no | - | supported | `CropGrowEventPost` (`pumpkin_core::plugin::level`) | fired in the crop random tick after the growth, where `CropGrowEvent.Pre` (`BlockGrowEvent`) fires; native mods only; test `one_event_per_fire_site_crop_grow_event_post` |
 | CropGrowEvent.Pre | game | both | no | setResult(Result) | supported | `BlockGrowEvent` | fired in `block/blocks/plant/crop/mod.rs`; WIT v0.2; NeoForge uses a result; Pumpkin uses cancel |
 
 #### `event.server` (7: 5 supported, 2 planned)
@@ -578,19 +578,19 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | ServerStoppedEvent | game | server | no | - | supported | `ServerStoppedEvent` | fired in `lib.rs` after the worlds save; Wasm plugins are unloaded before it; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | ServerStoppingEvent | game | server | no | - | supported | `ServerStoppingEvent` | fired in `lib.rs` when the server stops accepting connections, after the ticker thread exits (bound 30 s: a tick that runs longer logs a warning and the shutdown continues); test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 
-#### `event.tick` (12: 4 supported, 8 planned)
+#### `event.tick` (12: 8 supported, 4 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
-| EntityTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
-| EntityTickEvent.Post | game | both | no | - | planned | entity tick in `EntityBase` | same cost concern as EntityTickEvent.Pre |
-| EntityTickEvent.Pre | game | both | yes | - | planned | entity tick in `EntityBase` | a call into Wasm per entity per tick is expensive; needs a filter by entity type |
+| EntityTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| EntityTickEvent.Post | game | both | no | - | supported | `EntityTickEventPost` (`pumpkin_core::plugin::level`) | fired in `World::tick` after an entity that is not a player ticked; the entities tick in parallel, so handlers of two entities can run at the same time; native mods only; test `one_event_per_fire_site_entity_tick_events` |
+| EntityTickEvent.Pre | game | both | yes | - | supported | `EntityTickEventPre` (`pumpkin_core::plugin::level`) | fired in `World::tick` before an entity that is not a player ticks; a cancel skips the tick, the age and `EntityTickEventPost`; a player fires `PlayerTickEvent` only (NeoForge also fires `EntityTickEvent` for a `ServerPlayer`); native mods only, per the Wasm executor rules; tests `one_event_per_fire_site_entity_tick_events`, `cancel_entity_tick_event_pre` |
 | LevelTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
 | LevelTickEvent.Post | game | both | no | - | supported | `LevelTickEventPost` | fired in `server/mod.rs` after each world ticks, also while the game is frozen (once per world, in sequence); in a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | LevelTickEvent.Pre | game | both | no | - | supported | `LevelTickEventPre` | fired in `server/mod.rs` before each world ticks, also while the game is frozen (once per world, in sequence); in a normal tick the worlds tick in parallel, so handlers of two worlds can run at the same time; test `one_event_per_fire_site_level_tick_events` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
-| PlayerTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 planned |
-| PlayerTickEvent.Post | game | both | no | - | planned | `Player` tick | no per-player tick event |
-| PlayerTickEvent.Pre | game | both | no | - | planned | `Player` tick | no per-player tick event |
+| PlayerTickEvent (abstract) | game | both | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
+| PlayerTickEvent.Post | game | both | no | - | supported | `PlayerTickEventPost` (`pumpkin_core::plugin::level`) | fired at the end of `Player::tick`; native mods only; test `one_event_per_fire_site_player_tick_events`; parity trace slice 2 |
+| PlayerTickEvent.Pre | game | both | no | - | supported | `PlayerTickEventPre` (`pumpkin_core::plugin::level`) | fired in `Player::tick` after the packets of the tick; the players tick in parallel; native mods only; test `one_event_per_fire_site_player_tick_events`; parity trace slice 2 |
 | ServerTickEvent (abstract) | game | server | no | - | planned | shared fields of 2 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 2 supported |
 | ServerTickEvent.Post | game | server | no | - | supported | `ServerTickEndEvent` | fired in `server/ticker.rs`; `has_time()`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |
 | ServerTickEvent.Pre | game | server | no | - | supported | `ServerTickStartEvent` | fired in `server/ticker.rs`; `has_time()`; test `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`); WIT v0.2 |

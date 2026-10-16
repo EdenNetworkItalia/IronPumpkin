@@ -89,7 +89,7 @@ A lifecycle method of `NativeMod` that hands the mod a registration API SHALL pa
 - **THEN** the call fails with a `registration-closed` error
 
 ### Requirement: One event per fire site
-A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from the NeoForge fire site, with the NeoForge fields. Where Pumpkin has an event for that fire site, the row SHALL map to that event and the missing fields SHALL be added to it. A new struct with the NeoForge name SHALL exist only where Pumpkin has no event for that fire site. A test SHALL cover each supported row. Status: planned (tasks 2.13 and 2.15; the rows of tasks 2.3 and 2.12 are done, #102, #111 and #112).
+A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from the NeoForge fire site, with the NeoForge fields. Where Pumpkin has an event for that fire site, the row SHALL map to that event and the missing fields SHALL be added to it. A new struct with the NeoForge name SHALL exist only where Pumpkin has no event for that fire site. A test SHALL cover each supported row. Status: planned (task 2.15; the rows of tasks 2.3, 2.12 and 2.13 are done, #102, #111, #112 and #120).
 
 #### Scenario: Player login
 - **WHEN** a player joins and a mod handles the Pumpkin event that the row of `PlayerEvent.PlayerLoggedInEvent` names
@@ -100,7 +100,7 @@ A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from 
 - **THEN** the Pumpkin event carries the field, and no second struct for the same fire site exists
 
 ### Requirement: Every supported event reaches every mod
-Every event case that the host fires SHALL reach the handlers of every loaded native mod, with write-back of the settable fields and cancellation through `cancelled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: planned (tasks 2.13 and 2.15; the server and player families are done, #102, #111 and #112).
+Every event case that the host fires SHALL reach the handlers of every loaded native mod, with write-back of the settable fields and cancellation through `cancelled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: planned (task 2.15; the server, player, and level and block families are done, #102, #111, #112 and #120).
 
 #### Scenario: A mod cancels the break of another mod's block
 - **WHEN** mod A registers the block `moda:ore` and places it, mod B handles `BlockBreakEvent` and cancels it for that block, and a player breaks it

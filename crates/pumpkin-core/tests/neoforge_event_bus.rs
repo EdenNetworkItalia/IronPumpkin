@@ -17,19 +17,21 @@
 //! - [x] World call from a handler: `world_call_from_a_handler`
 //! - [x] Change a settable field: `change_a_settable_field_anvil_update_event` (the slice has no
 //!   `LivingHealEvent`; the anvil output is its settable field)
-//! - [x] Cancel a block break: `cancel_server_chat_event` (the slice has no `BlockBreakEvent`; the
-//!   chat cancel is its cancel test)
+//! - [x] Cancel a block break: `cancel_break_block_event` in `neoforge_level_events.rs`
 //! - [ ] Deny a despawn: no event of this slice has a result
 //! - [ ] Late call: task 2.2
 //! - [ ] Player login: `World::spawn_java_player` needs a client that takes the spawn chunks;
 //!   the play state of the headless client (task 2.21) covers it
 //! - [x] Missing field added to a Pumpkin event: the `one_event_per_fire_site_*` tests check the
 //!   added fields of each mapped event
-//! - [ ] A mod cancels the break of another mod's block: task 2.13
+//! - [x] A mod cancels the break of another mod's block:
+//!   `a_mod_cancels_the_break_of_another_mods_block` in `crates/ironpumpkin-mods/tests`
 //! - [x] One test per event family (server, tick and root package events): write-back
 //!   `change_a_settable_field_anvil_update_event`, cancel `cancel_server_chat_event`
 //!   (player events: write-back `change_a_settable_field_critical_hit_event`, cancel
-//!   `cancel_sweep_attack_event`, both in `neoforge_player_events.rs`)
+//!   `cancel_sweep_attack_event`, both in `neoforge_player_events.rs`; level and block events:
+//!   write-back `change_a_settable_field_break_block_event`, cancel `cancel_break_block_event`,
+//!   both in `neoforge_level_events.rs`)
 //! - [ ] A Wasm plugin cancels the break of a native mod's block: task 2.18
 //! - [ ] A native handler cancels, a Wasm handler observes: task 2.18
 //! - [ ] A Wasm handler cancels, a native handler observes: task 2.18
