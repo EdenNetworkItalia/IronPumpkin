@@ -52,10 +52,11 @@ pub type RegistrySnapshotFn = fn(&ContentTables) -> Vec<(i32, Identifier)>;
 
 /// The registries of the `NeoForge` registry sync.
 ///
-/// Like `RegistryManager.getRegistryNamesForSyncToClient`. Only these three can have ids that
-/// differ from the client's own ids. A client keeps its own ids for any registry that is not
-/// listed.
-pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 3] = [
+/// Like `RegistryManager.getRegistryNamesForSyncToClient`, for the registries whose ids can differ
+/// from the client's own ids and travel in packets: mods fill them. A client keeps its own ids for
+/// any registry that is not listed. `minecraft:sound_event` is not listed: a mod sound travels by
+/// name, so a client needs no entry for it.
+pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 6] = [
     (
         Identifier::vanilla_static("block"),
         ContentTables::block_snapshot,
@@ -67,6 +68,18 @@ pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 3] = [
     (
         Identifier::vanilla_static("entity_type"),
         ContentTables::entity_type_snapshot,
+    ),
+    (
+        Identifier::vanilla_static("mob_effect"),
+        ContentTables::mob_effect_snapshot,
+    ),
+    (
+        Identifier::vanilla_static("attribute"),
+        ContentTables::attribute_snapshot,
+    ),
+    (
+        Identifier::vanilla_static("data_component_type"),
+        ContentTables::data_component_type_snapshot,
     ),
 ];
 

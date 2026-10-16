@@ -102,6 +102,9 @@ pub fn send_attribute_updates_for_living(
     use pumpkin_protocol::java::client::play::CUpdateAttributes as JePacket;
     use pumpkin_protocol::java::client::play::Property as JeProperty;
 
+    let creative_flight_changed = attributes
+        .iter()
+        .any(|attribute| attribute.id == Attributes::NEOFORGE_CREATIVE_FLIGHT.id);
     let mut je_properties: Vec<JeProperty> = Vec::with_capacity(attributes.len());
     let mut be_attributes: Vec<BeAttribute> = Vec::with_capacity(attributes.len());
 
@@ -127,11 +130,13 @@ pub fn send_attribute_updates_for_living(
         }
 
         // Move modifiers into the property
-        je_properties.push(JeProperty::new(
-            VarInt(i32::from(attribute.id)),
-            base_value,
-            modifiers,
-        ));
+        if pumpkin_data::dynamic_registries::is_attribute_syncable(&attribute) {
+            je_properties.push(JeProperty::new(
+                VarInt(i32::from(attribute.id)),
+                base_value,
+                modifiers,
+            ));
+        }
 
         let name = match attribute.id {
             id if id == Attributes::MOVEMENT_SPEED.id => "minecraft:movement".to_string(),
@@ -164,8 +169,16 @@ pub fn send_attribute_updates_for_living(
         be_attributes.push(be_attribute);
     }
 
-    let je_packet = JePacket::new(living.entity.entity_id.into(), je_properties);
     let world = living.entity.world.load();
+    // A vanilla client never gets the creative flight attribute: the abilities carry it.
+    if creative_flight_changed && let Some(player) = world.get_player_by_id(living.entity.entity_id)
+    {
+        player.send_abilities_update();
+    }
+    if je_properties.is_empty() && be_attributes.is_empty() {
+        return;
+    }
+    let je_packet = JePacket::new(living.entity.entity_id.into(), je_properties);
     if be_attributes.is_empty() {
         world.broadcast_packet_all(&je_packet);
         return;

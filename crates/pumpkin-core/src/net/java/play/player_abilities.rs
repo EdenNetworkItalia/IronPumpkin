@@ -8,16 +8,15 @@ impl JavaClient {
         player_abilities: &SPlayerAbilities,
         server: &Arc<Server>,
     ) {
-        let (flying, allow_flying) = {
-            let abilities = player
-                .abilities
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            (abilities.flying, abilities.allow_flying)
-        };
+        let flying = player
+            .abilities
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .flying;
 
-        // Set the flying ability
-        let new_flying = player_abilities.is_flying() && allow_flying;
+        // Set the flying ability. NeoForge reads `mayFly`, which the creative flight attribute
+        // also grants.
+        let new_flying = player_abilities.is_flying() && player.may_fly();
         if flying != new_flying {
             send_cancellable_blocking! {{
                 server;

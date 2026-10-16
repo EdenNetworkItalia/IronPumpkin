@@ -70,6 +70,7 @@ use pumpkin_data::block_properties::{blocks_movement, is_air};
 use pumpkin_data::block_rotation::{Mirror, Rotation};
 use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::dimension::Dimension;
+use pumpkin_data::dynamic_registries;
 use pumpkin_data::entity::MobCategory;
 use pumpkin_data::fluid::FluidState;
 use pumpkin_data::game_rules::{GameRule, GameRuleValue};
@@ -746,6 +747,11 @@ impl World {
         let je_packet =
             CRemoveMobEffect::new(entity.entity_id.into(), VarInt(i32::from(effect_type.id)));
 
+        if dynamic_registries::is_custom_mob_effect(effect_type) {
+            // Bedrock has no mod effects.
+            self.send_to_tracking_players_and_self(entity, &je_packet);
+            return;
+        }
         let be_packet = pumpkin_protocol::bedrock::client::CMobEffect {
             target_runtime_id: VarULong(entity.entity_id as u64),
             event_id: pumpkin_protocol::bedrock::client::CMobEffect::EVENT_REMOVE,
@@ -779,6 +785,11 @@ impl World {
             flags,
         );
 
+        if dynamic_registries::is_custom_mob_effect(effect.effect_type) {
+            // Bedrock has no mod effects.
+            self.send_to_tracking_players_and_self(entity, &je_packet);
+            return;
+        }
         let be_packet = pumpkin_protocol::bedrock::client::CMobEffect {
             target_runtime_id: VarULong(entity.entity_id as u64),
             event_id: pumpkin_protocol::bedrock::client::CMobEffect::EVENT_ADD,
@@ -1003,7 +1014,10 @@ impl World {
         for (version, recipients) in recipients_by_version {
             let packet_data = match JavaClient::serialize_packet_for_version(packet, version) {
                 Ok(packet_data) => packet_data,
-                Err(pumpkin_protocol::ser::WritingError::UnsupportedVersion(_)) => {
+                Err(
+                    pumpkin_protocol::ser::WritingError::UnsupportedVersion(_)
+                    | pumpkin_protocol::ser::WritingError::UnknownToClient(_),
+                ) => {
                     continue;
                 }
                 Err(err) => {
@@ -1381,6 +1395,53 @@ impl World {
             seed,
         );
         self.broadcast_packet_all(&packet);
+    }
+
+    /// Plays a sound event by name to the players within its range of `position`, like
+    /// `ServerLevel.playSeededSound` with a direct holder, and returns how many players got it.
+    ///
+    /// The range is `fixed_range`, or 16 blocks times a volume above 1, like `SoundEvent.getRange`.
+    /// `PlayerList.broadcast` sends to the players closer than the range.
+    pub fn play_sound_event_near(
+        &self,
+        sound_name: &str,
+        fixed_range: Option<f32>,
+        category: SoundCategory,
+        position: &Vector3<f64>,
+        volume: f32,
+        pitch: f32,
+    ) -> usize {
+        let range =
+            f64::from(fixed_range.unwrap_or(if volume > 1.0 { 16.0 * volume } else { 16.0 }));
+        let packet = CSoundEffect::new(
+            pumpkin_protocol::IdOr::Value(pumpkin_protocol::SoundEvent {
+                sound_name: sound_name.into(),
+                range: fixed_range,
+            }),
+            category,
+            position,
+            volume,
+            pitch,
+            rand::random::<i64>(),
+        );
+        let players = self.players.load();
+        let recipients: Vec<&Arc<Player>> = players
+            .iter()
+            .filter(|player| {
+                player
+                    .living_entity
+                    .entity
+                    .pos
+                    .load()
+                    .squared_distance_to_vec(position)
+                    < range * range
+            })
+            .collect();
+        let count = recipients.len();
+        let recipients_by_version =
+            Self::collect_java_recipients_by_version(recipients.into_iter());
+        Self::broadcast_java_grouped(&packet, recipients_by_version);
+        count
     }
 
     /// Spawns a cluster of particles in the world for all players in range.

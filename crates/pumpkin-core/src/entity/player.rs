@@ -2993,6 +2993,7 @@ impl Player {
 
         // experience handling
         self.tick_experience();
+        self.stop_flying_unless_may_fly();
         self.tick_health();
         self.tick_raid_omen();
         self.tick_maps(server);
@@ -3244,12 +3245,53 @@ impl Player {
         )
     }
 
+    /// Whether the player may fly: the ability, or the `neoforge:creative_flight` attribute.
+    ///
+    /// `NeoForge`: `IPlayerExtension#mayFly`.
+    pub fn may_fly(&self) -> bool {
+        self.abilities
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .allow_flying
+            || self.has_creative_flight()
+    }
+
+    /// `NeoForge` `ServerPlayer.doTick`: a player who may no longer fly stops flying.
+    fn stop_flying_unless_may_fly(&self) {
+        let creative_flight = self.has_creative_flight();
+        let stopped = {
+            let mut abilities = self
+                .abilities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let stop = abilities.flying && !abilities.allow_flying && !creative_flight;
+            if stop {
+                abilities.flying = false;
+            }
+            stop
+        };
+        if stopped {
+            self.send_abilities_update();
+        }
+    }
+
+    fn has_creative_flight(&self) -> bool {
+        self.living_entity
+            .get_attribute_value(&Attributes::NEOFORGE_CREATIVE_FLIGHT)
+            > 0.0
+    }
+
     /// Updates the current abilities the player has.
+    ///
+    /// The may-fly flag is [`Player::may_fly`]: a vanilla client never gets the creative flight
+    /// attribute, so the flag carries it. A `NeoForge` client reads the same result from the
+    /// attribute.
     pub fn send_abilities_update(&self) {
-        let abilities = *self
+        let mut abilities = *self
             .abilities
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        abilities.allow_flying |= self.has_creative_flight();
         match self.client.as_ref() {
             ClientPlatform::Java(java) => {
                 let mut b = 0;
