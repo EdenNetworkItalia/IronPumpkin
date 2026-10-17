@@ -34,7 +34,7 @@ use crate::plugin::api::events::{
         LevelEventPotentialSpawns, NoteBlockEventChange, PistonEventPost, PistonMoveType,
         PlayerTickEventPost, PlayerTickEventPre,
     },
-    world::chunk_load::ChunkLoad,
+    world::{chunk_load::ChunkLoad, chunk_unload::ChunkUnloadEvent},
 };
 use crate::plugin::player_events;
 use crate::server::Server;
@@ -451,6 +451,15 @@ pub fn chunk_unwatch(
         let mut event = ChunkWatchEventUnWatch::new(player.clone(), world.clone(), pos);
         server.plugin_manager.fire_blocking(&server, &mut event);
     }
+}
+
+/// Whether a handler of `ChunkLoad` or `ChunkUnloadEvent` listens, so the world tick collects
+/// the loaded chunk changes for [`chunk_changes`].
+pub fn listens_to_chunk_changes(world: &World) -> bool {
+    world.server.upgrade().is_some_and(|server| {
+        server.plugin_manager.has_handlers::<ChunkLoad>()
+            || server.plugin_manager.has_handlers::<ChunkUnloadEvent>()
+    })
 }
 
 /// Fires `ChunkLoad` and `ChunkUnloadEvent` for the chunks that joined or left the loaded chunks

@@ -498,9 +498,12 @@ impl World {
                 self.migrate_pending_block_entities(pos);
             }
         }
+        let collect_changes = crate::plugin::level_events::listens_to_chunk_changes(self);
         let mut changes = Vec::new();
         for change in self.level.loaded_chunk_changes() {
-            changes.push(change);
+            if collect_changes {
+                changes.push(change);
+            }
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
                     if active_chunks.contains(&pos)
@@ -529,7 +532,9 @@ impl World {
         let spawnable_chunks = tracker.loaded_active_chunks.len() as i32;
         drop(active_chunks);
         drop(tracker);
-        crate::plugin::level_events::chunk_changes(self, &changes);
+        if !changes.is_empty() {
+            crate::plugin::level_events::chunk_changes(self, &changes);
+        }
 
         self.spawn_state.store(Arc::new(SpawnState::new(
             spawnable_chunks,
