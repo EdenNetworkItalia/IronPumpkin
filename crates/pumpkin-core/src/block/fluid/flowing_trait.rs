@@ -320,7 +320,9 @@ pub trait FlowingFluid: Send + Sync {
             }
 
             // Check for infinite source formation before quiescence checks
-            if !current_is_source {
+            if !current_is_source
+                && level_events::may_create_fluid_source(world, self.can_convert_to_source(world))
+            {
                 let should_convert = self.check_infinite_source_formation(world, fluid, pos);
 
                 if should_convert {
@@ -365,7 +367,9 @@ pub trait FlowingFluid: Send + Sync {
         world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
 
         // Check for infinite source formation after placing new fluid
-        if self.check_infinite_source_formation(world, fluid, pos) {
+        if level_events::may_create_fluid_source(world, self.can_convert_to_source(world))
+            && self.check_infinite_source_formation(world, fluid, pos)
+        {
             let source_props = self.get_source(fluid, false);
             let source_state_id = source_props.to_state_id(fluid);
             world.set_block_state(pos, source_state_id, BlockFlags::NOTIFY_ALL);

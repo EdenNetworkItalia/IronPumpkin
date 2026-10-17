@@ -494,6 +494,17 @@ pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
     }
 }
 
+/// Whether a new source can form: `vanilla` (the game rule) allows it, or a handler of
+/// `CreateFluidSourceEvent` may allow it. Without either, the fluid skips the neighbour checks.
+pub fn may_create_fluid_source(world: &World, vanilla: bool) -> bool {
+    vanilla
+        || world.server.upgrade().is_some_and(|server| {
+            server
+                .plugin_manager
+                .has_handlers::<CreateFluidSourceEvent>()
+        })
+}
+
 /// Fires `CreateFluidSourceEvent` for the source at `pos` and returns whether it counts toward a
 /// new source. Without a handler it returns `vanilla`.
 pub fn create_fluid_source(
