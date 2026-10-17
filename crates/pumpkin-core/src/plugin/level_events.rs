@@ -83,24 +83,19 @@ pub fn player_place(
     pos: BlockPos,
     state: BlockStateId,
 ) -> bool {
-    let manager = &server.plugin_manager;
-    let replaced = || world.get_block_state(&pos);
-    if manager
-        .fire_blocking_with(server, || {
-            BlockPlaceEvent::new(
-                player.clone(),
-                placed_block,
-                placed_against,
-                pos,
-                true,
-                BlockState::from_id(state),
-                replaced(),
-            )
-        })
-        .is_some_and(|event| event.cancelled)
-    {
+    if !player_place_one(
+        server,
+        world,
+        player,
+        placed_block,
+        placed_against,
+        pos,
+        state,
+    ) {
         return false;
     }
+    let manager = &server.plugin_manager;
+    let replaced = || world.get_block_state(&pos);
     if !manager.has_handlers::<BlockMultiPlaceEvent>() {
         return true;
     }
@@ -117,6 +112,33 @@ pub fn player_place(
                     (pos, replaced()),
                     (part_pos, world.get_block_state(&part_pos)),
                 ],
+            )
+        })
+        .is_some_and(|event| event.cancelled)
+}
+
+/// Fires `BlockPlaceEvent` alone, for a placement of one block (`EventHooks.onBlockPlace`).
+/// Returns `false` when a handler cancelled it.
+pub fn player_place_one(
+    server: &Arc<Server>,
+    world: &Arc<World>,
+    player: &Arc<Player>,
+    placed_block: &'static Block,
+    placed_against: &'static Block,
+    pos: BlockPos,
+    state: BlockStateId,
+) -> bool {
+    !server
+        .plugin_manager
+        .fire_blocking_with(server, || {
+            BlockPlaceEvent::new(
+                player.clone(),
+                placed_block,
+                placed_against,
+                pos,
+                true,
+                BlockState::from_id(state),
+                world.get_block_state(&pos),
             )
         })
         .is_some_and(|event| event.cancelled)

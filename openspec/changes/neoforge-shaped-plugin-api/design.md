@@ -257,7 +257,7 @@ Cause resolution. A mutator with a cause takes the entity that acts. A player is
 | `World::set_block_state`, `World::set_block_state_if` | no event, as vanilla `Level.setBlock` | none | `a_cause_less_set_block_state_fires_no_event` |
 | `World::break_block(pos, cause, flags)` | `BlockBreakEvent`; `exp` and `drop` are settable | `cause` is the player | `a_player_breaks_a_block_through_the_world` |
 | `World::destroy_block(pos, drop, breaker)` (vanilla `Level.destroyBlock`) | `BlockBreakEvent`; `exp` and `drop` are settable | the breaker, or the player that owns it | `a_projectile_of_a_mod_breaks_a_block` |
-| `World::place_block(pos, state, placer)` (NeoForge `EventHooks.onBlockPlace`, then `Level.setBlock`) | `EntityPlaceEvent` | `entity_id` is the placer, or the entity that owns it | `a_mod_places_a_block_through_the_world` |
+| `World::place_block(pos, state, placer)` (NeoForge `EventHooks.onBlockPlace`, then `Level.setBlock`) | `BlockPlaceEvent` (NeoForge `BlockEvent.EntityPlaceEvent`) for a player, `BlockEventEntityPlaceEvent` for another entity; no `BlockMultiPlaceEvent`, the call sets one block | the placer, or the entity that owns it; `placed_against` is the block below; a placer that is not in the world and has no owner in it fires nothing | `a_mod_places_a_block_through_the_world` |
 | `World::spawn_entity` | `EntitySpawnEvent` (NeoForge `EntityJoinLevelEvent`); `false` when cancelled | no cause field | `a_mod_spawns_damages_and_kills_an_entity` |
 | `World::spawn_entity_non_save` | `EntitySpawnEvent` | no cause field | `a_mod_spawns_damages_and_kills_an_entity` |
 | `World::spawn_creature(entity, reason, player)` | `CreatureSpawnEvent`, then `EntitySpawnEvent` | `player` | - |

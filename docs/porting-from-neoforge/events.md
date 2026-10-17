@@ -304,7 +304,7 @@ The server resolves the cause of the event:
 | NeoForge call | IronPumpkin method | Event |
 | :--- | :--- | :--- |
 | `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`. Returns `false` when cancelled. |
-| `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `EntityPlaceEvent`. Returns `false` when cancelled. |
+| `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `block::BlockPlaceEvent` when the cause is a player, `level::BlockEventEntityPlaceEvent` for another entity, as for the placements of the game. Returns `false` when cancelled. |
 | `level.addFreshEntity(entity)` | `World::spawn_entity(entity)` | `EntitySpawnEvent`. Returns `false` when cancelled. |
 | `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`. A death fires `EntityDeathEvent`. |
 | `level.setBlock(pos, state, flags)` | `World::set_block_state(&pos, state, flags)` | No event, as in vanilla. Use it for the internal state of a machine. |

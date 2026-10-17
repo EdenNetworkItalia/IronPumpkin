@@ -5539,28 +5539,49 @@ impl World {
     }
 
     /// Places `state_id` at `position` for `placer`, as `NeoForge` `EventHooks.onBlockPlace` before
-    /// `Level.setBlock`. Fires [`EntityPlaceEvent`] with the entity behind `placer`: the placer
-    /// itself, or the entity that owns it. Returns `false` when a handler cancels the place.
+    /// `Level.setBlock`. The cause is the placer itself, or the entity that owns it: a player
+    /// fires [`BlockPlaceEvent`], another entity [`BlockEventEntityPlaceEvent`]. Returns `false`
+    /// when a handler cancels the place.
     ///
-    /// [`EntityPlaceEvent`]: crate::plugin::api::events::entity::entity_place::EntityPlaceEvent
+    /// [`BlockPlaceEvent`]: crate::plugin::api::events::block::block_place::BlockPlaceEvent
+    /// [`BlockEventEntityPlaceEvent`]: crate::plugin::api::events::level::BlockEventEntityPlaceEvent
     pub fn place_block(
         self: &Arc<Self>,
         position: &BlockPos,
         state_id: BlockStateId,
         placer: &dyn EntityBase,
     ) -> bool {
-        if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
-                crate::plugin::api::events::entity::entity_place::EntityPlaceEvent::new(
-                    cause_id(placer),
-                    *position,
-                    pumpkin_data::dynamic::namespaced_name(Block::from_state_id(state_id).name)
-                        .into_owned(),
-                )
-            })
-            && event.cancelled
-        {
-            return false;
+        if let Some(server) = self.server.upgrade() {
+            let cause = cause_id(placer);
+            let placed = self.get_player_by_id(cause).map_or_else(
+                || {
+                    !server
+                        .plugin_manager
+                        .has_handlers::<crate::plugin::api::events::level::BlockEventEntityPlaceEvent>()
+                        || self
+                            .get_entity_by_id(cause)
+                            .or_else(|| self.get_entity_by_id(placer.get_entity().entity_id))
+                            .is_none_or(|entity| {
+                                crate::plugin::level_events::entity_place(
+                                    self, &entity, *position, state_id,
+                                )
+                            })
+                },
+                |player| {
+                    crate::plugin::level_events::player_place_one(
+                        &server,
+                        self,
+                        &player,
+                        Block::from_state_id(state_id),
+                        self.get_block(&position.down()),
+                        *position,
+                        state_id,
+                    )
+                },
+            );
+            if !placed {
+                return false;
+            }
         }
         self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
         true

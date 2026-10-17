@@ -48,6 +48,7 @@ use pumpkin_core::{
             entity_place::EntityPlaceEvent, entity_spawn::EntitySpawnEvent,
             item_spawn::ItemSpawnEvent,
         },
+        level::BlockEventEntityPlaceEvent,
         startup::create_context,
     },
     server::Server,
@@ -349,32 +350,33 @@ fn a_player_breaks_a_block_through_the_world() {
     assert_eq!(entries(&seen), ["WorldBreaker", "WorldBreaker"]);
 }
 
+/// `World::place_block` fires the event of the entity behind the placer: `BlockPlaceEvent` for a
+/// projectile that a player shot, `BlockEventEntityPlaceEvent` for one that a mob owns.
 #[test]
 fn a_mod_places_a_block_through_the_world() {
     let _serial = support::serial();
     let shooter = support::player("LaserPlacer");
-    let shooter_id = shooter.living_entity.entity.entity_id;
     let world = support::world();
     let pos = BlockPos::new(3, 120, 1);
     set_loaded(pos, &Block::AIR);
     let cancel = Arc::new(AtomicBool::new(true));
     let flag = cancel.clone();
-    plugin_on::<EntityPlaceEvent, _>("pipeline-place-plugin", EventPriority::High, move |event| {
-        if event.block_pos == pos {
+    plugin_on::<BlockPlaceEvent, _>("pipeline-place-plugin", EventPriority::High, move |event| {
+        if event.block_position == pos {
             event.set_cancelled(flag.load(Ordering::Relaxed));
         }
     });
     let seen = log();
     let observed = seen.clone();
-    on_with::<EntityPlaceEvent, _>(EventPriority::Low, true, move |event| {
-        if event.block_pos == pos {
+    on_with::<BlockPlaceEvent, _>(EventPriority::Low, true, move |event| {
+        if event.block_position == pos {
             push(
                 &observed,
                 format!(
                     "{} {} {}",
                     event.cancelled(),
-                    event.entity_id == shooter_id,
-                    event.block_name
+                    event.player.gameprofile.name,
+                    event.placed_state.id.to_block().name
                 ),
             );
         }
@@ -390,8 +392,45 @@ fn a_mod_places_a_block_through_the_world() {
     assert!(is(pos, &Block::STONE), "the place did not set the block");
     assert_eq!(
         entries(&seen),
-        ["true true minecraft:stone", "false true minecraft:stone"]
+        ["true LaserPlacer stone", "false LaserPlacer stone"]
     );
+
+    let pig = from_type(
+        &EntityType::PIG,
+        Vector3::new(3.5, 121.0, 1.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(pig.clone()));
+    let pig_id = pig.get_entity().entity_id;
+    let pig_laser = MiningLaser {
+        entity: Entity::new(
+            world.clone(),
+            Vector3::new(3.5, 121.0, 1.5),
+            &EntityType::SNOWBALL,
+        ),
+        owner_id: pig_id,
+    };
+    let at = BlockPos::new(3, 121, 1);
+    set_loaded(at, &Block::AIR);
+    let placers = log();
+    let observed = placers.clone();
+    on_with::<BlockEventEntityPlaceEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.pos == at {
+            push(
+                &observed,
+                format!(
+                    "{} {}",
+                    event.entity.get_entity().entity_id == pig_id,
+                    event.placed_state.id.to_block().name
+                ),
+            );
+            event.set_cancelled(true);
+        }
+    });
+    assert!(!world.place_block(&at, stone, &pig_laser));
+    assert!(is(at, &Block::AIR), "the cancelled place set the block");
+    assert_eq!(entries(&placers), ["true stone"]);
 }
 
 #[test]
