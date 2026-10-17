@@ -162,8 +162,8 @@ impl Attributes {
         default_value: 0.0,
         name: "neoforge:creative_flight",
     };
-    /// `NeoForgeMod.GLIDING_FLIGHT`: a living entity with a value above 0 may glide. It is
-    /// registered for the registry sync; nothing reads it yet.
+    /// `NeoForgeMod.GLIDING_FLIGHT`: a living entity with a value above 0 may glide. An equipped
+    /// glider item adds 1, so a `NeoForge` client lets its player glide.
     pub const NEOFORGE_GLIDING_FLIGHT: Self = Self {
         id: Self::COUNT + 2,
         default_value: 0.0,

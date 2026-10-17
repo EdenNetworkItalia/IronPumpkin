@@ -43,7 +43,7 @@ use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
     AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl,
+    EquipmentSlot, EquippableImpl, FoodImpl, GliderImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
@@ -584,12 +584,13 @@ impl LivingEntity {
         if stack.is_empty() {
             return;
         }
-        let Some(modifiers) = stack.get_data_component::<AttributeModifiersImpl>() else {
-            return;
-        };
 
         let mut applied = Vec::new();
-        for item_mod in modifiers.attribute_modifiers.iter() {
+        let item_modifiers = stack
+            .get_data_component::<AttributeModifiersImpl>()
+            .into_iter()
+            .flat_map(|modifiers| modifiers.attribute_modifiers.iter());
+        for item_mod in item_modifiers {
             if !attribute_modifier_slot_matches(&item_mod.slot, slot) {
                 continue;
             }
@@ -607,6 +608,29 @@ impl LivingEntity {
             });
             applied.push((item_mod.r#type.id, item_mod.id.to_string()));
             push_unique_attribute(touched, item_mod.r#type);
+        }
+
+        // `NeoForgeMod.onItemAttributeModifiers`: a NeoForge client glides only with this
+        // attribute, as `LivingEntity#canGlideUsing` for the glider component.
+        if stack.get_data_component::<GliderImpl>().is_some()
+            && !stack.next_damage_will_break()
+            && stack
+                .get_data_component::<EquippableImpl>()
+                .is_some_and(|equippable| equippable.slot == slot)
+        {
+            let attribute = &Attributes::NEOFORGE_GLIDING_FLIGHT;
+            self.update_attribute(attribute, |inst| {
+                inst.add_or_replace_modifier(Modifier {
+                    id: GLIDER_COMPONENT_FLIGHT_MODIFIER_ID.to_string(),
+                    amount: 1.0,
+                    operation: ModifierOperation::Add,
+                });
+            });
+            applied.push((
+                attribute.id,
+                GLIDER_COMPONENT_FLIGHT_MODIFIER_ID.to_string(),
+            ));
+            push_unique_attribute(touched, attribute);
         }
 
         if !applied.is_empty() {
@@ -3631,6 +3655,8 @@ impl EntityBase for LivingEntity {
     }
 }
 
+/// `NeoForgeMod.GLIDER_COMPONENT_FLIGHT_MODIFIER`.
+pub const GLIDER_COMPONENT_FLIGHT_MODIFIER_ID: &str = "neoforge:glider_component_flight";
 pub const SPEED_MODIFIER_SPRINTING_ID: &str = "minecraft:sprinting";
 pub const SPEED_MODIFIER_SPRINTING_AMOUNT: f64 = 0.300_000_011_920_928_96;
 

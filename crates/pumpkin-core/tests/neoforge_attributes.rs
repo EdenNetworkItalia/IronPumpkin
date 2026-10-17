@@ -1,6 +1,7 @@
 //! The `NeoForge` attributes that `IronPumpkin` registers: `neoforge:swim_speed` scales the swim
-//! speed of a mob in water (`LivingEntity.travelInWater` of `NeoForge`), and
-//! `neoforge:creative_flight` lets a survival player fly (`IPlayerExtension#mayFly`).
+//! speed of a mob in water (`LivingEntity.travelInWater` of `NeoForge`),
+//! `neoforge:creative_flight` lets a survival player fly (`IPlayerExtension#mayFly`), and an
+//! equipped glider item gives `neoforge:gliding_flight` (`NeoForgeMod.onItemAttributeModifiers`).
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -20,10 +21,15 @@ use pumpkin_core::{
     },
     net::{ClientPlatform, java::neoforge::NegotiatedState},
 };
-use pumpkin_data::{Block, attributes::Attributes, entity::EntityType, packet::CURRENT_MC_VERSION};
+use pumpkin_data::{
+    Block, attributes::Attributes, data_component_impl::EquipmentSlot, dynamic::ContentIds,
+    entity::EntityType, item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION,
+};
 use pumpkin_protocol::{
+    ServerPacket,
     java::{
-        client::play::CPlayerAbilities, packet_decoder::TCPNetworkDecoder,
+        client::play::{CPlayerAbilities, CUpdateAttributes, Property},
+        packet_decoder::TCPNetworkDecoder,
         server::play::SPlayerAbilities,
     },
     packet::MultiVersionJavaPacket,
@@ -158,4 +164,68 @@ fn creative_flight_lets_a_survival_player_fly() {
     let _guard = support::RUNTIME.enter();
     player.tick(support::server());
     assert!(!flying(&player));
+}
+
+/// The next `count` `neoforge:gliding_flight` properties of `entity_id` in the attributes packets
+/// that the client end of `peer` receives.
+fn gliding_flight_properties(
+    peer: tokio::net::TcpStream,
+    entity_id: i32,
+    count: usize,
+) -> Vec<Property> {
+    support::RUNTIME.block_on(async {
+        let mut decoder = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
+        let mut properties = Vec::new();
+        while properties.len() < count {
+            let packet = tokio::time::timeout(Duration::from_secs(10), decoder.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            if packet.id != CUpdateAttributes::to_id(CURRENT_MC_VERSION) {
+                continue;
+            }
+            let attributes =
+                CUpdateAttributes::read(&mut &packet.payload[..], &CURRENT_MC_VERSION).unwrap();
+            if attributes.entity_id.0 != entity_id {
+                continue;
+            }
+            properties.extend(attributes.properties.into_iter().filter(|property| {
+                property.id.0 == i32::from(Attributes::NEOFORGE_GLIDING_FLIGHT.id)
+            }));
+        }
+        properties
+    })
+}
+
+#[test]
+fn an_equipped_glider_gives_gliding_flight_to_a_neoforge_client() {
+    let negotiated = NegotiatedState {
+        content_ids: ContentIds::Real,
+        ..NegotiatedState::default()
+    };
+    let (player, peer) = support::player_with_peer("Glider", negotiated);
+    let living = &player.living_entity;
+    let gliding_flight = || living.get_attribute_value(&Attributes::NEOFORGE_GLIDING_FLIGHT);
+    let elytra = ItemStack::new(1, &Item::ELYTRA);
+
+    // The modifier applies in the slot of the `equippable` component only.
+    living.send_equipment_changes(&[(EquipmentSlot::MAIN_HAND, elytra.clone())]);
+    assert_eq!(gliding_flight(), 0.0);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, elytra.clone())]);
+    assert_eq!(gliding_flight(), 1.0);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, ItemStack::EMPTY.clone())]);
+    assert_eq!(gliding_flight(), 0.0);
+    let mut worn = elytra;
+    worn.set_damage(worn.get_max_damage().unwrap() - 1);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, worn)]);
+    assert_eq!(gliding_flight(), 0.0);
+
+    let properties = gliding_flight_properties(peer, living.entity_id(), 2);
+    let modifiers: Vec<(&str, f64, i8)> = properties[0]
+        .modifiers
+        .iter()
+        .map(|modifier| (modifier.id.as_str(), modifier.amount, modifier.operation))
+        .collect();
+    assert_eq!(modifiers, [("neoforge:glider_component_flight", 1.0, 0)]);
+    assert!(properties[1].modifiers.is_empty());
 }

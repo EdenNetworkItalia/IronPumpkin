@@ -15,7 +15,8 @@
 //! a mob in water and its upward push when it jumps in a fluid; the player's own movement is
 //! client authoritative, so a `NeoForge` client applies it for the player. Creative flight lets a
 //! survival player fly, also on a vanilla client: the server sends it as the may-fly ability.
-//! Gliding flight is registered for the registry sync; nothing reads it yet.
+//! An equipped glider item adds 1 to gliding flight, which a `NeoForge` client reads before it
+//! lets the player glide.
 //!
 //! ```
 //! use ironpumpkin_mods::{
