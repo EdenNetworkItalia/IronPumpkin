@@ -26,7 +26,11 @@ use ironpumpkin_mods::{
     entity_attributes::{self, AttributeBuilder, AttributeModifier, ModifierOperation},
     event::{BoxFuture, EventHandler, EventPriority, registries::RegisterEvent},
     mob_effects::{self, MobEffect, MobEffectBuilder, MobEffectCategory, Operation},
-    pumpkin_core::{net::java::neoforge::NegotiatedState, plugin::startup::STARTUP_HOOK},
+    pumpkin_core::{
+        entity::player::Player,
+        net::{ClientPlatform, java::neoforge::NegotiatedState},
+        plugin::startup::STARTUP_HOOK,
+    },
     pumpkin_data::{
         AttributeModifierSlot,
         attributes::Attributes,
@@ -51,11 +55,14 @@ use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{
     EncodingKey,
     codec::{data_component, item_stack_seralizer::ItemStackSerializer},
-    java::{client::play::CSoundEffect, packet_decoder::TCPNetworkDecoder},
+    java::{
+        client::play::CSoundEffect, packet_decoder::TCPNetworkDecoder,
+        server::play::SSetCreativeSlot,
+    },
     packet::MultiVersionJavaPacket,
     ser::NetworkReadExt,
 };
-use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::{GameMode, math::vector3::Vector3};
 
 const ZAP: SoundEvent = SoundEvent::new("regmod:zap");
 const CHARGE: DataComponentType<i32> = DataComponentType::new("regmod:charge");
@@ -557,4 +564,57 @@ fn vanilla_components_leave_mod_effects_and_attributes_out_for_a_vanilla_client(
             "{ids:?}"
         );
     }
+}
+
+/// The first hotbar slot of the player screen handler.
+const HOTBAR_SLOT: i16 = 36;
+
+/// A creative client of the player puts a stick with `charge` as the `regmod:charge` value in the
+/// first hotbar slot. Returns the stack that the slot holds after.
+fn creative_charge(player: &Arc<Player>, charge: NbtTag) -> ItemStack {
+    let mut stack = ItemStack::new(1, &Item::STICK);
+    stack.set_custom_component(
+        registry::id_of(ContentKind::DataComponentType, CHARGE.name()).unwrap(),
+        charge,
+    );
+    let ClientPlatform::Java(client) = player.client.as_ref() else {
+        unreachable_client();
+    };
+    client
+        .handle_set_creative_slot(
+            player,
+            SSetCreativeSlot::new(HOTBAR_SLOT, ItemStackSerializer::from(stack)),
+        )
+        .unwrap();
+    // The first hotbar slot of the screen handler is the first slot of the inventory.
+    player.inventory().get_slot(0)
+}
+
+#[expect(clippy::panic, reason = "a test fails on the first missing value")]
+fn unreachable_client() -> ! {
+    panic!("the support players are Java players");
+}
+
+/// A creative client sends a stack with a mod component: the server keeps a value that decodes
+/// through the codec of the type from a client that synced the registries, keeps its own stack
+/// when the value does not decode, and drops the value from a vanilla client.
+#[test]
+fn a_creative_client_sets_only_mod_components_that_it_knows_and_that_decode() {
+    server();
+    let synced = NegotiatedState {
+        content_ids: ContentIds::Real,
+        ..NegotiatedState::default()
+    };
+    let (player, _peer) = support::player_with_peer("CreativeSynced", synced);
+    player.gamemode.store(GameMode::Creative);
+    let stack = creative_charge(&player, NbtTag::Int(5));
+    assert_eq!(CHARGE.get(&stack), Ok(Some(5)));
+    let stack = creative_charge(&player, NbtTag::String("five".into()));
+    assert_eq!(CHARGE.get(&stack), Ok(Some(5)));
+
+    let (player, _peer) = support::player_with_peer("CreativeVanilla", NegotiatedState::default());
+    player.gamemode.store(GameMode::Creative);
+    let stack = creative_charge(&player, NbtTag::Int(5));
+    assert_eq!(stack.item.id, Item::STICK.id);
+    assert!(stack.custom_components.is_empty());
 }

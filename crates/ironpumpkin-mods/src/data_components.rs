@@ -84,6 +84,7 @@ impl<T: Encode + Decode + 'static> DataComponentTypeBuilder<T> {
             definition: DataComponentTypeDefinition {
                 name: name.into(),
                 persistent: true,
+                validate: validate::<T>,
             },
             _value: PhantomData,
         }
@@ -141,6 +142,10 @@ fn data_result<R>(result: DataResult<R>) -> Result<R, String> {
 fn from_json<T: Encode + Decode>(json: serde_json::Value) -> Result<NbtTag, String> {
     let value = data_result(T::parse(json, &JsonOps))?;
     data_result(value.encode_start(&NbtOps))
+}
+
+fn validate<T: Decode>(nbt: &NbtTag) -> bool {
+    data_result(T::parse(nbt.clone(), &NbtOps)).is_ok()
 }
 
 fn to_json<T: Encode + Decode>(nbt: NbtTag) -> Result<serde_json::Value, String> {

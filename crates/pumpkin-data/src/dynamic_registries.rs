@@ -18,6 +18,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
+use pumpkin_nbt::tag::NbtTag;
+
 #[cfg(any(feature = "effect", feature = "attributes", feature = "data_component"))]
 use pumpkin_util::identifier::Identifier;
 
@@ -132,20 +134,23 @@ pub struct AttributeDefinition {
 
 /// A data component type of a mod. The value codec lives in `ironpumpkin-mods`: item stacks hold
 /// the value in its NBT form.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DataComponentTypeDefinition {
     /// Namespaced name, for example `mymod:charge`.
     pub name: String,
     /// Whether item saves keep the value, like a type built with `persistent(codec)`.
     pub persistent: bool,
+    /// Whether a value in NBT form decodes through the codec of the type.
+    pub validate: fn(&NbtTag) -> bool,
 }
 
 /// A frozen data component type of a mod.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct DataComponentTypeEntry {
     pub id: u16,
     pub name: &'static str,
     pub persistent: bool,
+    pub validate: fn(&NbtTag) -> bool,
 }
 
 #[cfg(feature = "attributes")]
@@ -241,6 +246,7 @@ impl Pending {
                     id: first_data_component_type_id() + index as u16,
                     name: leak(definition.name),
                     persistent: definition.persistent,
+                    validate: definition.validate,
                 },
             ));
         #[cfg(feature = "attributes")]
