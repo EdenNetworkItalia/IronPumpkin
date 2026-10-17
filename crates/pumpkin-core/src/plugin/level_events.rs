@@ -197,29 +197,67 @@ pub fn entity_place(
         .is_some_and(|event| event.cancelled)
 }
 
+/// Which tick events have a handler. The world tick reads it once, before its parallel loops,
+/// so an entity or a player with no tick handler costs no lookup.
+#[derive(Clone, Copy)]
+pub struct TickEventHandlers {
+    entity_pre: bool,
+    entity_post: bool,
+    player_pre: bool,
+    player_post: bool,
+}
+
+impl TickEventHandlers {
+    #[must_use]
+    pub fn read(server: &Server) -> Self {
+        let plugins = &server.plugin_manager;
+        Self {
+            entity_pre: plugins.has_handlers::<EntityTickEventPre>(),
+            entity_post: plugins.has_handlers::<EntityTickEventPost>(),
+            player_pre: plugins.has_handlers::<PlayerTickEventPre>(),
+            player_post: plugins.has_handlers::<PlayerTickEventPost>(),
+        }
+    }
+}
+
 /// Fires `EntityTickEventPre` before `entity` ticks. Returns `false` when a handler cancelled it.
-pub fn entity_tick_pre(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) -> bool {
-    !server
-        .plugin_manager
-        .fire_blocking_with(server, || EntityTickEventPre::new(entity.clone()))
-        .is_some_and(|event| event.cancelled)
+pub fn entity_tick_pre(
+    server: &Arc<Server>,
+    entity: &Arc<dyn EntityBase>,
+    handlers: TickEventHandlers,
+) -> bool {
+    !handlers.entity_pre
+        || !server
+            .plugin_manager
+            .fire_blocking_with(server, || EntityTickEventPre::new(entity.clone()))
+            .is_some_and(|event| event.cancelled)
 }
 
 /// Fires `EntityTickEventPost` after `entity` ticked.
-pub fn entity_tick_post(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) {
-    server
-        .plugin_manager
-        .fire_blocking_with(server, || EntityTickEventPost::new(entity.clone()));
+pub fn entity_tick_post(
+    server: &Arc<Server>,
+    entity: &Arc<dyn EntityBase>,
+    handlers: TickEventHandlers,
+) {
+    if handlers.entity_post {
+        server
+            .plugin_manager
+            .fire_blocking_with(server, || EntityTickEventPost::new(entity.clone()));
+    }
 }
 
 /// Fires `PlayerTickEventPre` at the start of the tick of `player`.
-pub fn player_tick_pre(player: &Player) {
-    player_events::fire(player, PlayerTickEventPre::new);
+pub fn player_tick_pre(player: &Player, handlers: TickEventHandlers) {
+    if handlers.player_pre {
+        player_events::fire(player, PlayerTickEventPre::new);
+    }
 }
 
 /// Fires `PlayerTickEventPost` at the end of the tick of `player`.
-pub fn player_tick_post(player: &Player) {
-    player_events::fire(player, PlayerTickEventPost::new);
+pub fn player_tick_post(player: &Player, handlers: TickEventHandlers) {
+    if handlers.player_post {
+        player_events::fire(player, PlayerTickEventPost::new);
+    }
 }
 
 /// Fires `CropGrowEventPost` after the crop at `pos` grew from `original`.

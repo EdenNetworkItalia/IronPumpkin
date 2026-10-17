@@ -300,6 +300,7 @@ use crate::data::SaveJSONConfiguration;
 use crate::log_at_level;
 use crate::net::{ClientPlatform, GameProfile};
 use crate::net::{DisconnectReason, PlayerConfig};
+use crate::plugin::level_events::TickEventHandlers;
 use crate::plugin::player::exp_change::PlayerExpChangeEvent;
 use crate::plugin::player::inventory_interact::InventoryClickEvent;
 use crate::plugin::player::player_change_world::PlayerChangeWorldEvent;
@@ -2714,10 +2715,19 @@ impl Player {
         }
     }
 
+    pub fn tick(&self, server: &Server) {
+        self.tick_with_events(server, TickEventHandlers::read(server));
+    }
+
+    /// Ticks the player with the tick event handlers that the world tick read once.
     #[expect(clippy::too_many_lines)]
-    pub fn tick<'a>(&'a self, server: &'a Server) {
+    pub(crate) fn tick_with_events<'a>(
+        &'a self,
+        server: &'a Server,
+        tick_events: TickEventHandlers,
+    ) {
         self.process_inbound_packets();
-        crate::plugin::level_events::player_tick_pre(self);
+        crate::plugin::level_events::player_tick_pre(self, tick_events);
 
         if self.is_spectator() {
             self.living_entity
@@ -3028,7 +3038,7 @@ impl Player {
                 );
             }
         }
-        crate::plugin::level_events::player_tick_post(self);
+        crate::plugin::level_events::player_tick_post(self, tick_events);
     }
 
     fn continue_mining(

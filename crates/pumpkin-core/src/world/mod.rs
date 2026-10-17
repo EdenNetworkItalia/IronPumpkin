@@ -37,6 +37,7 @@ pub mod time;
 pub mod villager_poi;
 
 use crate::block::RandomTickArgs;
+use crate::plugin::level_events::TickEventHandlers;
 use crate::world::chunker::is_within_chebyshev_distance;
 use crate::{block::BlockEvent, entity::item::ItemEntity};
 use crate::{
@@ -1645,11 +1646,12 @@ impl World {
             })
             .collect();
 
+        let tick_events = TickEventHandlers::read(server);
         let t_players = std::time::Instant::now();
         let player_handle = handle.clone();
         players.par_iter().for_each(|player| {
             let _guard = player_handle.enter();
-            player.tick(server);
+            player.tick_with_events(server, tick_events);
         });
         let player_elapsed = t_players.elapsed();
 
@@ -1688,10 +1690,10 @@ impl World {
                 let _guard = entity_handle.enter();
 
                 for (entity, entity_chunk) in batch {
-                    if crate::plugin::level_events::entity_tick_pre(server, entity) {
+                    if crate::plugin::level_events::entity_tick_pre(server, entity, tick_events) {
                         entity.get_entity().age.fetch_add(1, Relaxed);
                         entity.tick(entity.as_ref(), server_ref);
-                        crate::plugin::level_events::entity_tick_post(server, entity);
+                        crate::plugin::level_events::entity_tick_post(server, entity, tick_events);
                     }
 
                     let entity_inner = entity.get_entity();
