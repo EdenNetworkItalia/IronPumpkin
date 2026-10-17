@@ -39,7 +39,9 @@ use pumpkin_core::{
     },
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, Payload, PluginMetadata,
-        block::{block_break::BlockBreakEvent, block_place::BlockPlaceEvent},
+        block::{
+            block_break::BlockBreakEvent, block_exp::BlockExpEvent, block_place::BlockPlaceEvent,
+        },
         entity::{
             entity_change_block::EntityChangeBlockEvent, entity_damage::EntityDamageEvent,
             entity_damage_by_entity::EntityDamageByEntityEvent, entity_death::EntityDeathEvent,
@@ -262,6 +264,51 @@ fn a_projectile_of_a_mod_breaks_a_block() {
     laser.on_hit(block_hit(pos));
     assert!(is(pos, &Block::AIR), "the break kept the block");
     assert_eq!(entries(&seen), ["true LaserShooter", "false LaserShooter"]);
+}
+
+/// `World::destroy_block` takes the settable fields of `BlockBreakEvent`: the experience that a
+/// handler sets drops, and `drop = false` drops no item and no experience.
+#[test]
+fn destroy_block_takes_the_experience_and_the_drop_of_the_event() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(7, 120, 1);
+    set_loaded(pos, &Block::DIRT);
+    let drop = Arc::new(AtomicBool::new(true));
+    let flag = drop.clone();
+    on_with::<BlockBreakEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.block_position == pos {
+            event.exp = 5;
+            event.drop = flag.load(Ordering::Relaxed);
+        }
+    });
+    let seen = log();
+    let observed = seen.clone();
+    on_with::<ItemSpawnEvent, _>(EventPriority::Normal, false, move |event| {
+        if BlockPos::floored_v(event.position) == pos {
+            push(&observed, "item");
+        }
+    });
+    let observed = seen.clone();
+    on_with::<BlockExpEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.block_pos == pos {
+            push(&observed, format!("exp {}", event.exp));
+        }
+    });
+
+    assert!(world.destroy_block(&pos, true, None));
+    assert!(is(pos, &Block::AIR));
+    assert_eq!(entries(&seen), ["item", "exp 5"]);
+
+    set_loaded(pos, &Block::DIRT);
+    drop.store(false, Ordering::Relaxed);
+    assert!(world.destroy_block(&pos, true, None));
+    assert!(is(pos, &Block::AIR));
+    assert_eq!(
+        entries(&seen),
+        ["item", "exp 5"],
+        "a break without drops dropped"
+    );
 }
 
 #[test]
