@@ -31,9 +31,14 @@ use crate::{
 };
 
 /// The registries that `RegisterEvent` fires for, in the order of
-/// `GameData.getRegistrationOrder`: the vanilla registration order puts `minecraft:block` before
-/// `minecraft:entity_type` and `minecraft:item`.
-pub(crate) const REGISTRIES: [ContentKind; 3] = [
+/// `GameData.getRegistrationOrder`: `minecraft:attribute` and `minecraft:data_component_type`
+/// first, then the vanilla registration order, which puts `minecraft:sound_event` and
+/// `minecraft:mob_effect` before `minecraft:block`, `minecraft:entity_type` and `minecraft:item`.
+pub(crate) const REGISTRIES: [ContentKind; 7] = [
+    ContentKind::Attribute,
+    ContentKind::DataComponentType,
+    ContentKind::SoundEvent,
+    ContentKind::MobEffect,
     ContentKind::Block,
     ContentKind::EntityType,
     ContentKind::Item,
@@ -266,6 +271,10 @@ mod tests {
         assert_eq!(
             *CALLS.lock().unwrap(),
             [
+                "RegisterEvent minecraft:attribute",
+                "RegisterEvent minecraft:data_component_type",
+                "RegisterEvent minecraft:sound_event",
+                "RegisterEvent minecraft:mob_effect",
                 "RegisterEvent minecraft:block",
                 "RegisterEvent minecraft:entity_type",
                 "RegisterEvent minecraft:item",
@@ -440,14 +449,7 @@ mod tests {
             || {},
         )
         .unwrap_err();
-        assert_eq!(
-            fired,
-            [
-                ContentKind::Block,
-                ContentKind::EntityType,
-                ContentKind::Item
-            ]
-        );
+        assert_eq!(fired, super::REGISTRIES);
         assert_eq!(
             error,
             "a RegisterEvent handler cannot register the block \"setupmod:late\": the content \

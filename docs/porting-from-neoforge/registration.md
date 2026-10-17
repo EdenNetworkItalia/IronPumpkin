@@ -20,7 +20,7 @@ In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `registe
 | **Error** | An exception when the game opens the registry | `Err(RegistryError)`. The server stops after `init` returns. |
 | **Tags** | JSON files in a data pack | `.tag(..)` on a builder, and `TagBuilder` for a tag of the mod |
 | **Creative tab** | The `creative_mode_tab` registry | `ModInit::register_creative_mode_tab` accepts the tab, logs one line and ignores it. A creative tab is client UI. |
-| **Other registries** | Sound events, mob effects, data components, attributes | Planned (task 2.6). Fluids, recipe types and similar registries wait for M5. |
+| **Other registries** | Sound events, mob effects, data components, attributes | `register_sound_event`, `register_mob_effect`, `register_attribute`, `register_data_component_type`. See [Data components, sounds, mob effects and attributes](./components-effects-attributes.md). Fluids, recipe types and similar registries wait for M5. |
 
 ---
 
@@ -309,7 +309,7 @@ fn init(cx: &mut ModInit) {
 }
 ```
 
-`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three.
+`RegisterEvent` fires for `minecraft:attribute`, `minecraft:data_component_type`, `minecraft:sound_event`, `minecraft:mob_effect`, `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, in that order, as `GameData.getRegistrationOrder` orders them. NeoForge fires it for every registry, and IronPumpkin backs these seven. The traits `RegisterSoundEvent`, `RegisterMobEffect`, `RegisterAttribute` and `RegisterDataComponentType` register the four newer ones from a handler.
 
 ### Registration events
 
@@ -384,7 +384,7 @@ Gaps:
 - `ExtendPoiTypesEvent#addStatesToPoi` with a part of the states has no counterpart: a mod block has no state ids before the freeze, and the server tracks job sites by block. `add_block_to_poi` adds every state.
 - The server tracks only the job site POI types as block POIs. A block added to `minecraft:home`, `minecraft:meeting` or another POI type without a profession is accepted with a warning and changes nothing.
 - `BlockEntityTypeAddBlocksEvent` gives a block state one block entity type. A vanilla block keeps its own, and a mod block keeps the first one, with a warning.
-- `EntityAttributeCreationEvent#put` takes the vanilla `Attributes`. Mod attributes come with the attribute registry (task 2.6).
+- `EntityAttributeCreationEvent#put` and `EntityAttributeModificationEvent#add` take the vanilla and NeoForge `Attributes`. A mod attribute binds at the freeze, after these events, so they cannot name it. Set its base value on the entity with `entity_attributes::set_base_value`.
 - A spawn predicate gets the entity type, the world and the position. The spawn reason and the random source of the NeoForge predicate have no Pumpkin counterpart.
 
 ## Errors

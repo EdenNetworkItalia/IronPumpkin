@@ -1,9 +1,9 @@
 //! Native mod for the boot tests of the root workspace. It registers one block, one item and one
 //! entity type, each with a vanilla display entry, a stair block [`STAIRS`] that takes the block
-//! type `minecraft:oak_stairs`, the default attributes of its entity type through
-//! `EntityAttributeCreationEvent`, the startup config [`STARTUP_CONFIG`], the
-//! local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and a handler for each
-//! server lifecycle and tick event. Its `init`, mod lifecycle methods, config loading hook and
+//! type `minecraft:oak_stairs`, one sound event, mob effect, attribute and data component type, the
+//! default attributes of its entity type through `EntityAttributeCreationEvent`, the startup config
+//! [`STARTUP_CONFIG`], the local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and
+//! a handler for each server lifecycle and tick event. Its `init`, mod lifecycle methods, config loading hook and
 //! event handlers log [`EVENT_LOG_PREFIX`] and the `NeoForge` event name, an event handler only
 //! the first time its event fires. A test binary links it by using one of its items, such as
 //! `use ironpumpkin_test_mod::BLOCK;`, and starts the server with `pumpkin::run`.
@@ -29,7 +29,9 @@ use ironpumpkin_mods::{
     ModInit, NativeMod,
     config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     content::{BlockBuilder, EntityTypeBuilder, ItemBuilder, RegistryError},
+    data_components::DataComponentTypeBuilder,
     entity::{Entity, EntityBase},
+    entity_attributes::AttributeBuilder,
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
         player::player_join::PlayerJoinEvent,
@@ -39,6 +41,7 @@ use ironpumpkin_mods::{
         },
         world::{LevelTickEventPost, LevelTickEventPre},
     },
+    mob_effects::{MobEffectBuilder, MobEffectCategory},
     network::{
         CustomConfigurationTask, PayloadContext, RegisterConfigurationTasksEvent,
         RegisterPayloadHandlersEvent, TaskContext, send_to_player,
@@ -47,6 +50,7 @@ use ironpumpkin_mods::{
     register_mod,
     registration::{AttributeSupplier, EntityAttributeCreationEvent},
     server::Server,
+    sound_events::SoundEventBuilder,
     tracing::{error, info},
 };
 
@@ -56,6 +60,10 @@ pub const ITEM: &str = "test-mod:test_item";
 pub const ENTITY_TYPE: &str = "test-mod:test_entity";
 /// A stair with the block type `minecraft:oak_stairs` and no behaviour of its own.
 pub const STAIRS: &str = "test-mod:test_stairs";
+pub const SOUND_EVENT: &str = "test-mod:test_sound";
+pub const MOB_EFFECT: &str = "test-mod:test_effect";
+pub const ATTRIBUTE: &str = "test-mod:test_attribute";
+pub const DATA_COMPONENT_TYPE: &str = "test-mod:test_component";
 /// The default file name of the synced config, in `config/`.
 pub const SYNCED_CONFIG: &str = "test-mod-synced.toml";
 /// The default file name of the startup config, in `config/`. Its `greeting` is logged from
@@ -184,7 +192,15 @@ fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
             .block_type("minecraft:oak_stairs"),
     )?;
     cx.register_item(ItemBuilder::new(ITEM, &Item::STICK))?;
-    cx.register_entity_type(EntityTypeBuilder::new(ENTITY_TYPE, &EntityType::PIG), spawn)
+    cx.register_entity_type(EntityTypeBuilder::new(ENTITY_TYPE, &EntityType::PIG), spawn)?;
+    cx.register_sound_event(SoundEventBuilder::new(SOUND_EVENT))?;
+    cx.register_mob_effect(MobEffectBuilder::new(
+        MOB_EFFECT,
+        MobEffectCategory::Beneficial,
+        0x00_FF_00,
+    ))?;
+    cx.register_attribute(AttributeBuilder::new(ATTRIBUTE, 1.0).syncable(true))?;
+    cx.register_data_component_type(DataComponentTypeBuilder::<i32>::new(DATA_COMPONENT_TYPE))
 }
 
 fn spawn(entity: Entity) -> Arc<dyn EntityBase> {

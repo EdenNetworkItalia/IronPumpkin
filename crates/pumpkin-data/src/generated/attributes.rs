@@ -260,4 +260,24 @@ impl Attributes {
         Self::WAYPOINT_TRANSMIT_RANGE,
         Self::WAYPOINT_RECEIVE_RANGE,
     ];
+    #[doc = r" The number of generated attributes. Other attributes take the ids after it."]
+    pub const COUNT: u8 = 40u8;
+    #[doc = r" The attribute with this id: a generated attribute, or one of"]
+    #[doc = r" [`crate::dynamic_registries`]."]
+    #[must_use]
+    pub fn from_id(id: u8) -> Option<&'static Self> {
+        Self::ALL
+            .get(usize::from(id))
+            .or_else(|| crate::dynamic_registries::attribute(id))
+    }
+    #[doc = r" The attribute with this namespaced name. A name without a namespace is in"]
+    #[doc = r" `minecraft`."]
+    #[must_use]
+    pub fn from_name(name: &str) -> Option<&'static Self> {
+        let namespaced = crate::dynamic::namespaced_name(name);
+        Self::ALL
+            .iter()
+            .find(|attribute| attribute.name == namespaced)
+            .or_else(|| crate::dynamic_registries::attribute_by_name(&namespaced))
+    }
 }

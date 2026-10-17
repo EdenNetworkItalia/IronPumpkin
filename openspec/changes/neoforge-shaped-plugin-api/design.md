@@ -271,7 +271,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 |:--|:--|:--|:--|:--|:--|
 | Events, server and common | 282 | 130 | 132 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
-| Registries | 150 | 21 | 116 | 0 | 13 |
+| Registries | 150 | 27 | 110 | 0 | 13 |
 | Capabilities | 35 | 0 | 33 | 0 | 2 |
 | Attachments | 26 | 0 | 23 | 0 | 3 |
 | Data maps | 24 | 0 | 24 | 0 | 0 |
@@ -281,8 +281,8 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Loot and conditions | 25 | 0 | 24 | 0 | 1 |
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
-| Other server-side packages | 87 | 7 | 39 | 0 | 41 |
-| Total | 1093 | 238 | 497 | 210 | 148 |
+| Other server-side packages | 87 | 9 | 37 | 0 | 41 |
+| Total | 1093 | 246 | 489 | 210 | 148 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -856,12 +856,12 @@ Every class below lives in the client source set (`src/client/java`) or is poste
 | `DeferredBlock` | class, 5 public methods | both | supported | no handle type: the mod keeps the name and looks it up after the freeze with `Block::from_name` or `ironpumpkin_mods::registry` | the lookups answer for vanilla and mod entries; test `lookups_round_trip_vanilla_and_mod_entries` |
 | `DeferredHolder` | class, 16 public methods | both | supported | no handle type: the mod keeps the name and looks it up after the freeze with `ironpumpkin_mods::registry` (`id_of`, `key_of`, `is_in_tag`) | the lookups answer for vanilla and mod entries; test `lookups_round_trip_vanilla_and_mod_entries` |
 | `DeferredItem` | class, 5 public methods | both | supported | no handle type: the mod keeps the name and looks it up after the freeze with `Item::from_registry_key` or `ironpumpkin_mods::registry` | the lookups answer for vanilla and mod entries; test `lookups_round_trip_vanilla_and_mod_entries` |
-| `DeferredRegister#create` | method, 3 overloads | both | supported | `ModInit`, one handle for every backed registry | block, item and entity type only; test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
+| `DeferredRegister#create` | method, 3 overloads | both | supported | `ModInit`, one handle for every backed registry | block, item, entity type, sound event, mob effect, attribute and data component type; tests `a_mod_registers_a_block_and_an_item_that_the_registry_holds`, `the_entries_bind_after_the_vanilla_ids` |
 | `DeferredRegister#createItems` | method, 1 overload | both | supported | `ModInit::register_item` with `content::ItemBuilder` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
 | `DeferredRegister#createBlocks` | method, 1 overload | both | supported | `ModInit::register_block` with `content::BlockBuilder` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
-| `DeferredRegister#createDataComponents` | method, 1 overload | both | planned | mod data component types in `ironpumpkin-mods` (task 2.6) | item stacks store mod components next to the generated vanilla ones |
+| `DeferredRegister#createDataComponents` | method, 1 overload | both | supported | `ModInit::register_data_component_type` with `data_components::DataComponentTypeBuilder` | item stacks store mod components next to the generated vanilla ones; tests `a_mod_component_on_an_item_survives_a_save_and_reaches_a_synced_client`, `persistent_mod_components_survive_a_save_and_load` |
 | `DeferredRegister#createEntities` | method, 1 overload | both | supported | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | test `a_mod_registers_an_entity_type_with_its_factory` |
-| `DeferredRegister#register` | method, 3 overloads | both | supported | `ModInit::register_block`, `register_item`, `register_entity_type` | block, item and entity type only; tests `a_mod_registers_a_block_and_an_item_that_the_registry_holds`, `a_mod_registers_an_entity_type_with_its_factory` |
+| `DeferredRegister#register` | method, 3 overloads | both | supported | `ModInit::register_block`, `register_item`, `register_entity_type`, `register_sound_event`, `register_mob_effect`, `register_attribute`, `register_data_component_type` | tests `a_mod_registers_a_block_and_an_item_that_the_registry_holds`, `a_mod_registers_an_entity_type_with_its_factory`, `the_entries_bind_after_the_vanilla_ids` |
 | `DeferredRegister#makeRegistry` | method, 1 overload | both | planned | engine extension point (M5) | M5 engine extension: creates a new registry; see NewRegistryEvent |
 | `DeferredRegister#getRegistry` | method, 1 overload | both | planned | `ModInit::register_*` builders over the phase 2 content registry | needs the phase 2 content registry (#17) and the M4 native API |
 | `DeferredRegister#createTagKey` | method, 2 overloads | both | supported | a tag is its name: `content::TagBuilder`, `registry::is_in_tag`, `registry::tag_entries` | test `tag_lookups_answer_for_generated_and_mod_tags` |
@@ -873,7 +873,7 @@ Every class below lives in the client source set (`src/client/java`) or is poste
 | `DeferredRegister.Blocks#register` | method, 2 overloads | both | supported | `ModInit::register_block` with `content::BlockBuilder` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
 | `DeferredRegister.Blocks#registerBlock` | method, 3 overloads | both | supported | `ModInit::register_block` with `BlockBuilder::behaviour` | tests `a_mod_registers_a_block_and_an_item_that_the_registry_holds`, `the_block_registry_runs_the_behaviour_of_a_custom_block` |
 | `DeferredRegister.Blocks#registerSimpleBlock` | method, 3 overloads | both | supported | `ModInit::register_block` with `BlockBuilder::new` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
-| `DeferredRegister.DataComponents#registerComponentType` | method, 1 overload | both | planned | mod data component types in `ironpumpkin-mods` (task 2.6) | item stacks store mod components next to the generated vanilla ones |
+| `DeferredRegister.DataComponents#registerComponentType` | method, 1 overload | both | supported | `ModInit::register_data_component_type` with `DataComponentTypeBuilder::<T>::new`; the codec is the value type `T` (`pumpkin_codecs` `Encode` and `Decode`) | tests `a_mod_component_on_an_item_survives_a_save_and_reaches_a_synced_client`, `persistent_mod_components_survive_a_save_and_load` |
 | `DeferredRegister.Entities#registerEntityType` | method, 2 overloads | both | supported | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | test `a_mod_registers_an_entity_type_with_its_factory` |
 | `DeferredRegister.Items#register` | method, 2 overloads | both | supported | `ModInit::register_item` with `content::ItemBuilder` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
 | `DeferredRegister.Items#registerSimpleBlockItem` | method, 6 overloads | both | supported | `ModInit::register_item` with `ItemBuilder::places` | test `a_mod_registers_a_block_and_an_item_that_the_registry_holds` |
@@ -914,13 +914,13 @@ Synced = listed in `NeoForgeRegistriesSetup.VANILLA_SYNC_REGISTRIES`, so a NeoFo
 
 | Registry | Synced | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `attribute` | yes | both | planned | mod attributes in `ironpumpkin-mods` (task 2.6) | entity attribute storage accepts mod ids; NeoForge clients need the phase 3 `frozen_registry` sync |
-| `data_component_type` | yes | both | planned | mod data component types in `ironpumpkin-mods` (task 2.6) | item stacks store mod components next to the generated vanilla ones; vanilla clients never receive them |
+| `attribute` | yes | both | supported | `ModInit::register_attribute`, `RegisterAttribute::register_attribute` with `entity_attributes::AttributeBuilder`; values through `ironpumpkin_mods::entity_attributes` | ids after the vanilla attributes and the three `NeoForgeMod` attributes, in the `frozen_registry` sync; vanilla clients never get a mod attribute; tests `a_mod_attribute_on_a_mod_entity_has_its_base_value_and_accepts_modifiers`, `neoforge_attributes_take_the_ids_of_a_neoforge_server` |
+| `data_component_type` | yes | both | supported | `ModInit::register_data_component_type`, `RegisterDataComponentType::register_data_component_type`; values through `ironpumpkin_mods::data_components` | item stacks store mod components next to the generated vanilla ones, in the `frozen_registry` sync; vanilla clients never receive them; tests `a_mod_component_on_an_item_survives_a_save_and_reaches_a_synced_client`, `persistent_mod_components_survive_a_save_and_load` |
 | `particle_type` | yes | both | planned | engine extension point (M5) | M5 engine extension: no registration API; the phase 2 content registry covers block, item and entity type only |
 | `game_event` | yes | both | planned | engine extension point (M5) | M5 engine extension: no registration API; the phase 2 content registry covers block, item and entity type only |
-| `sound_event` | yes | both | planned | sound ids played with the v0.2 `play-custom-sound` (task 2.6) | the sound packet carries the id inline, so clients need no registry entry |
+| `sound_event` | yes | both | supported | `ModInit::register_sound_event`, `RegisterSoundEvent::register_sound_event`; played with `sound_events::play_sound` | the sound packet carries the id inline, so clients need no registry entry and the registry is not in the `frozen_registry` sync; test `a_played_mod_sound_reaches_the_players_near_the_position` |
 | `fluid` | yes | both | planned | engine extension point (M5) | M5 engine extension: no registration API; the phase 2 content registry covers block, item and entity type only |
-| `mob_effect` | yes | both | planned | mod effects in `ironpumpkin-mods` (task 2.6) | entity effect storage accepts mod ids; NeoForge clients need the phase 3 `frozen_registry` sync |
+| `mob_effect` | yes | both | supported | `ModInit::register_mob_effect`, `RegisterMobEffect::register_mob_effect` with `mob_effects::MobEffectBuilder` and a `MobEffect` behaviour; applied through `ironpumpkin_mods::mob_effects` | ids after the vanilla effects, in the `frozen_registry` sync; vanilla clients never get the effect packets of a mod effect; test `a_mod_effect_applied_to_a_player_ticks_and_expires` |
 | `block` | yes | both | supported | `ModInit::register_block`, `RegisterEventExt::register_block`; lookups in `ironpumpkin_mods::registry` | tests `a_mod_registers_a_block_and_an_item_that_the_registry_holds`, `register_event_fires_once_per_registry_between_init_and_common_setup`, `lookups_round_trip_vanilla_and_mod_entries` |
 | `debug_subscription` | yes | both | not supported | - | debug renderer subscriptions; development only |
 | `entity_type` | yes | both | supported | `ModInit::register_entity_type`, `RegisterEventExt::register_entity_type`; lookups in `ironpumpkin_mods::registry` | tests `a_mod_registers_an_entity_type_with_its_factory`, `register_event_fires_once_per_registry_between_init_and_common_setup`, `lookups_round_trip_vanilla_and_mod_entries` |
@@ -1583,7 +1583,7 @@ The root `common` package mixes families, so its types have one row each in the 
 
 | Type | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `BooleanAttribute` | class, 3 public methods | both | planned | engine extension point (M5) | M5 engine extension: attribute type; custom attributes are not registrable |
+| `BooleanAttribute` | class, 3 public methods | both | supported | `entity_attributes::AttributeBuilder::boolean`, `AttributeRange::Boolean` | `sanitizeValue` as in `NeoForge`; the tooltip methods are display only; tests `ranged_and_boolean_attributes_sanitize_like_neoforge`, `creative_flight_lets_a_survival_player_fly` |
 | `CommonHooks` | class, 97 public methods | both | not supported | - | internal hook class called from patches |
 | `CommonHooks.BiomeCallbackFunction` | interface, 1 public method | both | not supported | - | internal hook class called from patches |
 | `CreativeModeTabRegistry` | class, 5 public methods | both | not supported | - | creative tabs are client UI |
@@ -1604,7 +1604,7 @@ The root `common` package mixes families, so its types have one row each in the 
 | `NeoForgeEventHandler` | class, 11 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
 | `NeoForgeMod` | class, 12 public methods | both | not supported | - | NeoForge own mod class; its registered entries are in the registry tables |
 | `OnlyInWarningsHandler` | class, 0 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
-| `PercentageAttribute` | class, 1 public method | both | planned | engine extension point (M5) | M5 engine extension: attribute type; custom attributes are not registrable |
+| `PercentageAttribute` | class, 1 public method | both | supported | `entity_attributes::AttributeBuilder::ranged` | a ranged attribute; the percentage format is display only; tests `ranged_and_boolean_attributes_sanitize_like_neoforge`, `swim_speed_scales_the_swim_speed_of_a_mob_in_water` |
 | `SoundAction` | class, 3 public methods | both | planned | engine extension point (M5) | M5 engine extension: fluid sound actions of the NeoForge fluid API |
 | `SoundActions` | 4 constants | both | planned | engine extension point (M5) | M5 engine extension: fluid sound actions of the NeoForge fluid API |
 | `SpecialPlantable` | interface, 3 public methods | both | planned | engine extension point (M5) | M5 engine extension: custom plantable items for villagers and dispensers; no Pumpkin hook |

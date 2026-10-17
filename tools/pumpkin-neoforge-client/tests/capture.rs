@@ -77,7 +77,7 @@ fn plain_registry_file_matches_run_b_limited_to_the_synced_registries() {
 #[test]
 fn registry_check_reports_the_registries_of_a_real_server() {
     let failures = check_registries(&run_b(), &expectations(PLAIN));
-    // Only the registry list differs: block, item and entity type have the expected contents.
+    // Only the registry list differs: the synced registries have the expected contents.
     assert_eq!(failures.len(), 1, "{failures:#?}");
     assert!(failures[0].contains("got 35"), "{}", failures[0]);
     assert!(
@@ -91,7 +91,8 @@ fn registry_check_reports_the_registries_of_a_real_server() {
 fn registry_check_reports_contents_and_order() {
     let entries = limited(&run_b(), &SYNCED_REGISTRIES);
     let failures = check_registries(&entries, &expectations(TEST_MOD));
-    assert_eq!(failures.len(), 6, "{failures:#?}");
+    // Two per registry: the count and the last entry, the test mod's entry.
+    assert_eq!(failures.len(), 12, "{failures:#?}");
     assert!(failures[0].contains("expected 1287 ids, got 1286"));
     assert!(failures[1].contains("expected test-mod:test_block at id 1286, got no entry"));
 
@@ -149,20 +150,18 @@ at = { x = "a:d" }
 #[test]
 fn run_b_matches_itself_and_reports_differences() {
     let reference = run_b();
-    // The recording of IronPumpkin has the three synced registries. The reference keeps all 35.
+    // The recording of IronPumpkin has the six synced registries. The reference keeps all 35.
     let recording = limited(&reference, &SYNCED_REGISTRIES);
     assert!(compare_with_reference(&recording, &reference).is_empty());
 
     let channels = synced_channels(&reference).unwrap();
-    assert_eq!(channels.len(), 11, "{channels:?}");
+    assert_eq!(channels.len(), 14, "{channels:?}");
     assert_eq!(channels[0], "neoforge:frozen_registry_sync_start");
-    assert_eq!(channels[10], "neoforge:feature_flags");
+    assert_eq!(channels[13], "neoforge:feature_flags");
 
-    // Only block, item and entity type of the reference count, in any order.
-    let synced = limited(
-        &reference,
-        &["minecraft:entity_type", "minecraft:block", "minecraft:item"],
-    );
+    // Only the synced registries of the reference count, in any order.
+    let reversed: Vec<&str> = SYNCED_REGISTRIES.iter().rev().copied().collect();
+    let synced = limited(&reference, &reversed);
     assert!(compare_with_reference(&synced, &reference).is_empty());
 
     let two = limited(&reference, &["minecraft:block", "minecraft:item"]);
@@ -170,20 +169,15 @@ fn run_b_matches_itself_and_reports_differences() {
     assert_eq!(failures.len(), 1, "{failures:#?}");
     assert!(failures[0].starts_with("channel order differs"));
 
-    // A fourth registry in the recording is a difference: the filter applies to the reference only.
-    let extra = limited(
-        &reference,
-        &[
-            "minecraft:block",
-            "minecraft:item",
-            "minecraft:entity_type",
-            "minecraft:mob_effect",
-        ],
-    );
+    // A seventh registry in the recording is a difference: the filter applies to the reference
+    // only.
+    let mut seven = SYNCED_REGISTRIES.to_vec();
+    seven.push("minecraft:sound_event");
+    let extra = limited(&reference, &seven);
     assert_eq!(
         extra.iter().filter(|e| is_registry(e)).count(),
-        4,
-        "run (b) must have minecraft:mob_effect"
+        7,
+        "run (b) must have minecraft:sound_event"
     );
     let failures = compare_with_reference(&extra, &reference);
     assert_eq!(failures.len(), 1, "{failures:#?}");

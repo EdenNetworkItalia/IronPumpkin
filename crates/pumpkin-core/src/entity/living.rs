@@ -1,3 +1,4 @@
+use pumpkin_data::dynamic_registries;
 use pumpkin_data::item::Item;
 use pumpkin_data::particle::Particle;
 use pumpkin_data::potion::Effect;
@@ -893,8 +894,10 @@ impl LivingEntity {
             .attributes
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.get(&attribute.id)
-            .map_or(attribute.default_value, AttributeInstance::value)
+        let value = map
+            .get(&attribute.id)
+            .map_or(attribute.default_value, AttributeInstance::value);
+        dynamic_registries::attribute_range(attribute).sanitize(value)
     }
 
     /// Returns the base attribute value for `attribute` for this entity's type.
@@ -1079,10 +1082,13 @@ impl LivingEntity {
         };
 
         let chunk_pos = self.entity.chunk_pos.load();
-        self.entity
-            .world
-            .load()
-            .broadcast_to_chunk_editioned(chunk_pos, &je_packet, &be_packet);
+        let world = self.entity.world.load();
+        if dynamic_registries::is_custom_mob_effect(effect.effect_type) {
+            // Bedrock has no mod effects.
+            world.broadcast_to_chunk(chunk_pos, &je_packet);
+        } else {
+            world.broadcast_to_chunk_editioned(chunk_pos, &je_packet, &be_packet);
+        }
         if effect.effect_type != &StatusEffect::INSTANT_HEALTH
             && effect.effect_type != &StatusEffect::INSTANT_DAMAGE
         {
@@ -1383,7 +1389,8 @@ impl LivingEntity {
 
                 let mut velo = self.entity.velocity.load();
 
-                velo.y += 0.04;
+                // NeoForge `jumpInFluid`: the swim speed scales the upward push.
+                velo.y += 0.04 * self.get_attribute_value(&Attributes::NEOFORGE_SWIM_SPEED);
 
                 self.entity.velocity.store(velo);
             } else if (on_ground || in_water && fluid_height <= swim_height)
@@ -1612,6 +1619,9 @@ impl LivingEntity {
             if self.has_effect(&StatusEffect::DOLPHINS_GRACE) {
                 friction = 0.96;
             }
+
+            // NeoForge `LivingEntity.travelInWater`.
+            speed *= self.get_attribute_value(&Attributes::NEOFORGE_SWIM_SPEED);
 
             self.entity
                 .update_velocity_from_input(movement_input, speed);
@@ -1882,13 +1892,9 @@ impl LivingEntity {
         fall_distance: f32,
         damage_per_distance: f32,
     ) {
-        let may_fly = caller.get_player().is_some_and(|player| {
-            player
-                .abilities
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .allow_flying
-        });
+        let may_fly = caller
+            .get_player()
+            .is_some_and(crate::entity::player::Player::may_fly);
         if may_fly {
             crate::plugin::player_events::flyable_fall(caller, fall_distance, damage_per_distance);
             return;
@@ -3805,7 +3811,7 @@ fn random_teleport_coordinate(center: f64, diameter: f32, random: f64) -> f64 {
 }
 
 fn attributes_by_id(id: u8) -> Option<&'static Attributes> {
-    Attributes::ALL.iter().find(|attr| attr.id == id)
+    Attributes::from_id(id)
 }
 
 fn push_unique_attribute(touched: &mut Vec<Attributes>, attr: &Attributes) {

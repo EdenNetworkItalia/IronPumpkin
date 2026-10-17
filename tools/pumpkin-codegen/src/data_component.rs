@@ -63,6 +63,7 @@ pub fn build() -> TokenStream {
 
     let mut data_component_vec = data_component.iter().collect::<Vec<_>>();
     data_component_vec.sort_by_key(|(_, val)| val.id());
+    let count = data_component_vec.len() as u16;
 
     for (raw_name, component_val) in &data_component_vec {
         let raw_value = component_val.id();
@@ -114,6 +115,9 @@ pub fn build() -> TokenStream {
         }
 
         impl DataComponent {
+            /// The number of generated component types. Mod component types take the ids after it.
+            pub const COUNT: u16 = #count;
+
             #[must_use]
             pub const fn to_id(self) -> u8 {
                 self as u8

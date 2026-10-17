@@ -22,6 +22,9 @@
 //! table too, and its generated members live in a third map. It holds the members its definition
 //! lists and the entries that list it, never the entries of a display entry. Clients and the
 //! datapack tag loader do not know mod tags.
+//!
+//! [`crate::dynamic_registries`] holds the sound events, mob effects, attributes and data
+//! component types of mods. [`freeze`] freezes them too.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry};
@@ -161,19 +164,26 @@ pub struct EntityTypeDefinition {
     pub tags: Vec<String>,
 }
 
+/// A registry that mods can fill. The last four live in [`crate::dynamic_registries`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ContentKind {
     Block,
     Item,
     EntityType,
+    SoundEvent,
+    MobEffect,
+    Attribute,
+    DataComponentType,
 }
 
 impl ContentKind {
-    const fn tag_key(self) -> RegistryKey {
+    /// The tag registry, or `None` for a registry without tags.
+    const fn tag_key(self) -> Option<RegistryKey> {
         match self {
-            Self::Block => RegistryKey::Block,
-            Self::Item => RegistryKey::Item,
-            Self::EntityType => RegistryKey::EntityType,
+            Self::Block => Some(RegistryKey::Block),
+            Self::Item => Some(RegistryKey::Item),
+            Self::EntityType => Some(RegistryKey::EntityType),
+            Self::SoundEvent | Self::MobEffect | Self::Attribute | Self::DataComponentType => None,
         }
     }
 }
@@ -184,6 +194,10 @@ impl fmt::Display for ContentKind {
             Self::Block => "block",
             Self::Item => "item",
             Self::EntityType => "entity type",
+            Self::SoundEvent => "sound event",
+            Self::MobEffect => "mob effect",
+            Self::Attribute => "attribute",
+            Self::DataComponentType => "data component type",
         })
     }
 }
@@ -253,6 +267,16 @@ pub enum RegistryError {
     },
     /// The item type is not a vanilla item.
     UnknownItemType { item: String, item_type: String },
+    /// The registry has no tags.
+    NoTags { kind: ContentKind, tag: String },
+    /// A value of the definition is out of range, for example the default value of an attribute.
+    InvalidDefinition {
+        kind: ContentKind,
+        name: String,
+        reason: &'static str,
+    },
+    /// An attribute modifier of the mob effect names an attribute that is not registered.
+    UnknownAttribute { effect: String, attribute: String },
 }
 
 impl fmt::Display for RegistryError {
@@ -318,6 +342,16 @@ impl fmt::Display for RegistryError {
             Self::UnknownItemType { item, item_type } => write!(
                 f,
                 "item \"{item}\" cannot take the item type \"{item_type}\": it is not a vanilla item"
+            ),
+            Self::NoTags { kind, tag } => {
+                write!(f, "{kind} tag \"{tag}\": the {kind} registry has no tags")
+            }
+            Self::InvalidDefinition { kind, name, reason } => {
+                write!(f, "{kind} \"{name}\": {reason}")
+            }
+            Self::UnknownAttribute { effect, attribute } => write!(
+                f,
+                "mob effect \"{effect}\" modifies unknown attribute \"{attribute}\""
             ),
         }
     }
@@ -602,6 +636,10 @@ impl ContentBuilder {
             ContentKind::EntityType => self.entity_types.contains_key(name),
             #[cfg(not(feature = "entity_type"))]
             ContentKind::EntityType => false,
+            ContentKind::SoundEvent
+            | ContentKind::MobEffect
+            | ContentKind::Attribute
+            | ContentKind::DataComponentType => false,
         }
     }
 
@@ -617,11 +655,14 @@ impl ContentBuilder {
 
     fn register_tag(&mut self, definition: TagDefinition) -> Result<(), RegistryError> {
         let TagDefinition { kind, name, values } = definition;
+        let Some(key) = kind.tag_key() else {
+            return Err(RegistryError::NoTags { kind, tag: name });
+        };
         if !is_custom_name(&name) {
             return Err(RegistryError::InvalidTagName { kind, tag: name });
         }
         // A generated tag outside `minecraft`, such as `c:ores`, would shadow the mod tag.
-        if resolve_tag(kind.tag_key(), &name).is_some() {
+        if resolve_tag(key, &name).is_some() {
             return Err(RegistryError::DuplicateTag { kind, tag: name });
         }
         let values = values
@@ -653,7 +694,9 @@ impl ContentBuilder {
             let mod_tags = self.mod_tags.get(&kind);
             for (name, tags) in entries {
                 let unknown = tags.iter().find(|tag| {
-                    resolve_tag(kind.tag_key(), tag).is_none()
+                    kind.tag_key()
+                        .and_then(|key| resolve_tag(key, tag))
+                        .is_none()
                         && !mod_tags.is_some_and(|mod_tags| mod_tags.contains_key(*tag))
                 });
                 if let Some(tag) = unknown {
@@ -1090,7 +1133,7 @@ fn real_ids(generated: u16, displays: &[u16], placeholders: &[bool]) -> Vec<u16>
         .collect()
 }
 
-fn leak(name: String) -> &'static str {
+pub(crate) fn leak(name: String) -> &'static str {
     Box::leak(name.into_boxed_str())
 }
 
@@ -1131,7 +1174,7 @@ fn insert_new<V>(
 }
 
 /// Accepts `namespace:path` with the characters vanilla allows in a resource location.
-fn validate_name(kind: ContentKind, name: &str) -> Result<(), RegistryError> {
+pub(crate) fn validate_name(kind: ContentKind, name: &str) -> Result<(), RegistryError> {
     let reserved = || RegistryError::ReservedNamespace {
         kind,
         name: name.to_string(),
@@ -1179,6 +1222,10 @@ fn generated_entry(kind: ContentKind, name: &str) -> Option<(u16, &'static str)>
             .map(|ty| (ty.id, ty.resource_name)),
         #[cfg(not(feature = "entity_type"))]
         ContentKind::EntityType => None,
+        ContentKind::SoundEvent
+        | ContentKind::MobEffect
+        | ContentKind::Attribute
+        | ContentKind::DataComponentType => None,
     }
 }
 
@@ -1223,7 +1270,7 @@ fn resolve_tags(
 ) -> Result<BTreeSet<String>, RegistryError> {
     tags.iter()
         .map(|tag| {
-            if let Some((generated, _)) = resolve_tag(kind.tag_key(), tag) {
+            if let Some((generated, _)) = kind.tag_key().and_then(|key| resolve_tag(key, tag)) {
                 return Ok(generated.to_string());
             }
             let mod_tag = tag.strip_prefix('#').unwrap_or(tag);
@@ -1249,7 +1296,9 @@ fn tag_tables<'a>(
     explicit: &NamedSets,
     mod_tags: &NamedSets,
 ) -> TagTables {
-    let key = kind.tag_key();
+    let Some(key) = kind.tag_key() else {
+        return TagTables::default();
+    };
     let explicit = explicit.get(&kind).unwrap_or(&NO_SETS);
     let mod_tags = mod_tags.get(&kind).unwrap_or(&NO_SETS);
     let mod_names: HashMap<&str, (&'static str, &BTreeSet<String>)> = mod_tags
@@ -1400,6 +1449,15 @@ pub fn register_placeholder_entity_type(
 /// after the freeze.
 #[must_use]
 pub fn is_registered(kind: ContentKind, name: &str) -> bool {
+    if matches!(
+        kind,
+        ContentKind::SoundEvent
+            | ContentKind::MobEffect
+            | ContentKind::Attribute
+            | ContentKind::DataComponentType
+    ) {
+        return crate::dynamic_registries::is_registered(kind, name);
+    }
     PENDING
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -1469,6 +1527,7 @@ pub fn freeze() -> Result<&'static ContentTables, RegistryError> {
         .unwrap_or_else(PoisonError::into_inner)
         .take()
         .ok_or(RegistryError::RegistryFrozen)?;
+    crate::dynamic_registries::freeze()?;
     let tables = builder.build()?;
     Ok(TABLES.get_or_init(|| tables))
 }

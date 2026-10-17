@@ -14,7 +14,7 @@ The inventory in `design.md` of the change folder has one row for each element o
 | **Client code** | Renderers, screens, models, tooltips and key bindings run in the same jar | Not in the pack. A NeoForge client uses a Java mod with the same registry names. |
 | **Mod loading** | The loader scans `mods/` and loads each jar | No loading. Cargo compiles the mod into the binary. A change needs a new build. |
 | **Mixins and access transformers** | Mixin configs and `accesstransformer.cfg` | Source patches. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
-| **Registries** | Any registry, with a `DeferredRegister` | Block, item, entity type and tag. Sound events, mob effects, data components and attributes are planned (task 2.6). The rest waits for M5 or is not supported. |
+| **Registries** | Any registry, with a `DeferredRegister` | Block, item, entity type, tag, sound event, mob effect, data component type and attribute. The rest waits for M5 or is not supported. |
 | **Events** | The NeoForge event catalogue | Pumpkin events. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting and player events have NeoForge fire sites and fields. See [Events](./events.md). Five player rows are planned, as listed below. The level and entity families are planned (tasks 2.13 and 2.15). |
 | **Data generation and game tests** | `runData`, `RegisterGameTestsEvent` | Not supported |
 | **Mod version records of a world** | `ModMismatchEvent` | Not supported. Pumpkin does not keep them. |
@@ -29,7 +29,6 @@ The inventory in `design.md` of the change folder has one row for each element o
 - 2.12: the player rows that stay planned, listed below.
 - 2.13 and 2.15: the level and block, and the entity families of events.
 - 2.25: the other registration events of NeoForge and the behaviour by block type.
-- 2.6: sound events, mob effects, data components and attributes.
 - 2.7: capabilities.
 - 2.9: menus.
 - 2.10: shapes.

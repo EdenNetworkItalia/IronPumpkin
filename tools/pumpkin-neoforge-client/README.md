@@ -66,9 +66,9 @@ when the name ends in `.gz`, and exits with 1 when they differ in one of these:
 
 - The channels of the clientbound custom payloads from `neoforge:frozen_registry_sync_start` to
   `finish_configuration`, in order. In the reference, the `frozen_registry` payloads of registries
-  other than block, item and entity type, the registries that IronPumpkin syncs, are left out. The
-  recording is not filtered, so a registry that IronPumpkin sends in addition to those three is a
-  difference.
+  other than block, item, entity type, mob effect, attribute and data component type, the
+  registries that IronPumpkin syncs, are left out. The recording is not filtered, so a registry
+  that IronPumpkin sends in addition to those six is a difference.
 - The clientbound bodies of `c:version`, `c:register`, `neoforge:config_file`,
   `neoforge:extensible_enum_data` and `neoforge:feature_flags`, byte for byte, and the decoded
   `neoforge:known_registry_data_maps`. `NeoForge` writes the registries of that payload in the
@@ -259,13 +259,17 @@ at = { 1285 = "minecraft:firefly_bush" }  # optional: more names by id
   `detect_neoforge_clients = true`.
 - `expected/pumpkin-neoforge-test-mod.txt`: the same against IronPumpkin with the native mod
   `ironpumpkin-test-mod`, which adds its synced config. The boot test of that crate reads it.
-- `expected/pumpkin-neoforge-registries.toml`: the block, item and entity type registries of
-  IronPumpkin without native mods. Their counts and first and last names equal run (b) of the
-  capture: block 1286 ids from `minecraft:air` to `minecraft:firefly_bush`, item 1658 ids from
-  `minecraft:air` to `minecraft:ominous_bottle`, entity type 161 ids from `minecraft:acacia_boat`
-  to `minecraft:fishing_bobber`.
+- `expected/pumpkin-neoforge-registries.toml`: the synced registries of IronPumpkin without
+  native mods. Their counts and first and last names equal run (b) of the capture: block 1286 ids
+  from `minecraft:air` to `minecraft:firefly_bush`, item 1658 ids from `minecraft:air` to
+  `minecraft:ominous_bottle`, entity type 161 ids from `minecraft:acacia_boat` to
+  `minecraft:fishing_bobber`, mob effect 40 ids from `minecraft:speed` to
+  `minecraft:breath_of_the_nautilus`, attribute 43 ids from `minecraft:air_drag_modifier` to
+  `neoforge:gliding_flight` (the three `NeoForgeMod` attributes at 40 to 42), data component type
+  122 ids from `minecraft:custom_data` to `minecraft:cushion/color`.
 - `expected/pumpkin-neoforge-test-mod-registries.toml`: the same registries with the content of
-  `ironpumpkin-test-mod` at the first free ids, 1286, 1658 and 161. The boot test reads it.
+  `ironpumpkin-test-mod` at the first free ids, 1286, 1658, 161, 40, 43 and 122. The boot test
+  reads it.
 - `expected/pumpkin-play.txt`: the play expectation of `scripts/boot.toml` against IronPumpkin in
   creative mode without spawn protection. The play boot test of `ironpumpkin-test-mod`
   (`tests/neoforge_play.rs`) reads it, and checks the join, the chat message and the leave in the

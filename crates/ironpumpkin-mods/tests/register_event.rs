@@ -248,6 +248,10 @@ fn register_event_fires_once_per_registry_between_init_and_common_setup() {
         *LOG.lock().unwrap(),
         [
             "init",
+            "RegisterEvent minecraft:attribute",
+            "RegisterEvent minecraft:data_component_type",
+            "RegisterEvent minecraft:sound_event",
+            "RegisterEvent minecraft:mob_effect",
             "RegisterEvent minecraft:block",
             "RegisterEvent minecraft:entity_type",
             "RegisterEvent minecraft:item",

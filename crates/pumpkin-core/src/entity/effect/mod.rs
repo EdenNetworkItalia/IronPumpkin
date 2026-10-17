@@ -1,3 +1,4 @@
+pub mod custom;
 pub mod hunger;
 pub mod infested;
 pub mod oozing;
@@ -75,7 +76,7 @@ pub fn get_mob_effect(effect: &'static StatusEffect) -> Option<&'static dyn MobE
     } else if effect == &StatusEffect::WIND_CHARGED {
         Some(&WIND_CHARGED)
     } else {
-        None
+        custom::mob_effect_behaviour(effect)
     }
 }
 

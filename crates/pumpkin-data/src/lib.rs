@@ -447,6 +447,8 @@ mod blocks;
 #[cfg(feature = "block")]
 pub mod dynamic;
 #[cfg(feature = "block")]
+pub mod dynamic_registries;
+#[cfg(feature = "block")]
 pub mod dynamic_types;
 
 #[cfg(feature = "block")]

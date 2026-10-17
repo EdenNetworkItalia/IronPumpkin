@@ -40,6 +40,10 @@ pub struct ItemStack {
     pub item_count: u8,
     pub item: &'static Item,
     pub patch: Vec<(DataComponent, Option<Box<dyn DataComponentImpl>>)>,
+    /// The values of mod data component types, keyed by their id in
+    /// [`crate::dynamic_registries`], in the NBT form of their codec. A mod component has no
+    /// default on the item, so the stack only adds values.
+    pub custom_components: Vec<(u16, NbtTag)>,
 
     // unique ID for Bedrock network; don't serialize
     // Should always be a positive value for non-empty stacks
@@ -104,6 +108,7 @@ impl ItemStack {
             item_count,
             item,
             patch: Vec::new(),
+            custom_components: Vec::new(),
 
             uid: ITEM_STACK_ID_GEN.next_id(),
         }
@@ -119,6 +124,7 @@ impl ItemStack {
             item_count,
             item,
             patch: component,
+            custom_components: Vec::new(),
 
             uid: ITEM_STACK_ID_GEN.next_id(),
         }
@@ -133,6 +139,7 @@ impl ItemStack {
             item_count,
             item,
             patch: Vec::new(),
+            custom_components: Vec::new(),
 
             uid: match NonZero::new(1) {
                 Some(v) => v,
@@ -265,6 +272,7 @@ impl ItemStack {
         item_count: 0,
         item: &Item::AIR,
         patch: Vec::new(),
+        custom_components: Vec::new(),
 
         uid: NonZero::<i32>::MIN, // white lie - Bedrock `uid` is never sent if the stack is empty
     };
@@ -701,10 +709,50 @@ impl ItemStack {
         }
     }
 
+    /// The value of the mod data component type `id`, in NBT form.
+    #[must_use]
+    pub fn get_custom_component(&self, id: u16) -> Option<&NbtTag> {
+        self.custom_components
+            .iter()
+            .find(|(component, _)| *component == id)
+            .map(|(_, value)| value)
+    }
+
+    /// Sets the value of the mod data component type `id`, in NBT form.
+    pub fn set_custom_component(&mut self, id: u16, value: NbtTag) {
+        if let Some((_, old)) = self
+            .custom_components
+            .iter_mut()
+            .find(|(component, _)| *component == id)
+        {
+            *old = value;
+        } else {
+            self.custom_components.push((id, value));
+        }
+    }
+
+    /// Removes the value of the mod data component type `id` and returns it.
+    pub fn remove_custom_component(&mut self, id: u16) -> Option<NbtTag> {
+        let index = self
+            .custom_components
+            .iter()
+            .position(|(component, _)| *component == id)?;
+        Some(self.custom_components.swap_remove(index).1)
+    }
+
     #[must_use]
     pub fn are_items_and_components_equal(&self, other: &Self) -> bool {
         // Items must match
         if self.item != other.item {
+            return false;
+        }
+
+        if self.custom_components.len() != other.custom_components.len()
+            || self
+                .custom_components
+                .iter()
+                .any(|(id, value)| other.get_custom_component(*id) != Some(value))
+        {
             return false;
         }
 
@@ -742,15 +790,17 @@ impl ItemStack {
         self.item_count == other.item_count && self.are_items_and_components_equal(other)
     }
 
-    /// Whether this stack holds a custom item that a client in mode `ids` sees as another item,
-    /// and `incoming` is that stack: the shown item with the same count and components. A client
-    /// that sends a stack back unchanged (creative mode does) sends this, and the server keeps its
-    /// own stack. A `Display` client sees every custom item as its display item, a `Real` client
-    /// only placeholders.
+    /// Whether a client in mode `ids` sees this stack differently, and `incoming` is the stack it
+    /// sees: the shown item with the same count and the components the client gets. A client that
+    /// sends a stack back unchanged (creative mode does) sends this, and the server keeps its own
+    /// stack. A `Display` client sees every custom item as its display item and no mod
+    /// components, a `Real` client only placeholders as their display items.
     #[must_use]
     pub fn is_displayed_as(&self, incoming: &Self, ids: crate::dynamic::ContentIds) -> bool {
         let display = self.item.to_java_network_id(ids);
-        if display == self.item.id {
+        let hides_components =
+            ids == crate::dynamic::ContentIds::Display && !self.custom_components.is_empty();
+        if display == self.item.id && !hides_components {
             return false;
         }
         let Some(item) = Item::from_id(display) else {
@@ -758,6 +808,9 @@ impl ItemStack {
         };
         let mut shown = self.clone();
         shown.item = item;
+        if hides_components {
+            shown.custom_components.clear();
+        }
         shown.are_equal(incoming)
     }
 
@@ -838,6 +891,13 @@ impl ItemStack {
                 tag.put(name.as_str(), NbtCompound::new());
             }
         }
+        for (id, value) in &self.custom_components {
+            if let Some(entry) = crate::dynamic_registries::data_component_type(*id)
+                && entry.persistent
+            {
+                tag.put(entry.name, value.clone());
+            }
+        }
 
         // Store custom data like enchantments, display name, etc. would go here
         compound.put_compound("components", tag);
@@ -862,6 +922,16 @@ impl ItemStack {
         // Process any additional data in the components compound
         if let Some(tag) = compound.get_compound("components") {
             for (name, data) in &tag.child_tags {
+                if is_custom_component_name(name) {
+                    // The value of a mod component type; the type of a mod that is gone is dropped.
+                    if let Some(entry) =
+                        crate::dynamic_registries::data_component_type_by_name(name)
+                        && entry.persistent
+                    {
+                        item_stack.set_custom_component(entry.id, data.clone());
+                    }
+                    continue;
+                }
                 if let Some(name) = name.strip_prefix("!") {
                     let id = DataComponent::try_from_name(name)?;
                     if id.is_persistent() {
@@ -878,6 +948,13 @@ impl ItemStack {
 
         Some(item_stack)
     }
+}
+
+/// Whether a component name of a save is outside `minecraft`, so it names a mod component type.
+fn is_custom_component_name(name: &str) -> bool {
+    let name = name.strip_prefix('!').unwrap_or(name);
+    name.split_once(':')
+        .is_some_and(|(namespace, _)| namespace != "minecraft")
 }
 
 impl From<&RecipeResultStruct> for ItemStack {

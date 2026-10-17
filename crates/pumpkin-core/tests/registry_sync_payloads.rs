@@ -39,7 +39,14 @@ fn decode(payloads: &RegistrySyncPayloads) -> Vec<FrozenRegistryPayload> {
         .collect();
     assert_eq!(
         names,
-        ["minecraft:block", "minecraft:item", "minecraft:entity_type"]
+        [
+            "minecraft:block",
+            "minecraft:item",
+            "minecraft:entity_type",
+            "minecraft:mob_effect",
+            "minecraft:attribute",
+            "minecraft:data_component_type",
+        ]
     );
     let listed: Vec<String> = start.to_access.iter().map(ToString::to_string).collect();
     assert_eq!(listed, names);
@@ -102,6 +109,31 @@ fn without_content() {
             161,
             entry(0, "minecraft:acacia_boat"),
             entry(EntityType::COUNT - 1, "minecraft:fishing_bobber")
+        )
+    );
+    assert_eq!(
+        shape(&registries[3]),
+        (
+            40,
+            entry(0, "minecraft:speed"),
+            entry(39, "minecraft:breath_of_the_nautilus")
+        )
+    );
+    // The attributes of `NeoForgeMod` follow the vanilla ones, as on the `NeoForge` server.
+    assert_eq!(
+        shape(&registries[4]),
+        (
+            43,
+            entry(0, "minecraft:air_drag_modifier"),
+            entry(42, "neoforge:gliding_flight")
+        )
+    );
+    assert_eq!(
+        shape(&registries[5]),
+        (
+            122,
+            entry(0, "minecraft:custom_data"),
+            entry(121, "minecraft:cushion/color")
         )
     );
     for registry in &registries {

@@ -44,6 +44,10 @@ pub enum WritingError {
     UnsupportedVersion(JavaMinecraftVersion),
     #[error("Failed to serialize packet: {0}")]
     Message(String),
+    /// The packet names a registry entry that the client does not know, such as a mod mob effect
+    /// for a client with display ids. Senders skip the client.
+    #[error("The client does not know {0}")]
+    UnknownToClient(String),
 }
 
 impl serde::ser::Error for WritingError {
