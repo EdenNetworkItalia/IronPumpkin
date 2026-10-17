@@ -383,7 +383,7 @@ impl NativeMod for HelloMod {
 Gaps:
 
 - `ExtendPoiTypesEvent#addStatesToPoi` with a part of the states has no counterpart: a mod block has no state ids before the freeze, and the server tracks job sites by block. `add_block_to_poi` adds every state.
-- The server tracks only the job site POI types as block POIs. A block added to `minecraft:home`, `minecraft:meeting` or another POI type without a profession is accepted with a warning and changes nothing.
+- Only the job site POI types accept added blocks. A block added to `minecraft:home`, `minecraft:meeting` or another POI type without a profession logs a warning and changes nothing.
 - `BlockEntityTypeAddBlocksEvent` gives a block state one block entity type. A vanilla block keeps its own, and a mod block keeps the first one, with a warning. A block entity type that is not registered changes nothing, with a warning, as NeoForge skips it.
 - `EntityAttributeCreationEvent#put` and `EntityAttributeModificationEvent#add` take the vanilla and NeoForge `Attributes`. A mod attribute binds at the freeze, after these events, so they cannot name it. Set its base value on the entity with `entity_attributes::set_base_value`.
 - A spawn predicate gets the entity type, the world and the position. The spawn reason and the random source of the NeoForge predicate have no Pumpkin counterpart.

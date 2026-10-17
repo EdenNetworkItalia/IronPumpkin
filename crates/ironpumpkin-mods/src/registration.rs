@@ -520,8 +520,8 @@ pub struct ExtendPoiTypesEvent {
 
 registration_event!(ExtendPoiTypesEvent);
 
-/// The vanilla POI types without a villager profession, from `PoiTypes`. The server tracks only
-/// job sites as block POIs, so a block added to one of these is accepted and ignored.
+/// The vanilla POI types without a villager profession, from `PoiTypes`. Only the job site POI
+/// types accept added blocks, so a block added to one of these is accepted and ignored.
 const OTHER_POI_TYPES: [&str; 8] = [
     "minecraft:home",
     "minecraft:meeting",
@@ -570,7 +570,7 @@ fn add_block_to_poi(poi_type: &str, block_name: &str) -> Result<(), Registration
     }
     let Some(profession) = profession else {
         warn!(
-            "ExtendPoiTypesEvent: the server tracks only job site POI types, so \"{block_name}\" does not join \"{poi_type}\""
+            "ExtendPoiTypesEvent: only job site POI types accept added blocks, so \"{block_name}\" does not join \"{poi_type}\""
         );
         return Ok(());
     };
