@@ -91,6 +91,16 @@ pub fn block_type(block: BlockId) -> Option<BlockId> {
     custom_block_type(block)
 }
 
+/// The block type of a custom block when the type has a block entity and the block has none, so
+/// the server behaviour of the type finds no block entity.
+#[must_use]
+pub fn block_type_without_block_entity(block: &Block) -> Option<&'static Block> {
+    let block_type = block_type(block.id)?.to_block();
+    (block_type.default_state.block_entity_type != u16::MAX
+        && block.default_state.block_entity_type == u16::MAX)
+        .then_some(block_type)
+}
+
 /// The generated entry whose tags `Taggable::has_tag` reads for the entry `id` of the registry
 /// `key`: the block type or the display entry of a custom entry. `None` for a generated entry.
 #[inline]

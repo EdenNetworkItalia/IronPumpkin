@@ -23,7 +23,7 @@ use pumpkin_data::dynamic::{
 };
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
-use pumpkin_data::{Block, BlockId, BlockStateId};
+use pumpkin_data::{Block, BlockId, BlockStateId, dynamic_types};
 use pumpkin_nbt::compound::NbtCompound;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
@@ -125,6 +125,14 @@ pub fn run(world_path: &Path) -> Result<Vec<(ContentKind, String)>, ContentError
     let manifest = read_manifest(&path)?;
     let placeholders = register_placeholders(&path, &manifest)?;
     let tables = dynamic::freeze().map_err(ContentError::Freeze)?;
+    for block in tables.blocks() {
+        if let Some(block_type) = dynamic_types::block_type_without_block_entity(block) {
+            warn!(
+                "[ironpumpkin] the block \"{}\" has the block type \"minecraft:{}\" but not its block entity, so the behaviour of the type finds none: add the block with BlockEntityTypeAddBlocksEvent",
+                block.name, block_type.name
+            );
+        }
+    }
     let current = manifest_of(tables);
     if !current.is_empty() {
         warn_changed(ContentKind::Block, &manifest.blocks, &current.blocks);

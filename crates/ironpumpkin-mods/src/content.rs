@@ -41,10 +41,13 @@
 //! Behaviour by type: `.block_type(..)` names a vanilla block, such as `minecraft:oak_stairs`,
 //! whose server behaviour, properties and per-state physical data the block takes, as a
 //! `NeoForge` block takes them from the vanilla class it extends (`StairBlock`). Minecraft 26.3 has
-//! no `minecraft:block_type` registry, so a vanilla block of the kind names the type. The block
-//! gets the properties of the type, or must list the same ones, so the server behaviour reads its
-//! states safely; it also joins the generated tags of the type. `.behaviour(..)` still wins over
-//! the type. `.item_type(..)` gives an item the server behaviour of a vanilla item, such as
+//! no `minecraft:block_type` registry, so name the vanilla block of the same kind and material:
+//! the block also takes its hardness, instrument, piston behaviour and generated tags, so
+//! `minecraft:oak_stairs` makes a stair `minecraft:mineable/axe`. The block gets the properties of
+//! the type, or must list the same ones, so the server behaviour reads its states safely. A type
+//! with a block entity, such as `minecraft:barrel`, does not give it: the block also needs
+//! [`BlockEntityTypeAddBlocksEvent`](crate::registration::BlockEntityTypeAddBlocksEvent).
+//! `.behaviour(..)` still wins over the type. `.item_type(..)` gives an item the server behaviour of a vanilla item, such as
 //! `minecraft:bucket`. A server behaviour that compares its own block or item with a vanilla
 //! constant treats the custom entry as another block or item.
 //!
@@ -487,6 +490,13 @@ impl BlockBuilder {
     /// when the builder adds none, the physical data of each matching state and its generated
     /// tags. The display state still decides what a vanilla client sees; when the display block
     /// has the same properties as the type, each state shows the matching display state.
+    ///
+    /// Name the vanilla block of the same kind and material: the physical data include the
+    /// hardness, the instrument and the piston behaviour, and the tags include the material
+    /// (`minecraft:oak_stairs` is `minecraft:wooden_stairs` and `minecraft:mineable/axe`). A type
+    /// with a block entity, such as `minecraft:barrel`, also needs
+    /// [`BlockEntityTypeAddBlocksEvent`](crate::registration::BlockEntityTypeAddBlocksEvent): the
+    /// type gives no block entity, and its behaviour finds none. The server warns at the freeze.
     ///
     /// The registry rejects a name that is not a vanilla block, and properties that differ from
     /// those of the type, with [`RegistryError::InvalidBlockType`].

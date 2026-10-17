@@ -190,12 +190,13 @@ Content does not inherit the behaviour of its `display` entry. Without `.behavio
 
 ### Behaviour by type
 
-A NeoForge mod block often extends a vanilla class, such as `StairBlock`, and gets its states, shapes and behaviour. In IronPumpkin, `.block_type(..)` names the vanilla block whose server behaviour the block runs. Minecraft 26.3 has no `minecraft:block_type` registry, so a vanilla block of the kind names the type: `minecraft:oak_stairs` for `StairBlock`, `minecraft:oak_door` for `DoorBlock`. The block then:
+A NeoForge mod block often extends a vanilla class, such as `StairBlock`, and gets its states, shapes and behaviour. In IronPumpkin, `.block_type(..)` names the vanilla block whose server behaviour the block runs. Minecraft 26.3 has no `minecraft:block_type` registry, so a vanilla block names the type. Name the vanilla block of the same kind and material: `minecraft:oak_stairs` for a wooden `StairBlock`, `minecraft:stone_stairs` for a stone one, `minecraft:oak_door` for a wooden `DoorBlock`. The block then:
 
 - runs the server behaviour of the type when the builder sets no `.behaviour(..)`. A behaviour of the mod still wins.
 - gets the properties of the type when the builder adds none. A builder that adds properties must list the same names and values. The registry rejects other properties with `RegistryError::InvalidBlockType`.
-- copies the physical data of the matching state of the type, so a stair has the stair shape in each state.
-- joins the generated tags of the type, so the server sees a stair as `minecraft:stairs`.
+- copies the physical data of the matching state of the type: the shapes, the hardness, the instrument, the piston behaviour and the light. A stair has the stair shape in each state.
+- joins the generated tags of the type, so the server sees a stair as `minecraft:stairs`. The tags follow the material: `minecraft:oak_stairs` is in `minecraft:wooden_stairs` and `minecraft:mineable/axe`, so a stone stair named with it breaks fastest with an axe.
+- does not get the block entity of the type. A type with a block entity, such as `minecraft:barrel`, `minecraft:chest`, `minecraft:furnace` or a sign, also needs `BlockEntityTypeAddBlocksEvent` for the block. Without it the behaviour of the type finds no block entity and does nothing, and the server logs a warning at the freeze.
 - shows a vanilla client the matching state of its `display` block when that block has the same properties as the type, else the `display` state.
 
 `.item_type(..)` gives an item the server behaviour of a vanilla item, such as `minecraft:bucket`. A server behaviour that compares its block or item with a vanilla constant treats the custom entry as another block or item.
