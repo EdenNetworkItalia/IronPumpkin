@@ -184,17 +184,7 @@ pub fn register(cx: &mut ModInit) {
         });
     });
     on::<PlayerInteractEvent>(cx, interact);
-    on::<UseItemOnBlockEvent>(cx, |event| {
-        trace_play("UseItemOnBlockEvent", |state| {
-            vec![
-                ("face", face(Some(event.face))),
-                ("hand", hand(event.hand)),
-                ("item", item(&event.item)),
-                ("phase", lower(event.phase)),
-                ("pos", Value::Text(state.relative(&event.pos))),
-            ]
-        });
-    });
+    on::<UseItemOnBlockEvent>(cx, use_item_on_block);
     on::<PlayerItemHeldEvent>(cx, |event| {
         trace_play("PlayerSwitchHotbarSlotEvent.Pre", |_| {
             vec![
@@ -229,16 +219,7 @@ pub fn register(cx: &mut ModInit) {
     on::<ServerTickEndEvent>(cx, |_| trace_once_per_step("ServerTickEvent.Post"));
     on::<PlayerTickEventPre>(cx, |_| trace_once_per_step("PlayerTickEvent.Pre"));
     on::<PlayerTickEventPost>(cx, |_| trace_once_per_step("PlayerTickEvent.Post"));
-    // `BreakBlockEvent#getPlayer` is never null: a port skips the breaks without a player, such
-    // as a plant that loses its support.
-    on::<BlockBreakEvent>(cx, |event| {
-        if event.player.is_none() {
-            return;
-        }
-        trace_play("BreakBlockEvent", |state| {
-            vec![("pos", Value::Text(state.relative(&event.block_position)))]
-        });
-    });
+    on::<BlockBreakEvent>(cx, break_block);
     on::<BlockPlaceEvent>(cx, |event| {
         trace_play("BlockEvent.EntityPlaceEvent", |state| {
             vec![
@@ -246,6 +227,29 @@ pub fn register(cx: &mut ModInit) {
                 ("pos", Value::Text(state.relative(&event.block_position))),
             ]
         });
+    });
+}
+
+fn use_item_on_block(event: &UseItemOnBlockEvent) {
+    trace_play("UseItemOnBlockEvent", |state| {
+        vec![
+            ("face", face(Some(event.face))),
+            ("hand", hand(event.hand)),
+            ("item", item(&event.item)),
+            ("phase", lower(event.phase)),
+            ("pos", Value::Text(state.relative(&event.pos))),
+        ]
+    });
+}
+
+// `BreakBlockEvent#getPlayer` is never null: a port skips the breaks without a player, such as a
+// plant that loses its support.
+fn break_block(event: &BlockBreakEvent) {
+    if event.player.is_none() {
+        return;
+    }
+    trace_play("BreakBlockEvent", |state| {
+        vec![("pos", Value::Text(state.relative(&event.block_position)))]
     });
 }
 
