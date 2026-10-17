@@ -81,8 +81,6 @@ pub enum RegistrationError {
     UnknownEntityType(String),
     /// No vanilla or mod block has this name.
     UnknownBlock(String),
-    /// No vanilla block entity type has this name.
-    UnknownBlockEntityType(String),
     /// No vanilla POI type has this name.
     UnknownPoiType(String),
     /// The entity type already has default attributes: every vanilla type with attributes, or a
@@ -104,9 +102,6 @@ impl fmt::Display for RegistrationError {
         match self {
             Self::UnknownEntityType(name) => write!(f, "unknown entity type \"{name}\""),
             Self::UnknownBlock(name) => write!(f, "unknown block \"{name}\""),
-            Self::UnknownBlockEntityType(name) => {
-                write!(f, "unknown block entity type \"{name}\"")
-            }
             Self::UnknownPoiType(name) => write!(f, "unknown POI type \"{name}\""),
             Self::DuplicateAttributes(name) => {
                 write!(f, "entity type \"{name}\" already has default attributes")
@@ -463,11 +458,12 @@ impl BlockEntityTypeAddBlocksEvent {
     ///
     /// A block state has one block entity type, so a mod block that already has another one keeps
     /// it, with a warning. A vanilla block keeps its generated block entity type, with a warning
-    /// unless it already has this one.
+    /// unless it already has this one. An unknown block entity type changes nothing, with a
+    /// warning, as `NeoForge` skips a key that is not registered.
     ///
     /// # Errors
     ///
-    /// [`RegistrationError::UnknownBlockEntityType`] and [`RegistrationError::UnknownBlock`].
+    /// [`RegistrationError::UnknownBlock`].
     pub fn modify(
         &mut self,
         block_entity_type: &str,
@@ -480,15 +476,21 @@ impl BlockEntityTypeAddBlocksEvent {
 
 fn add_blocks(block_entity_type: &str, blocks: &[&str]) -> Result<(), RegistrationError> {
     let name = namespaced(block_entity_type);
+    let blocks = blocks
+        .iter()
+        .map(|name| block(name))
+        .collect::<Result<Vec<_>, _>>()?;
     let Some(index) = name
         .strip_prefix("minecraft:")
         .and_then(|path| BLOCK_ENTITY_TYPES.iter().position(|ty| *ty == path))
         .and_then(|index| u16::try_from(index).ok())
     else {
-        return Err(RegistrationError::UnknownBlockEntityType(name));
+        warn!(
+            "BlockEntityTypeAddBlocksEvent: unknown block entity type \"{name}\", no block added"
+        );
+        return Ok(());
     };
-    for block_name in blocks {
-        let (block_name, vanilla) = block(block_name)?;
+    for (block_name, vanilla) in blocks {
         if let Some(vanilla) = vanilla {
             if vanilla.default_state.block_entity_type != index {
                 warn!(
@@ -674,12 +676,17 @@ mod tests {
     }
 
     #[test]
-    fn block_entity_types_and_blocks_must_exist() {
+    fn blocks_must_exist_and_an_unknown_block_entity_type_is_skipped() {
         let mut event = BlockEntityTypeAddBlocksEvent::new();
+        // `getOptional(key).ifPresent(..)`: optional compat with a type that is not registered.
         assert_eq!(
-            event.modify("minecraft:crate", &["minecraft:barrel"]),
-            Err(RegistrationError::UnknownBlockEntityType(
-                "minecraft:crate".to_owned()
+            event.modify("othermod:crate", &["minecraft:barrel"]),
+            Ok(())
+        );
+        assert_eq!(
+            event.modify("othermod:crate", &["examplemod:unknown"]),
+            Err(RegistrationError::UnknownBlock(
+                "examplemod:unknown".to_owned()
             ))
         );
         assert_eq!(
