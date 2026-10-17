@@ -981,6 +981,16 @@ impl Player {
         false
     }
 
+    /// Whether the cooldown group of `stack` is on cooldown (`ItemCooldowns.isOnCooldown`): the
+    /// group of its `use_cooldown` component, else its item.
+    pub fn is_item_on_cooldown(&self, stack: &ItemStack) -> bool {
+        let group = stack
+            .get_use_cooldown()
+            .and_then(|cooldown| cooldown.cooldown_group.clone())
+            .unwrap_or_else(|| stack.item.registry_key.to_string());
+        self.is_on_cooldown(&group)
+    }
+
     pub fn set_display_name(&self, display_name: Option<TextComponent>) {
         let mut guard = self
             .display_name

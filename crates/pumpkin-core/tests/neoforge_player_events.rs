@@ -1004,6 +1004,37 @@ fn a_success_cancellation_result_swings_the_arm_without_the_action() {
     wait_for_swings(&mut peer, player.entity_id(), 2);
 }
 
+/// `RightClickItem` does not fire while the item waits on its use cooldown:
+/// `ServerPlayerGameMode.useItem` returns `PASS` before `CommonHooks.onItemRightClick`.
+#[test]
+fn right_click_item_skips_an_item_on_cooldown() {
+    let _serial = support::serial();
+    let player = stone_holder("Cooler");
+    player
+        .inventory()
+        .set_stack(0, ItemStack::new(16, &Item::ENDER_PEARL));
+    let seen = log();
+    let clicks = seen.clone();
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Cooler") && event.action == InteractAction::RightClickAir {
+            push(&clicks, event.item_stack().item.registry_key);
+            event.set_cancelled(true);
+        }
+    });
+    let use_item = |sequence| SUseItem {
+        hand: VarInt(0),
+        sequence: VarInt(sequence),
+        yaw: 0.0,
+        pitch: 0.0,
+    };
+
+    java_client(&player).handle_use_item(&player, &use_item(1), support::server());
+    player.start_cooldown("ender_pearl".to_owned(), 100);
+    java_client(&player).handle_use_item(&player, &use_item(2), support::server());
+
+    assert_eq!(entries(&seen), ["ender_pearl"]);
+}
+
 /// `PlayerSwitchHotbarSlotEvent.Pre` (`PlayerItemHeldEvent`) fires only when the slot changes,
 /// as in `ServerGamePacketListenerImpl.handleSetCarriedItem` of `NeoForge` 26.3.
 #[test]
