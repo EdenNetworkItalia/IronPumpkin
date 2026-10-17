@@ -49,7 +49,7 @@ use ironpumpkin_mods::{
     registration::{
         AttributeSupplier, BlockEntityTypeAddBlocksEvent, EntityAttributeCreationEvent,
         EntityAttributeModificationEvent, ExtendPoiTypesEvent, Operation,
-        RegisterSpawnPlacementsEvent, RegistrationError, SpawnLocation, spawn_predicate,
+        RegisterSpawnPlacementsEvent, SpawnLocation, spawn_predicate,
     },
 };
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
@@ -162,16 +162,6 @@ impl NativeMod for RegistrationMod {
 
     fn register_spawn_placements(&self, event: &mut RegisterSpawnPlacementsEvent) {
         log("RegisterSpawnPlacementsEvent");
-        // A mod type needs its placement type and heightmap first. A scratch handle keeps the
-        // error away from the server.
-        assert_eq!(
-            RegisterSpawnPlacementsEvent::default().register(
-                GOLEM,
-                spawn_predicate(|_, _, _| true),
-                Operation::Or,
-            ),
-            Err(RegistrationError::MissingSpawnPlacement(GOLEM.to_owned()))
-        );
         event
             .register_placement(
                 GOLEM,

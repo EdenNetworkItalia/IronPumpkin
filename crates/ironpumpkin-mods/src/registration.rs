@@ -144,9 +144,30 @@ impl FirstError {
 }
 
 /// The handles of the registration events, for [`lifecycle`](crate::lifecycle).
-pub(crate) trait RegistrationEvent: Default {
+///
+/// Only [`lifecycle`](crate::lifecycle) builds a handle, as the constructors of the `NeoForge`
+/// events are internal: a handle outside the lifecycle position would drop its error.
+///
+/// ```compile_fail
+/// let _ = ironpumpkin_mods::registration::EntityAttributeCreationEvent::default();
+/// ```
+/// ```compile_fail
+/// let _ = ironpumpkin_mods::registration::EntityAttributeModificationEvent::default();
+/// ```
+/// ```compile_fail
+/// let _ = ironpumpkin_mods::registration::RegisterSpawnPlacementsEvent::default();
+/// ```
+/// ```compile_fail
+/// let _ = ironpumpkin_mods::registration::BlockEntityTypeAddBlocksEvent::default();
+/// ```
+/// ```compile_fail
+/// let _ = ironpumpkin_mods::registration::ExtendPoiTypesEvent::default();
+/// ```
+pub(crate) trait RegistrationEvent {
     /// The `NeoForge` class name, for the error message.
     const NAME: &'static str;
+
+    fn new() -> Self;
 
     fn take_error(&mut self) -> Option<RegistrationError>;
 }
@@ -155,6 +176,12 @@ macro_rules! registration_event {
     ($event:ident) => {
         impl RegistrationEvent for $event {
             const NAME: &'static str = stringify!($event);
+
+            fn new() -> Self {
+                Self {
+                    error: FirstError::default(),
+                }
+            }
 
             fn take_error(&mut self) -> Option<RegistrationError> {
                 self.error.0.take()
@@ -238,7 +265,7 @@ impl AttributeSupplier {
 }
 
 /// `EntityAttributeCreationEvent`: sets the default attributes of a mod entity type.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EntityAttributeCreationEvent {
     error: FirstError,
 }
@@ -281,7 +308,7 @@ fn put_attributes(
 }
 
 /// `EntityAttributeModificationEvent`: adds attributes to entity types, vanilla ones included.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EntityAttributeModificationEvent {
     error: FirstError,
 }
@@ -349,7 +376,7 @@ impl EntityAttributeModificationEvent {
 
 /// `RegisterSpawnPlacementsEvent`: the placement type, heightmap and spawn predicate of entity
 /// types. The natural spawner reads them for every spawn check of the type.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct RegisterSpawnPlacementsEvent {
     error: FirstError,
 }
@@ -424,7 +451,7 @@ pub fn spawn_predicate(
 ///
 /// Every state of the block then carries the block entity type, so placing the block creates the
 /// block entity, which runs the server's behaviour of that type.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BlockEntityTypeAddBlocksEvent {
     error: FirstError,
 }
@@ -483,7 +510,7 @@ fn add_blocks(block_entity_type: &str, blocks: &[&str]) -> Result<(), Registrati
 
 /// `ExtendPoiTypesEvent`: adds blocks to vanilla POI types. A villager then takes the block as a
 /// job site of the profession of the POI type.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ExtendPoiTypesEvent {
     error: FirstError,
 }
@@ -556,7 +583,7 @@ mod tests {
 
     #[test]
     fn a_vanilla_entity_type_already_has_default_attributes() {
-        let mut event = EntityAttributeCreationEvent::default();
+        let mut event = EntityAttributeCreationEvent::new();
         assert_eq!(
             event.put("zombie", AttributeSupplier::new()),
             Err(RegistrationError::DuplicateAttributes(
@@ -598,7 +625,7 @@ mod tests {
 
     #[test]
     fn a_vanilla_spawn_placement_changes_its_placement_only_on_replace() {
-        let mut event = RegisterSpawnPlacementsEvent::default();
+        let mut event = RegisterSpawnPlacementsEvent::new();
         assert_eq!(
             event.register_placement(
                 "minecraft:zombie",
@@ -624,8 +651,31 @@ mod tests {
     }
 
     #[test]
+    fn a_mod_spawn_placement_needs_its_placement_type_and_heightmap_first() {
+        dynamic::register_entity_type(dynamic::EntityTypeDefinition {
+            name: "test:placement_golem".to_owned(),
+            display: &EntityType::ZOMBIE,
+            dimensions: None,
+            eye_height: None,
+            tags: Vec::new(),
+        })
+        .unwrap();
+        let mut event = RegisterSpawnPlacementsEvent::new();
+        assert_eq!(
+            event.register(
+                "test:placement_golem",
+                spawn_predicate(|_, _, _| true),
+                Operation::Or,
+            ),
+            Err(RegistrationError::MissingSpawnPlacement(
+                "test:placement_golem".to_owned()
+            ))
+        );
+    }
+
+    #[test]
     fn block_entity_types_and_blocks_must_exist() {
-        let mut event = BlockEntityTypeAddBlocksEvent::default();
+        let mut event = BlockEntityTypeAddBlocksEvent::new();
         assert_eq!(
             event.modify("minecraft:crate", &["minecraft:barrel"]),
             Err(RegistrationError::UnknownBlockEntityType(
@@ -644,7 +694,7 @@ mod tests {
 
     #[test]
     fn a_block_joins_one_poi_type_only() {
-        let mut event = ExtendPoiTypesEvent::default();
+        let mut event = ExtendPoiTypesEvent::new();
         assert_eq!(
             event.add_block_to_poi("minecraft:librarian", "minecraft:lectern"),
             Err(RegistrationError::DuplicatePoiBlock {

@@ -113,7 +113,7 @@ fn post<E: RegistrationEvent>(
 ) -> Result<(), String> {
     let mut first_error = None;
     for loaded in mods {
-        let mut event = E::default();
+        let mut event = E::new();
         method(loaded.native_mod, &mut event);
         if let Some(error) = event.take_error() {
             first_error.get_or_insert_with(|| {
