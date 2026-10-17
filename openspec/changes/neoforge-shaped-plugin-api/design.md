@@ -323,7 +323,7 @@ Method: each family row counts the Status cells of the tables in one section of 
 
 Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or common: 282. Client: 189. Abstract classes: 71.
 
-#### `event` (38: 6 supported, 23 planned, 9 not supported)
+#### `event` (38: 7 supported, 22 planned, 9 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
@@ -384,7 +384,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | EnchantmentLevelSetEvent | game | both | no | - | supported | `PrepareItemEnchantEvent` | fired once for the three rows, after the clues are chosen, after the enchanting-table screen-handler lock is released (`plugin/container_events.rs`); the rows apply only if the item and the rows did not change meanwhile, and when the rows changed while the event fired it fires once more for the new rows; `pos` is the open container position (the zero position with no container) and `original_level_requirements()` returns the vanilla levels; tests `one_event_per_fire_site_enchantment_events`, `enchanting_events_handler_closes_the_screen`; WIT v0.2 |
 | GetEnchantmentLevelEvent | game | both | no | - | planned | enchantment level lookup on `ItemStack` | no hook |
 
-#### `event.entity` (21: 8 supported, 13 planned)
+#### `event.entity` (21: 11 supported, 10 planned)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
@@ -656,7 +656,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | ModLifecycleEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 supported, 1 client-only |
 | ParallelDispatchEvent (abstract) | mod | both | no | - | planned | shared fields of 7 subclasses | abstract: the bus rejects listeners on abstract events; subclasses: 6 supported, 1 client-only |
 
-#### Events in other packages (19: 4 supported, 11 planned, 4 not supported)
+#### Events in other packages (19: 5 supported, 10 planned, 4 not supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
