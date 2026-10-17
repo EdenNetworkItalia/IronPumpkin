@@ -1,16 +1,2 @@
-missing  step 0 reference #16 PlayerTickEvent.Pre {}
-missing  step 0 reference #17 PlayerTickEvent.Post {}
-missing  step 1 reference #20 PlayerTickEvent.Pre {}
-missing  step 1 reference #21 PlayerTickEvent.Post {}
-missing  step 2 reference #25 PlayerTickEvent.Pre {}
-missing  step 2 reference #26 PlayerTickEvent.Post {}
-missing  step 2 reference #29 BreakBlockEvent {"pos":"1 -1 0"}
-missing  step 3 reference #31 PlayerTickEvent.Pre {}
-missing  step 3 reference #32 PlayerTickEvent.Post {}
-extra    step 3 candidate #25 PlayerEvent.NameFormat {}
-missing  step 4 reference #35 PlayerTickEvent.Pre {}
-missing  step 4 reference #36 PlayerTickEvent.Post {}
-missing  step 4 reference #42 BlockEvent.EntityPlaceEvent {"block":"minecraft:stone","pos":"1 -1 0"}
-missing  step 5 reference #44 PlayerTickEvent.Pre {}
-missing  step 5 reference #45 PlayerTickEvent.Post {}
-15 differences (missing 14, extra 1)
+extra    step 3 candidate #38 PlayerEvent.NameFormat {}
+1 difference (extra 1)

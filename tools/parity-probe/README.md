@@ -201,7 +201,7 @@ breaks at once, and `hold` takes the item from the creative slot packet.
 | Path | Contents |
 |:--|:--|
 | `captures/neoforge-26.3.0.64-beta/probe-trace-slice2.jsonl` | The Java trace of a `play` run, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-16 with the interact event fields. |
+| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-17 on the merged wave 4 tree. |
 | `captures/ironpumpkin/diff-slice2.txt` | The output of `diff.py --slice2` for the two traces. |
 
 ### Steps
@@ -319,7 +319,7 @@ different steps, is one `step` difference. The exit codes are those of slice 1. 
 
 ### Result of slice 2
 
-`captures/ironpumpkin/diff-slice2.txt` has 15 differences (missing 14, extra 1). Two
+`captures/ironpumpkin/diff-slice2.txt` has 1 difference (extra 1). Two
 recordings per server, each from an empty server directory, are byte-identical.
 
 | Event | NeoForge | IronPumpkin | Verdict | Cause |

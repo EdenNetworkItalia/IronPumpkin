@@ -1,38 +1,56 @@
 {"ordinal":0,"name":"FMLConstructModEvent","fields":{}}
-{"ordinal":1,"name":"RegisterEvent","fields":{"registry":"minecraft:block"}}
-{"ordinal":2,"name":"RegisterEvent","fields":{"registry":"minecraft:entity_type"}}
-{"ordinal":3,"name":"RegisterEvent","fields":{"registry":"minecraft:item"}}
-{"ordinal":4,"name":"FMLCommonSetupEvent","fields":{}}
-{"ordinal":5,"name":"FMLLoadCompleteEvent","fields":{}}
-{"ordinal":6,"name":"RegisterPayloadHandlersEvent","fields":{}}
-{"ordinal":7,"name":"ModConfigEvent.Loading","fields":{"enabled":true,"file_name":"parityprobe-synced.toml","type":"SYNCED"}}
-{"ordinal":8,"name":"ServerAboutToStartEvent","fields":{}}
-{"ordinal":9,"name":"ServerStartingEvent","fields":{}}
-{"ordinal":10,"name":"ServerStartedEvent","fields":{}}
-{"ordinal":11,"name":"ServerTickEvent.Pre","fields":{}}
-{"ordinal":12,"name":"ServerTickEvent.Post","fields":{}}
-{"ordinal":13,"name":"RegisterConfigurationTasksEvent","fields":{"connection_type":"NEOFORGE","ping_channel":true}}
-{"ordinal":14,"name":"PlayerEvent.PlayerLoggedInEvent","fields":{"step":0}}
-{"ordinal":15,"name":"ServerTickEvent.Pre","fields":{"step":0}}
-{"ordinal":16,"name":"ServerTickEvent.Post","fields":{"step":0}}
-{"ordinal":17,"name":"ServerTickEvent.Pre","fields":{"step":1}}
-{"ordinal":18,"name":"ServerTickEvent.Post","fields":{"step":1}}
-{"ordinal":19,"name":"ServerChatEvent","fields":{"raw_text":"hello from the parity script","step":1}}
-{"ordinal":20,"name":"ServerTickEvent.Pre","fields":{"step":2}}
-{"ordinal":21,"name":"ServerTickEvent.Post","fields":{"step":2}}
-{"ordinal":22,"name":"PlayerInteractEvent.LeftClickBlock","fields":{"action":"start","face":"up","hand":"main_hand","pos":"1 -1 0","step":2}}
-{"ordinal":23,"name":"ServerTickEvent.Pre","fields":{"step":3}}
-{"ordinal":24,"name":"ServerTickEvent.Post","fields":{"step":3}}
-{"ordinal":25,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
-{"ordinal":26,"name":"ServerTickEvent.Pre","fields":{"step":4}}
-{"ordinal":27,"name":"ServerTickEvent.Post","fields":{"step":4}}
-{"ordinal":28,"name":"PlayerInteractEvent.RightClickBlock","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","pos":"1 -2 0","step":4}}
-{"ordinal":29,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_before_block","pos":"1 -2 0","step":4}}
-{"ordinal":30,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"block","pos":"1 -2 0","step":4}}
-{"ordinal":31,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_after_block","pos":"1 -2 0","step":4}}
-{"ordinal":32,"name":"ServerTickEvent.Pre","fields":{"step":5}}
-{"ordinal":33,"name":"ServerTickEvent.Post","fields":{"step":5}}
-{"ordinal":34,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
-{"ordinal":35,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
-{"ordinal":36,"name":"ServerStoppingEvent","fields":{}}
-{"ordinal":37,"name":"ServerStoppedEvent","fields":{}}
+{"ordinal":1,"name":"RegisterEvent","fields":{"registry":"minecraft:attribute"}}
+{"ordinal":2,"name":"RegisterEvent","fields":{"registry":"minecraft:data_component_type"}}
+{"ordinal":3,"name":"RegisterEvent","fields":{"registry":"minecraft:sound_event"}}
+{"ordinal":4,"name":"RegisterEvent","fields":{"registry":"minecraft:mob_effect"}}
+{"ordinal":5,"name":"RegisterEvent","fields":{"registry":"minecraft:block"}}
+{"ordinal":6,"name":"RegisterEvent","fields":{"registry":"minecraft:entity_type"}}
+{"ordinal":7,"name":"RegisterEvent","fields":{"registry":"minecraft:item"}}
+{"ordinal":8,"name":"FMLCommonSetupEvent","fields":{}}
+{"ordinal":9,"name":"FMLLoadCompleteEvent","fields":{}}
+{"ordinal":10,"name":"RegisterPayloadHandlersEvent","fields":{}}
+{"ordinal":11,"name":"ModConfigEvent.Loading","fields":{"enabled":true,"file_name":"parityprobe-synced.toml","type":"SYNCED"}}
+{"ordinal":12,"name":"ServerAboutToStartEvent","fields":{}}
+{"ordinal":13,"name":"ServerStartingEvent","fields":{}}
+{"ordinal":14,"name":"ServerStartedEvent","fields":{}}
+{"ordinal":15,"name":"ServerTickEvent.Pre","fields":{}}
+{"ordinal":16,"name":"ServerTickEvent.Post","fields":{}}
+{"ordinal":17,"name":"RegisterConfigurationTasksEvent","fields":{"connection_type":"NEOFORGE","ping_channel":true}}
+{"ordinal":18,"name":"PlayerEvent.PlayerLoggedInEvent","fields":{"step":0}}
+{"ordinal":19,"name":"ServerTickEvent.Pre","fields":{"step":0}}
+{"ordinal":20,"name":"PlayerTickEvent.Pre","fields":{"step":0}}
+{"ordinal":21,"name":"PlayerTickEvent.Post","fields":{"step":0}}
+{"ordinal":22,"name":"ServerTickEvent.Post","fields":{"step":0}}
+{"ordinal":23,"name":"ServerTickEvent.Pre","fields":{"step":1}}
+{"ordinal":24,"name":"PlayerTickEvent.Pre","fields":{"step":1}}
+{"ordinal":25,"name":"PlayerTickEvent.Post","fields":{"step":1}}
+{"ordinal":26,"name":"ServerTickEvent.Post","fields":{"step":1}}
+{"ordinal":27,"name":"ServerChatEvent","fields":{"raw_text":"hello from the parity script","step":1}}
+{"ordinal":28,"name":"ServerTickEvent.Pre","fields":{"step":2}}
+{"ordinal":29,"name":"PlayerTickEvent.Pre","fields":{"step":2}}
+{"ordinal":30,"name":"PlayerTickEvent.Post","fields":{"step":2}}
+{"ordinal":31,"name":"ServerTickEvent.Post","fields":{"step":2}}
+{"ordinal":32,"name":"PlayerInteractEvent.LeftClickBlock","fields":{"action":"start","face":"up","hand":"main_hand","pos":"1 -1 0","step":2}}
+{"ordinal":33,"name":"BreakBlockEvent","fields":{"pos":"1 -1 0","step":2}}
+{"ordinal":34,"name":"ServerTickEvent.Pre","fields":{"step":3}}
+{"ordinal":35,"name":"PlayerTickEvent.Pre","fields":{"step":3}}
+{"ordinal":36,"name":"PlayerTickEvent.Post","fields":{"step":3}}
+{"ordinal":37,"name":"ServerTickEvent.Post","fields":{"step":3}}
+{"ordinal":38,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
+{"ordinal":39,"name":"ServerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":40,"name":"PlayerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":41,"name":"PlayerTickEvent.Post","fields":{"step":4}}
+{"ordinal":42,"name":"ServerTickEvent.Post","fields":{"step":4}}
+{"ordinal":43,"name":"PlayerInteractEvent.RightClickBlock","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","pos":"1 -2 0","step":4}}
+{"ordinal":44,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_before_block","pos":"1 -2 0","step":4}}
+{"ordinal":45,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"block","pos":"1 -2 0","step":4}}
+{"ordinal":46,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_after_block","pos":"1 -2 0","step":4}}
+{"ordinal":47,"name":"BlockEvent.EntityPlaceEvent","fields":{"block":"minecraft:stone","pos":"1 -1 0","step":4}}
+{"ordinal":48,"name":"ServerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":49,"name":"PlayerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":50,"name":"PlayerTickEvent.Post","fields":{"step":5}}
+{"ordinal":51,"name":"ServerTickEvent.Post","fields":{"step":5}}
+{"ordinal":52,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
+{"ordinal":53,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
+{"ordinal":54,"name":"ServerStoppingEvent","fields":{}}
+{"ordinal":55,"name":"ServerStoppedEvent","fields":{}}
