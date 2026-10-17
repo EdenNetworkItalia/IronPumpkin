@@ -91,10 +91,12 @@ fn registry_check_reports_the_registries_of_a_real_server() {
 fn registry_check_reports_contents_and_order() {
     let entries = limited(&run_b(), &SYNCED_REGISTRIES);
     let failures = check_registries(&entries, &expectations(TEST_MOD));
-    // Two per registry: the count and the last entry, the test mod's entry.
-    assert_eq!(failures.len(), 12, "{failures:#?}");
-    assert!(failures[0].contains("expected 1287 ids, got 1286"));
-    assert!(failures[1].contains("expected test-mod:test_block at id 1286, got no entry"));
+    // Two per registry: the count and the last entry, the test mod's entry. The block registry
+    // also names the test mod's first block by id.
+    assert_eq!(failures.len(), 13, "{failures:#?}");
+    assert!(failures[0].contains("expected 1288 ids, got 1286"));
+    assert!(failures[1].contains("expected test-mod:test_stairs at id 1287, got no entry"));
+    assert!(failures[2].contains("expected test-mod:test_block at id 1286, got no entry"));
 
     let reversed: Vec<&str> = SYNCED_REGISTRIES.iter().rev().copied().collect();
     let entries = limited(&run_b(), &reversed);
