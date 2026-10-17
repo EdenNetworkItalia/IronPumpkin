@@ -205,6 +205,11 @@ fn creative_flight_lets_a_survival_player_fly() {
     assert_eq!(next_abilities_flags(peer) & 0x04, 0x04);
     request_flight(&player);
     assert!(flying(&player));
+    // A Bedrock client asks through `Player::request_flying`.
+    player.request_flying(false);
+    assert!(!flying(&player));
+    player.request_flying(true);
+    assert!(flying(&player));
 
     living.update_attribute(&Attributes::NEOFORGE_CREATIVE_FLIGHT, |instance| {
         instance.remove_modifier("test:wings");
