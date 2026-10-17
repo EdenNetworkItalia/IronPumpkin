@@ -168,8 +168,12 @@ These Pumpkin events that upstream already has get a new contract here. A plugin
 - `PlayerInteractEvent` on an item use (`use_item.rs`) fires with the action right click air whatever the ray of the player hits, before the item use, and no longer with the action right click block. A cancel also stops the equip and the start of the use.
 - `PlayerItemHeldEvent` fires only when the slot changes (Java `set_held_item.rs`, Bedrock `mob_equipment.rs`). A vanilla Java client sends the packet only on a change, so the difference shows mostly on Bedrock.
 - The villager resends its offers to the trading player from its own tick, one tick after the trade, as vanilla 26.3 does (`Villager.onReputationEventFrom` calls `updateSpecialPrices`). `resend_offers_to_player` is removed.
+- `BlockBreakEvent` has the new field `state`. `exp` now sets the experience that the break drops; upstream Pumpkin keeps it at 0 and never reads it.
+- `BlockPlaceEvent` has the new fields `placed_state` and `replaced_state`, and `BlockMultiPlaceEvent` has the new field `replaced_blocks`.
+- `EntityExplodeEvent` has the new field `world`.
+- `ChunkLoad` carries the chunk as `Arc<ChunkData>`. `ChunkLoad` and `ChunkUnloadEvent` now fire from the world tick; upstream Pumpkin never fires them.
 
-The event layouts changed, so `PLUGIN_API_VERSION` is 4 and a native plugin built for an older version does not load. The WIT v0.2 records do not change: the Wasm hosts keep the native-only fields on write-back.
+The event layouts changed, so `PLUGIN_API_VERSION` is 5 and a native plugin built for an older version does not load. The WIT v0.2 records do not change: the Wasm hosts keep the native-only fields on write-back.
 
 ### Source patches
 
