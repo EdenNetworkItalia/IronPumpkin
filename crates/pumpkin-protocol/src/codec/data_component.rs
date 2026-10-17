@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use crate::codec::var_int::VarInt;
 use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
 use pumpkin_data::Enchantment;
+use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::*;
 use pumpkin_data::dynamic::{ContentIds, namespaced_name};
@@ -134,19 +135,31 @@ fn deserialize_status_effects(
     Ok(custom_effects)
 }
 
-fn serialize_status_effects(
-    effects: &Vec<StatusEffectInstance>,
-    seq: &mut impl NetworkWriteExt,
-) -> Result<(), WritingError> {
-    seq.write_var_int(&VarInt(effects.len() as i32))?;
+/// Whether a client with `ids` knows the effect. A vanilla client knows the generated ones only.
+const fn is_known_effect(effect: &StatusEffect, ids: ContentIds) -> bool {
+    matches!(ids, ContentIds::Real) || effect.id < StatusEffect::COUNT
+}
 
+/// Writes the effects that a client with `ids` knows and leaves the others out.
+fn serialize_status_effects(
+    effects: &[StatusEffectInstance],
+    seq: &mut impl NetworkWriteExt,
+    ids: ContentIds,
+) -> Result<(), WritingError> {
+    let mut known = Vec::with_capacity(effects.len());
     for effect in effects {
-        let effect_id = StatusEffect::from_minecraft_name(&effect.effect_id)
-            .ok_or_else(|| {
+        let effect_type =
+            StatusEffect::from_minecraft_name(&effect.effect_id).ok_or_else(|| {
                 WritingError::Message(format!("Invalid status effect: {}", effect.effect_id))
-            })?
-            .registry_id(ContentIds::Display);
-        seq.write_var_int(&VarInt(effect_id as i32))?;
+            })?;
+        if is_known_effect(effect_type, ids) {
+            known.push((effect_type.id, effect));
+        }
+    }
+    seq.write_var_int(&VarInt(known.len() as i32))?;
+
+    for (effect_id, effect) in known {
+        seq.write_var_int(&VarInt(i32::from(effect_id)))?;
         // Effect parameters
         seq.write_var_int(&VarInt::from(effect.amplifier))?;
         seq.write_var_int(&VarInt::from(effect.duration))?;
@@ -208,15 +221,23 @@ fn deserialize_consume_effect(
 fn serialize_consume_effect(
     consume_effect: &ConsumeEffect,
     seq: &mut impl NetworkWriteExt,
+    ids: ContentIds,
 ) -> Result<(), WritingError> {
     seq.write_var_int(&VarInt(consume_effect.registry_id() as i32))?;
     match consume_effect {
         ConsumeEffect::ApplyEffects((effects, probability)) => {
-            serialize_status_effects(&effects.to_vec(), seq)?;
+            serialize_status_effects(effects, seq, ids)?;
             seq.write_f32(*probability)?;
         }
-        // Status effects have no custom ids.
-        ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq, ContentIds::Display)?,
+        ConsumeEffect::RemoveEffects(IDSet::IDs(effects)) => {
+            let known: Vec<&'static StatusEffect> = effects
+                .iter()
+                .copied()
+                .filter(|effect| is_known_effect(effect, ids))
+                .collect();
+            serialize_idset(&IDSet::IDs(Cow::Owned(known)), seq, ids)?;
+        }
+        ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq, ids)?,
         ConsumeEffect::ClearAllEffects => (),
         ConsumeEffect::TeleportRandomly(diameter) => seq.write_f32(*diameter)?,
         ConsumeEffect::PlaySound(id_or) => {
@@ -419,15 +440,27 @@ impl DataComponentCodec<Self> for DyedColorImpl {
 
 impl DataComponentCodec<Self> for SuspiciousStewEffectsImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        let effect_count = i32::try_from(self.effects.len())
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        let mut known = Vec::with_capacity(self.effects.len());
+        for effect in self.effects.iter() {
+            let effect_type = StatusEffect::from_minecraft_name(&effect.effect)
+                .ok_or_else(|| WritingError::Message("Unknown suspicious stew effect".into()))?;
+            if is_known_effect(effect_type, ids) {
+                known.push((effect_type.id, effect.duration));
+            }
+        }
+        let effect_count = i32::try_from(known.len())
             .map_err(|_| WritingError::Message("Too many suspicious stew effects".into()))?;
         seq.write_var_int(&VarInt(effect_count))?;
-        for effect in self.effects.iter() {
-            let id = StatusEffect::from_minecraft_name(&effect.effect)
-                .ok_or_else(|| WritingError::Message("Unknown suspicious stew effect".into()))?
-                .id;
+        for (id, duration) in known {
             seq.write_var_int(&VarInt(i32::from(id)))?;
-            seq.write_var_int(&VarInt(effect.duration))?;
+            seq.write_var_int(&VarInt(duration))?;
         }
         Ok(())
     }
@@ -483,6 +516,13 @@ impl DataComponentCodec<Self> for CustomDataImpl {
 
 impl DataComponentCodec<Self> for ConsumableImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_f32(self.consume_seconds)?;
         seq.write_var_int(&VarInt(self.animation as i32))?;
         crate::IdOr::<crate::SoundEvent>::write(
@@ -497,7 +537,7 @@ impl DataComponentCodec<Self> for ConsumableImpl {
         seq.write_var_int(&VarInt(self.effects.len() as i32))?;
 
         for effect in self.effects.iter() {
-            serialize_consume_effect(effect, seq)?;
+            serialize_consume_effect(effect, seq, ids)?;
         }
 
         Ok(())
@@ -662,6 +702,13 @@ impl DataComponentCodec<Self> for EquippableImpl {
 
 impl DataComponentCodec<Self> for PotionContentsImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         // Potion ID (optional)
         if let Some(potion_id) = self.potion_id {
             seq.write_bool(true)?;
@@ -679,7 +726,7 @@ impl DataComponentCodec<Self> for PotionContentsImpl {
         }
 
         // Custom effects list
-        serialize_status_effects(&self.custom_effects, seq)?;
+        serialize_status_effects(&self.custom_effects, seq, ids)?;
 
         // Custom name (optional)
         if let Some(name) = &self.custom_name {
@@ -1135,7 +1182,9 @@ pub fn serialize(
         DataComponent::Enchantments => get::<EnchantmentsImpl>(value).serialize(seq),
         DataComponent::CanPlaceOn => get::<CanPlaceOnImpl>(value).serialize(seq),
         DataComponent::CanBreak => get::<CanBreakImpl>(value).serialize(seq),
-        DataComponent::AttributeModifiers => get::<AttributeModifiersImpl>(value).serialize(seq),
+        DataComponent::AttributeModifiers => {
+            get::<AttributeModifiersImpl>(value).serialize_for(seq, ids)
+        }
         DataComponent::CustomModelData => get::<CustomModelDataImpl>(value).serialize(seq),
         DataComponent::TooltipDisplay => get::<TooltipDisplayImpl>(value).serialize(seq),
         DataComponent::RepairCost => get::<RepairCostImpl>(value).serialize(seq),
@@ -1147,7 +1196,7 @@ pub fn serialize(
             get::<IntangibleProjectileImpl>(value).serialize(seq)
         }
         DataComponent::Food => get::<FoodImpl>(value).serialize(seq),
-        DataComponent::Consumable => get::<ConsumableImpl>(value).serialize(seq),
+        DataComponent::Consumable => get::<ConsumableImpl>(value).serialize_for(seq, ids),
         DataComponent::UseRemainder => get::<UseRemainderImpl>(value).serialize(seq),
         DataComponent::UseCooldown => get::<UseCooldownImpl>(value).serialize(seq),
         DataComponent::DamageResistant => get::<DamageResistantImpl>(value).serialize(seq),
@@ -1173,10 +1222,10 @@ pub fn serialize(
         DataComponent::MapPostProcessing => get::<MapPostProcessingImpl>(value).serialize(seq),
         DataComponent::ChargedProjectiles => get::<ChargedProjectilesImpl>(value).serialize(seq),
         DataComponent::BundleContents => get::<BundleContentsImpl>(value).serialize_for(seq, ids),
-        DataComponent::PotionContents => get::<PotionContentsImpl>(value).serialize(seq),
+        DataComponent::PotionContents => get::<PotionContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionDurationScale => get::<PotionDurationScaleImpl>(value).serialize(seq),
         DataComponent::SuspiciousStewEffects => {
-            get::<SuspiciousStewEffectsImpl>(value).serialize(seq)
+            get::<SuspiciousStewEffectsImpl>(value).serialize_for(seq, ids)
         }
         DataComponent::WritableBookContent => get::<WritableBookContentImpl>(value).serialize(seq),
         DataComponent::WrittenBookContent => get::<WrittenBookContentImpl>(value).serialize(seq),
@@ -1630,8 +1679,21 @@ impl DataComponentCodec<Self> for CanBreakImpl {
 
 impl DataComponentCodec<Self> for AttributeModifiersImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt::from(self.attribute_modifiers.len() as i32))?;
-        for modifier in self.attribute_modifiers.iter() {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        // A vanilla client knows the generated attributes only.
+        let modifiers: Vec<_> = self
+            .attribute_modifiers
+            .iter()
+            .filter(|modifier| ids == ContentIds::Real || modifier.r#type.id < Attributes::COUNT)
+            .collect();
+        seq.write_var_int(&VarInt::from(modifiers.len() as i32))?;
+        for modifier in modifiers {
             seq.write_var_int(&VarInt::from(modifier.r#type.id as i32))?;
             seq.write_string(modifier.id)?;
             seq.write_f64(modifier.amount)?;
