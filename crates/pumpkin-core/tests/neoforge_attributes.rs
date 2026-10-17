@@ -38,8 +38,14 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
 
 /// Loads the chunk of `pos` for the rest of the process and sets `pos` and the block above it to
-/// `fluid`.
+/// `fluid`, in a stone tank with air on top. The world seed is random, so the terrain must not
+/// reach the zombie: a block above stops its upward push and a fluid beside it pushes it.
 fn fluid_column(pos: BlockPos, fluid: &Block) {
+    let local = (pos.0.x & 15, pos.0.z & 15);
+    assert!(
+        (1..15).contains(&local.0) && (1..15).contains(&local.1),
+        "the tank of {pos} crosses a chunk edge"
+    );
     let world = support::world();
     let chunk = pos.chunk_position();
     {
@@ -52,8 +58,18 @@ fn fluid_column(pos: BlockPos, fluid: &Block) {
         assert!(Instant::now() < deadline, "the chunk of {pos} did not load");
         std::thread::sleep(Duration::from_millis(10));
     }
-    for pos in [pos, pos.up()] {
-        world.set_block_state(&pos, fluid.default_state.id, BlockFlags::empty());
+    for y in -1..=2 {
+        for x in -1..=1 {
+            for z in -1..=1 {
+                let block = match (x, y, z) {
+                    (0, 0 | 1, 0) => fluid,
+                    (0, 2, 0) => &Block::AIR,
+                    _ => &Block::STONE,
+                };
+                let at = pos.offset(Vector3::new(x, y, z));
+                world.set_block_state(&at, block.default_state.id, BlockFlags::empty());
+            }
+        }
     }
 }
 
@@ -92,8 +108,9 @@ fn forward_swim_velocity(pos: BlockPos, swim_speed_bonus: Option<f64>) -> f64 {
 
 #[test]
 fn swim_speed_scales_the_swim_speed_of_a_mob_in_water() {
-    let plain = forward_swim_velocity(BlockPos::new(3000, 120, 3000), None);
-    let fast = forward_swim_velocity(BlockPos::new(3004, 120, 3000), Some(1.0));
+    let pos = BlockPos::new(3000, 120, 3000);
+    let plain = forward_swim_velocity(pos, None);
+    let fast = forward_swim_velocity(pos, Some(1.0));
     assert!(plain > 0.0, "{plain}");
     // A multiply-base modifier of 1 doubles the attribute, and the swim speed with it.
     assert!((fast / plain - 2.0).abs() < 1e-9, "{plain} {fast}");
@@ -140,11 +157,12 @@ fn fluid_jump_velocity(pos: BlockPos, fluid: &Block, fast: bool) -> f64 {
 
 #[test]
 fn swim_speed_scales_the_jump_in_water_and_not_in_lava() {
-    let water = fluid_jump_velocity(BlockPos::new(3008, 120, 3000), &Block::WATER, false);
-    let fast_water = fluid_jump_velocity(BlockPos::new(3012, 120, 3000), &Block::WATER, true);
+    let pos = BlockPos::new(3016, 120, 3000);
+    let water = fluid_jump_velocity(pos, &Block::WATER, false);
+    let fast_water = fluid_jump_velocity(pos, &Block::WATER, true);
     assert!(fast_water > water, "{water} {fast_water}");
-    let lava = fluid_jump_velocity(BlockPos::new(3016, 120, 3000), &Block::LAVA, false);
-    let fast_lava = fluid_jump_velocity(BlockPos::new(3020, 120, 3000), &Block::LAVA, true);
+    let lava = fluid_jump_velocity(pos, &Block::LAVA, false);
+    let fast_lava = fluid_jump_velocity(pos, &Block::LAVA, true);
     assert_eq!(lava.to_bits(), fast_lava.to_bits(), "{lava} {fast_lava}");
 }
 
