@@ -20,7 +20,11 @@ use std::{
 };
 
 use pumpkin_core::{
-    block::{BlockHitResult, RandomTickArgs, registry::BlockActionResult},
+    block::{
+        BlockBehaviour, BlockHitResult, OnScheduledTickArgs, RandomTickArgs,
+        blocks::redstone::dispenser::DispenserBlock, entities::dispenser::DispenserBlockEntity,
+        registry::BlockActionResult,
+    },
     command::CommandSender,
     entity::{
         Entity,
@@ -53,8 +57,8 @@ use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
     biome::Spawner,
     block_properties::{
-        CampfireLikeProperties, NoteBlockLikeProperties, StickyPistonLikeProperties,
-        WheatLikeProperties,
+        CampfireLikeProperties, DispenserLikeProperties, Facing, NoteBlockLikeProperties,
+        StickyPistonLikeProperties, WheatLikeProperties,
     },
     entity::{EntityType, MobCategory},
     fluid::Fluid,
@@ -1242,6 +1246,55 @@ fn change_a_settable_field_block_tool_modification_event() {
     light(&player, pos);
 
     assert_eq!(state_at(pos), Block::GLOWSTONE.default_state.id);
+}
+
+/// A dispenser at `pos` that faces up and holds a flint and steel, with `target` above it.
+fn flint_and_steel_dispenser_at(pos: BlockPos, target: BlockStateId) {
+    let mut dispenser = DispenserLikeProperties::default(&Block::DISPENSER);
+    dispenser.facing = Facing::Up;
+    set(pos, dispenser.to_state_id(&Block::DISPENSER));
+    set(pos.up(), target);
+    let entity = DispenserBlockEntity::new(pos);
+    entity.items.write().unwrap()[0] = ItemStack::new(1, &Item::FLINT_AND_STEEL);
+    support::world().add_block_entity(Arc::new(entity));
+}
+
+fn dispense(pos: BlockPos) {
+    let world = support::world();
+    DispenserBlock.on_scheduled_tick(OnScheduledTickArgs {
+        world: &world,
+        block: &Block::DISPENSER,
+        position: &pos,
+    });
+}
+
+/// A dispensed flint and steel places fire in air without `BlockEventBlockToolModificationEvent`,
+/// and fires it for a TNT target before it primes the TNT (`FlintAndSteelDispenseItemBehavior`).
+#[test]
+fn dispensed_flint_and_steel_fires_the_tool_event_after_the_fire() {
+    let _serial = support::serial();
+    let (air, tnt) = (spot(30), spot(31));
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<BlockEventBlockToolModificationEvent, _>(move |event| {
+        if event.pos == air.up() || event.pos == tnt.up() {
+            push(
+                &seen_by_handler,
+                format!("{} {}", event.pos, event.state.id.to_block().name),
+            );
+            event.final_state = Some(Block::GLOWSTONE.default_state);
+        }
+    });
+
+    flint_and_steel_dispenser_at(air, Block::AIR.default_state.id);
+    dispense(air);
+    assert!(entries(&seen).is_empty());
+    assert_eq!(support::world().get_block(&air.up()), &Block::FIRE);
+
+    flint_and_steel_dispenser_at(tnt, Block::TNT.default_state.id);
+    dispense(tnt);
+    assert_eq!(entries(&seen), [format!("{} tnt", tnt.up())]);
+    assert_eq!(state_at(tnt.up()), Block::GLOWSTONE.default_state.id);
 }
 
 /// A spawn entry of the test, as a mod adds one.

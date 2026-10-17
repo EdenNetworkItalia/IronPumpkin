@@ -859,21 +859,8 @@ impl DispenserBlock {
         let front = Self::target_position(ctx);
         let front_block = ctx.world.get_block(&front);
 
-        let ignited = if front_block == &Block::TNT {
-            TNTBlock::prime(ctx.world, &front)
-        } else {
-            Ignition::ignite_block(
-                |world: Arc<World>, pos: BlockPos, new_state_id: BlockStateId| {
-                    world.set_block_state(&pos, new_state_id, BlockFlags::NOTIFY_ALL);
-                },
-                ctx.world,
-                front,
-                front,
-                front_block,
-                None,
-                item,
-            )
-        };
+        let ignited = Ignition::ignite_dispensed(ctx.world, front, front_block, item)
+            || (front_block == &Block::TNT && TNTBlock::prime(ctx.world, &front));
 
         if ignited {
             // `damage_item` already consumes the tool from the stack when it breaks.

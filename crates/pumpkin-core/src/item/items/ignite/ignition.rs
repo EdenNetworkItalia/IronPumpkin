@@ -3,7 +3,7 @@ use crate::block::blocks::fire::fire::FireBlock;
 use crate::entity::player::Player;
 use crate::plugin::level::FIRESTARTER_LIGHT;
 use crate::plugin::level_events;
-use crate::world::World;
+use crate::world::{BlockFlags, World};
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::Taggable;
@@ -15,15 +15,14 @@ pub struct Ignition;
 
 impl Ignition {
     /// Lights `block` at `location` itself if it can be lit (campfires, candles, candle
-    /// cakes), otherwise places a fire block at `fire_pos`. `player` uses `item`, or a dispenser
-    /// does for `None`.
+    /// cakes), otherwise places a fire block at `fire_pos`. `player` uses `item`.
     pub fn ignite_block<F>(
         ignite_logic: F,
         world: &Arc<World>,
         location: BlockPos,
         fire_pos: BlockPos,
         block: &Block,
-        player: Option<&Player>,
+        player: &Player,
         item: &ItemStack,
     ) -> bool
     where
@@ -39,7 +38,7 @@ impl Ignition {
         if let Some(new_state_id) = level_events::tool_modification(
             world,
             &location,
-            player,
+            Some(player),
             item,
             FIRESTARTER_LIGHT,
             || can_be_lit(block, state_id),
@@ -55,6 +54,37 @@ impl Ignition {
         }
 
         false
+    }
+
+    /// A dispenser uses `item` on `block` at `pos`: it places a fire block if it can, otherwise
+    /// it lights the block (`FlintAndSteelDispenseItemBehavior`, fire before the tool event).
+    pub fn ignite_dispensed(
+        world: &Arc<World>,
+        pos: BlockPos,
+        block: &Block,
+        item: &ItemStack,
+    ) -> bool {
+        if FireBlockBase::can_place_at(world, &pos) {
+            let fire_block = FireBlockBase::get_fire_type(world, &pos);
+            let state_id = FireBlock.get_state_for_position(world, &fire_block, &pos);
+            world.set_block_state(&pos, state_id, BlockFlags::NOTIFY_ALL);
+            return true;
+        }
+
+        let state_id = world.get_block_state_id(&pos);
+        let Some(new_state_id) =
+            level_events::tool_modification(world, &pos, None, item, FIRESTARTER_LIGHT, || {
+                if *world.get_fluid(&pos) == Fluid::EMPTY {
+                    can_be_lit(block, state_id)
+                } else {
+                    None
+                }
+            })
+        else {
+            return false;
+        };
+        world.set_block_state(&pos, new_state_id, BlockFlags::NOTIFY_ALL);
+        true
     }
 }
 

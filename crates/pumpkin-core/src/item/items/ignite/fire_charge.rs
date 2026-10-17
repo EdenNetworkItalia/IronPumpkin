@@ -75,7 +75,7 @@ impl ItemBehaviour for FireChargeItem {
             location,
             location.offset(face.to_offset()),
             block,
-            Some(player),
+            player,
             item,
         );
 

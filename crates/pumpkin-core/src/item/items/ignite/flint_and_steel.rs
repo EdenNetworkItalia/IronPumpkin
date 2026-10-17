@@ -65,7 +65,7 @@ impl ItemBehaviour for FlintAndSteelItem {
             location,
             location.offset(face.to_offset()),
             block,
-            Some(player),
+            player,
             item,
         );
 
