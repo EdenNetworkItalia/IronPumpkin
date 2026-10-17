@@ -1013,13 +1013,8 @@ fn one_event_per_fire_site_chunk_watch_event_unwatch() {
     assert_eq!(entries(&dropped).len(), second);
 }
 
-/// `ChunkEvent.Load` (`ChunkLoad`) and `ChunkEvent.Unload` (`ChunkUnloadEvent`) fire in the world
-/// tick after a chunk joined or left the loaded chunks of the world.
-#[test]
-fn one_event_per_fire_site_chunk_load_and_unload_events() {
-    let _serial = support::serial();
-    let world = support::world();
-    let chunk = spot(22).chunk_position();
+/// Logs `load` and `unload` for the chunk events of `chunk`.
+fn log_chunk_events(chunk: Vector2<i32>) -> Log {
     let seen = log();
     let loaded = seen.clone();
     on::<ChunkLoad, _>(move |event| {
@@ -1033,11 +1028,12 @@ fn one_event_per_fire_site_chunk_load_and_unload_events() {
             push(&unloaded, "unload");
         }
     });
+    seen
+}
 
-    load(spot(22));
-    world.update_active_chunks();
-    assert_eq!(entries(&seen), ["load"]);
-
+/// Removes the force ticket of `chunk` and waits until the chunk left the loaded chunks.
+fn unload(chunk: Vector2<i32>) {
+    let world = support::world();
     {
         let mut loading = world.level.chunk_loading.lock().unwrap();
         loading.remove_force_ticket(chunk);
@@ -1048,8 +1044,40 @@ fn one_event_per_fire_site_chunk_load_and_unload_events() {
         assert!(Instant::now() < deadline, "the chunk did not unload");
         std::thread::sleep(Duration::from_millis(10));
     }
-    world.update_active_chunks();
-    assert_eq!(entries(&seen), ["load", "unload"]);
+}
+
+/// Runs `World::update_active_chunks` until `seen` holds `expected`: the chunk scheduler
+/// publishes a chunk before it queues the change, so one update can miss it.
+fn update_chunks_until(seen: &Log, expected: &[&str]) {
+    let world = support::world();
+    let deadline = Instant::now() + support::SLOW_RUNNER;
+    loop {
+        world.update_active_chunks();
+        if entries(seen) == expected {
+            return;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the chunk events are {:?}",
+            entries(seen)
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// `ChunkEvent.Load` (`ChunkLoad`) and `ChunkEvent.Unload` (`ChunkUnloadEvent`) fire in the world
+/// tick after a chunk joined or left the loaded chunks of the world.
+#[test]
+fn one_event_per_fire_site_chunk_load_and_unload_events() {
+    let _serial = support::serial();
+    let chunk = spot(22).chunk_position();
+    let seen = log_chunk_events(chunk);
+
+    load(spot(22));
+    update_chunks_until(&seen, &["load"]);
+
+    unload(chunk);
+    update_chunks_until(&seen, &["load", "unload"]);
 }
 
 /// Two water sources around a flowing water at `pos`, on a stone floor.
