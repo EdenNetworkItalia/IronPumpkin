@@ -129,7 +129,7 @@ Native handlers and Wasm handlers of one event SHALL run in the single dispatch 
 - **THEN** the native handler gets the event cancelled, and the entity takes no damage
 
 ### Requirement: One event pipeline
-A world mutation that a player or an entity causes through the API of a mod (a world mutator of `ironpumpkin-mods`, called from a handler or from other mod code, or a v0.2 import of a Wasm plugin), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a handler cancels one, and SHALL reach v0.2 plugins and mods alike. No API function SHALL skip that dispatch. Status: supported (task 2.4, #121; check in 2.18).
+A world mutation that a player or an entity causes through the API of a mod (a world mutator of `ironpumpkin-mods` or a v0.2 Wasm import), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a handler cancels one, and SHALL reach v0.2 plugins and mods alike. No API function SHALL skip that dispatch. Status: supported (task 2.4, #121; check in 2.18); gap: damage of non-living entities (task 2.15).
 
 #### Scenario: Every mutator is listed
 - **WHEN** a reviewer reads the table "Mutators and their events" of `design.md`

@@ -39,13 +39,16 @@ use pumpkin_core::{
     },
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, Payload, PluginMetadata,
-        block::{block_break::BlockBreakEvent, block_place::BlockPlaceEvent},
+        block::{
+            block_break::BlockBreakEvent, block_exp::BlockExpEvent, block_place::BlockPlaceEvent,
+        },
         entity::{
             entity_change_block::EntityChangeBlockEvent, entity_damage::EntityDamageEvent,
             entity_damage_by_entity::EntityDamageByEntityEvent, entity_death::EntityDeathEvent,
             entity_place::EntityPlaceEvent, entity_spawn::EntitySpawnEvent,
             item_spawn::ItemSpawnEvent,
         },
+        level::BlockEventEntityPlaceEvent,
         startup::create_context,
     },
     server::Server,
@@ -264,6 +267,51 @@ fn a_projectile_of_a_mod_breaks_a_block() {
     assert_eq!(entries(&seen), ["true LaserShooter", "false LaserShooter"]);
 }
 
+/// `World::destroy_block` takes the settable fields of `BlockBreakEvent`: the experience that a
+/// handler sets drops, and `drop = false` drops no item and no experience.
+#[test]
+fn destroy_block_takes_the_experience_and_the_drop_of_the_event() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(7, 120, 1);
+    set_loaded(pos, &Block::DIRT);
+    let drop = Arc::new(AtomicBool::new(true));
+    let flag = drop.clone();
+    on_with::<BlockBreakEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.block_position == pos {
+            event.exp = 5;
+            event.drop = flag.load(Ordering::Relaxed);
+        }
+    });
+    let seen = log();
+    let observed = seen.clone();
+    on_with::<ItemSpawnEvent, _>(EventPriority::Normal, false, move |event| {
+        if BlockPos::floored_v(event.position) == pos {
+            push(&observed, "item");
+        }
+    });
+    let observed = seen.clone();
+    on_with::<BlockExpEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.block_pos == pos {
+            push(&observed, format!("exp {}", event.exp));
+        }
+    });
+
+    assert!(world.destroy_block(&pos, true, None));
+    assert!(is(pos, &Block::AIR));
+    assert_eq!(entries(&seen), ["item", "exp 5"]);
+
+    set_loaded(pos, &Block::DIRT);
+    drop.store(false, Ordering::Relaxed);
+    assert!(world.destroy_block(&pos, true, None));
+    assert!(is(pos, &Block::AIR));
+    assert_eq!(
+        entries(&seen),
+        ["item", "exp 5"],
+        "a break without drops dropped"
+    );
+}
+
 #[test]
 fn a_player_breaks_a_block_through_the_world() {
     let _serial = support::serial();
@@ -302,32 +350,33 @@ fn a_player_breaks_a_block_through_the_world() {
     assert_eq!(entries(&seen), ["WorldBreaker", "WorldBreaker"]);
 }
 
+/// `World::place_block` fires the event of the entity behind the placer: `BlockPlaceEvent` for a
+/// projectile that a player shot, `BlockEventEntityPlaceEvent` for one that a mob owns.
 #[test]
 fn a_mod_places_a_block_through_the_world() {
     let _serial = support::serial();
     let shooter = support::player("LaserPlacer");
-    let shooter_id = shooter.living_entity.entity.entity_id;
     let world = support::world();
     let pos = BlockPos::new(3, 120, 1);
     set_loaded(pos, &Block::AIR);
     let cancel = Arc::new(AtomicBool::new(true));
     let flag = cancel.clone();
-    plugin_on::<EntityPlaceEvent, _>("pipeline-place-plugin", EventPriority::High, move |event| {
-        if event.block_pos == pos {
+    plugin_on::<BlockPlaceEvent, _>("pipeline-place-plugin", EventPriority::High, move |event| {
+        if event.block_position == pos {
             event.set_cancelled(flag.load(Ordering::Relaxed));
         }
     });
     let seen = log();
     let observed = seen.clone();
-    on_with::<EntityPlaceEvent, _>(EventPriority::Low, true, move |event| {
-        if event.block_pos == pos {
+    on_with::<BlockPlaceEvent, _>(EventPriority::Low, true, move |event| {
+        if event.block_position == pos {
             push(
                 &observed,
                 format!(
                     "{} {} {}",
                     event.cancelled(),
-                    event.entity_id == shooter_id,
-                    event.block_name
+                    event.player.gameprofile.name,
+                    event.placed_state.id.to_block().name
                 ),
             );
         }
@@ -343,8 +392,58 @@ fn a_mod_places_a_block_through_the_world() {
     assert!(is(pos, &Block::STONE), "the place did not set the block");
     assert_eq!(
         entries(&seen),
-        ["true true minecraft:stone", "false true minecraft:stone"]
+        ["true LaserPlacer stone", "false LaserPlacer stone"]
     );
+
+    let pig = from_type(
+        &EntityType::PIG,
+        Vector3::new(3.5, 121.0, 1.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(pig.clone()));
+    let pig_id = pig.get_entity().entity_id;
+    let pig_laser = MiningLaser {
+        entity: Entity::new(
+            world.clone(),
+            Vector3::new(3.5, 121.0, 1.5),
+            &EntityType::SNOWBALL,
+        ),
+        owner_id: pig_id,
+    };
+    let at = BlockPos::new(3, 121, 1);
+    set_loaded(at, &Block::AIR);
+    let placers = log();
+    let observed = placers.clone();
+    on_with::<BlockEventEntityPlaceEvent, _>(EventPriority::Normal, false, move |event| {
+        if event.pos == at {
+            push(
+                &observed,
+                format!(
+                    "{} {}",
+                    event.entity.get_entity().entity_id == pig_id,
+                    event.placed_state.id.to_block().name
+                ),
+            );
+            event.set_cancelled(true);
+        }
+    });
+    assert!(!world.place_block(&at, stone, &pig_laser));
+    assert!(is(at, &Block::AIR), "the cancelled place set the block");
+    assert_eq!(entries(&placers), ["true stone"]);
+}
+
+/// `World::destroy_block` leaves the fluid of the block, as `Level.destroyBlock` sets
+/// `getFluidState(pos).createLegacyBlock()`: a seagrass leaves water.
+#[test]
+fn destroy_block_leaves_the_fluid_of_the_block() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(8, 120, 1);
+    set_loaded(pos, &Block::SEAGRASS);
+
+    assert!(world.destroy_block(&pos, false, None));
+    assert!(is(pos, &Block::WATER), "the seagrass left no water");
 }
 
 #[test]

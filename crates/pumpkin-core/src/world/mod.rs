@@ -37,6 +37,7 @@ pub mod time;
 pub mod villager_poi;
 
 use crate::block::RandomTickArgs;
+use crate::plugin::level_events::TickEventHandlers;
 use crate::world::chunker::is_within_chebyshev_distance;
 use crate::{block::BlockEvent, entity::item::ItemEntity};
 use crate::{
@@ -497,9 +498,12 @@ impl World {
                 self.migrate_pending_block_entities(pos);
             }
         }
+        let collect_changes = crate::plugin::level_events::listens_to_chunk_changes(self);
         let mut changes = Vec::new();
         for change in self.level.loaded_chunk_changes() {
-            changes.push(change);
+            if collect_changes {
+                changes.push(change);
+            }
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
                     if active_chunks.contains(&pos)
@@ -528,7 +532,9 @@ impl World {
         let spawnable_chunks = tracker.loaded_active_chunks.len() as i32;
         drop(active_chunks);
         drop(tracker);
-        crate::plugin::level_events::chunk_changes(self, &changes);
+        if !changes.is_empty() {
+            crate::plugin::level_events::chunk_changes(self, &changes);
+        }
 
         self.spawn_state.store(Arc::new(SpawnState::new(
             spawnable_chunks,
@@ -1645,11 +1651,12 @@ impl World {
             })
             .collect();
 
+        let tick_events = TickEventHandlers::read(server);
         let t_players = std::time::Instant::now();
         let player_handle = handle.clone();
         players.par_iter().for_each(|player| {
             let _guard = player_handle.enter();
-            player.tick(server);
+            player.tick_with_events(server, tick_events);
         });
         let player_elapsed = t_players.elapsed();
 
@@ -1688,10 +1695,10 @@ impl World {
                 let _guard = entity_handle.enter();
 
                 for (entity, entity_chunk) in batch {
-                    if crate::plugin::level_events::entity_tick_pre(server, entity) {
+                    if crate::plugin::level_events::entity_tick_pre(server, entity, tick_events) {
                         entity.get_entity().age.fetch_add(1, Relaxed);
                         entity.tick(entity.as_ref(), server_ref);
-                        crate::plugin::level_events::entity_tick_post(server, entity);
+                        crate::plugin::level_events::entity_tick_post(server, entity, tick_events);
                     }
 
                     let entity_inner = entity.get_entity();
@@ -5438,17 +5445,7 @@ impl World {
             && broken_block != &Block::FIRE
             && broken_block != &Block::SOUL_FIRE
         {
-            let je_packet = CWorldEvent::new(
-                WorldEvent::ParticlesAndSoundDestroyBlock as i32,
-                *position,
-                broken_state_id.as_u16().into(),
-                false,
-            );
-            let be_packet = CLevelEvent {
-                event_id: VarInt(LevelEvent::ParticlesDestroyBlock as i32),
-                position: position.to_centered_f64().to_f32_lossy(),
-                data: VarInt(BlockState::to_be_network_id(broken_state_id) as i32),
-            };
+            let (je_packet, be_packet) = Self::destroy_block_effect(position, broken_state_id);
             let chunk_pos = position.chunk_position();
             if let Some(player) = cause {
                 // Java predicts its own break effect; Bedrock needs the server event.
@@ -5467,6 +5464,27 @@ impl World {
         }
 
         Some(broken_state_id)
+    }
+
+    /// The particles and the sound of the break of `state_id` at `position`, for each edition
+    /// (world event 2001).
+    fn destroy_block_effect(
+        position: &BlockPos,
+        state_id: BlockStateId,
+    ) -> (CWorldEvent, CLevelEvent) {
+        (
+            CWorldEvent::new(
+                WorldEvent::ParticlesAndSoundDestroyBlock as i32,
+                *position,
+                state_id.as_u16().into(),
+                false,
+            ),
+            CLevelEvent {
+                event_id: VarInt(LevelEvent::ParticlesDestroyBlock as i32),
+                position: position.to_centered_f64().to_f32_lossy(),
+                data: VarInt(BlockState::to_be_network_id(state_id) as i32),
+            },
+        )
     }
 
     /// Breaks the block at `position` as vanilla `Level.destroyBlock` does: a break without a
@@ -5505,11 +5523,8 @@ impl World {
 
         // Vanilla skips the break effect for a `BaseFireBlock`.
         if block != &Block::FIRE && block != &Block::SOUL_FIRE {
-            self.sync_world_event(
-                WorldEvent::ParticlesAndSoundDestroyBlock,
-                *position,
-                i32::from(state.id.as_u16()),
-            );
+            let (je_packet, be_packet) = Self::destroy_block_effect(position, state.id);
+            self.broadcast_to_chunk_editioned(position.chunk_position(), &je_packet, &be_packet);
         }
         if drop {
             let params = crate::world::loot::LootContextParameters {
@@ -5523,12 +5538,9 @@ impl World {
                 crate::block::drop_experience(self, position, exp);
             }
         }
-        let new_state_id = if block.is_waterlogged(state.id) {
-            Block::WATER.default_state.id
-        } else {
-            Block::AIR.default_state.id
-        };
-        self.set_block_state(position, new_state_id, BlockFlags::NOTIFY_ALL);
+        // `getFluidState(pos).createLegacyBlock()`: kelp, seagrass and bubble columns leave water.
+        let (_, fluid_state) = self.get_fluid_and_fluid_state(position);
+        self.set_block_state(position, fluid_state.block_state_id, BlockFlags::NOTIFY_ALL);
         self.emit_game_event(
             pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
             position.to_centered_f64(),
@@ -5537,28 +5549,49 @@ impl World {
     }
 
     /// Places `state_id` at `position` for `placer`, as `NeoForge` `EventHooks.onBlockPlace` before
-    /// `Level.setBlock`. Fires [`EntityPlaceEvent`] with the entity behind `placer`: the placer
-    /// itself, or the entity that owns it. Returns `false` when a handler cancels the place.
+    /// `Level.setBlock`. The cause is the placer itself, or the entity that owns it: a player
+    /// fires [`BlockPlaceEvent`], another entity [`BlockEventEntityPlaceEvent`]. Returns `false`
+    /// when a handler cancels the place.
     ///
-    /// [`EntityPlaceEvent`]: crate::plugin::api::events::entity::entity_place::EntityPlaceEvent
+    /// [`BlockPlaceEvent`]: crate::plugin::api::events::block::block_place::BlockPlaceEvent
+    /// [`BlockEventEntityPlaceEvent`]: crate::plugin::api::events::level::BlockEventEntityPlaceEvent
     pub fn place_block(
         self: &Arc<Self>,
         position: &BlockPos,
         state_id: BlockStateId,
         placer: &dyn EntityBase,
     ) -> bool {
-        if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
-                crate::plugin::api::events::entity::entity_place::EntityPlaceEvent::new(
-                    cause_id(placer),
-                    *position,
-                    pumpkin_data::dynamic::namespaced_name(Block::from_state_id(state_id).name)
-                        .into_owned(),
-                )
-            })
-            && event.cancelled
-        {
-            return false;
+        if let Some(server) = self.server.upgrade() {
+            let cause = cause_id(placer);
+            let placed = self.get_player_by_id(cause).map_or_else(
+                || {
+                    !server
+                        .plugin_manager
+                        .has_handlers::<crate::plugin::api::events::level::BlockEventEntityPlaceEvent>()
+                        || self
+                            .get_entity_by_id(cause)
+                            .or_else(|| self.get_entity_by_id(placer.get_entity().entity_id))
+                            .is_none_or(|entity| {
+                                crate::plugin::level_events::entity_place(
+                                    self, &entity, *position, state_id,
+                                )
+                            })
+                },
+                |player| {
+                    crate::plugin::level_events::player_place_one(
+                        &server,
+                        self,
+                        &player,
+                        Block::from_state_id(state_id),
+                        self.get_block(&position.down()),
+                        *position,
+                        state_id,
+                    )
+                },
+            );
+            if !placed {
+                return false;
+            }
         }
         self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
         true

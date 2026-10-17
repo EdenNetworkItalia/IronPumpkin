@@ -263,7 +263,7 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 | `TradeWithVillagerEvent` | the same name | Fires outside the screen-handler lock, for a villager and for a wandering trader. A villager sends the refreshed offers from its next tick, as vanilla does. |
 | `PlayerInteractEvent.LeftClickBlock` | `PlayerInteractEvent` with the action left click block | Fires for the start, the stop and the abort of a dig (`left_click_action`), not on the arm swing, with `face` and the main `hand`. `use_block` set to `False` skips the block attack at the start. A cancel stops the action and sends the block back to the client. |
 | `PlayerInteractEvent.RightClickBlock` | `PlayerInteractEvent` with the action right click block | Fires before the use phases with `hand`, `face`, `hit_vector` and `item_stack()`. `use_block` and `use_item` are `TriState`s: `False` skips the block use or both item phases, `True` uses the block also while sneaking or the item also with an empty hand. A cancel ends the use with `cancellation_result`: `Success` swings the arm for the other players, `SuccessServer` for every player. |
-| `PlayerInteractEvent.RightClickItem` | `PlayerInteractEvent` with the action right click air | Fires before every item use with a non-empty hand, whatever the player looks at. A cancel skips the use and ends it with `cancellation_result`. |
+| `PlayerInteractEvent.RightClickItem` | `PlayerInteractEvent` with the action right click air | Fires before every item use with a non-empty hand, whatever the player looks at, but not while the item is on cooldown. A cancel skips the use and ends it with `cancellation_result`. |
 | `UseItemOnBlockEvent` | the same name | Fires once per phase that runs (`phase`: `ItemBeforeBlock`, `Block`, `ItemAfterBlock`). A cancel skips the phase and gives `cancellation_result`, `TryWithEmptyHand` by default. |
 | `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
 
@@ -275,11 +275,11 @@ The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin 
 
 | NeoForge event | IronPumpkin event | Notes |
 | :--- | :--- | :--- |
-| `BreakBlockEvent` | `block::BlockBreakEvent` | Has `player`, `state` and `block_position`. `exp` and `drop` are settable. A cancel keeps the block, and the client gets it back. It also fires without a player for a block that loses its support. Skip those events: `getPlayer` is never null in NeoForge. |
-| `BlockEvent.EntityPlaceEvent` | `block::BlockPlaceEvent` for a player, `level::BlockEventEntityPlaceEvent` for an enderman | Fire before the block changes, with `placed_state` and `replaced_state`. A cancel places nothing. Register both to see every placement. |
+| `BreakBlockEvent` | `block::BlockBreakEvent` | Has `player`, `state` and `block_position`. `exp` and `drop` are settable. A cancel keeps the block, and the client gets it back. It also fires without a player where NeoForge posts nothing: for a block that loses its support, a piston that breaks a block, a bed or a respawn anchor that explodes, a hatched egg, a sheep that eats grass, and a machine or a mob that calls `World::destroy_block` without a player owner. A break by a machine, which a `FakePlayer` does in NeoForge, has `player == None`. A port that expects `getPlayer` to be non-null checks `player` first. |
+| `BlockEvent.EntityPlaceEvent` | `block::BlockPlaceEvent` for a player, `level::BlockEventEntityPlaceEvent` for an enderman | Fire before the block changes, with `placed_state` and `replaced_state`. A cancel places nothing. Register both to see every placement. NeoForge also posts it for an item use that changes a block (fire from a flint and steel or a fire charge, an axe, hoe or shovel transform, bone meal, a shears trim); IronPumpkin fires it for block items only. |
 | `BlockEvent.EntityMultiPlaceEvent` | `block::BlockMultiPlaceEvent` | Fires after `BlockPlaceEvent` for a bed, a door, a tall plant or a small dripleaf. A cancel of either event places no block. |
 | `BlockEvent.BlockToolModificationEvent` | `level::BlockEventBlockToolModificationEvent` | Fires for a fire starter and for shears, as in NeoForge 26.3. Axes, hoes and shovels fire nothing. `final_state` is settable, and `None` is no change. |
-| `CropGrowEvent.Post`, `NoteBlockEvent.Change`, `PistonEvent.Post`, `CreateFluidSourceEvent` | `level::CropGrowEventPost`, `NoteBlockEventChange`, `PistonEventPost`, `CreateFluidSourceEvent` | `note` and `can_convert` are settable. A cancel of the note change keeps the note. |
+| `CropGrowEvent.Post`, `NoteBlockEvent.Change`, `PistonEvent.Post`, `CreateFluidSourceEvent` | `level::CropGrowEventPost`, `NoteBlockEventChange`, `PistonEventPost`, `CreateFluidSourceEvent` | `note` and `can_convert` are settable. A cancel of the note change keeps the note. The crop events (`CropGrowEventPost` and `block::BlockGrowEvent` for `CropGrowEvent.Pre`) fire only for wheat, carrots, potatoes, beetroots and the torchflower, and `BlockGrowEvent` fires only after a successful growth roll. |
 | `ExplosionEvent.Start` | `entity::EntityExplodeEvent` | A cancel stops the explosion. |
 | `ExplosionEvent.Detonate`, `ExplosionKnockbackEvent` | `level::ExplosionEventDetonate`, `ExplosionKnockbackEvent` | The lists of blocks and entities and the knockback are settable. |
 | `ChunkEvent.Load`, `ChunkEvent.Unload` | `world::ChunkLoad`, `world::ChunkUnloadEvent` | Fire in the world tick after the change. A cancel has no effect. |
@@ -290,6 +290,7 @@ The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin 
 Only native mods get these events, except the events that WIT v0.2 already had: `BlockBreakEvent`, `BlockPlaceEvent`, `BlockMultiPlaceEvent`, `EntityExplodeEvent`, `ChunkLoad` and `ChunkUnloadEvent`. A Wasm plugin gets them without the new fields.
 
 These rows stay planned: `BlockEvent.FarmlandTrampleEvent` (Pumpkin never tramples farmland), `LevelEvent.CreateSpawnPosition` (Pumpkin picks the spawn before the server exists), `ChunkDataEvent.Load` and `Save` (the chunk I/O runs in `pumpkin-world`), `AlterGroundEvent` and `ChunkTicketLevelUpdatedEvent` (engine extension points of M5). The mapping table gives the reasons.
+
 ## Causes: what a `FakePlayer` did
 
 A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a fake player, so the break events fire with that player. IronPumpkin has no fake players. A mod calls the Pumpkin method of the vanilla action with the entity that acts, and the method fires the Pumpkin event of that action, with the same dispatch as for a real player. Native mods and v0.2 Wasm plugins see the event and can cancel it.
@@ -297,15 +298,15 @@ A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a 
 The server resolves the cause of the event:
 
 - A player is its own cause.
-- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`.
+- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`. An owner that is not a player gives `player = None`.
 - A block entity has no entity. A machine calls the method without a cause, and the event has no player, as for a piston.
 
 | NeoForge call | IronPumpkin method | Event |
 | :--- | :--- | :--- |
-| `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`. Returns `false` when cancelled. |
-| `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `EntityPlaceEvent`. Returns `false` when cancelled. |
+| `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`, which NeoForge does not post here. Returns `false` when cancelled. |
+| `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `block::BlockPlaceEvent` when the cause is a player, `level::BlockEventEntityPlaceEvent` for another entity, as for the placements of the game. Returns `false` when cancelled. |
 | `level.addFreshEntity(entity)` | `World::spawn_entity(entity)` | `EntitySpawnEvent`. Returns `false` when cancelled. |
-| `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`. A death fires `EntityDeathEvent`. |
+| `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`, for a mob, a player or an item entity. A death fires `EntityDeathEvent`. Other entities fire no damage event yet. |
 | `level.setBlock(pos, state, flags)` | `World::set_block_state(&pos, state, flags)` | No event, as in vanilla. Use it for the internal state of a machine. |
 
 A mining laser that breaks the block it hits:

@@ -34,7 +34,7 @@ use crate::plugin::api::events::{
         LevelEventPotentialSpawns, NoteBlockEventChange, PistonEventPost, PistonMoveType,
         PlayerTickEventPost, PlayerTickEventPre,
     },
-    world::chunk_load::ChunkLoad,
+    world::{chunk_load::ChunkLoad, chunk_unload::ChunkUnloadEvent},
 };
 use crate::plugin::player_events;
 use crate::server::Server;
@@ -83,24 +83,19 @@ pub fn player_place(
     pos: BlockPos,
     state: BlockStateId,
 ) -> bool {
-    let manager = &server.plugin_manager;
-    let replaced = || world.get_block_state(&pos);
-    if manager
-        .fire_blocking_with(server, || {
-            BlockPlaceEvent::new(
-                player.clone(),
-                placed_block,
-                placed_against,
-                pos,
-                true,
-                BlockState::from_id(state),
-                replaced(),
-            )
-        })
-        .is_some_and(|event| event.cancelled)
-    {
+    if !player_place_one(
+        server,
+        world,
+        player,
+        placed_block,
+        placed_against,
+        pos,
+        state,
+    ) {
         return false;
     }
+    let manager = &server.plugin_manager;
+    let replaced = || world.get_block_state(&pos);
     if !manager.has_handlers::<BlockMultiPlaceEvent>() {
         return true;
     }
@@ -117,6 +112,33 @@ pub fn player_place(
                     (pos, replaced()),
                     (part_pos, world.get_block_state(&part_pos)),
                 ],
+            )
+        })
+        .is_some_and(|event| event.cancelled)
+}
+
+/// Fires `BlockPlaceEvent` alone, for a placement of one block (`EventHooks.onBlockPlace`).
+/// Returns `false` when a handler cancelled it.
+pub fn player_place_one(
+    server: &Arc<Server>,
+    world: &Arc<World>,
+    player: &Arc<Player>,
+    placed_block: &'static Block,
+    placed_against: &'static Block,
+    pos: BlockPos,
+    state: BlockStateId,
+) -> bool {
+    !server
+        .plugin_manager
+        .fire_blocking_with(server, || {
+            BlockPlaceEvent::new(
+                player.clone(),
+                placed_block,
+                placed_against,
+                pos,
+                true,
+                BlockState::from_id(state),
+                world.get_block_state(&pos),
             )
         })
         .is_some_and(|event| event.cancelled)
@@ -197,29 +219,67 @@ pub fn entity_place(
         .is_some_and(|event| event.cancelled)
 }
 
+/// Which tick events have a handler. The world tick reads it once, before its parallel loops,
+/// so an entity or a player with no tick handler costs no lookup.
+#[derive(Clone, Copy)]
+pub struct TickEventHandlers {
+    entity_pre: bool,
+    entity_post: bool,
+    player_pre: bool,
+    player_post: bool,
+}
+
+impl TickEventHandlers {
+    #[must_use]
+    pub fn read(server: &Server) -> Self {
+        let plugins = &server.plugin_manager;
+        Self {
+            entity_pre: plugins.has_handlers::<EntityTickEventPre>(),
+            entity_post: plugins.has_handlers::<EntityTickEventPost>(),
+            player_pre: plugins.has_handlers::<PlayerTickEventPre>(),
+            player_post: plugins.has_handlers::<PlayerTickEventPost>(),
+        }
+    }
+}
+
 /// Fires `EntityTickEventPre` before `entity` ticks. Returns `false` when a handler cancelled it.
-pub fn entity_tick_pre(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) -> bool {
-    !server
-        .plugin_manager
-        .fire_blocking_with(server, || EntityTickEventPre::new(entity.clone()))
-        .is_some_and(|event| event.cancelled)
+pub fn entity_tick_pre(
+    server: &Arc<Server>,
+    entity: &Arc<dyn EntityBase>,
+    handlers: TickEventHandlers,
+) -> bool {
+    !handlers.entity_pre
+        || !server
+            .plugin_manager
+            .fire_blocking_with(server, || EntityTickEventPre::new(entity.clone()))
+            .is_some_and(|event| event.cancelled)
 }
 
 /// Fires `EntityTickEventPost` after `entity` ticked.
-pub fn entity_tick_post(server: &Arc<Server>, entity: &Arc<dyn EntityBase>) {
-    server
-        .plugin_manager
-        .fire_blocking_with(server, || EntityTickEventPost::new(entity.clone()));
+pub fn entity_tick_post(
+    server: &Arc<Server>,
+    entity: &Arc<dyn EntityBase>,
+    handlers: TickEventHandlers,
+) {
+    if handlers.entity_post {
+        server
+            .plugin_manager
+            .fire_blocking_with(server, || EntityTickEventPost::new(entity.clone()));
+    }
 }
 
 /// Fires `PlayerTickEventPre` at the start of the tick of `player`.
-pub fn player_tick_pre(player: &Player) {
-    player_events::fire(player, PlayerTickEventPre::new);
+pub fn player_tick_pre(player: &Player, handlers: TickEventHandlers) {
+    if handlers.player_pre {
+        player_events::fire(player, PlayerTickEventPre::new);
+    }
 }
 
 /// Fires `PlayerTickEventPost` at the end of the tick of `player`.
-pub fn player_tick_post(player: &Player) {
-    player_events::fire(player, PlayerTickEventPost::new);
+pub fn player_tick_post(player: &Player, handlers: TickEventHandlers) {
+    if handlers.player_post {
+        player_events::fire(player, PlayerTickEventPost::new);
+    }
 }
 
 /// Fires `CropGrowEventPost` after the crop at `pos` grew from `original`.
@@ -393,28 +453,56 @@ pub fn chunk_unwatch(
     }
 }
 
+/// Whether a handler of `ChunkLoad` or `ChunkUnloadEvent` listens, so the world tick collects
+/// the loaded chunk changes for [`chunk_changes`].
+pub fn listens_to_chunk_changes(world: &World) -> bool {
+    world.server.upgrade().is_some_and(|server| {
+        server.plugin_manager.has_handlers::<ChunkLoad>()
+            || server.plugin_manager.has_handlers::<ChunkUnloadEvent>()
+    })
+}
+
 /// Fires `ChunkLoad` and `ChunkUnloadEvent` for the chunks that joined or left the loaded chunks
-/// of `world` since the last world tick.
+/// of `world` since the last world tick. A chunk that loaded and unloaded again in that time
+/// fires neither.
 pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
     let Some(server) = world.server.upgrade() else {
         return;
     };
     let listens_to_load = server.plugin_manager.has_handlers::<ChunkLoad>();
+    let mut unloaded_again = Vec::new();
     for change in changes {
         match *change {
             LoadedChunkChange::Loaded(pos) => {
-                // A chunk that unloaded again in the same tick fires no load.
-                let chunk = listens_to_load
-                    .then(|| world.level.loaded_chunks.get(&pos).map(|c| c.clone()))
-                    .flatten();
-                if let Some(chunk) = chunk {
+                let Some(chunk) = world.level.loaded_chunks.get(&pos).map(|c| c.clone()) else {
+                    unloaded_again.push(pos);
+                    continue;
+                };
+                if listens_to_load {
                     let mut event = ChunkLoad::new(world.clone(), chunk);
                     server.plugin_manager.fire_blocking(&server, &mut event);
                 }
             }
-            LoadedChunkChange::Unloaded(pos) => world.unload_chunk(pos),
+            LoadedChunkChange::Unloaded(pos) => {
+                if let Some(index) = unloaded_again.iter().position(|loaded| *loaded == pos) {
+                    unloaded_again.swap_remove(index);
+                } else {
+                    world.unload_chunk(pos);
+                }
+            }
         }
     }
+}
+
+/// Whether a new source can form: `vanilla` (the game rule) allows it, or a handler of
+/// `CreateFluidSourceEvent` may allow it. Without either, the fluid skips the neighbour checks.
+pub fn may_create_fluid_source(world: &World, vanilla: bool) -> bool {
+    vanilla
+        || world.server.upgrade().is_some_and(|server| {
+            server
+                .plugin_manager
+                .has_handlers::<CreateFluidSourceEvent>()
+        })
 }
 
 /// Fires `CreateFluidSourceEvent` for the source at `pos` and returns whether it counts toward a

@@ -52,6 +52,7 @@ use pumpkin_core::{
             item_held::PlayerItemHeldEvent,
             player_interact_event::{InteractAction, PlayerInteractEvent},
             player_spawn_location::PlayerSpawnLocationEvent,
+            use_item_on_block::UsePhase,
         },
         results::{InteractionResult, TriState},
     },
@@ -941,6 +942,80 @@ fn use_block_and_use_item_denials_follow_common_hooks() {
     assert_eq!(entries(&seen), ["Block"]);
 }
 
+/// A cancel of `UseItemOnBlockEvent` ends its phase with `cancellation_result`, as
+/// `ServerPlayerGameMode.useItemOn` of `NeoForge` 26.3: a cancel of `ItemAfterBlock` places no
+/// stone; a cancel of `Block` with `TryWithEmptyHand` still runs the use without the item (the
+/// lever flips), and with `Pass` it goes on to the item (the stone goes on the lever).
+#[test]
+fn cancel_use_item_on_block_event_ends_its_phase() {
+    let _serial = support::serial();
+    let player = stone_holder("PhaseCanceller");
+    let target = near_feet(&player, Vector3::new(1, -1, 2));
+    let above = near_feet(&player, Vector3::new(1, 0, 2));
+    let under_lever = near_feet(&player, Vector3::new(2, -2, 2));
+    let lever = near_feet(&player, Vector3::new(2, -1, 2));
+    let on_lever = near_feet(&player, Vector3::new(2, 0, 2));
+    let cancel = Arc::new(Mutex::new((
+        UsePhase::ItemAfterBlock,
+        InteractionResult::TryWithEmptyHand,
+    )));
+    let (seen, decided) = (log(), cancel.clone());
+    let phases = seen.clone();
+    on::<UseItemOnBlockEvent, _>(move |event| {
+        if named(&event.player, "PhaseCanceller") {
+            push(&phases, format!("{:?}", event.phase));
+            let (phase, result) = *decided.lock().unwrap();
+            if event.phase == phase {
+                event.cancellation_result = result;
+                event.set_cancelled(true);
+            }
+        }
+    });
+    let world = support::world();
+    let mut floor_lever = LeverLikeProperties::from_state_id(Block::LEVER.default_state.id);
+    floor_lever.face = AttachFace::Floor;
+    let lever_off = floor_lever.to_state_id(&Block::LEVER);
+    let reset_lever = || {
+        stone_at(under_lever);
+        world.set_block_state(&lever, lever_off, BlockFlags::empty());
+        block_at(on_lever, &Block::AIR);
+        seen.lock().unwrap().clear();
+    };
+
+    stone_at(target);
+    block_at(above, &Block::AIR);
+    use_item_on(&player, &use_on_top(target, 1));
+    assert!(!is_stone(above), "a cancelled item phase placed the stone");
+    assert_eq!(
+        entries(&seen),
+        ["ItemBeforeBlock", "Block", "ItemAfterBlock"]
+    );
+
+    reset_lever();
+    *cancel.lock().unwrap() = (UsePhase::Block, InteractionResult::TryWithEmptyHand);
+    use_item_on(&player, &use_on_top(lever, 2));
+    assert_ne!(
+        world.get_block_state_id(&lever),
+        lever_off,
+        "the lever flips"
+    );
+    assert!(
+        !is_stone(on_lever),
+        "the use without the item consumes the click"
+    );
+    assert_eq!(entries(&seen), ["ItemBeforeBlock", "Block"]);
+
+    reset_lever();
+    *cancel.lock().unwrap() = (UsePhase::Block, InteractionResult::Pass);
+    use_item_on(&player, &use_on_top(lever, 3));
+    assert_eq!(world.get_block_state_id(&lever), lever_off);
+    assert!(is_stone(on_lever), "a passed block phase skipped the item");
+    assert_eq!(
+        entries(&seen),
+        ["ItemBeforeBlock", "Block", "ItemAfterBlock"]
+    );
+}
+
 /// Reads the packets of `peer` until it saw `count` arm swings of the entity `entity_id`.
 fn wait_for_swings(peer: &mut Peer, entity_id: i32, count: usize) {
     support::RUNTIME.block_on(async {
@@ -1002,6 +1077,37 @@ fn a_success_cancellation_result_swings_the_arm_without_the_action() {
     assert!(!is_stone(above), "a cancelled click placed the stone");
     assert_eq!(player.inventory().held_item().item_count, 64);
     wait_for_swings(&mut peer, player.entity_id(), 2);
+}
+
+/// `RightClickItem` does not fire while the item waits on its use cooldown:
+/// `ServerPlayerGameMode.useItem` returns `PASS` before `CommonHooks.onItemRightClick`.
+#[test]
+fn right_click_item_skips_an_item_on_cooldown() {
+    let _serial = support::serial();
+    let player = stone_holder("Cooler");
+    player
+        .inventory()
+        .set_stack(0, ItemStack::new(16, &Item::ENDER_PEARL));
+    let seen = log();
+    let clicks = seen.clone();
+    on::<PlayerInteractEvent, _>(move |event| {
+        if named(&event.player, "Cooler") && event.action == InteractAction::RightClickAir {
+            push(&clicks, event.item_stack().item.registry_key);
+            event.set_cancelled(true);
+        }
+    });
+    let use_item = |sequence| SUseItem {
+        hand: VarInt(0),
+        sequence: VarInt(sequence),
+        yaw: 0.0,
+        pitch: 0.0,
+    };
+
+    java_client(&player).handle_use_item(&player, &use_item(1), support::server());
+    player.start_cooldown("ender_pearl".to_owned(), 100);
+    java_client(&player).handle_use_item(&player, &use_item(2), support::server());
+
+    assert_eq!(entries(&seen), ["ender_pearl"]);
 }
 
 /// `PlayerSwitchHotbarSlotEvent.Pre` (`PlayerItemHeldEvent`) fires only when the slot changes,

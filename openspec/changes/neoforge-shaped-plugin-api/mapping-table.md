@@ -43,7 +43,7 @@ How to read it:
 | `PlayerInteractEvent.RightClickBlock` | 67 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `RightClickBlock`, built with `right_click_block`) | supported |
 | `PlayerEvent.PlayerLoggedInEvent` | 66 | event class | `event-bus.event::player-event-player-logged-in-event` | supported |
 | `BlockEvent` | 65 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `pumpkin_core::plugin::block::BlockBreakEvent` (a break with a player; a break without one has no NeoForge event) | supported |
+| `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `pumpkin_core::plugin::block::BlockBreakEvent` (fired by `World::break_block` and `World::destroy_block`; a break without a player and a `Level.destroyBlock` have no NeoForge event) | supported |
 | `ServerTickEvent` | 52 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `EntityJoinLevelEvent` | 49 | event class | `event-bus.event::entity-join-level-event` | supported |
 | `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` (after a poll reload and after `ModConfig::save`; a `save` inside the hook does not call it again) | supported |

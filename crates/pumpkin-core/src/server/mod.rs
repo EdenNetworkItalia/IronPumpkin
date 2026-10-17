@@ -8,6 +8,7 @@ use crate::item::registry::ItemRegistry;
 use crate::net::authentication::fetch_mojang_public_keys;
 use crate::net::{ClientPlatform, DisconnectReason, EncryptionError, GameProfile, PlayerConfig};
 use crate::plugin::PluginManager;
+use crate::plugin::level_events::TickEventHandlers;
 use crate::plugin::loader::PluginLoader;
 use crate::plugin::player::player_login::PlayerLoginEvent;
 use crate::plugin::server::server_broadcast::ServerBroadcastEvent;
@@ -1244,9 +1245,10 @@ impl Server {
 
             let players = world.players.load();
             let player_handle = handle.clone();
+            let tick_events = TickEventHandlers::read(self);
             players.par_iter().for_each(|player| {
                 let _guard = player_handle.enter();
-                player.tick(self);
+                player.tick_with_events(self, tick_events);
             });
             self.plugin_manager
                 .fire_blocking_with(self, || LevelTickEventPost::new(world.clone()));

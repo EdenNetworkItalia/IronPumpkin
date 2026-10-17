@@ -26,9 +26,11 @@ impl JavaClient {
         let mut item_in_hand = inventory.get_stack_in_hand(hand);
 
         // `ServerPlayerGameMode.useItem` of NeoForge fires `RightClickItem` before the item use,
-        // for a non-empty hand of a player that is not a spectator, whatever the ray hits.
+        // for a non-empty hand of a player that is not a spectator, whatever the ray hits, and
+        // not while the item is on cooldown.
         if !item_in_hand.is_empty()
             && player.gamemode.load() != GameMode::Spectator
+            && !player.is_item_on_cooldown(&item_in_hand)
             && let Some(result) = interact_events::right_click_item(player, hand)
         {
             interact_events::swing_for(player, hand, result);
