@@ -61,6 +61,7 @@ use pumpkin_data::{
     dynamic::{self, ContentKind},
     dynamic_types,
     entity::EntityType,
+    tag::{self, Taggable},
 };
 use pumpkin_util::{identifier::Identifier, math::position::BlockPos};
 use tracing::warn;
@@ -555,28 +556,49 @@ impl ExtendPoiTypesEvent {
 fn add_block_to_poi(poi_type: &str, block_name: &str) -> Result<(), RegistrationError> {
     let poi_type = namespaced(poi_type);
     let (block_name, vanilla) = block(block_name)?;
-    let Some(profession) = poi::job_site_profession(&poi_type) else {
-        if OTHER_POI_TYPES.contains(&poi_type.as_str()) {
-            warn!(
-                "ExtendPoiTypesEvent: the server tracks only job site POI types, so \"{block_name}\" does not join \"{poi_type}\""
-            );
-            return Ok(());
-        }
+    let profession = poi::job_site_profession(&poi_type);
+    if profession.is_none() && !OTHER_POI_TYPES.contains(&poi_type.as_str()) {
         return Err(RegistrationError::UnknownPoiType(poi_type));
-    };
+    }
     let duplicate = |previous: &str| RegistrationError::DuplicatePoiBlock {
         block: block_name.clone(),
         poi_type: previous.to_owned(),
     };
-    if let Some(previous) = vanilla.and_then(pumpkin_core::world::villager_poi::poi_type_for_block)
-    {
+    // `PoiTypeExtender.register` throws for a state of any POI type, with a profession or not.
+    if let Some(previous) = vanilla.and_then(vanilla_poi_type) {
         return Err(duplicate(previous));
     }
+    let Some(profession) = profession else {
+        warn!(
+            "ExtendPoiTypesEvent: the server tracks only job site POI types, so \"{block_name}\" does not join \"{poi_type}\""
+        );
+        return Ok(());
+    };
     poi::add_block(&block_name, profession)
         .map_err(RegistrationError::Registry)?
         .map_or(Ok(()), |previous| {
             Err(duplicate(&format!("minecraft:{}", previous.to_name())))
         })
+}
+
+/// The POI type of a vanilla block, from `PoiTypes.bootstrap`. The generated tags `beds` and
+/// `lightning_rods` list the blocks of `Blocks.BED` and `Blocks.LIGHTNING_ROD`.
+fn vanilla_poi_type(block: &'static Block) -> Option<&'static str> {
+    if let Some(poi_type) = pumpkin_core::world::villager_poi::poi_type_for_block(block) {
+        return Some(poi_type);
+    }
+    Some(match block {
+        // `home` takes the head states of a bed, so the whole block overlaps it.
+        block if block.has_tag(&tag::Block::MINECRAFT_BEDS) => "minecraft:home",
+        block if block == &Block::BELL => "minecraft:meeting",
+        block if block == &Block::BEEHIVE => "minecraft:beehive",
+        block if block == &Block::BEE_NEST => "minecraft:bee_nest",
+        block if block == &Block::NETHER_PORTAL => "minecraft:nether_portal",
+        block if block == &Block::LODESTONE => "minecraft:lodestone",
+        block if block.has_tag(&tag::Block::MINECRAFT_LIGHTNING_RODS) => "minecraft:lightning_rod",
+        block if block == &Block::TEST_INSTANCE_BLOCK => "minecraft:test_instance",
+        _ => return None,
+    })
 }
 
 #[cfg(test)]
@@ -720,5 +742,32 @@ mod tests {
             event.add_block_to_poi("minecraft:home", "minecraft:stone"),
             Ok(())
         );
+    }
+
+    #[test]
+    fn a_block_of_a_poi_type_without_a_profession_joins_no_other_one() {
+        let mut event = ExtendPoiTypesEvent::new();
+        for (poi_type, block, previous) in [
+            ("minecraft:librarian", "minecraft:red_bed", "minecraft:home"),
+            ("minecraft:librarian", "minecraft:bell", "minecraft:meeting"),
+            (
+                "minecraft:farmer",
+                "minecraft:waxed_oxidized_lightning_rod",
+                "minecraft:lightning_rod",
+            ),
+            (
+                "minecraft:home",
+                "minecraft:lodestone",
+                "minecraft:lodestone",
+            ),
+        ] {
+            assert_eq!(
+                event.add_block_to_poi(poi_type, block),
+                Err(RegistrationError::DuplicatePoiBlock {
+                    block: block.to_owned(),
+                    poi_type: previous.to_owned(),
+                })
+            );
+        }
     }
 }
