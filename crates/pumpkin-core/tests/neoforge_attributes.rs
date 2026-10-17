@@ -38,8 +38,8 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
 
 /// Loads the chunk of `pos` for the rest of the process and sets `pos` and the block above it to
-/// water.
-fn water_column(pos: BlockPos) {
+/// `fluid`.
+fn fluid_column(pos: BlockPos, fluid: &Block) {
     let world = support::world();
     let chunk = pos.chunk_position();
     {
@@ -53,14 +53,14 @@ fn water_column(pos: BlockPos) {
         std::thread::sleep(Duration::from_millis(10));
     }
     for pos in [pos, pos.up()] {
-        world.set_block_state(&pos, Block::WATER.default_state.id, BlockFlags::empty());
+        world.set_block_state(&pos, fluid.default_state.id, BlockFlags::empty());
     }
 }
 
 /// A zombie without AI goals in a water column at `pos`, swimming forward for one tick. Returns
 /// its forward velocity.
 fn forward_swim_velocity(pos: BlockPos, swim_speed_bonus: Option<f64>) -> f64 {
-    water_column(pos);
+    fluid_column(pos, &Block::WATER);
     let world = support::world();
     let center = Vector3::new(
         f64::from(pos.0.x) + 0.5,
@@ -97,6 +97,55 @@ fn swim_speed_scales_the_swim_speed_of_a_mob_in_water() {
     assert!(plain > 0.0, "{plain}");
     // A multiply-base modifier of 1 doubles the attribute, and the swim speed with it.
     assert!((fast / plain - 2.0).abs() < 1e-9, "{plain} {fast}");
+}
+
+/// A zombie without AI goals in a column of `fluid` at `pos`, jumping for one tick, with a swim
+/// speed of 2 if `fast`. Returns its vertical velocity.
+fn fluid_jump_velocity(pos: BlockPos, fluid: &Block, fast: bool) -> f64 {
+    fluid_column(pos, fluid);
+    let world = support::world();
+    let center = Vector3::new(
+        f64::from(pos.0.x) + 0.5,
+        f64::from(pos.0.y),
+        f64::from(pos.0.z) + 0.5,
+    );
+    let zombie = LivingEntity::new(Entity::new(world, center, &EntityType::ZOMBIE));
+    if fast {
+        zombie.update_attribute(&Attributes::NEOFORGE_SWIM_SPEED, |instance| {
+            instance.add_or_replace_modifier(Modifier {
+                id: "test:fins".to_owned(),
+                amount: 1.0,
+                operation: ModifierOperation::MultiplyBase,
+            });
+        });
+    }
+    zombie
+        .jumping
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let _guard = support::RUNTIME.enter();
+    zombie.tick(&zombie, support::server());
+    let entity = &zombie.entity;
+    let in_fluid = if fluid.id == Block::LAVA.id {
+        &entity.touching_lava
+    } else {
+        &entity.touching_water
+    };
+    assert!(
+        in_fluid.load(std::sync::atomic::Ordering::SeqCst),
+        "the zombie at {pos} is not in {}",
+        fluid.name
+    );
+    entity.velocity.load().y
+}
+
+#[test]
+fn swim_speed_scales_the_jump_in_water_and_not_in_lava() {
+    let water = fluid_jump_velocity(BlockPos::new(3008, 120, 3000), &Block::WATER, false);
+    let fast_water = fluid_jump_velocity(BlockPos::new(3012, 120, 3000), &Block::WATER, true);
+    assert!(fast_water > water, "{water} {fast_water}");
+    let lava = fluid_jump_velocity(BlockPos::new(3016, 120, 3000), &Block::LAVA, false);
+    let fast_lava = fluid_jump_velocity(BlockPos::new(3020, 120, 3000), &Block::LAVA, true);
+    assert_eq!(lava.to_bits(), fast_lava.to_bits(), "{lava} {fast_lava}");
 }
 
 fn java_client(player: &Player) -> &pumpkin_core::net::java::JavaClient {

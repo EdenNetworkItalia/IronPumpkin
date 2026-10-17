@@ -12,7 +12,7 @@
 //!
 //! `IronPumpkin` registers the `NeoForge` attributes [`SWIM_SPEED`], [`CREATIVE_FLIGHT`] and
 //! [`GLIDING_FLIGHT`] with the defaults of `NeoForgeMod`. The swim speed scales the swim speed of
-//! a mob in water and its upward push when it jumps in a fluid; the player's own movement is
+//! a mob in water and its upward push when it jumps in water; the player's own movement is
 //! client authoritative, so a `NeoForge` client applies it for the player. Creative flight lets a
 //! survival player fly, also on a vanilla client: the server sends it as the may-fly ability.
 //! An equipped glider item adds 1 to gliding flight, which a `NeoForge` client reads before it

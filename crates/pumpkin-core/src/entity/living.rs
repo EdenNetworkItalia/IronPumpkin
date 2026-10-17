@@ -1413,8 +1413,13 @@ impl LivingEntity {
 
                 let mut velo = self.entity.velocity.load();
 
-                // NeoForge `jumpInFluid`: the swim speed scales the upward push.
-                velo.y += 0.04 * self.get_attribute_value(&Attributes::NEOFORGE_SWIM_SPEED);
+                // NeoForge `jumpInFluid`: the swim speed scales the upward push in water only.
+                let swim_speed = if in_lava {
+                    1.0
+                } else {
+                    self.get_attribute_value(&Attributes::NEOFORGE_SWIM_SPEED)
+                };
+                velo.y += 0.04 * swim_speed;
 
                 self.entity.velocity.store(velo);
             } else if (on_ground || in_water && fluid_height <= swim_height)

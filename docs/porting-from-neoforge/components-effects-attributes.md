@@ -184,7 +184,7 @@ A vanilla client gets none of them. It still sees the particles of a mod effect,
 
 | Attribute | Default | What reads it |
 | :--- | :--- | :--- |
-| `neoforge:swim_speed` | 1, from 0 to 1024 | The swim speed of a mob in water and its upward push when it jumps in a fluid. The player moves on its client: a NeoForge client applies it, a vanilla client does not. |
+| `neoforge:swim_speed` | 1, from 0 to 1024 | The swim speed of a mob in water and its upward push when it jumps in water. The player moves on its client: a NeoForge client applies it, a vanilla client does not. |
 | `neoforge:creative_flight` | 0 (off) | `Player::may_fly`. A survival player with the attribute may fly, also on a vanilla client: the server sends the may-fly ability. A player who loses it stops flying. |
 | `neoforge:gliding_flight` | 0 (off) | A NeoForge client, before it lets the player glide. An equipped item with the `glider` component that the next damage does not break adds the modifier `neoforge:glider_component_flight` (+1), as on a NeoForge server. A vanilla client reads the `glider` component. |
 
