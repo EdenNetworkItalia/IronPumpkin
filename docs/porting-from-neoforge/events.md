@@ -298,15 +298,15 @@ A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a 
 The server resolves the cause of the event:
 
 - A player is its own cause.
-- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`.
+- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`. An owner that is not a player gives `player = None`.
 - A block entity has no entity. A machine calls the method without a cause, and the event has no player, as for a piston.
 
 | NeoForge call | IronPumpkin method | Event |
 | :--- | :--- | :--- |
-| `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`. Returns `false` when cancelled. |
+| `level.destroyBlock(pos, drop, entity)` | `World::destroy_block(&pos, drop, Some(entity))` | `BlockBreakEvent`, which NeoForge does not post here. Returns `false` when cancelled. |
 | `BlockItem.place` with a fake player, or `EventHooks.onBlockPlace` before `level.setBlock` | `World::place_block(&pos, state, entity)` | `block::BlockPlaceEvent` when the cause is a player, `level::BlockEventEntityPlaceEvent` for another entity, as for the placements of the game. Returns `false` when cancelled. |
 | `level.addFreshEntity(entity)` | `World::spawn_entity(entity)` | `EntitySpawnEvent`. Returns `false` when cancelled. |
-| `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`. A death fires `EntityDeathEvent`. |
+| `entity.hurtServer(level, source, amount)` | `damage_with_context(caller, amount, type, position, source, cause)` | `EntityDamageEvent`, then `EntityDamageByEntityEvent` or `EntityDamageByBlockEvent`, for a mob, a player or an item entity. A death fires `EntityDeathEvent`. Other entities fire no damage event yet. |
 | `level.setBlock(pos, state, flags)` | `World::set_block_state(&pos, state, flags)` | No event, as in vanilla. Use it for the internal state of a machine. |
 
 A mining laser that breaks the block it hits:
