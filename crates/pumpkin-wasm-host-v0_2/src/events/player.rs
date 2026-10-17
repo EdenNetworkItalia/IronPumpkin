@@ -778,15 +778,28 @@ impl ToFromWasmEvent for PlayerInteractEvent {
         })
     }
 
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        cleanup_event(&event, state);
+        if let Event::PlayerInteractEvent(data) = event {
+            self.action = from_wasm_interact_action(data.action);
+            self.clicked_pos = data.clicked_pos.map(from_wasm_block_position);
+            self.block = from_wasm_block_name(&data.block);
+            self.cancelled = data.cancelled;
+        }
+    }
+
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
-            Event::PlayerInteractEvent(data) => Self {
-                player: consume_player(state, &data.player),
-                action: from_wasm_interact_action(data.action),
-                clicked_pos: data.clicked_pos.map(from_wasm_block_position),
-                block: from_wasm_block_name(&data.block),
-                cancelled: data.cancelled,
-            },
+            Event::PlayerInteractEvent(data) => {
+                let mut event = Self::new(
+                    &consume_player(state, &data.player),
+                    from_wasm_interact_action(data.action),
+                    from_wasm_block_name(&data.block),
+                    data.clicked_pos.map(from_wasm_block_position),
+                );
+                event.cancelled = data.cancelled;
+                event
+            }
             _ => panic!("unexpected event type"),
         }
     }

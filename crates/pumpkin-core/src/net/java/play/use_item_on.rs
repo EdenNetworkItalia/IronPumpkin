@@ -1,6 +1,9 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
 use crate::item::registry::should_try_block_placement;
+use crate::plugin::interact_events;
+use crate::plugin::player::use_item_on_block::UsePhase;
+use crate::plugin::results::{InteractionResult, TriState};
 
 impl JavaClient {
     #[allow(clippy::too_many_lines)]
@@ -39,25 +42,13 @@ impl JavaClient {
             let world = entity.world.load_full();
             let block = world.get_block(&position);
 
-            let event = PlayerInteractEvent::new(
-                player,
-                InteractAction::RightClickBlock,
-                block,
-                Some(position),
-            );
-
-            send_cancellable_blocking! {{
-                server;
-                event;
-                'cancelled: {
-                    let state_id = world.get_block_state_id(&position);
-                    player.try_send_client_packet(&CBlockUpdate::new(
-                        position,
-                        VarInt(i32::from(state_id.as_u16())),
-                    ));
-                    return Ok(());
-                }
-            }}
+            if let Some(event) =
+                interact_events::right_click_block(player, hand, block, position, face, cursor_pos)
+                && event.cancelled
+            {
+                Self::cancel_right_click_block(player, hand, &world, position, &event);
+                return Ok(());
+            }
 
             if let Some(factory) = server
                 .block_registry
@@ -82,25 +73,35 @@ impl JavaClient {
         let world = entity.world.load_full();
         let block = world.get_block(&position);
 
-        let event = PlayerInteractEvent::new(
-            player,
-            InteractAction::RightClickBlock,
-            block,
-            Some(position),
-        );
+        let event =
+            interact_events::right_click_block(player, hand, block, position, face, cursor_pos);
+        if let Some(event) = &event
+            && event.cancelled
+        {
+            Self::cancel_right_click_block(player, hand, &world, position, event);
+            return Ok(());
+        }
+        let (use_block, use_item) = event.map_or((TriState::Default, TriState::Default), |event| {
+            (event.use_block, event.use_item)
+        });
 
-        send_cancellable_blocking! {{
-            server;
-            event;
-            'cancelled: {
-                let state_id = world.get_block_state_id(&position);
-                player.try_send_client_packet(&CBlockUpdate::new(
-                    position,
-                    VarInt(i32::from(state_id.as_u16())),
-                ));
-                return Ok(());
-            }
-        }}
+        // `ServerPlayerGameMode.useItemOn` of NeoForge: the item use before the block use
+        // (`onItemUseFirst`) ends the use with any result but `PASS`. Pumpkin items have none.
+        if use_item != TriState::False
+            && let Some(result) = interact_events::use_item_on_block(
+                player,
+                hand,
+                &item,
+                position,
+                face,
+                cursor_pos,
+                UsePhase::ItemBeforeBlock,
+            )
+            && result != InteractionResult::Pass
+        {
+            interact_events::swing_for(player, hand, result);
+            return Ok(());
+        }
 
         let equipment_slot = if matches!(hand, Hand::Right) {
             EquipmentSlot::MAIN_HAND
@@ -111,9 +112,12 @@ impl JavaClient {
         let sneaking = player.get_entity().is_sneaking();
 
         // Code based on the java class ServerPlayerInteractionManager
-        if !(sneaking && (!held_item_empty || !off_hand_item_empty)) {
+        let suppress_using_block = sneaking && (!held_item_empty || !off_hand_item_empty);
+        if use_block == TriState::True || (use_block == TriState::Default && !suppress_using_block)
+        {
             let result = Self::call_use_item_on(
                 player,
+                hand,
                 &position,
                 &cursor_pos,
                 face,
@@ -139,9 +143,26 @@ impl JavaClient {
             PlayerInventory::OFF_HAND_SLOT
         };
 
+        // TODO item cool down
+        // `use_item` of NeoForge: `False` skips the item use, `True` runs it for an empty hand.
+        if use_item == TriState::False || (use_item == TriState::Default && item.is_empty()) {
+            return Ok(());
+        }
+        // A cancel skips the item use and its block placement.
+        if let Some(result) = interact_events::use_item_on_block(
+            player,
+            hand,
+            &item,
+            position,
+            face,
+            cursor_pos,
+            UsePhase::ItemAfterBlock,
+        ) {
+            interact_events::swing_for(player, hand, result);
+            return Ok(());
+        }
+        // An empty hand uses nothing, as the air item does in vanilla.
         if item.is_empty() {
-            // TODO item cool down
-            // If the hand is empty we stop here
             return Ok(());
         }
 
@@ -203,6 +224,7 @@ impl JavaClient {
     #[expect(clippy::too_many_arguments)]
     fn call_use_item_on(
         player: &Arc<Player>,
+        hand: Hand,
         position: &BlockPos,
         cursor_pos: &Vector3<f32>,
         face: BlockDirection,
@@ -212,18 +234,32 @@ impl JavaClient {
         block: &Block,
         server: &Arc<Server>,
     ) -> BlockActionResult {
-        let result = server.block_registry.use_with_item(
-            block,
+        let cancelled_result = interact_events::use_item_on_block(
             player,
-            position,
-            &BlockHitResult {
-                face: &face,
-                cursor_pos,
-            },
+            hand,
             held_item,
-            equipment_slot,
-            server,
-            world,
+            *position,
+            face,
+            *cursor_pos,
+            UsePhase::Block,
+        );
+        let result = cancelled_result.map_or_else(
+            || {
+                server.block_registry.use_with_item(
+                    block,
+                    player,
+                    position,
+                    &BlockHitResult {
+                        face: &face,
+                        cursor_pos,
+                    },
+                    held_item,
+                    equipment_slot,
+                    server,
+                    world,
+                )
+            },
+            BlockActionResult::from,
         );
 
         if result.consumes_action() {
@@ -251,6 +287,24 @@ impl JavaClient {
         }
 
         BlockActionResult::Pass
+    }
+
+    /// Ends a right click on a block that a handler of `RightClickBlock` cancelled, as
+    /// `handleUseItemOn` ends a use with the cancellation result: the client gets the block back,
+    /// and a successful result swings the arm.
+    fn cancel_right_click_block(
+        player: &Player,
+        hand: Hand,
+        world: &World,
+        position: BlockPos,
+        event: &PlayerInteractEvent,
+    ) {
+        let state_id = world.get_block_state_id(&position);
+        player.try_send_client_packet(&CBlockUpdate::new(
+            position,
+            VarInt(i32::from(state_id.as_u16())),
+        ));
+        interact_events::swing_for(player, hand, event.cancellation_result);
     }
 
     fn run_is_block_place(

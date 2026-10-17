@@ -1,5 +1,6 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::plugin::interact_events;
 use pumpkin_util::version::JavaMinecraftVersion;
 
 impl JavaClient {
@@ -24,6 +25,16 @@ impl JavaClient {
 
         let mut item_in_hand = inventory.get_stack_in_hand(hand);
 
+        // `ServerPlayerGameMode.useItem` of NeoForge fires `RightClickItem` before the item use,
+        // for a non-empty hand of a player that is not a spectator, whatever the ray hits.
+        if !item_in_hand.is_empty()
+            && player.gamemode.load() != GameMode::Spectator
+            && let Some(result) = interact_events::right_click_item(player, hand)
+        {
+            interact_events::swing_for(player, hand, result);
+            return;
+        }
+
         let mut consume_event =
             crate::plugin::api::events::player::player_item_consume::PlayerItemConsumeEvent::new(
                 player.clone(),
@@ -39,27 +50,6 @@ impl JavaClient {
         let (item_id, _item) = (item_in_hand.item.id, item_in_hand.item);
         player.increment_stat(StatisticCategory::Used, item_id as i32, 1);
 
-        let hit = player.world().clip(&pumpkin_world::clip::ClipContext::new(
-            player.eye_position(),
-            player.eye_position().add(
-                &(Vector3::rotation_vector(f64::from(use_item.pitch), f64::from(use_item.yaw))
-                    * 4.5),
-            ),
-            pumpkin_world::clip::ClipBlock::Outline,
-            pumpkin_world::clip::ClipFluid::None,
-        ));
-
-        let event = if hit.is_miss {
-            PlayerInteractEvent::new(player, InteractAction::RightClickAir, &Block::AIR, None)
-        } else {
-            let hit_pos = hit.block_pos;
-            PlayerInteractEvent::new(
-                player,
-                InteractAction::RightClickBlock,
-                player.world().get_block(&hit_pos),
-                Some(hit_pos),
-            )
-        };
         let (item_for_use, stack_for_use) = (item_in_hand.item, item_in_hand.clone());
         let (use_yaw, use_pitch) = if self.version.load() >= JavaMinecraftVersion::V_1_21 {
             (use_item.yaw, use_item.pitch)
@@ -72,15 +62,9 @@ impl JavaClient {
             return;
         }
 
-        send_cancellable_blocking! {{
-            server;
-            event;
-            'after: {
-                server
-                    .item_registry
-                    .on_use_with_rotation(&stack_for_use, player, use_yaw, use_pitch, hand);
-            }
-        }}
+        server
+            .item_registry
+            .on_use_with_rotation(&stack_for_use, player, use_yaw, use_pitch, hand);
     }
 
     fn prepare_hand_item_for_use(player: &Arc<Player>, hand: Hand, held: &mut ItemStack) {

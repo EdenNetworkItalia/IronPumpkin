@@ -1,5 +1,8 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use crate::plugin::interact_events;
+use crate::plugin::player::player_interact_event::LeftClickBlockAction;
+use crate::plugin::results::TriState;
 
 impl JavaClient {
     #[expect(clippy::too_many_lines)]
@@ -16,10 +19,14 @@ impl JavaClient {
         match Status::try_from(player_action.status.0) {
             Ok(status) => match status {
                 Status::StartedDigging => {
-                    if !Self::fire_left_click_block(player, player_action) {
+                    let Some(use_block) = Self::fire_left_click_block(
+                        player,
+                        player_action,
+                        LeftClickBlockAction::Start,
+                    ) else {
                         self.update_sequence(player_action.sequence.0);
                         return;
-                    }
+                    };
                     if !player.can_interact_with_block_at(&player_action.position, 1.0) {
                         warn!(
                             "Player {0} tried to interact with block out of reach at {1}",
@@ -84,9 +91,11 @@ impl JavaClient {
                         Ordering::Relaxed,
                     );
                     if !state.is_air() {
-                        server
-                            .block_registry
-                            .attack(&world, block, state, &position, player);
+                        if use_block != TriState::False {
+                            server
+                                .block_registry
+                                .attack(&world, block, state, &position, player);
+                        }
                         let speed = block::calc_block_breaking(player, state, block, &position);
                         // Instant break
                         if speed >= 1.0 {
@@ -146,6 +155,16 @@ impl JavaClient {
                     self.update_sequence(player_action.sequence.0);
                 }
                 Status::CancelledDigging => {
+                    if Self::fire_left_click_block(
+                        player,
+                        player_action,
+                        LeftClickBlockAction::Abort,
+                    )
+                    .is_none()
+                    {
+                        self.update_sequence(player_action.sequence.0);
+                        return;
+                    }
                     if !player.can_interact_with_block_at(&player_action.position, 1.0) {
                         warn!(
                             "Player {0} tried to interact with block out of reach at {1}",
@@ -177,6 +196,16 @@ impl JavaClient {
                     self.update_sequence(player_action.sequence.0);
                 }
                 Status::FinishedDigging => {
+                    if Self::fire_left_click_block(
+                        player,
+                        player_action,
+                        LeftClickBlockAction::Stop,
+                    )
+                    .is_none()
+                    {
+                        self.update_sequence(player_action.sequence.0);
+                        return;
+                    }
                     let location = player_action.position;
                     if !player.can_interact_with_block_at(&location, 1.0) {
                         warn!(
@@ -290,32 +319,26 @@ impl JavaClient {
         );
     }
 
-    /// Fires `PlayerInteractEvent.LeftClickBlock` for the start of a dig, first, as
+    /// Fires `PlayerInteractEvent.LeftClickBlock` for a dig action, first, as
     /// `ServerPlayerGameMode.handleBlockBreakAction` does in `NeoForge` 26.3 (and Bukkit on the
-    /// dig start). Returns `false` when a handler cancelled it: the dig does not start and the
-    /// client gets the block back.
-    fn fire_left_click_block(player: &Arc<Player>, player_action: &SPlayerAction) -> bool {
-        let world = player.get_entity().world.load_full();
-        let Some(server) = world.server.upgrade() else {
-            return true;
-        };
+    /// dig start). Returns `None` when a handler cancelled it: the action does not run and the
+    /// client gets the block back. Otherwise returns `use_block`.
+    fn fire_left_click_block(
+        player: &Arc<Player>,
+        player_action: &SPlayerAction,
+        action: LeftClickBlockAction,
+    ) -> Option<TriState> {
         let position = player_action.position;
-        let mut event = PlayerInteractEvent::new(
-            player,
-            InteractAction::LeftClickBlock,
-            world.get_block(&position),
-            Some(position),
-        );
-        server.plugin_manager.fire_blocking(&server, &mut event);
-        if event.cancelled {
-            let state_id = world.get_block_state_id(&position);
+        let use_block =
+            interact_events::left_click_block(player, position, player_action.face, action);
+        if use_block.is_none() {
+            let state_id = player.world().get_block_state_id(&position);
             player.try_send_client_packet(&CBlockUpdate::new(
                 position,
                 VarInt(i32::from(state_id.as_u16())),
             ));
-            return false;
         }
-        true
+        use_block
     }
 
     fn sync_block_state_to_client(&self, world: &World, position: BlockPos) {
