@@ -371,6 +371,9 @@ impl BlockId {
         self.0
     }
 
+    /// Whether the generated tag lists this block. A custom block is in no generated tag here:
+    /// use [`Taggable::has_tag`](crate::tag::Taggable::has_tag), which answers through its block
+    /// type or display entry.
     #[inline]
     #[must_use]
     pub fn has_tag(self, tag: Tag) -> bool {
