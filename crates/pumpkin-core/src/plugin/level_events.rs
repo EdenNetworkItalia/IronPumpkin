@@ -454,25 +454,33 @@ pub fn chunk_unwatch(
 }
 
 /// Fires `ChunkLoad` and `ChunkUnloadEvent` for the chunks that joined or left the loaded chunks
-/// of `world` since the last world tick.
+/// of `world` since the last world tick. A chunk that loaded and unloaded again in that time
+/// fires neither.
 pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
     let Some(server) = world.server.upgrade() else {
         return;
     };
     let listens_to_load = server.plugin_manager.has_handlers::<ChunkLoad>();
+    let mut unloaded_again = Vec::new();
     for change in changes {
         match *change {
             LoadedChunkChange::Loaded(pos) => {
-                // A chunk that unloaded again in the same tick fires no load.
-                let chunk = listens_to_load
-                    .then(|| world.level.loaded_chunks.get(&pos).map(|c| c.clone()))
-                    .flatten();
-                if let Some(chunk) = chunk {
+                let Some(chunk) = world.level.loaded_chunks.get(&pos).map(|c| c.clone()) else {
+                    unloaded_again.push(pos);
+                    continue;
+                };
+                if listens_to_load {
                     let mut event = ChunkLoad::new(world.clone(), chunk);
                     server.plugin_manager.fire_blocking(&server, &mut event);
                 }
             }
-            LoadedChunkChange::Unloaded(pos) => world.unload_chunk(pos),
+            LoadedChunkChange::Unloaded(pos) => {
+                if let Some(index) = unloaded_again.iter().position(|loaded| *loaded == pos) {
+                    unloaded_again.swap_remove(index);
+                } else {
+                    world.unload_chunk(pos);
+                }
+            }
         }
     }
 }

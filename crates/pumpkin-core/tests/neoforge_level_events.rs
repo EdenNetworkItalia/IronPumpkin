@@ -1080,6 +1080,23 @@ fn one_event_per_fire_site_chunk_load_and_unload_events() {
     update_chunks_until(&seen, &["load", "unload"]);
 }
 
+/// A chunk that loads and unloads again between two world ticks fires neither `ChunkLoad` nor
+/// `ChunkUnloadEvent`.
+#[test]
+fn a_chunk_loaded_and_unloaded_within_one_tick_fires_no_chunk_event() {
+    let _serial = support::serial();
+    let chunk = spot(32).chunk_position();
+    let seen = log_chunk_events(chunk);
+
+    load(spot(32));
+    unload(chunk);
+    // The scheduler queues the unload right after it removes the chunk.
+    std::thread::sleep(Duration::from_millis(100));
+    support::world().update_active_chunks();
+
+    assert!(entries(&seen).is_empty(), "{:?}", entries(&seen));
+}
+
 /// Two water sources around a flowing water at `pos`, on a stone floor.
 fn water_between_sources(pos: BlockPos) {
     let east = BlockPos::new(1, 0, 0).0;
