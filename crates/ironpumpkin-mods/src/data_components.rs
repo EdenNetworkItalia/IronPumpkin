@@ -10,7 +10,7 @@
 //! the NBT form of its codec. A save keeps the value when the type is persistent, under the name
 //! of the type in the `components` of the stack, as vanilla saves a component. A client that synced
 //! the registries (a `NeoForge` client) gets the value as a component in the NBT form of the
-//! codec, as `ByteBufCodecs.fromCodec` writes it. A vanilla client never gets it.
+//! codec, as `ByteBufCodecs.fromCodecWithRegistries` writes it. A vanilla client never gets it.
 //!
 //! [`get_json`], [`set_json`] and [`remove`] read and write the value of a type by name, in the
 //! JSON form of its codec.

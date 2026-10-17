@@ -12,7 +12,7 @@ In IronPumpkin, a mod registers them with `ModInit::register_data_component_type
 | :--- | :--- | :--- |
 | **Component type** | `DataComponentType<T>` with a `Codec<T>` and a `StreamCodec` | `DataComponentTypeBuilder::<T>::new(name)`. `T` is the codec: it implements `Encode` and `Decode` of `pumpkin_codecs`. |
 | **Component value** | `stack.get(TYPE)`, `stack.set(TYPE, value)`, `stack.remove(TYPE)` | `TYPE.get(&stack)`, `TYPE.set(&mut stack, &value)`, `TYPE.remove(&mut stack)` on a `DataComponentType<T>` handle, and `data_components::get_json`, `set_json` and `remove` by name |
-| **Component on the network** | The `StreamCodec` of the type | The NBT form of the codec, as `ByteBufCodecs.fromCodec` writes it, to a NeoForge client only |
+| **Component on the network** | The `StreamCodec` of the type | The NBT form of the codec, as `ByteBufCodecs.fromCodecWithRegistries` writes it, to a NeoForge client only |
 | **Sound event** | `SoundEvent.createVariableRangeEvent`, `createFixedRangeEvent` | `SoundEventBuilder::new(name)`, `.fixed_range(range)` |
 | **Play a sound** | `level.playSound(null, x, y, z, sound, source, volume, pitch)` | `sound_events::play_sound(&world, &SOUND, category, &position, volume, pitch)`. The server sends the sound by name, so no client needs a registry entry. |
 | **Mob effect** | A subclass of `MobEffect` | `MobEffectBuilder::new(name, category, color)` and an implementation of the `MobEffect` trait, set with `.behaviour(..)` |
@@ -176,7 +176,7 @@ The mapping from the Java code to the Rust code:
 
 ## What a client gets
 
-A NeoForge client that synced the registries gets the ids of the mod effects, attributes and component types in the `neoforge:frozen_registry` sync, and then the effect packets, the syncable attributes and the components with those ids. The Java half of the mod must register the same names. It must keep the default stream codec of a component type, because IronPumpkin writes the NBT form of the codec: a component type with its own `networkSynchronized` stream codec is not supported.
+A NeoForge client that synced the registries gets the ids of the mod effects, attributes and component types in the `neoforge:frozen_registry` sync, and then the effect packets, the syncable attributes and the components with those ids. The Java half of the mod must register the same names. It must keep the default stream codec of a component type, `ByteBufCodecs.fromCodecWithRegistries`, because IronPumpkin writes the NBT form of the codec. A component type with its own `networkSynchronized` stream codec is not supported: the client fails to decode the value and disconnects.
 
 A vanilla client gets none of them. It still sees the particles of a mod effect, and a mod sound plays if its resource pack has the sound. When a vanilla client in creative mode sends a stack back unchanged, the server keeps the mod components of its own stack.
 
@@ -202,6 +202,7 @@ A vanilla client gets none of them. It still sees the particles of a mod effect,
 **Don't**
 
 - Do not store the ids. The server allocates them at the freeze, after the vanilla ids.
+- Do not send the id of a mod sound event from `registry::id_of` to a client. The sound event registry is not synced, so no client knows the id. Play the sound by name with `sound_events::play_sound`.
 - Do not give a component type a custom binary stream codec on the Java side.
 - Do not expect a vanilla client to show a mod component, a mod effect or a mod attribute.
 - Do not expect attributes in a save. Pumpkin does not save the attributes of an entity yet, so a base value or a modifier lasts until the entity unloads.

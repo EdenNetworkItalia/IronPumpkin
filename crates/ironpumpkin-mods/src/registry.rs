@@ -55,6 +55,9 @@ pub fn contains(kind: ContentKind, key: &str) -> bool {
 /// The numeric id of the entry with this name, or `None` when the registry has no such entry.
 /// A mod entry gets its id at the freeze, so a mod reads ids only after it and never stores them.
 ///
+/// No client knows the id of a mod sound event: the sound event registry is not synced, and the
+/// server sends mod sounds by name.
+///
 /// `NeoForge`: `Registry#getId`, which returns `-1` for an unknown entry.
 #[must_use]
 pub fn id_of(kind: ContentKind, key: &str) -> Option<u16> {
