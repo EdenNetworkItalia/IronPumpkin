@@ -2136,12 +2136,14 @@ checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 name = "ironpumpkin-mods"
 version = "0.2.0+26.3-26.51"
 dependencies = [
+ "arc-swap",
  "futures",
  "inventory",
  "pumpkin-config",
  "pumpkin-core",
  "pumpkin-data",
  "pumpkin-macros",
+ "pumpkin-protocol",
  "pumpkin-util",
  "pumpkin-world",
  "tempfile",
@@ -2149,6 +2151,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

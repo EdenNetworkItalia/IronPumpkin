@@ -14,7 +14,8 @@ In IronPumpkin, a mod calls `ModInit::register_block`, `register_item`, `registe
 | **When the code runs** | The mod bus fires `RegisterEvent`, and the game calls the lambdas | Each `register_*` call runs at once inside `NativeMod::init`, or inside a `RegisterEvent` handler |
 | **Definition** | `BlockBehaviour.Properties`, `Item.Properties`, `EntityType.Builder` | `BlockBuilder`, `ItemBuilder`, `EntityTypeBuilder`, `TagBuilder` |
 | **Handle** | `DeferredHolder`, `DeferredBlock`, `DeferredItem` | No handle. Keep the name and look it up after the freeze with `ironpumpkin_mods::registry`. |
-| **Behaviour** | A subclass of `Block` or `Item` | An implementation of `BlockBehaviour` or `ItemBehaviour`, set with `.behaviour(..)` |
+| **Behaviour** | A subclass of `Block` or `Item` | An implementation of `BlockBehaviour` or `ItemBehaviour`, set with `.behaviour(..)`, or the server behaviour of a vanilla block or item, set with `.block_type(..)` or `.item_type(..)` |
+| **Other registration events** | `EntityAttributeCreationEvent` and four more listeners on the mod bus | Methods of `NativeMod` that get a handle. See "Registration events". |
 | **Look on a vanilla client** | A model and a texture from the mod | The `display` entry: the vanilla block state, item or entity type that the client shows. IronPumpkin only. |
 | **Error** | An exception when the game opens the registry | `Err(RegistryError)`. The server stops after `init` returns. |
 | **Tags** | JSON files in a data pack | `.tag(..)` on a builder, and `TagBuilder` for a tag of the mod |
@@ -185,7 +186,39 @@ fn lamp() -> BlockBuilder {
 }
 ```
 
-Content does not inherit the behaviour of its `display` entry. Without `.behaviour(..)`, the server uses the default of each hook. Attach only a behaviour of the mod, or a server behaviour that reads no block properties. A server behaviour that reads the properties of its own block panics on a custom block, and the panic stops the server.
+Content does not inherit the behaviour of its `display` entry. Without `.behaviour(..)` or a type, the server uses the default of each hook. Attach only a behaviour of the mod, or a server behaviour that reads no block properties. A server behaviour that reads the properties of its own block panics on a custom block, and the panic stops the server. Use a block type for such a behaviour.
+
+### Behaviour by type
+
+A NeoForge mod block often extends a vanilla class, such as `StairBlock`, and gets its states, shapes and behaviour. In IronPumpkin, `.block_type(..)` names the vanilla block whose server behaviour the block runs. Minecraft 26.3 has no `minecraft:block_type` registry, so a vanilla block of the kind names the type: `minecraft:oak_stairs` for `StairBlock`, `minecraft:oak_door` for `DoorBlock`. The block then:
+
+- runs the server behaviour of the type when the builder sets no `.behaviour(..)`. A behaviour of the mod still wins.
+- gets the properties of the type when the builder adds none. A builder that adds properties must list the same names and values. The registry rejects other properties with `RegistryError::InvalidBlockType`.
+- copies the physical data of the matching state of the type, so a stair has the stair shape in each state.
+- joins the generated tags of the type, so the server sees a stair as `minecraft:stairs`.
+- shows a vanilla client the matching state of its `display` block when that block has the same properties as the type, else the `display` state.
+
+`.item_type(..)` gives an item the server behaviour of a vanilla item, such as `minecraft:bucket`. A server behaviour that compares its block or item with a vanilla constant treats the custom entry as another block or item.
+
+```rust
+use ironpumpkin_mods::{
+    ModInit,
+    content::{BlockBuilder, ItemBuilder, RegistryError},
+    pumpkin_data::{Block, item::Item},
+};
+
+fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
+    // `new StairBlock(..)`: the states, shapes and placement of an oak stair.
+    cx.register_block(
+        BlockBuilder::new("hello-mod:tin_stairs", Block::OAK_STAIRS.default_state.id)
+            .block_type("minecraft:oak_stairs"),
+    )?;
+    // `new BucketItem(Fluids.EMPTY, ..)`: picks up water and lava.
+    cx.register_item(
+        ItemBuilder::new("hello-mod:tin_bucket", &Item::BUCKET).item_type("minecraft:bucket"),
+    )
+}
+```
 
 ## The freeze and lookups
 
@@ -276,7 +309,83 @@ fn init(cx: &mut ModInit) {
 }
 ```
 
-`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three. The other registration events of NeoForge, such as `EntityAttributeCreationEvent`, are planned (task 2.25).
+`RegisterEvent` fires for `minecraft:block`, `minecraft:entity_type` and `minecraft:item` only. NeoForge fires it for every registry, and IronPumpkin backs these three.
+
+### Registration events
+
+The other registration events of NeoForge are methods of `NativeMod` with a default that does nothing. Each method gets a handle from `ironpumpkin_mods::registration`. The server calls the method of every mod in load order, at the NeoForge position:
+
+| NeoForge event | `NativeMod` method | When | What the handle does |
+| :--- | :--- | :--- | :--- |
+| `EntityAttributeCreationEvent` | `entity_attribute_creation` | After the last `RegisterEvent` | `put(entity_type, AttributeSupplier)`: the default attributes of a mod entity type |
+| `EntityAttributeModificationEvent` | `entity_attribute_modification` | After the creation event | `add`, `add_default`, `has`, `types`: attributes of any entity type, vanilla ones included |
+| `RegisterSpawnPlacementsEvent` | `register_spawn_placements` | After the modification event | `register`, `register_placement`: placement type, heightmap and spawn predicate, with the `And`, `Or` and `Replace` operations |
+| `BlockEntityTypeAddBlocksEvent` | `block_entity_type_add_blocks` | After the spawn placements, before the local configs load | `modify(block_entity_type, blocks)`: mod blocks join a vanilla block entity type, and placing them creates the block entity |
+| `ExtendPoiTypesEvent` | `extend_poi_types` | After `dedicated_server_setup`, before `inter_mod_enqueue` | `add_block_to_poi(poi_type, block)`: a block joins a job site POI type, and villagers take it as a job site |
+
+The events fire before the freeze, so a mod entry has no id yet. The handles take names, and the registrations take effect from the freeze on. A call that NeoForge rejects with an exception, or a call that names an unknown entry, returns a `RegistrationError`. The handle keeps the first error. The server logs it with the mod id and stops after the step.
+
+```rust
+use ironpumpkin_mods::{
+    ModInit, NativeMod,
+    pumpkin_data::{attributes::Attributes, entity::EntityType},
+    registration::{
+        AttributeSupplier, EntityAttributeCreationEvent, Operation, RegisterSpawnPlacementsEvent,
+        SpawnLocation, spawn_predicate,
+    },
+    pumpkin_util::HeightMap,
+};
+
+const GREETER: &str = "hello-mod:greeter";
+
+struct HelloMod;
+
+impl NativeMod for HelloMod {
+    fn id(&self) -> &'static str {
+        "hello_mod"
+    }
+
+    fn display_name(&self) -> &'static str {
+        "Hello Mod"
+    }
+
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn init(&self, _cx: &mut ModInit) {}
+
+    // `@SubscribeEvent static void attributes(EntityAttributeCreationEvent event)`
+    fn entity_attribute_creation(&self, event: &mut EntityAttributeCreationEvent) {
+        // `Pig.createAttributes().add(Attributes.MAX_HEALTH, 20)`
+        let _ = event.put(
+            GREETER,
+            AttributeSupplier::of(&EntityType::PIG).add(Attributes::MAX_HEALTH, 20.0),
+        );
+    }
+
+    fn register_spawn_placements(&self, event: &mut RegisterSpawnPlacementsEvent) {
+        // `event.register(GREETER, SpawnPlacementTypes.ON_GROUND,
+        //     Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, Animal::checkAnimalSpawnRules,
+        //     Operation.REPLACE)`, with a predicate of the mod.
+        let _ = event.register_placement(
+            GREETER,
+            Some(SpawnLocation::OnGround),
+            Some(HeightMap::MotionBlockingNoLeaves),
+            spawn_predicate(|_, _, pos| pos.0.y > 60),
+            Operation::Replace,
+        );
+    }
+}
+```
+
+Gaps:
+
+- `ExtendPoiTypesEvent#addStatesToPoi` with a part of the states has no counterpart: a mod block has no state ids before the freeze, and the server tracks job sites by block. `add_block_to_poi` adds every state.
+- The server tracks only the job site POI types as block POIs. A block added to `minecraft:home`, `minecraft:meeting` or another POI type without a profession is accepted with a warning and changes nothing.
+- `BlockEntityTypeAddBlocksEvent` gives a block state one block entity type. A vanilla block keeps its own, and a mod block keeps the first one, with a warning.
+- `EntityAttributeCreationEvent#put` takes the vanilla `Attributes`. Mod attributes come with the attribute registry (task 2.6).
+- A spawn predicate gets the entity type, the world and the position. The spawn reason and the random source of the NeoForge predicate have no Pumpkin counterpart.
 
 ## Errors
 
@@ -300,6 +409,8 @@ ERROR [ironpumpkin] native mod "greeter" cannot register the block "greeter:lamp
 | `UnknownTag` | A `.tag(..)` names a tag that the registry does not have. | At the call for a vanilla tag. At the freeze for a mod tag. |
 | `InvalidTagName`, `DuplicateTag`, `UnknownTagMember` | A `TagBuilder` has a wrong name, a taken name, or a vanilla member that does not exist. | At the call |
 | `UnknownBlock`, `BlockAlreadyHasItem` | An item places a block that is not registered, or that has an item already. | At the freeze |
+| `InvalidBlockType` | `.block_type(..)` names no vanilla block, or the block lists other properties than its type. | At the call |
+| `UnknownItemType` | `.item_type(..)` names no vanilla item. | At the call |
 | `RangeExceeded` | The custom entries of a registry do not fit in the free id range. | At the freeze |
 
 ---
@@ -324,4 +435,4 @@ ERROR [ironpumpkin] native mod "greeter" cannot register the block "greeter:lamp
 - Do not use the `minecraft` namespace.
 - Do not expect a handle like `DeferredHolder`. Keep the name and use `ironpumpkin_mods::registry`.
 - Do not expect a creative tab on the server. `register_creative_mode_tab` accepts it and ignores it.
-- Do not expect a custom block to run the behaviour of its `display` block.
+- Do not expect a custom block to run the behaviour of its `display` block. Name a block type with `.block_type(..)` for that.

@@ -1,4 +1,5 @@
 use crate::block::PathComputationType;
+use crate::content::spawn_placements::spawn_restriction;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::{check_spawn_rules, from_type};
@@ -642,7 +643,7 @@ pub fn get_top_non_colliding_pos(
     x: i32,
     z: i32,
 ) -> BlockPos {
-    let mut y = cache.get_top_y(&entity_type.spawn_restriction.heightmap, x, z);
+    let mut y = cache.get_top_y(&spawn_restriction(entity_type).heightmap, x, z);
     let mut pos_vec = Vector3::new(x, y, z);
     let min_y = world.min_y;
 
@@ -683,7 +684,7 @@ pub fn adjust_spawn_position_cache(
     entity_type: &'static EntityType,
 ) -> BlockPos {
     if matches!(
-        entity_type.spawn_restriction.location,
+        spawn_restriction(entity_type).location,
         SpawnLocation::OnGround
     ) {
         let below = pos.down();
@@ -702,7 +703,7 @@ pub fn adjust_spawn_position(
     entity_type: &'static EntityType,
 ) -> BlockPos {
     if matches!(
-        entity_type.spawn_restriction.location,
+        spawn_restriction(entity_type).location,
         SpawnLocation::OnGround
     ) {
         let below = pos.down();
@@ -1005,7 +1006,7 @@ pub fn is_spawn_position_ok(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .contains_block(block_pos.0.x, block_pos.0.z);
 
-    match entity_type.spawn_restriction.location {
+    match spawn_restriction(entity_type).location {
         SpawnLocation::InLava => {
             within_bounds && world.get_fluid(block_pos).has_tag(&MINECRAFT_LAVA)
         }
@@ -1045,7 +1046,7 @@ pub fn is_spawn_position_ok_cache(
     let pos_vec = block_pos.0;
     let state = GenerationCache::get_block_state(cache, &pos_vec).to_state();
 
-    match entity_type.spawn_restriction.location {
+    match spawn_restriction(entity_type).location {
         SpawnLocation::InLava => {
             state.is_liquid() && Block::from_state_id(state.id).has_tag(&MINECRAFT_LAVA)
         }

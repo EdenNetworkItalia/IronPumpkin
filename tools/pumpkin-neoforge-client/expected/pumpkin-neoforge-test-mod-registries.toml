@@ -5,10 +5,10 @@
 
 [[registry]]
 name = "minecraft:block"
-ids = 1287
+ids = 1288
 first = "minecraft:air"
-last = "test-mod:test_block"
-at = { 1285 = "minecraft:firefly_bush" }
+last = "test-mod:test_stairs"
+at = { 1285 = "minecraft:firefly_bush", 1286 = "test-mod:test_block" }
 
 [[registry]]
 name = "minecraft:item"

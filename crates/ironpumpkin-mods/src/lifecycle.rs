@@ -1,10 +1,13 @@
 //! The mod lifecycle after construction.
 //!
 //! The order is that of `NeoForge` 26.3 on a dedicated server. `CommonModLoader.begin` fires
-//! `RegisterEvent` once per registry (`GameData.postRegisterEvents`) and loads the local configs,
-//! then `CommonModLoader.load` runs common setup, sided setup
-//! (`FMLDedicatedServerSetupEvent` on a dedicated server), enqueue IMC, process IMC and load
-//! complete. `NetworkRegistry.setup` then posts `RegisterPayloadHandlersEvent`, and
+//! `RegisterEvent` once per registry, then `EntityAttributeCreationEvent`,
+//! `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent` and
+//! `BlockEntityTypeAddBlocksEvent` (`GameData.postRegisterEvents`), and loads the local configs.
+//! Then `CommonModLoader.load` runs common setup, sided setup (`FMLDedicatedServerSetupEvent` on
+//! a dedicated server), `ExtendPoiTypesEvent` (`RegistrationEvents.init`), enqueue IMC, process
+//! IMC and load complete. The registration events are methods of `NativeMod` too: see
+//! [`registration`](crate::registration). `NetworkRegistry.setup` then posts `RegisterPayloadHandlersEvent`, and
 //! `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
 //! step calls the method of every mod in load order before the next step starts, and each method
 //! runs on its own mod only, as each `NeoForge` mod has its own mod bus.
@@ -18,12 +21,13 @@
 use std::sync::Arc;
 
 use crate::{
-    LoadedMod,
+    LoadedMod, NativeMod,
     config::{self, ConfigType, ModConfig},
     content::ContentKind,
     event::registries::RegisterEvent,
     imc::{ImcQueue, InterModEnqueue, InterModProcess},
     mod_list::ModList,
+    registration::RegistrationEvent,
 };
 
 /// The registries that `RegisterEvent` fires for, in the order of
@@ -37,14 +41,14 @@ pub(crate) const REGISTRIES: [ContentKind; 3] = [
 
 /// Runs the steps after the last [`NativeMod::init`](crate::NativeMod::init): `RegisterEvent`
 /// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
-/// handlers or `None` when no handler listens, then the lifecycle steps, with the local configs
-/// loaded before them, then the payload registration step `register_payload_handlers`, and the
+/// handlers or `None` when no handler listens, then the registration events and the lifecycle
+/// steps, with the local configs loaded before common setup, then the payload registration step `register_payload_handlers`, and the
 /// synced configs last.
 ///
 /// # Errors
 ///
 /// Returns the reason when a `RegisterEvent` handler fails to register content, after the last
-/// fire, or when a config cannot load.
+/// fire, when a registration event keeps an error, after the step, or when a config cannot load.
 pub(crate) fn run(
     mods: &[LoadedMod<'_>],
     mod_list: &ModList,
@@ -61,6 +65,11 @@ pub(crate) fn run(
     if let Some(error) = register_error {
         return Err(error.to_string());
     }
+    // `GameData.postRegisterEvents` posts these after the last `RegisterEvent`.
+    post(mods, |m, event| m.entity_attribute_creation(event))?;
+    post(mods, |m, event| m.entity_attribute_modification(event))?;
+    post(mods, |m, event| m.register_spawn_placements(event))?;
+    post(mods, |m, event| m.block_entity_type_add_blocks(event))?;
     config::load(configs, ConfigType::Local)?;
     for loaded in mods {
         loaded.native_mod.common_setup();
@@ -68,6 +77,8 @@ pub(crate) fn run(
     for loaded in mods {
         loaded.native_mod.dedicated_server_setup();
     }
+    // `RegistrationEvents.init`, the "Registration events" task after the sided setup.
+    post(mods, |m, event| m.extend_poi_types(event))?;
     let mut queue = ImcQueue::default();
     for loaded in mods {
         loaded.native_mod.inter_mod_enqueue(&mut InterModEnqueue {
@@ -89,6 +100,25 @@ pub(crate) fn run(
     config::load(configs, ConfigType::Synced)
 }
 
+/// Calls the method of a registration event on every mod in load order, as `ModLoader.postEvent`
+/// does, and returns the first error of a mod after the last one.
+fn post<E: RegistrationEvent>(
+    mods: &[LoadedMod<'_>],
+    method: impl Fn(&dyn NativeMod, &mut E),
+) -> Result<(), String> {
+    let mut first_error = None;
+    for loaded in mods {
+        let mut event = E::default();
+        method(loaded.native_mod, &mut event);
+        if let Some(error) = event.take_error() {
+            first_error.get_or_insert_with(|| {
+                format!("the {} of mod {}: {error}", E::NAME, loaded.mod_id)
+            });
+        }
+    }
+    first_error.map_or(Ok(()), Err)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{
@@ -105,6 +135,10 @@ mod tests {
         imc::{InterModEnqueue, InterModProcess},
         mod_list::{ModList, system_mods},
         mods_toml::parse,
+        registration::{
+            BlockEntityTypeAddBlocksEvent, EntityAttributeCreationEvent,
+            EntityAttributeModificationEvent, ExtendPoiTypesEvent, RegisterSpawnPlacementsEvent,
+        },
     };
 
     /// Fires nothing: no handler listens to `RegisterEvent`.
@@ -179,6 +213,26 @@ mod tests {
         fn load_complete(&self) {
             record(format!("load_complete {}", self.0));
         }
+
+        fn entity_attribute_creation(&self, _event: &mut EntityAttributeCreationEvent) {
+            record(format!("EntityAttributeCreationEvent {}", self.0));
+        }
+
+        fn entity_attribute_modification(&self, _event: &mut EntityAttributeModificationEvent) {
+            record(format!("EntityAttributeModificationEvent {}", self.0));
+        }
+
+        fn register_spawn_placements(&self, _event: &mut RegisterSpawnPlacementsEvent) {
+            record(format!("RegisterSpawnPlacementsEvent {}", self.0));
+        }
+
+        fn block_entity_type_add_blocks(&self, _event: &mut BlockEntityTypeAddBlocksEvent) {
+            record(format!("BlockEntityTypeAddBlocksEvent {}", self.0));
+        }
+
+        fn extend_poi_types(&self, _event: &mut ExtendPoiTypesEvent) {
+            record(format!("ExtendPoiTypesEvent {}", self.0));
+        }
     }
 
     static ALPHA: LifecycleMod = LifecycleMod("alpha");
@@ -215,10 +269,20 @@ mod tests {
                 "RegisterEvent minecraft:block",
                 "RegisterEvent minecraft:entity_type",
                 "RegisterEvent minecraft:item",
+                "EntityAttributeCreationEvent alpha",
+                "EntityAttributeCreationEvent beta",
+                "EntityAttributeModificationEvent alpha",
+                "EntityAttributeModificationEvent beta",
+                "RegisterSpawnPlacementsEvent alpha",
+                "RegisterSpawnPlacementsEvent beta",
+                "BlockEntityTypeAddBlocksEvent alpha",
+                "BlockEntityTypeAddBlocksEvent beta",
                 "common_setup alpha",
                 "common_setup beta",
                 "dedicated_server_setup alpha",
                 "dedicated_server_setup beta",
+                "ExtendPoiTypesEvent alpha",
+                "ExtendPoiTypesEvent beta",
                 "inter_mod_enqueue alpha",
                 "inter_mod_enqueue beta",
                 "inter_mod_process alpha",
@@ -390,5 +454,53 @@ mod tests {
              registry is frozen"
         );
         assert!(!SETUP_RAN.load(Ordering::Relaxed));
+    }
+
+    static POI_NEXT_STEP_RAN: AtomicBool = AtomicBool::new(false);
+
+    /// Adds a block to a POI type that does not exist.
+    struct PoiMod;
+
+    impl NativeMod for PoiMod {
+        fn id(&self) -> &'static str {
+            "poimod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "POI mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0"
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+
+        fn extend_poi_types(&self, event: &mut ExtendPoiTypesEvent) {
+            // The handle keeps the error, so the mod can ignore the `Result`.
+            let _ = event.add_block_to_poi("minecraft:alchemist", "minecraft:stone");
+        }
+
+        fn inter_mod_enqueue(&self, _imc: &mut InterModEnqueue) {
+            POI_NEXT_STEP_RAN.store(true, Ordering::Relaxed);
+        }
+    }
+
+    static POI_MOD: PoiMod = PoiMod;
+
+    /// `ModLoader.postEvent` throws the exception of a listener, so the next step never runs.
+    #[test]
+    fn an_error_of_a_registration_event_stops_before_the_next_step() {
+        let mod_list = mod_list(&["poimod"]);
+        let mods = [LoadedMod {
+            native_mod: &POI_MOD,
+            mod_id: "poimod",
+        }];
+        let error = run(&mods, &mod_list, &[], no_handler, || {}).unwrap_err();
+        assert_eq!(
+            error,
+            "the ExtendPoiTypesEvent of mod poimod: unknown POI type \"minecraft:alchemist\""
+        );
+        assert!(!POI_NEXT_STEP_RAN.load(Ordering::Relaxed));
     }
 }

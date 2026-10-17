@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 233 | 233 | 0 | 0 | 0 | 203 | 58 |
-| Inventory, planned | 502 | 457 | 43 | 2 | 0 | 350 | 65 |
+| Inventory, supported | 238 | 238 | 0 | 0 | 0 | 208 | 58 |
+| Inventory, planned | 497 | 452 | 43 | 2 | 0 | 345 | 65 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -65,7 +65,7 @@ How to read it:
 | `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
 | `LevelEvent.Unload` | 30 | event class | `event-bus.event::level-event-unload` | supported |
 | `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | planned |
-| `EntityAttributeCreationEvent` | 29 | event class | `event-bus.event::entity-attribute-creation-event` (resource `registration.entity-attribute-creation-event`) | planned |
+| `EntityAttributeCreationEvent` | 29 | event class | `NativeMod::entity_attribute_creation` with `registration::EntityAttributeCreationEvent` | supported |
 | `ItemTooltipEvent` | 28 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerEvent.PlayerLoggedOutEvent` | 28 | event class | `event-bus.event::player-event-player-logged-out-event` | supported |
 | `LivingDamageEvent.Pre` | 27 | event class | `event-bus.event::living-damage-event-pre` | planned |
@@ -91,12 +91,12 @@ How to read it:
 | `PlayerEvent.BreakSpeed` | 18 | event class | `pumpkin_core::plugin::player::PlayerEventBreakSpeed` | supported |
 | `EntityTickEvent.Post` | 18 | event class | `event-bus.event::entity-tick-event-post` | planned |
 | `PlayerTickEvent.Pre` | 18 | event class | `event-bus.event::player-tick-event-pre` | planned |
-| `RegisterSpawnPlacementsEvent` | 17 | event class | `event-bus.event::register-spawn-placements-event` (resource `registration.register-spawn-placements-event`) | planned |
+| `RegisterSpawnPlacementsEvent` | 17 | event class | `NativeMod::register_spawn_placements` with `registration::RegisterSpawnPlacementsEvent` | supported |
 | `ItemEntityPickupEvent.Pre` | 17 | event class | `pumpkin_core::plugin::player::ItemEntityPickupEventPre` (`can_pickup: TriState`) | supported |
 | `BlockDropsEvent` | 17 | event class | `event-bus.event::block-drops-event` | supported |
 | `ChunkEvent` | 17 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ServerTickEvent.Pre` | 17 | event class | `pumpkin_core::plugin::server::ServerTickStartEvent` | supported |
-| `EntityAttributeModificationEvent` | 16 | event class | `event-bus.event::entity-attribute-modification-event` (resource `registration.entity-attribute-modification-event`) | planned |
+| `EntityAttributeModificationEvent` | 16 | event class | `NativeMod::entity_attribute_modification` with `registration::EntityAttributeModificationEvent` | supported |
 | `FinalizeSpawnEvent` | 16 | event class | `event-bus.event::finalize-spawn-event` | supported |
 | `LivingEntityUseItemEvent` | 16 | event class | `event-bus.event::living-entity-use-item-event` | planned |
 | `PlayerInteractEvent.EntityInteract` | 16 | event class | `event-bus.event::player-interact-event-entity-interact` | supported |
@@ -134,7 +134,7 @@ How to read it:
 | `LivingKnockBackEvent` | 9 | event class | `event-bus.event::living-knock-back-event` | planned |
 | `ItemEntityPickupEvent.Post` | 9 | event class | `pumpkin_core::plugin::player::ItemEntityPickupEventPost` | supported |
 | `PlayerContainerEvent.Open` | 9 | event class | `pumpkin_core::plugin::inventory::inventory_open::InventoryOpenEvent` | supported |
-| `BlockEntityTypeAddBlocksEvent` | 8 | event class | `event-bus.event::block-entity-type-add-blocks-event` (resource `registration.block-entity-type-add-blocks-event`) | planned |
+| `BlockEntityTypeAddBlocksEvent` | 8 | event class | `NativeMod::block_entity_type_add_blocks` with `registration::BlockEntityTypeAddBlocksEvent` | supported |
 | `ItemTossEvent` | 8 | event class | `event-bus.event::item-toss-event` | supported |
 | `LivingShieldBlockEvent` | 8 | event class | `event-bus.event::living-shield-block-event` | planned |
 | `MobEffectEvent.Added` | 8 | event class | `event-bus.event::mob-effect-event-added` | supported |
@@ -231,7 +231,7 @@ How to read it:
 | `CropGrowEvent.Post` | 2 | event class | `event-bus.event::crop-grow-event-post` | planned |
 | `FMLDedicatedServerSetupEvent` | 2 | event class | `NativeMod::dedicated_server_setup` | supported |
 | `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `ExtendPoiTypesEvent` | 2 | event class | `event-bus.event::extend-poi-types-event` (resource `registration.extend-poi-types-event`) | planned |
+| `ExtendPoiTypesEvent` | 2 | event class | `NativeMod::extend_poi_types` with `registration::ExtendPoiTypesEvent` (`addStatesToPoi` with a part of the states: gap, `registration` doc) | supported |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
 | `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` (`value` is the new total; fires on `increment_stat` and `set_stat`) | supported |
@@ -828,7 +828,7 @@ How to read it:
 | `IItemExtension` | 65 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.item-definition.behaviour`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderExtension` | 60 | Extension interfaces NeoForge adds to `net.minecraft` | partial: IronPumpkin has no holder object; `registry::key_of`, `registry::id_of` and `registry::is_in_tag` of `ironpumpkin_mods` answer by name; the other holder methods have no counterpart yet; overriding hooks is a gap (documented in `types`) | planned |
 | `IFluidExtension` | 49 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.fluid-definition`; overriding hooks is a gap (documented in `types`) | planned |
-| `IBlockExtension` | 47 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.block-definition.block-type`; overriding hooks is a gap (documented in `types`) | planned |
+| `IBlockExtension` | 47 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `content::BlockBuilder::block_type`; overriding hooks is a gap (documented in `types`) | planned |
 | `IFluidStateExtension` | 47 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `types.fluid-state`; overriding hooks is a gap (documented in `types`) | planned |
 | `ILevelReaderExtension` | 37 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world`; overriding hooks is a gap (documented in `types`) | planned |
 | `IItemPropertiesExtensions` | 32 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.item-properties`; overriding hooks is a gap (documented in `types`) | planned |
@@ -842,7 +842,7 @@ How to read it:
 | `IDispensibleContainerItemExtension` | 6 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.item-definition.behaviour`; overriding hooks is a gap (documented in `types`) | planned |
 | `IServerConfigurationPacketListenerExtension` | 6 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `network.configuration-sender`; overriding hooks is a gap (documented in `types`) | planned |
 | `IAttributeExtension` | 5 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
-| `IBaseRailBlockExtension` | 4 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.block-definition.block-type`; overriding hooks is a gap (documented in `types`) | planned |
+| `IBaseRailBlockExtension` | 4 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `content::BlockBuilder::block_type`; overriding hooks is a gap (documented in `types`) | planned |
 | `IOwnedSpawner` | 3 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `ILivingEntityExtension` | 2 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world` `living-entity`, `mob-effects` and `entity-attributes`; overriding hooks is a gap (documented in `types`) | planned |
 | `IMobEffectExtension` | 1 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.mob-effect-definition`; overriding hooks is a gap (documented in `types`) | planned |
@@ -857,7 +857,7 @@ How to read it:
 | `IAdvancementBuilderExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `ICommandSourceExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/command` `command-sender`; overriding hooks is a gap (documented in `types`) | planned |
 | `IEnchantmentExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
-| `IFallableExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.block-definition.block-type`; overriding hooks is a gap (documented in `types`) | planned |
+| `IFallableExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `content::BlockBuilder::block_type`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderSetExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderSetExtension.SerializationType` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
 | `IMenuProviderExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `menus.menu-definition` (`writeClientSideData` is `extra-data`); overriding hooks is a gap (documented in `types`) | planned |
@@ -1057,7 +1057,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent` | 37 | same | `event-bus.event::living-incoming-damage-event` |
 | `net.neoforged.neoforge.event.tick.PlayerTickEvent` | 36 | same | fields in the subclass records of `event-bus` (abstract) |
 | `net.neoforged.neoforge.event.entity.living.LivingDropsEvent` | 31 | same | `event-bus.event::living-drops-event` |
-| `net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent` | 29 | same | `event-bus.event::entity-attribute-creation-event` |
+| `net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent` | 29 | same | `NativeMod::entity_attribute_creation` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$PlayerLoggedOutEvent` | 28 | same | `event-bus.event::player-event-player-logged-out-event` |
 | `net.neoforged.neoforge.event.entity.player.PlayerInteractEvent$LeftClickBlock` | 27 | same | `event-bus.event::player-interact-event-left-click-block` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$PlayerChangedDimensionEvent` | 26 | same | `event-bus.event::player-event-player-changed-dimension-event` |
@@ -1068,7 +1068,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$Clone` | 23 | same | `event-bus.event::player-event-clone` |
 | `net.neoforged.neoforge.event.entity.player.PlayerEvent$BreakSpeed` | 18 | same | `pumpkin_core::plugin::player::PlayerEventBreakSpeed` |
 | `net.neoforged.neoforge.event.level.BlockDropsEvent` | 17 | same | `event-bus.event::block-drops-event` |
-| `net.neoforged.neoforge.event.entity.EntityAttributeModificationEvent` | 16 | same | `event-bus.event::entity-attribute-modification-event` |
+| `net.neoforged.neoforge.event.entity.EntityAttributeModificationEvent` | 16 | same | `NativeMod::entity_attribute_modification` |
 | `net.neoforged.neoforge.event.entity.living.FinalizeSpawnEvent` | 16 | same | `event-bus.event::finalize-spawn-event` |
 | `net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent` | 16 | same | `event-bus.event::living-entity-use-item-event` |
 | `net.neoforged.neoforge.event.entity.player.AttackEntityEvent` | 15 | same | `event-bus.event::attack-entity-event` |

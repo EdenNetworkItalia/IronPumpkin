@@ -1,5 +1,7 @@
 //! Native mod for the boot tests of the root workspace. It registers one block, one item and one
-//! entity type, each with a vanilla display entry, the startup config [`STARTUP_CONFIG`], the
+//! entity type, each with a vanilla display entry, a stair block [`STAIRS`] that takes the block
+//! type `minecraft:oak_stairs`, the default attributes of its entity type through
+//! `EntityAttributeCreationEvent`, the startup config [`STARTUP_CONFIG`], the
 //! local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and a handler for each
 //! server lifecycle and tick event. Its `init`, mod lifecycle methods, config loading hook and
 //! event handlers log [`EVENT_LOG_PREFIX`] and the `NeoForge` event name, an event handler only
@@ -41,8 +43,9 @@ use ironpumpkin_mods::{
         CustomConfigurationTask, PayloadContext, RegisterConfigurationTasksEvent,
         RegisterPayloadHandlersEvent, TaskContext, send_to_player,
     },
-    pumpkin_data::{Block, entity::EntityType, item::Item},
+    pumpkin_data::{Block, attributes::Attributes, entity::EntityType, item::Item},
     register_mod,
+    registration::{AttributeSupplier, EntityAttributeCreationEvent},
     server::Server,
     tracing::{error, info},
 };
@@ -51,6 +54,8 @@ pub const ID: &str = "test-mod";
 pub const BLOCK: &str = "test-mod:test_block";
 pub const ITEM: &str = "test-mod:test_item";
 pub const ENTITY_TYPE: &str = "test-mod:test_entity";
+/// A stair with the block type `minecraft:oak_stairs` and no behaviour of its own.
+pub const STAIRS: &str = "test-mod:test_stairs";
 /// The default file name of the synced config, in `config/`.
 pub const SYNCED_CONFIG: &str = "test-mod-synced.toml";
 /// The default file name of the startup config, in `config/`. Its `greeting` is logged from
@@ -133,6 +138,15 @@ impl NativeMod for TestMod {
     fn config_reloading(&self, config: &ModConfig) {
         info!("{ID} reloaded {}", config.file_name());
     }
+
+    fn entity_attribute_creation(&self, event: &mut EntityAttributeCreationEvent) {
+        info!("{EVENT_LOG_PREFIX}EntityAttributeCreationEvent");
+        // The handle keeps an error, and the server stops on it after this step.
+        let _ = event.put(
+            ENTITY_TYPE,
+            AttributeSupplier::of(&EntityType::PIG).add(Attributes::MAX_HEALTH, 20.0),
+        );
+    }
 }
 
 fn register_configs(cx: &mut ModInit) -> Result<(), ConfigError> {
@@ -165,6 +179,10 @@ fn register_content(cx: &mut ModInit) -> Result<(), RegistryError> {
         BLOCK,
         Block::REDSTONE_LAMP.default_state.id,
     ))?;
+    cx.register_block(
+        BlockBuilder::new(STAIRS, Block::OAK_STAIRS.default_state.id)
+            .block_type("minecraft:oak_stairs"),
+    )?;
     cx.register_item(ItemBuilder::new(ITEM, &Item::STICK))?;
     cx.register_entity_type(EntityTypeBuilder::new(ENTITY_TYPE, &EntityType::PIG), spawn)
 }

@@ -38,6 +38,16 @@
 //! For the same reason, content does not inherit the behaviour of its display entry: without
 //! `.behaviour(..)` the server uses the trait defaults.
 //!
+//! Behaviour by type: `.block_type(..)` names a vanilla block, such as `minecraft:oak_stairs`,
+//! whose server behaviour, properties and per-state physical data the block takes, as a
+//! `NeoForge` block takes them from the vanilla class it extends (`StairBlock`). Minecraft 26.3 has
+//! no `minecraft:block_type` registry, so a vanilla block of the kind names the type. The block
+//! gets the properties of the type, or must list the same ones, so the server behaviour reads its
+//! states safely; it also joins the generated tags of the type. `.behaviour(..)` still wins over
+//! the type. `.item_type(..)` gives an item the server behaviour of a vanilla item, such as
+//! `minecraft:bucket`. A server behaviour that compares its own block or item with a vanilla
+//! constant treats the custom entry as another block or item.
+//!
 //! ```
 //! use std::sync::Arc;
 //!
@@ -122,6 +132,7 @@ pub use pumpkin_data::dynamic::{ContentKind, DynamicTaggable, RegistryError};
 pub struct BlockBuilder {
     definition: BlockDefinition,
     behaviour: Option<Arc<dyn BlockBehaviour>>,
+    block_type: Option<String>,
 }
 
 impl BlockBuilder {
@@ -135,6 +146,7 @@ impl BlockBuilder {
                 tags: Vec::new(),
             },
             behaviour: None,
+            block_type: None,
         }
     }
 
@@ -184,7 +196,12 @@ impl BlockBuilder {
     }
 
     pub(crate) fn register(self) -> Result<(), RegistryError> {
-        behaviour::register_block(self.definition, self.behaviour)
+        match self.block_type {
+            Some(block_type) => {
+                behaviour::register_typed_block(self.definition, self.behaviour, &block_type)
+            }
+            None => behaviour::register_block(self.definition, self.behaviour),
+        }
     }
 }
 
@@ -193,6 +210,7 @@ impl fmt::Debug for BlockBuilder {
         f.debug_struct("BlockBuilder")
             .field("definition", &self.definition)
             .field("behaviour", &self.behaviour.is_some())
+            .field("block_type", &self.block_type)
             .finish()
     }
 }
@@ -205,6 +223,7 @@ impl fmt::Debug for BlockBuilder {
 pub struct ItemBuilder {
     definition: ItemDefinition,
     behaviour: Option<Arc<dyn ItemBehaviour>>,
+    item_type: Option<String>,
 }
 
 impl ItemBuilder {
@@ -218,6 +237,7 @@ impl ItemBuilder {
                 tags: Vec::new(),
             },
             behaviour: None,
+            item_type: None,
         }
     }
 
@@ -255,7 +275,12 @@ impl ItemBuilder {
     }
 
     pub(crate) fn register(self) -> Result<(), RegistryError> {
-        behaviour::register_item(self.definition, self.behaviour)
+        match self.item_type {
+            Some(item_type) => {
+                behaviour::register_typed_item(self.definition, self.behaviour, &item_type)
+            }
+            None => behaviour::register_item(self.definition, self.behaviour),
+        }
     }
 }
 
@@ -264,6 +289,7 @@ impl fmt::Debug for ItemBuilder {
         f.debug_struct("ItemBuilder")
             .field("definition", &self.definition)
             .field("behaviour", &self.behaviour.is_some())
+            .field("item_type", &self.item_type)
             .finish()
     }
 }
@@ -451,6 +477,35 @@ impl RegisterEventExt for RegisterEvent {
         self.register(ContentKind::EntityType, &name, || {
             custom::register_entity_type(definition, factory)
         })
+    }
+}
+
+/// Behaviour by type. See the [module docs](self).
+impl BlockBuilder {
+    /// Gives the block the block type `block_type`, a vanilla block name such as
+    /// `minecraft:oak_stairs`: its server behaviour when the builder sets none, its properties
+    /// when the builder adds none, the physical data of each matching state and its generated
+    /// tags. The display state still decides what a vanilla client sees; when the display block
+    /// has the same properties as the type, each state shows the matching display state.
+    ///
+    /// The registry rejects a name that is not a vanilla block, and properties that differ from
+    /// those of the type, with [`RegistryError::InvalidBlockType`].
+    #[must_use]
+    pub fn block_type(mut self, block_type: impl Into<String>) -> Self {
+        self.block_type = Some(block_type.into());
+        self
+    }
+}
+
+/// Behaviour by type. See the [module docs](self).
+impl ItemBuilder {
+    /// Gives the item the server behaviour of the vanilla item `item_type`, such as
+    /// `minecraft:bucket`, when the builder sets none. The registry rejects a name that is not a
+    /// vanilla item with [`RegistryError::UnknownItemType`].
+    #[must_use]
+    pub fn item_type(mut self, item_type: impl Into<String>) -> Self {
+        self.item_type = Some(item_type.into());
+        self
     }
 }
 

@@ -148,7 +148,7 @@ pub fn profession_for_block(block: &Block) -> Option<VillagerProfession> {
         block if block == &Block::LOOM => Some(VillagerProfession::Shepherd),
         block if block == &Block::SMITHING_TABLE => Some(VillagerProfession::Toolsmith),
         block if block == &Block::GRINDSTONE => Some(VillagerProfession::Weaponsmith),
-        _ => None,
+        _ => crate::content::poi::profession_for_block(block),
     }
 }
 

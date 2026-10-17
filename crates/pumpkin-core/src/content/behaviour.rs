@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use pumpkin_data::dynamic::{self, BlockDefinition, ItemDefinition, RegistryError};
+use pumpkin_data::dynamic_types;
 use pumpkin_data::item::Item;
 use pumpkin_data::{Block, BlockId};
 
@@ -123,4 +124,76 @@ pub fn item_behaviour(item: u16) -> Option<&'static Arc<dyn ItemBehaviour>> {
             .map(|item| item.registry_key)
             .collect()
     })
+}
+
+/// Registers a custom block that takes the block type `block_type`, a vanilla block such as
+/// `minecraft:oak_stairs`.
+///
+/// See [`dynamic_types::register_block`]. Without `behaviour` the server runs the behaviour of
+/// the block type for it.
+///
+/// # Errors
+///
+/// Returns the error of [`dynamic_types::register_block`]. The behaviour is dropped then.
+pub fn register_typed_block(
+    definition: BlockDefinition,
+    behaviour: Option<Arc<dyn BlockBehaviour>>,
+    block_type: &str,
+) -> Result<(), RegistryError> {
+    let name = definition.name.clone();
+    BLOCKS.register(name, behaviour, || {
+        dynamic_types::register_block(definition, block_type)
+    })
+}
+
+static ITEM_TYPES: Mutex<BTreeMap<String, u16>> = Mutex::new(BTreeMap::new());
+static ITEM_TYPE_TABLE: OnceLock<Vec<Option<u16>>> = OnceLock::new();
+
+/// Registers a custom item that takes the item type `item_type`, a vanilla item such as
+/// `minecraft:bucket`. Without `behaviour` the server runs the behaviour of that item for it.
+///
+/// # Errors
+///
+/// [`RegistryError::UnknownItemType`] when `item_type` is not a vanilla item, else the error of
+/// [`dynamic::register_item`]. The behaviour is dropped then.
+pub fn register_typed_item(
+    definition: ItemDefinition,
+    behaviour: Option<Arc<dyn ItemBehaviour>>,
+    item_type: &str,
+) -> Result<(), RegistryError> {
+    let Some(base) = Item::from_registry_key(item_type).filter(|item| item.id < Item::COUNT) else {
+        return Err(RegistryError::UnknownItemType {
+            item: definition.name,
+            item_type: item_type.to_owned(),
+        });
+    };
+    let name = definition.name.clone();
+    // Held across the registration, so the table built after the freeze sees every type.
+    let mut types = ITEM_TYPES.lock().unwrap_or_else(PoisonError::into_inner);
+    ITEMS.register(name.clone(), behaviour, || {
+        dynamic::register_item(definition)
+    })?;
+    types.insert(name, base.id);
+    Ok(())
+}
+
+/// The vanilla item whose behaviour a custom item takes, or `None` for generated items and
+/// custom items without an item type.
+#[cold]
+#[inline(never)]
+#[must_use]
+pub fn item_type(item: u16) -> Option<u16> {
+    let index = usize::from(item.checked_sub(Item::COUNT)?);
+    Item::from_id(item)?;
+    ITEM_TYPE_TABLE
+        .get_or_init(|| {
+            let types = ITEM_TYPES.lock().unwrap_or_else(PoisonError::into_inner);
+            (Item::COUNT..=u16::MAX)
+                .map_while(Item::from_id)
+                .map(|item| types.get(item.registry_key).copied())
+                .collect()
+        })
+        .get(index)
+        .copied()
+        .flatten()
 }

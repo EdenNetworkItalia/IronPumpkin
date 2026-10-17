@@ -354,8 +354,22 @@ pub fn from_type(
     mob
 }
 
-#[expect(clippy::too_many_lines)]
+/// `SpawnPlacements.checkSpawnRules`: the placement that mods registered through
+/// `RegisterSpawnPlacementsEvent`, merged with the server's rules, or the server's rules alone.
 pub fn check_spawn_rules(
+    entity_type: &'static EntityType,
+    world: &World,
+    pos: &BlockPos,
+    is_thundering: bool,
+) -> bool {
+    let rules = || server_spawn_rules(entity_type, world, pos, is_thundering);
+    crate::content::spawn_placements::placement(entity_type).map_or_else(rules, |placement| {
+        placement.test(entity_type, world, pos, rules)
+    })
+}
+
+#[expect(clippy::too_many_lines)]
+fn server_spawn_rules(
     entity_type: &'static EntityType,
     world: &World,
     pos: &BlockPos,

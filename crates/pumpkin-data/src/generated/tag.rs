@@ -30632,11 +30632,19 @@ pub trait Taggable {
                 None
             }
         })?;
-        Some(items.contains(&self.registry_id()))
+        let id = self.registry_id();
+        Some(
+            items.contains(&id)
+                || crate::dynamic_types::tag_source(Self::tag_key(), id)
+                    .is_some_and(|source| items.contains(&source)),
+        )
     }
     #[must_use]
     fn has_tag(&self, tag: &'static Tag) -> bool {
-        tag.1.contains(&self.registry_id())
+        let id = self.registry_id();
+        tag.1.contains(&id)
+            || crate::dynamic_types::tag_source(Self::tag_key(), id)
+                .is_some_and(|source| tag.1.contains(&source))
     }
     #[must_use]
     fn get_tag_values(tag: &str) -> Option<&'static [&'static str]> {

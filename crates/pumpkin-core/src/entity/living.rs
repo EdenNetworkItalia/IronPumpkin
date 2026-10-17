@@ -271,7 +271,9 @@ impl LivingEntity {
             attributes: {
                 let mut m = FxHashMap::default();
 
-                for (attr, base) in entity.entity_type.attributes {
+                for (attr, base) in
+                    crate::content::attributes::default_attributes(entity.entity_type)
+                {
                     if attr.id == Attributes::MAX_HEALTH.id {
                         max_health = *base as f32;
                     }
@@ -907,9 +909,7 @@ impl LivingEntity {
         }
 
         // Fall back to registry base value if no local instance exists
-        self.entity
-            .entity_type
-            .attributes
+        crate::content::attributes::default_attributes(self.entity.entity_type)
             .iter()
             .find(|a| a.0.id == attribute.id)
             .map_or(attribute.default_value, |a| a.1)

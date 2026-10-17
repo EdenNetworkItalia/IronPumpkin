@@ -17,7 +17,8 @@ use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use ironpumpkin_test_mod::{
-    BLOCK, ENTITY_TYPE, ITEM, STARTUP_CONFIG, STARTUP_GREETING, SYNCED_CONFIG, SYNCED_RELOADED,
+    BLOCK, ENTITY_TYPE, ITEM, STAIRS, STARTUP_CONFIG, STARTUP_GREETING, SYNCED_CONFIG,
+    SYNCED_RELOADED,
 };
 use pumpkin_neoforge_client::{
     channels::ChannelMap,
@@ -252,7 +253,11 @@ fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
     ))
     .unwrap();
     let custom: Vec<&str> = expectations.0.iter().map(|r| r.last.as_str()).collect();
-    assert_eq!(custom, [BLOCK, ITEM, ENTITY_TYPE]);
+    assert_eq!(custom, [STAIRS, ITEM, ENTITY_TYPE]);
+    assert_eq!(
+        expectations.0[0].at.get(&1286).map(String::as_str),
+        Some(BLOCK)
+    );
     let failures = check_registries(&entries, &expectations);
     assert!(failures.is_empty(), "{failures:#?}");
 

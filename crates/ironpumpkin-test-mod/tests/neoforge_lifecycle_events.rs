@@ -23,13 +23,14 @@ const TEST_NAME: &str = "neoforge_lifecycle_events";
 const BOOT_TIMEOUT: Duration = Duration::from_mins(3);
 const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 
-/// The events in the order `NeoForge` 26.3 fires them: the local configs load before the common
-/// setup, `RegisterPayloadHandlersEvent` after the load complete, the synced configs after it and
+/// The events in the order `NeoForge` 26.3 fires them: the registration events after the
+/// construction, the local configs load before the common setup, `RegisterPayloadHandlersEvent` after the load complete, the synced configs after it and
 /// before `ServerAboutToStartEvent`,
 /// `ServerStartedEvent` before the first tick, and the level tick inside the server tick.
-const EVENTS: [&str; 16] = [
+const EVENTS: [&str; 17] = [
     "FMLConstructModEvent",
     "ModConfigEvent.Loading STARTUP",
+    "EntityAttributeCreationEvent",
     "ModConfigEvent.Loading LOCAL",
     "FMLCommonSetupEvent",
     "FMLLoadCompleteEvent",

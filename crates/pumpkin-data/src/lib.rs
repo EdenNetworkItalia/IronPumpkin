@@ -446,6 +446,8 @@ pub mod block_state;
 mod blocks;
 #[cfg(feature = "block")]
 pub mod dynamic;
+#[cfg(feature = "block")]
+pub mod dynamic_types;
 
 #[cfg(feature = "block")]
 pub use block_direction::{BlockDirection, FacingExt, HorizontalFacingExt};
