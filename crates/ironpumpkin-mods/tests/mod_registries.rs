@@ -26,10 +26,19 @@ use ironpumpkin_mods::{
     entity_attributes::{self, AttributeBuilder, AttributeModifier, ModifierOperation},
     event::{BoxFuture, EventHandler, EventPriority, registries::RegisterEvent},
     mob_effects::{self, MobEffect, MobEffectBuilder, MobEffectCategory, Operation},
-    pumpkin_core::{net::java::neoforge::NegotiatedState, plugin::startup::STARTUP_HOOK},
+    pumpkin_core::{
+        entity::player::Player,
+        net::{ClientPlatform, java::neoforge::NegotiatedState},
+        plugin::startup::STARTUP_HOOK,
+    },
     pumpkin_data::{
+        AttributeModifierSlot,
         attributes::Attributes,
         data_component::DataComponent,
+        data_component_impl::{
+            AttributeModifiersImpl, DataComponentImpl, Modifier, PotionContentsImpl,
+            StatusEffectInstance, SuspiciousStewEffect, SuspiciousStewEffectsImpl,
+        },
         dynamic::ContentIds,
         effect::StatusEffect,
         entity::EntityType,
@@ -45,12 +54,15 @@ use ironpumpkin_mods::{
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_protocol::{
     EncodingKey,
-    codec::item_stack_seralizer::ItemStackSerializer,
-    java::{client::play::CSoundEffect, packet_decoder::TCPNetworkDecoder},
+    codec::{data_component, item_stack_seralizer::ItemStackSerializer},
+    java::{
+        client::play::CSoundEffect, packet_decoder::TCPNetworkDecoder,
+        server::play::SSetCreativeSlot,
+    },
     packet::MultiVersionJavaPacket,
     ser::NetworkReadExt,
 };
-use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::{GameMode, math::vector3::Vector3};
 
 const ZAP: SoundEvent = SoundEvent::new("regmod:zap");
 const CHARGE: DataComponentType<i32> = DataComponentType::new("regmod:charge");
@@ -396,4 +408,213 @@ fn a_mod_attribute_on_a_mod_entity_has_its_base_value_and_accepts_modifiers() {
         entity_attributes::base_value(living, &Attributes::MAX_HEALTH),
         20.0
     );
+}
+
+/// Writes `component` for a client with `ids` and returns the bytes.
+fn component_bytes(
+    id: DataComponent,
+    component: &dyn DataComponentImpl,
+    ids: ContentIds,
+) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    data_component::serialize(id, component, &mut bytes, ids).unwrap();
+    bytes
+}
+
+/// The effect ids of a `potion_contents` component without a potion, a color or a name.
+fn potion_effect_ids(mut bytes: &[u8]) -> Vec<i32> {
+    assert!(!bytes.get_bool().unwrap());
+    assert!(!bytes.get_bool().unwrap());
+    let count = bytes.get_var_int().unwrap().0;
+    let ids = (0..count)
+        .map(|_| {
+            let id = bytes.get_var_int().unwrap().0;
+            // Amplifier, duration, the three flags and no hidden effect.
+            bytes.get_var_int().unwrap();
+            bytes.get_var_int().unwrap();
+            for _ in 0..4 {
+                bytes.get_bool().unwrap();
+            }
+            id
+        })
+        .collect();
+    assert!(!bytes.get_bool().unwrap());
+    assert!(bytes.is_empty());
+    ids
+}
+
+/// The effect ids of a `suspicious_stew_effects` component.
+fn stew_effect_ids(mut bytes: &[u8]) -> Vec<i32> {
+    let count = bytes.get_var_int().unwrap().0;
+    let ids = (0..count)
+        .map(|_| {
+            let id = bytes.get_var_int().unwrap().0;
+            bytes.get_var_int().unwrap();
+            id
+        })
+        .collect();
+    assert!(bytes.is_empty());
+    ids
+}
+
+/// The attribute ids of an `attribute_modifiers` component with the default display.
+fn modifier_attribute_ids(mut bytes: &[u8]) -> Vec<i32> {
+    let count = bytes.get_var_int().unwrap().0;
+    let ids = (0..count)
+        .map(|_| {
+            let id = bytes.get_var_int().unwrap().0;
+            bytes.get_str().unwrap();
+            bytes.get_f64().unwrap();
+            // Operation, slot and display.
+            for _ in 0..3 {
+                bytes.get_var_int().unwrap();
+            }
+            id
+        })
+        .collect();
+    assert!(bytes.is_empty());
+    ids
+}
+
+/// A vanilla client knows the generated effects and attributes only: the vanilla components that
+/// hold a mod effect or a `NeoForge` attribute leave them out for it, and keep them for a client
+/// that synced the registries.
+#[test]
+fn vanilla_components_leave_mod_effects_and_attributes_out_for_a_vanilla_client() {
+    server();
+    let effect = |name: &'static str| StatusEffectInstance {
+        effect_id: name.into(),
+        amplifier: 0,
+        duration: 200,
+        ambient: false,
+        show_particles: true,
+        show_icon: true,
+    };
+    let potion = PotionContentsImpl {
+        potion_id: None,
+        custom_color: None,
+        custom_effects: vec![effect("minecraft:speed"), effect(SHOCK)],
+        custom_name: None,
+    };
+    let stew = SuspiciousStewEffectsImpl {
+        effects: vec![
+            SuspiciousStewEffect {
+                effect: "minecraft:speed".into(),
+                duration: 200,
+            },
+            SuspiciousStewEffect {
+                effect: SHOCK.into(),
+                duration: 200,
+            },
+        ]
+        .into(),
+    };
+    let modifier = |attribute, id| Modifier {
+        r#type: attribute,
+        id,
+        amount: 1.0,
+        operation: Operation::AddValue,
+        slot: AttributeModifierSlot::Any,
+    };
+    let modifiers = AttributeModifiersImpl {
+        attribute_modifiers: vec![
+            modifier(&Attributes::ARMOR, "test:armor"),
+            modifier(&Attributes::NEOFORGE_SWIM_SPEED, "test:fins"),
+        ]
+        .into(),
+    };
+
+    let speed = i32::from(StatusEffect::SPEED.id);
+    let shock = i32::from(shock().id);
+    let armor = i32::from(Attributes::ARMOR.id);
+    let swim_speed = i32::from(Attributes::NEOFORGE_SWIM_SPEED.id);
+    for (ids, effects, attributes) in [
+        (ContentIds::Display, vec![speed], vec![armor]),
+        (
+            ContentIds::Real,
+            vec![speed, shock],
+            vec![armor, swim_speed],
+        ),
+    ] {
+        assert_eq!(
+            potion_effect_ids(&component_bytes(
+                DataComponent::PotionContents,
+                &potion,
+                ids
+            )),
+            effects,
+            "{ids:?}"
+        );
+        assert_eq!(
+            stew_effect_ids(&component_bytes(
+                DataComponent::SuspiciousStewEffects,
+                &stew,
+                ids
+            )),
+            effects,
+            "{ids:?}"
+        );
+        assert_eq!(
+            modifier_attribute_ids(&component_bytes(
+                DataComponent::AttributeModifiers,
+                &modifiers,
+                ids
+            )),
+            attributes,
+            "{ids:?}"
+        );
+    }
+}
+
+/// The first hotbar slot of the player screen handler.
+const HOTBAR_SLOT: i16 = 36;
+
+/// A creative client of the player puts a stick with `charge` as the `regmod:charge` value in the
+/// first hotbar slot. Returns the stack that the slot holds after.
+fn creative_charge(player: &Arc<Player>, charge: NbtTag) -> ItemStack {
+    let mut stack = ItemStack::new(1, &Item::STICK);
+    stack.set_custom_component(
+        registry::id_of(ContentKind::DataComponentType, CHARGE.name()).unwrap(),
+        charge,
+    );
+    let ClientPlatform::Java(client) = player.client.as_ref() else {
+        unreachable_client();
+    };
+    client
+        .handle_set_creative_slot(
+            player,
+            SSetCreativeSlot::new(HOTBAR_SLOT, ItemStackSerializer::from(stack)),
+        )
+        .unwrap();
+    // The first hotbar slot of the screen handler is the first slot of the inventory.
+    player.inventory().get_slot(0)
+}
+
+#[expect(clippy::panic, reason = "a test fails on the first missing value")]
+fn unreachable_client() -> ! {
+    panic!("the support players are Java players");
+}
+
+/// A creative client sends a stack with a mod component: the server keeps a value that decodes
+/// through the codec of the type from a client that synced the registries, keeps its own stack
+/// when the value does not decode, and drops the value from a vanilla client.
+#[test]
+fn a_creative_client_sets_only_mod_components_that_it_knows_and_that_decode() {
+    server();
+    let synced = NegotiatedState {
+        content_ids: ContentIds::Real,
+        ..NegotiatedState::default()
+    };
+    let (player, _peer) = support::player_with_peer("CreativeSynced", synced);
+    player.gamemode.store(GameMode::Creative);
+    let stack = creative_charge(&player, NbtTag::Int(5));
+    assert_eq!(CHARGE.get(&stack), Ok(Some(5)));
+    let stack = creative_charge(&player, NbtTag::String("five".into()));
+    assert_eq!(CHARGE.get(&stack), Ok(Some(5)));
+
+    let (player, _peer) = support::player_with_peer("CreativeVanilla", NegotiatedState::default());
+    player.gamemode.store(GameMode::Creative);
+    let stack = creative_charge(&player, NbtTag::Int(5));
+    assert_eq!(stack.item.id, Item::STICK.id);
+    assert!(stack.custom_components.is_empty());
 }

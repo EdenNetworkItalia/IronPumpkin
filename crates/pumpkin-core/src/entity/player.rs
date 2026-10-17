@@ -3259,6 +3259,15 @@ impl Player {
             || self.has_creative_flight()
     }
 
+    /// A client asks to start or stop flying. The player flies only if it [may fly](Self::may_fly).
+    pub fn request_flying(&self, flying: bool) {
+        let may_fly = self.may_fly();
+        self.abilities
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .flying = flying && may_fly;
+    }
+
     /// `NeoForge` `ServerPlayer.doTick`: a player who may no longer fly stops flying.
     fn stop_flying_unless_may_fly(&self) {
         let creative_flight = self.has_creative_flight();

@@ -90,7 +90,7 @@ Registrations into `minecraft:data_component_type`, `minecraft:sound_event`, `mi
 
 #### Scenario: A played mod sound
 - **WHEN** a mod registers the sound event `examplemod:zap` and plays it with `sound_events::play_sound`
-- **THEN** clients near the position receive the sound by id
+- **THEN** clients near the position receive the sound inline by name
 
 ### Requirement: Access to mod components, effects and attributes
 The `data_components` module of `ironpumpkin-mods` SHALL read, set and remove the values of mod component types on item stacks, typed and in the JSON form of their codec, the `mob_effects` module SHALL add, read and remove effects and run the tick callbacks of mod effects, and the `entity_attributes` module SHALL read and change the attributes an entity has, for vanilla and mod entries alike. Status: supported (task 2.6, #123).

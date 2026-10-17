@@ -1,6 +1,7 @@
 //! The `NeoForge` attributes that `IronPumpkin` registers: `neoforge:swim_speed` scales the swim
-//! speed of a mob in water (`LivingEntity.travelInWater` of `NeoForge`), and
-//! `neoforge:creative_flight` lets a survival player fly (`IPlayerExtension#mayFly`).
+//! speed of a mob in water (`LivingEntity.travelInWater` of `NeoForge`),
+//! `neoforge:creative_flight` lets a survival player fly (`IPlayerExtension#mayFly`), and an
+//! equipped glider item gives `neoforge:gliding_flight` (`NeoForgeMod.onItemAttributeModifiers`).
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -20,10 +21,15 @@ use pumpkin_core::{
     },
     net::{ClientPlatform, java::neoforge::NegotiatedState},
 };
-use pumpkin_data::{Block, attributes::Attributes, entity::EntityType, packet::CURRENT_MC_VERSION};
+use pumpkin_data::{
+    Block, attributes::Attributes, data_component_impl::EquipmentSlot, dynamic::ContentIds,
+    entity::EntityType, item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION,
+};
 use pumpkin_protocol::{
+    ServerPacket,
     java::{
-        client::play::CPlayerAbilities, packet_decoder::TCPNetworkDecoder,
+        client::play::{CPlayerAbilities, CUpdateAttributes, Property},
+        packet_decoder::TCPNetworkDecoder,
         server::play::SPlayerAbilities,
     },
     packet::MultiVersionJavaPacket,
@@ -32,8 +38,8 @@ use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_world::world::BlockFlags;
 
 /// Loads the chunk of `pos` for the rest of the process and sets `pos` and the block above it to
-/// water.
-fn water_column(pos: BlockPos) {
+/// `fluid`.
+fn fluid_column(pos: BlockPos, fluid: &Block) {
     let world = support::world();
     let chunk = pos.chunk_position();
     {
@@ -47,14 +53,14 @@ fn water_column(pos: BlockPos) {
         std::thread::sleep(Duration::from_millis(10));
     }
     for pos in [pos, pos.up()] {
-        world.set_block_state(&pos, Block::WATER.default_state.id, BlockFlags::empty());
+        world.set_block_state(&pos, fluid.default_state.id, BlockFlags::empty());
     }
 }
 
 /// A zombie without AI goals in a water column at `pos`, swimming forward for one tick. Returns
 /// its forward velocity.
 fn forward_swim_velocity(pos: BlockPos, swim_speed_bonus: Option<f64>) -> f64 {
-    water_column(pos);
+    fluid_column(pos, &Block::WATER);
     let world = support::world();
     let center = Vector3::new(
         f64::from(pos.0.x) + 0.5,
@@ -91,6 +97,55 @@ fn swim_speed_scales_the_swim_speed_of_a_mob_in_water() {
     assert!(plain > 0.0, "{plain}");
     // A multiply-base modifier of 1 doubles the attribute, and the swim speed with it.
     assert!((fast / plain - 2.0).abs() < 1e-9, "{plain} {fast}");
+}
+
+/// A zombie without AI goals in a column of `fluid` at `pos`, jumping for one tick, with a swim
+/// speed of 2 if `fast`. Returns its vertical velocity.
+fn fluid_jump_velocity(pos: BlockPos, fluid: &Block, fast: bool) -> f64 {
+    fluid_column(pos, fluid);
+    let world = support::world();
+    let center = Vector3::new(
+        f64::from(pos.0.x) + 0.5,
+        f64::from(pos.0.y),
+        f64::from(pos.0.z) + 0.5,
+    );
+    let zombie = LivingEntity::new(Entity::new(world, center, &EntityType::ZOMBIE));
+    if fast {
+        zombie.update_attribute(&Attributes::NEOFORGE_SWIM_SPEED, |instance| {
+            instance.add_or_replace_modifier(Modifier {
+                id: "test:fins".to_owned(),
+                amount: 1.0,
+                operation: ModifierOperation::MultiplyBase,
+            });
+        });
+    }
+    zombie
+        .jumping
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let _guard = support::RUNTIME.enter();
+    zombie.tick(&zombie, support::server());
+    let entity = &zombie.entity;
+    let in_fluid = if fluid.id == Block::LAVA.id {
+        &entity.touching_lava
+    } else {
+        &entity.touching_water
+    };
+    assert!(
+        in_fluid.load(std::sync::atomic::Ordering::SeqCst),
+        "the zombie at {pos} is not in {}",
+        fluid.name
+    );
+    entity.velocity.load().y
+}
+
+#[test]
+fn swim_speed_scales_the_jump_in_water_and_not_in_lava() {
+    let water = fluid_jump_velocity(BlockPos::new(3008, 120, 3000), &Block::WATER, false);
+    let fast_water = fluid_jump_velocity(BlockPos::new(3012, 120, 3000), &Block::WATER, true);
+    assert!(fast_water > water, "{water} {fast_water}");
+    let lava = fluid_jump_velocity(BlockPos::new(3016, 120, 3000), &Block::LAVA, false);
+    let fast_lava = fluid_jump_velocity(BlockPos::new(3020, 120, 3000), &Block::LAVA, true);
+    assert_eq!(lava.to_bits(), fast_lava.to_bits(), "{lava} {fast_lava}");
 }
 
 fn java_client(player: &Player) -> &pumpkin_core::net::java::JavaClient {
@@ -150,6 +205,11 @@ fn creative_flight_lets_a_survival_player_fly() {
     assert_eq!(next_abilities_flags(peer) & 0x04, 0x04);
     request_flight(&player);
     assert!(flying(&player));
+    // A Bedrock client asks through `Player::request_flying`.
+    player.request_flying(false);
+    assert!(!flying(&player));
+    player.request_flying(true);
+    assert!(flying(&player));
 
     living.update_attribute(&Attributes::NEOFORGE_CREATIVE_FLIGHT, |instance| {
         instance.remove_modifier("test:wings");
@@ -158,4 +218,68 @@ fn creative_flight_lets_a_survival_player_fly() {
     let _guard = support::RUNTIME.enter();
     player.tick(support::server());
     assert!(!flying(&player));
+}
+
+/// The next `count` `neoforge:gliding_flight` properties of `entity_id` in the attributes packets
+/// that the client end of `peer` receives.
+fn gliding_flight_properties(
+    peer: tokio::net::TcpStream,
+    entity_id: i32,
+    count: usize,
+) -> Vec<Property> {
+    support::RUNTIME.block_on(async {
+        let mut decoder = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
+        let mut properties = Vec::new();
+        while properties.len() < count {
+            let packet = tokio::time::timeout(Duration::from_secs(10), decoder.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            if packet.id != CUpdateAttributes::to_id(CURRENT_MC_VERSION) {
+                continue;
+            }
+            let attributes =
+                CUpdateAttributes::read(&mut &packet.payload[..], &CURRENT_MC_VERSION).unwrap();
+            if attributes.entity_id.0 != entity_id {
+                continue;
+            }
+            properties.extend(attributes.properties.into_iter().filter(|property| {
+                property.id.0 == i32::from(Attributes::NEOFORGE_GLIDING_FLIGHT.id)
+            }));
+        }
+        properties
+    })
+}
+
+#[test]
+fn an_equipped_glider_gives_gliding_flight_to_a_neoforge_client() {
+    let negotiated = NegotiatedState {
+        content_ids: ContentIds::Real,
+        ..NegotiatedState::default()
+    };
+    let (player, peer) = support::player_with_peer("Glider", negotiated);
+    let living = &player.living_entity;
+    let gliding_flight = || living.get_attribute_value(&Attributes::NEOFORGE_GLIDING_FLIGHT);
+    let elytra = ItemStack::new(1, &Item::ELYTRA);
+
+    // The modifier applies in the slot of the `equippable` component only.
+    living.send_equipment_changes(&[(EquipmentSlot::MAIN_HAND, elytra.clone())]);
+    assert_eq!(gliding_flight(), 0.0);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, elytra.clone())]);
+    assert_eq!(gliding_flight(), 1.0);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, ItemStack::EMPTY.clone())]);
+    assert_eq!(gliding_flight(), 0.0);
+    let mut worn = elytra;
+    worn.set_damage(worn.get_max_damage().unwrap() - 1);
+    living.send_equipment_changes(&[(EquipmentSlot::CHEST, worn)]);
+    assert_eq!(gliding_flight(), 0.0);
+
+    let properties = gliding_flight_properties(peer, living.entity_id(), 2);
+    let modifiers: Vec<(&str, f64, i8)> = properties[0]
+        .modifiers
+        .iter()
+        .map(|modifier| (modifier.id.as_str(), modifier.amount, modifier.operation))
+        .collect();
+    assert_eq!(modifiers, [("neoforge:glider_component_flight", 1.0, 0)]);
+    assert!(properties[1].modifiers.is_empty());
 }

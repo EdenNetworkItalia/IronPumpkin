@@ -10,7 +10,7 @@
 //! the NBT form of its codec. A save keeps the value when the type is persistent, under the name
 //! of the type in the `components` of the stack, as vanilla saves a component. A client that synced
 //! the registries (a `NeoForge` client) gets the value as a component in the NBT form of the
-//! codec, as `ByteBufCodecs.fromCodec` writes it. A vanilla client never gets it.
+//! codec, as `ByteBufCodecs.fromCodecWithRegistries` writes it. A vanilla client never gets it.
 //!
 //! [`get_json`], [`set_json`] and [`remove`] read and write the value of a type by name, in the
 //! JSON form of its codec.
@@ -84,6 +84,7 @@ impl<T: Encode + Decode + 'static> DataComponentTypeBuilder<T> {
             definition: DataComponentTypeDefinition {
                 name: name.into(),
                 persistent: true,
+                validate: validate::<T>,
             },
             _value: PhantomData,
         }
@@ -141,6 +142,10 @@ fn data_result<R>(result: DataResult<R>) -> Result<R, String> {
 fn from_json<T: Encode + Decode>(json: serde_json::Value) -> Result<NbtTag, String> {
     let value = data_result(T::parse(json, &JsonOps))?;
     data_result(value.encode_start(&NbtOps))
+}
+
+fn validate<T: Decode>(nbt: &NbtTag) -> bool {
+    data_result(T::parse(nbt.clone(), &NbtOps)).is_ok()
 }
 
 fn to_json<T: Encode + Decode>(nbt: NbtTag) -> Result<serde_json::Value, String> {

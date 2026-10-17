@@ -43,7 +43,8 @@ fn custom_components(stack: &ItemStack, ids: ContentIds) -> &[(u16, NbtTag)] {
     }
 }
 
-/// The NBT form of a mod component value on the network, as `ByteBufCodecs.fromCodec` writes it.
+/// The NBT form of a mod component value on the network, as `ByteBufCodecs.fromCodecWithRegistries`
+/// writes it.
 fn custom_component_bytes(value: &NbtTag) -> Result<Vec<u8>, WritingError> {
     let mut bytes = Vec::new();
     value

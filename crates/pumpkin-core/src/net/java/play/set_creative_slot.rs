@@ -1,5 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use pumpkin_data::dynamic::ContentIds;
+use pumpkin_data::dynamic_registries;
 
 impl JavaClient {
     pub fn handle_set_creative_slot(
@@ -12,9 +14,11 @@ impl JavaClient {
         }
         let is_negative = packet.slot < 0;
         let valid_slot = packet.slot >= 1 && packet.slot as usize <= 45;
-        let item_stack = packet
+        let mut item_stack = packet
             .clicked_item
             .to_stack_for_version(&pumpkin_data::packet::CURRENT_MC_VERSION);
+        let components_valid =
+            accept_custom_components(&mut item_stack, player.negotiated_state().content_ids);
         let mut creative_event =
             crate::plugin::api::events::inventory::inventory_creative::InventoryCreativeEvent::new(
                 player.clone(),
@@ -31,8 +35,8 @@ impl JavaClient {
             return Ok(());
         }
 
-        let is_legal =
-            item_stack.is_empty() || item_stack.item_count <= item_stack.get_max_stack_size();
+        let is_legal = components_valid
+            && (item_stack.is_empty() || item_stack.item_count <= item_stack.get_max_stack_size());
 
         if valid_slot && is_legal {
             let mut player_screen_handler = player
@@ -83,5 +87,22 @@ impl JavaClient {
             player.drop_item(item_stack);
         }
         Ok(())
+    }
+}
+
+/// Removes the mod components of a stack from a client that does not know their types, and checks
+/// those of a client that does through the codecs of their types. A value that does not decode
+/// makes the stack illegal, so the server keeps its own: a `NeoForge` client would fail to decode
+/// it when the server sends the stack back.
+fn accept_custom_components(stack: &mut ItemStack, ids: ContentIds) -> bool {
+    match ids {
+        ContentIds::Display => {
+            stack.custom_components.clear();
+            true
+        }
+        ContentIds::Real => stack.custom_components.iter().all(|(id, value)| {
+            dynamic_registries::data_component_type(*id)
+                .is_some_and(|entry| (entry.validate)(value))
+        }),
     }
 }

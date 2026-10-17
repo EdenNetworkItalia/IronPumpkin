@@ -16,17 +16,7 @@ impl BedrockClient {
                     requested_flying,
                 ) = packet.value
                 {
-                    {
-                        let mut abilities = player
-                            .abilities
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        if abilities.allow_flying {
-                            abilities.flying = requested_flying;
-                        } else {
-                            abilities.flying = false;
-                        }
-                    }
+                    player.request_flying(requested_flying);
                     player.send_abilities_update();
                 }
             }
