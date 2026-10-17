@@ -129,28 +129,28 @@ Native handlers and Wasm handlers of one event SHALL run in the single dispatch 
 - **THEN** the native handler gets the event cancelled, and the entity takes no damage
 
 ### Requirement: One event pipeline
-A world mutation that a player or an entity causes through the API of a mod (a world mutator of `ironpumpkin-mods`, called from a handler or from other mod code, or a v0.2 import of a Wasm plugin), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a handler cancels one, and SHALL reach v0.2 plugins and mods alike. No API function SHALL skip that dispatch. Status: planned (tasks 2.4 and 2.18).
+A world mutation that a player or an entity causes through the API of a mod (a world mutator of `ironpumpkin-mods`, called from a handler or from other mod code, or a v0.2 import of a Wasm plugin), including one from a mod projectile, SHALL fire the Pumpkin events of the vanilla action before the change, SHALL make no change when a handler cancels one, and SHALL reach v0.2 plugins and mods alike. No API function SHALL skip that dispatch. Status: supported (task 2.4, #121; check in 2.18).
 
 #### Scenario: Every mutator is listed
-- **WHEN** a reviewer reads the `level-access` docs
+- **WHEN** a reviewer reads the table "Mutators and their events" of `design.md`
 - **THEN** every mutator names the Pumpkin event it fires, or says "no event"
 
 #### Scenario: A projectile of a mod breaks a block
-- **WHEN** a player fires a mining laser projectile of mod A, the projectile calls `level-access.destroy-block` with itself as the breaker, and a v0.2 plugin cancels the Pumpkin `BlockBreakEvent`
+- **WHEN** a player fires a mining laser projectile of mod A, the projectile calls `World::destroy_block` with itself as the breaker, and a v0.2 plugin cancels the Pumpkin `BlockBreakEvent`
 - **THEN** the block stays, and a handler of mod B on `BlockBreakEvent` with receive-canceled gets the same event, cancelled, with the player that owns the projectile
 
 #### Scenario: A plugin sees a mod spawn
-- **WHEN** a native mod calls `level-access.spawn-entity` and a v0.2 plugin listens to the Pumpkin `EntitySpawnEvent`
-- **THEN** the plugin receives the event before the entity joins the level, and cancelling it returns none to the mod
+- **WHEN** a native mod calls `World::spawn_entity` and a v0.2 plugin listens to the Pumpkin `EntitySpawnEvent`
+- **THEN** the plugin receives the event before the entity joins the level, and cancelling it returns `false` to the mod
 
 #### Scenario: A v0.2 world call from a Wasm plugin
 - **WHEN** a Wasm plugin calls the v0.2 `world.spawn-entity` and another v0.2 plugin cancels the Pumpkin `EntitySpawnEvent`
-- **THEN** no entity spawns, as for `level-access.spawn-entity` without a cause
+- **THEN** no entity spawns, as for `World::spawn_entity`
 
 #### Scenario: A mod cancels, a plugin observes
 - **WHEN** a player breaks a block, a native handler on `BlockBreakEvent` with priority `High` sets `cancelled` to true, and a v0.2 plugin listens to the same event at a lower priority
 - **THEN** the plugin receives the event already cancelled, and the block stays
 
 #### Scenario: Internal machine state
-- **WHEN** a mod calls `level-access.set-block` without a cause to change a part of its multiblock
+- **WHEN** a mod calls `World::set_block_state`, which takes no cause, to change a part of its multiblock
 - **THEN** the block changes and no break, place or entity change event fires

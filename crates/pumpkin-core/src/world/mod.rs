@@ -3904,13 +3904,14 @@ impl World {
     }
 
     fn run_explosion(self: &Arc<Self>, explosion: &Explosion, position: Vector3<f64>, power: f32) {
-        let mut event = crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
-            0, position, power,
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
+                    0, position, power,
+                )
+            })
+            && event.cancelled
+        {
             return;
         }
 
@@ -4902,10 +4903,14 @@ impl World {
         removed_player
     }
 
+    /// Spawns `entity` without `EntityBase::init_data_tracker`. Fires [`EntitySpawnEvent`] as
+    /// [`World::spawn_entity`] does, and spawns nothing when a plugin cancels it.
+    ///
+    /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     #[expect(clippy::needless_pass_by_value)]
-    pub fn spawn_entity_non_save(&self, entity: Arc<dyn EntityBase>) {
-        let _base_entity = entity.get_entity();
-        if entity.get_entity().entity_type.is_placeholder() {
+    pub fn spawn_entity_non_save(self: &Arc<Self>, entity: Arc<dyn EntityBase>) {
+        if entity.get_entity().entity_type.is_placeholder() || self.spawn_cancelled(entity.as_ref())
+        {
             return;
         }
         self.entity_tracker.add_entity(&entity, self);
@@ -4931,6 +4936,27 @@ impl World {
         }
     }
 
+    /// Fires [`EntitySpawnEvent`] for `entity` and returns whether a handler cancelled it.
+    ///
+    /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
+    fn spawn_cancelled(self: &Arc<Self>, entity: &dyn EntityBase) -> bool {
+        let Some(server) = self.server.upgrade() else {
+            return false;
+        };
+        server
+            .plugin_manager
+            .fire_blocking_with(&server, || {
+                let base = entity.get_entity();
+                crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
+                    base.entity_id,
+                    base.entity_type.id.to_string(),
+                    base.pos.load(),
+                    self.clone(),
+                )
+            })
+            .is_some_and(|event| event.cancelled)
+    }
+
     /// Returns `false` when a plugin cancels the [`EntitySpawnEvent`].
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
@@ -4939,16 +4965,7 @@ impl World {
         if entity.get_entity().entity_type.is_placeholder() {
             return false;
         }
-        let mut event = crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
-            entity.get_entity().entity_id,
-            entity.get_entity().entity_type.id.to_string(),
-            entity.get_entity().pos.load(),
-            self.clone(),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if self.spawn_cancelled(entity.as_ref()) {
             return false;
         }
 
@@ -4970,18 +4987,19 @@ impl World {
         if base.entity_type.is_placeholder() {
             return false;
         }
-        let mut event = crate::plugin::api::events::entity::creature_spawn::CreatureSpawnEvent::new(
-            base.entity_id,
-            base.entity_type.resource_name.to_string(),
-            base.pos.load(),
-            self.clone(),
-            reason,
-            player,
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::creature_spawn::CreatureSpawnEvent::new(
+                    base.entity_id,
+                    base.entity_type.resource_name.to_string(),
+                    base.pos.load(),
+                    self.clone(),
+                    reason,
+                    player,
+                )
+            })
+            && event.cancelled
+        {
             return false;
         }
         self.spawn_entity(entity)
@@ -5357,24 +5375,25 @@ impl World {
             flags.remove(BlockFlags::SKIP_DROPS);
         }
 
-        let mut event = BlockBreakEvent::new(
-            cause.cloned(),
-            broken_block,
-            *position,
-            0,
-            !flags.contains(BlockFlags::SKIP_DROPS),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
-            return None;
-        }
-
-        if event.drop {
-            flags.remove(BlockFlags::SKIP_DROPS);
-        } else {
-            flags.insert(BlockFlags::SKIP_DROPS);
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                BlockBreakEvent::new(
+                    cause.cloned(),
+                    broken_block,
+                    *position,
+                    0,
+                    !flags.contains(BlockFlags::SKIP_DROPS),
+                )
+            })
+        {
+            if event.cancelled {
+                return None;
+            }
+            if event.drop {
+                flags.remove(BlockFlags::SKIP_DROPS);
+            } else {
+                flags.insert(BlockFlags::SKIP_DROPS);
+            }
         }
 
         if !flags.contains(BlockFlags::SKIP_DROPS) {
@@ -5434,6 +5453,93 @@ impl World {
         }
 
         Some(broken_state_id)
+    }
+
+    /// Breaks the block at `position` as vanilla `Level.destroyBlock` does: a break without a
+    /// player dig, by a projectile, a mob or a machine. Fires [`BlockBreakEvent`] with the player
+    /// behind `breaker`: the breaker itself, or the player that owns it, as the shooter of a
+    /// projectile. A block entity passes no breaker. Returns `false` when the block is air or a
+    /// handler cancels the break.
+    pub fn destroy_block(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        drop: bool,
+        breaker: Option<&dyn EntityBase>,
+    ) -> bool {
+        let (block, state) = self.get_block_and_state(position);
+        if state.is_air() {
+            return false;
+        }
+
+        let mut drop = drop;
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                let player = breaker.and_then(|breaker| self.get_player_by_id(cause_id(breaker)));
+                BlockBreakEvent::new(player, block, *position, 0, drop)
+            })
+        {
+            if event.cancelled {
+                return false;
+            }
+            drop = event.drop;
+        }
+
+        // Vanilla skips the break effect for a `BaseFireBlock`.
+        if block != &Block::FIRE && block != &Block::SOUL_FIRE {
+            self.sync_world_event(
+                WorldEvent::ParticlesAndSoundDestroyBlock,
+                *position,
+                i32::from(state.id.as_u16()),
+            );
+        }
+        if drop {
+            let params = crate::world::loot::LootContextParameters {
+                block_state: Some(state),
+                position: Some(position.to_f64()),
+                this_entity: breaker.map(|breaker| breaker.get_entity().entity_type),
+                ..Default::default()
+            };
+            crate::block::drop_loot(self, block, position, true, &params);
+        }
+        let new_state_id = if block.is_waterlogged(state.id) {
+            Block::WATER.default_state.id
+        } else {
+            Block::AIR.default_state.id
+        };
+        self.set_block_state(position, new_state_id, BlockFlags::NOTIFY_ALL);
+        self.emit_game_event(
+            pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
+            position.to_centered_f64(),
+        );
+        true
+    }
+
+    /// Places `state_id` at `position` for `placer`, as `NeoForge` `EventHooks.onBlockPlace` before
+    /// `Level.setBlock`. Fires [`EntityPlaceEvent`] with the entity behind `placer`: the placer
+    /// itself, or the entity that owns it. Returns `false` when a handler cancels the place.
+    ///
+    /// [`EntityPlaceEvent`]: crate::plugin::api::events::entity::entity_place::EntityPlaceEvent
+    pub fn place_block(
+        self: &Arc<Self>,
+        position: &BlockPos,
+        state_id: BlockStateId,
+        placer: &dyn EntityBase,
+    ) -> bool {
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::entity_place::EntityPlaceEvent::new(
+                    cause_id(placer),
+                    *position,
+                    pumpkin_data::dynamic::namespaced_name(Block::from_state_id(state_id).name)
+                        .into_owned(),
+                )
+            })
+            && event.cancelled
+        {
+            return false;
+        }
+        self.set_block_state(position, state_id, BlockFlags::NOTIFY_ALL);
+        true
     }
 
     #[must_use]
@@ -5685,6 +5791,26 @@ impl World {
         }
     }
 
+    /// Fires [`ItemSpawnEvent`] for the item entity `entity` of `stack` and returns whether a
+    /// handler cancelled it.
+    ///
+    /// [`ItemSpawnEvent`]: crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent
+    fn item_spawn_cancelled(&self, entity: &Entity, stack: &ItemStack) -> bool {
+        let Some(server) = self.server.upgrade() else {
+            return false;
+        };
+        server
+            .plugin_manager
+            .fire_blocking_with(&server, || {
+                crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
+                    entity.entity_id,
+                    entity.pos.load(),
+                    stack.item.registry_key.to_string(),
+                )
+            })
+            .is_some_and(|event| event.cancelled)
+    }
+
     pub fn drop_stack(self: &Arc<Self>, pos: &BlockPos, stack: ItemStack) {
         if stack.is_empty() {
             return;
@@ -5701,17 +5827,7 @@ impl World {
         };
 
         let entity = Entity::new(self.clone(), spawn_pos, &EntityType::ITEM);
-        let mut item_event = crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
-            entity.entity_id,
-            spawn_pos,
-            stack.item.registry_key.to_string(),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut item_event);
-        }
-        if item_event.cancelled {
+        if self.item_spawn_cancelled(&entity, &stack) {
             return;
         }
 
@@ -5785,17 +5901,7 @@ impl World {
         };
 
         let entity = Entity::new(self.clone(), spawn_pos, &EntityType::ITEM);
-        let mut item_event = crate::plugin::api::events::entity::item_spawn::ItemSpawnEvent::new(
-            entity.entity_id,
-            spawn_pos,
-            stack.item.registry_key.to_string(),
-        );
-        if let Some(server) = self.server.upgrade() {
-            server
-                .plugin_manager
-                .fire_blocking(&server, &mut item_event);
-        }
-        if item_event.cancelled {
+        if self.item_spawn_cancelled(&entity, &stack) {
             return;
         }
 
@@ -5806,19 +5912,16 @@ impl World {
     pub fn strike_lightning(self: &Arc<Self>, pos: Vector3<f64>, effect_only: bool) {
         use pumpkin_data::entity::EntityType;
         use uuid::Uuid;
-        let server_ref = self.server.upgrade();
-        if let Some(server_ref) = server_ref {
-            let mut event =
+        if let Some(server) = self.server.upgrade()
+            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
                 crate::plugin::api::events::world::lightning_strike::LightningStrikeEvent::new(
                     pos,
                     effect_only,
-                );
-            server_ref
-                .plugin_manager
-                .fire_blocking(&server_ref, &mut event);
-            if event.cancelled {
-                return;
-            }
+                )
+            })
+            && event.cancelled
+        {
+            return;
         }
 
         let lightning = crate::entity::r#type::from_type(
@@ -7484,6 +7587,14 @@ fn merge_entity_records(data: &mut Vec<NbtCompound>, live: bool, fresh: Vec<NbtC
         }
         data.push(record);
     }
+}
+
+/// The id of the entity that acts through `entity`: its owner, as the shooter of a projectile,
+/// else `entity` itself. Pumpkin has no fake players, so a mutator resolves its cause with it.
+fn cause_id(entity: &dyn EntityBase) -> i32 {
+    entity
+        .get_owner_id()
+        .unwrap_or(entity.get_entity().entity_id)
 }
 
 #[cfg(test)]
