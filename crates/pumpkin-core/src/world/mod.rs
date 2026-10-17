@@ -5485,11 +5485,8 @@ impl World {
             return false;
         }
 
-        let mut drop = drop;
-        // Without a handler the experience stays `None` and `drop_loot` rolls it.
-        let mut exp = None;
-        if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
+        let event = self.server.upgrade().and_then(|server| {
+            server.plugin_manager.fire_blocking_with(&server, || {
                 let player = breaker.and_then(|breaker| self.get_player_by_id(cause_id(breaker)));
                 let exp = if drop {
                     crate::block::experience_to_drop(block, None)
@@ -5498,13 +5495,13 @@ impl World {
                 };
                 BlockBreakEvent::new(player, block, state, *position, exp, drop)
             })
-        {
-            if event.cancelled {
-                return false;
-            }
-            drop = event.drop;
-            exp = Some(event.exp);
-        }
+        });
+        // Without a handler the experience is `None` and `drop_loot` rolls it.
+        let (drop, exp) = match event {
+            Some(event) if event.cancelled => return false,
+            Some(event) => (event.drop, Some(event.exp)),
+            None => (drop, None),
+        };
 
         // Vanilla skips the break effect for a `BaseFireBlock`.
         if block != &Block::FIRE && block != &Block::SOUL_FIRE {
