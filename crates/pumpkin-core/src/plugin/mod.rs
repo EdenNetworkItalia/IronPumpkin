@@ -24,6 +24,7 @@ pub mod cache;
 pub(crate) mod container_events;
 mod context_events;
 pub mod dispatch;
+pub(crate) mod level_events;
 pub mod loader;
 pub mod network_events;
 /// Constants for plugin permissions.

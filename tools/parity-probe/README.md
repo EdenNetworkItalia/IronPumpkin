@@ -201,7 +201,7 @@ breaks at once, and `hold` takes the item from the creative slot packet.
 | Path | Contents |
 |:--|:--|
 | `captures/neoforge-26.3.0.64-beta/probe-trace-slice2.jsonl` | The Java trace of a `play` run, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-16 on the wave 3 tree. |
+| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-16 on the wave 4 tree. |
 | `captures/ironpumpkin/diff-slice2.txt` | The output of `diff.py --slice2` for the two traces. |
 
 ### Steps
@@ -256,10 +256,10 @@ which comes from the script, is a field.
 | `PlayerInteractEvent.RightClickItem` | `hand`, `item` | `PlayerInteractEvent` with `RightClickAir`: no field |
 | `PlayerSwitchHotbarSlotEvent.Pre`, `.Post` | `new_slot`, `old_slot` | `PlayerItemHeldEvent`, `PlayerSwitchHotbarSlotEventPost` |
 | `PlayerEvent.BreakSpeed`, `PlayerEvent.HarvestCheck` | none | `PlayerEventBreakSpeed`, `PlayerEventHarvestCheck` |
-| `BreakBlockEvent` | `pos` | not traced: the level and block events task (2.13 in `tasks.md`) |
-| `BlockEvent.EntityPlaceEvent` | `block`, `pos` | not traced: the same task |
+| `BreakBlockEvent` | `pos` | `BlockBreakEvent` with a player: the probe skips a break without a player, as `getPlayer` is never null |
+| `BlockEvent.EntityPlaceEvent` | `block`, `pos` | `BlockPlaceEvent` |
 | `ServerTickEvent.Pre`, `.Post` | none, once per step | `ServerTickStartEvent`, `ServerTickEndEvent` |
-| `PlayerTickEvent.Pre`, `.Post` | none, once per step | none: the row is planned |
+| `PlayerTickEvent.Pre`, `.Post` | none, once per step | `PlayerTickEventPre`, `PlayerTickEventPost` |
 
 The Pumpkin `PlayerInteractEvent` has no hand, face, item, action or use phase, so the Rust probe
 writes only the position for the four interact events. These events are not traced:
@@ -320,7 +320,7 @@ different steps, is one `step` difference. The exit codes are those of slice 1. 
 
 ### Result of slice 2
 
-`captures/ironpumpkin/diff-slice2.txt` has 20 differences (missing 16, fields 3, extra 1). Two
+`captures/ironpumpkin/diff-slice2.txt` has 6 differences (fields 3, extra 1, missing 2). Two
 recordings per server, each from an empty server directory, are byte-identical.
 
 | Event | NeoForge | IronPumpkin | Verdict | Cause |
@@ -330,13 +330,13 @@ recordings per server, each from an empty server directory, are byte-identical.
 | `PlayerEvent.PlayerLoggedOutEvent`, `PlayerEvent.SaveToFile` | step 5 | step 5 | same | |
 | `ServerTickEvent.Pre`, `.Post` | each step | each step | same | |
 | `PlayerInteractEvent.LeftClickBlock` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | step 2: `1 -1 0` | fields | Pumpkin's `PlayerInteractEvent` has no action, face or hand (gap in the design.md row). It fires at the dig start, as NeoForge, not on the arm swing, and a cancel stops the break and re-syncs the block: tests `left_click_block_fires_at_the_dig_start` and `finished_digging_breaks_only_the_started_dig`. |
-| `BreakBlockEvent` | step 2: `1 -1 0` | not traced | missing | The level and block events task (2.13). |
+| `BreakBlockEvent` | step 2: `1 -1 0` | step 2: `1 -1 0` | same | The dig also breaks the plant on the block (`1 0 0`), and Pumpkin fires `BlockBreakEvent` without a player for it, where NeoForge posts nothing (design.md row). |
 | `PlayerSwitchHotbarSlotEvent.Pre` | none: the slot does not change | none | same | Both fire it only when the slot changes: test `switch_hotbar_slot_event_pre_fires_only_on_a_change`. |
 | `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | step 3 | extra | Documented: Pumpkin does not cache the name and fires on every read (design.md row). |
 | `PlayerInteractEvent.RightClickBlock` | step 4: `up`, `main_hand`, `minecraft:stone`, `1 -2 0` | step 4: `1 -2 0` | fields | No hand, face or item in Pumpkin's event (gap in the design.md row). |
 | `UseItemOnBlockEvent` | step 4: three events, phases `item_before_block`, `block`, `item_after_block` | step 4: one event, `1 -2 0` | fields, missing 2 | One event per use without the phase, hand, face or item (gap in the design.md row). |
-| `BlockEvent.EntityPlaceEvent` | step 4: `minecraft:stone`, `1 -1 0` | not traced | missing | The level and block events task (2.13). |
-| `PlayerTickEvent.Pre`, `.Post` | each step | none | missing (12 lines) | Planned row: Pumpkin has no player tick event. |
+| `BlockEvent.EntityPlaceEvent` | step 4: `minecraft:stone`, `1 -1 0` | step 4: `minecraft:stone`, `1 -1 0` | same | Pumpkin fires it before the block changes; NeoForge fires it after and restores the block on a cancel. |
+| `PlayerTickEvent.Pre`, `.Post` | each step | each step | same | |
 | `ClientInformationUpdatedEvent` | none | none | same | The client sends no client information on the join, as the vanilla 26.3 client (client README, "Play state"). |
 
 No difference is a vanilla gameplay difference of Pumpkin, so slice 2 opens no `upstream` issue.

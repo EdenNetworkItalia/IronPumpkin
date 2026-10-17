@@ -61,7 +61,7 @@ fn shared(player: &Player) -> Option<Arc<Player>> {
 }
 
 /// Fires `E` built by `make` when a handler listens, and returns it with the changes.
-fn fire<E, F>(player: &Player, make: F) -> Option<E>
+pub fn fire<E, F>(player: &Player, make: F) -> Option<E>
 where
     E: Payload + Send + Sync + 'static,
     F: FnOnce(Arc<Player>) -> E,

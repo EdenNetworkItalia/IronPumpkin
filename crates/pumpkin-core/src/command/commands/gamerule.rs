@@ -11,6 +11,7 @@ use crate::command::argument_types::core::integer::IntegerArgumentType;
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
+use crate::plugin::level_events;
 
 const DESCRIPTION: &str = "Sets or queries a game rule value.";
 const PERMISSION: &str = "minecraft:command.gamerule";
@@ -57,6 +58,9 @@ impl CommandExecutor for SetIntExecutor {
         }
 
         context.server().level_info.store(Arc::new(new_info));
+        level_events::game_rule_changed(context.server(), &self.0, || {
+            GameRuleValue::Int(arg_value)
+        });
 
         let value_component = TextComponent::text(arg_value.to_string());
         context.source.send_feedback(
@@ -87,6 +91,9 @@ impl CommandExecutor for SetBoolExecutor {
         }
 
         context.server().level_info.store(Arc::new(new_info));
+        level_events::game_rule_changed(context.server(), &self.0, || {
+            GameRuleValue::Bool(arg_value)
+        });
 
         if self.0 == GameRule::SpectatorsGenerateChunks {
             let server = context.server();

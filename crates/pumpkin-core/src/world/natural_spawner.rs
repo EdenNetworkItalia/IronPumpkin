@@ -3,6 +3,7 @@ use crate::content::spawn_placements::spawn_restriction;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::{check_spawn_rules, from_type};
+use crate::plugin::level_events;
 use crate::world::World;
 use arc_swap::ArcSwap;
 use crossbeam::atomic::AtomicCell;
@@ -897,7 +898,7 @@ pub fn is_right_distance_to_player_and_spawn_point(
 
 #[must_use]
 pub fn can_spawn_mob_at(
-    world: &World,
+    world: &Arc<World>,
     category: &'static MobCategory,
     spawner_type: &'static str,
     pos: &BlockPos,
@@ -919,10 +920,14 @@ pub fn can_spawn_mob_at(
     let target = spawner_type
         .strip_prefix("minecraft:")
         .unwrap_or(spawner_type);
-    spawners.iter().any(|s| {
+    let is_target = |s: &Spawner| {
         let name = s.r#type.strip_prefix("minecraft:").unwrap_or(s.r#type);
         name == target
-    })
+    };
+    level_events::potential_spawns(world, category, pos, spawners).map_or_else(
+        || spawners.iter().any(is_target),
+        |spawns| spawns.into_iter().any(is_target),
+    )
 }
 
 #[must_use]
@@ -938,7 +943,7 @@ pub fn get_random_spawn_mob_at(
     {
         None
     } else {
-        match category.id {
+        let spawners = match category.id {
             id if id == MobCategory::MONSTER.id => biome.spawners.monster,
             id if id == MobCategory::CREATURE.id => biome.spawners.creature,
             id if id == MobCategory::AMBIENT.id => biome.spawners.ambient,
@@ -950,8 +955,11 @@ pub fn get_random_spawn_mob_at(
             id if id == MobCategory::WATER_AMBIENT.id => biome.spawners.water_ambient,
             id if id == MobCategory::MISC.id => biome.spawners.misc,
             _ => biome.spawners.misc,
-        }
-        .choose(&mut rng())
+        };
+        level_events::potential_spawns(world, category, block_pos, spawners).map_or_else(
+            || spawners.choose(&mut rng()),
+            |spawns| spawns.choose(&mut rng()).copied(),
+        )
     }
 }
 

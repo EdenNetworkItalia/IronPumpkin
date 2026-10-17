@@ -1,3 +1,5 @@
+use crate::plugin::level::PistonMoveType;
+use crate::plugin::level_events;
 use std::sync::Arc;
 
 use crate::block::entities::{has_block_block_entity, piston::PistonBlockEntity};
@@ -187,6 +189,7 @@ impl PistonBlock {
                 0.5,
                 pitch,
             );
+            level_events::piston_post(world, pos, dir, PistonMoveType::Extend);
             return true;
         }
         // Reduce Piston
@@ -292,6 +295,7 @@ impl PistonBlock {
             0.5,
             pitch,
         );
+        level_events::piston_post(world, pos, dir, PistonMoveType::Retract);
         true
     }
 }

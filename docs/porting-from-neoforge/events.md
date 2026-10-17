@@ -243,7 +243,7 @@ No event of the table fires under the screen-handler lock. The anvil, grindstone
 
 The contract of `StatAwardEvent`: `value` is the new total, and the server stores it in the statistic that `category` and `stat` name. `amount` is the change, that is the new total minus the total before the event. A handler that changes only `amount` has no effect, because `value` wins. To change the result, set `value`.
 
-`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The pages for the level and block, and the entity families are planned (tasks 2.13 and 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
+`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The page for the entity family is planned (task 2.15). Until it lands, a handler for such an event runs only where Pumpkin already fires it.
 
 ## The player events
 
@@ -266,6 +266,27 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 
 `PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
 
+## The level and block events
+
+The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin events. Where Pumpkin already had an event at the fire site, the NeoForge event maps to it and has the NeoForge fields: `BreakBlockEvent` is `block::BlockBreakEvent`, `BlockEvent.EntityPlaceEvent` is `block::BlockPlaceEvent`. The other events are in `ironpumpkin_mods::event::level` with the NeoForge name and the parent prefix: `PistonEvent.Post` is `PistonEventPost`. `mapping-table.md` names the Rust type of each row.
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `BreakBlockEvent` | `block::BlockBreakEvent` | Has `player`, `state` and `block_position`. `exp` and `drop` are settable. A cancel keeps the block, and the client gets it back. It also fires without a player for a block that loses its support. Skip those events: `getPlayer` is never null in NeoForge. |
+| `BlockEvent.EntityPlaceEvent` | `block::BlockPlaceEvent` for a player, `level::BlockEventEntityPlaceEvent` for an enderman | Fire before the block changes, with `placed_state` and `replaced_state`. A cancel places nothing. Register both to see every placement. |
+| `BlockEvent.EntityMultiPlaceEvent` | `block::BlockMultiPlaceEvent` | Fires after `BlockPlaceEvent` for a bed, a door, a tall plant or a small dripleaf. A cancel of either event places no block. |
+| `BlockEvent.BlockToolModificationEvent` | `level::BlockEventBlockToolModificationEvent` | Fires for a fire starter and for shears, as in NeoForge 26.3. Axes, hoes and shovels fire nothing. `final_state` is settable, and `None` is no change. |
+| `CropGrowEvent.Post`, `NoteBlockEvent.Change`, `PistonEvent.Post`, `CreateFluidSourceEvent` | `level::CropGrowEventPost`, `NoteBlockEventChange`, `PistonEventPost`, `CreateFluidSourceEvent` | `note` and `can_convert` are settable. A cancel of the note change keeps the note. |
+| `ExplosionEvent.Start` | `entity::EntityExplodeEvent` | A cancel stops the explosion. |
+| `ExplosionEvent.Detonate`, `ExplosionKnockbackEvent` | `level::ExplosionEventDetonate`, `ExplosionKnockbackEvent` | The lists of blocks and entities and the knockback are settable. |
+| `ChunkEvent.Load`, `ChunkEvent.Unload` | `world::ChunkLoad`, `world::ChunkUnloadEvent` | Fire in the world tick after the change. A cancel has no effect. |
+| `ChunkWatchEvent.UnWatch` | `level::ChunkWatchEventUnWatch` | Once per chunk, also when the player changes world or leaves. |
+| `GameRuleChangedEvent`, `LevelEvent.PotentialSpawns` | `level::GameRuleChangedEvent`, `LevelEventPotentialSpawns` | `spawns` is settable. A new entry is a `&'static Spawner`, for example a `static` of the mod. A cancel spawns nothing. |
+| `EntityTickEvent.Pre` and `Post`, `PlayerTickEvent.Pre` and `Post` | `level::EntityTickEventPre`, `EntityTickEventPost`, `PlayerTickEventPre`, `PlayerTickEventPost` | Fire for each entity and player in each tick, in parallel. A cancel of `EntityTickEventPre` skips the tick. A player fires the player tick events only. Keep these handlers short. |
+
+Only native mods get these events, except the events that WIT v0.2 already had: `BlockBreakEvent`, `BlockPlaceEvent`, `BlockMultiPlaceEvent`, `EntityExplodeEvent`, `ChunkLoad` and `ChunkUnloadEvent`. A Wasm plugin gets them without the new fields.
+
+These rows stay planned: `BlockEvent.FarmlandTrampleEvent` (Pumpkin never tramples farmland), `LevelEvent.CreateSpawnPosition` (Pumpkin picks the spawn before the server exists), `ChunkDataEvent.Load` and `Save` (the chunk I/O runs in `pumpkin-world`), `AlterGroundEvent` and `ChunkTicketLevelUpdatedEvent` (engine extension points of M5). The mapping table gives the reasons.
 ## Causes: what a `FakePlayer` did
 
 A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a fake player, so the break events fire with that player. IronPumpkin has no fake players. A mod calls the Pumpkin method of the vanilla action with the entity that acts, and the method fires the Pumpkin event of that action, with the same dispatch as for a real player. Native mods and v0.2 Wasm plugins see the event and can cancel it.

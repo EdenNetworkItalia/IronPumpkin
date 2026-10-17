@@ -499,29 +499,40 @@ pub fn drop_loot(
         }
     }
 
-    let has_silk_touch = params.tool.as_ref().is_some_and(|tool| {
+    if experience {
+        drop_experience(world, pos, experience_to_drop(block, params.tool.as_ref()));
+    }
+}
+
+/// The experience that breaking `block` with `tool` drops: none with silk touch.
+#[must_use]
+pub fn experience_to_drop(block: &Block, tool: Option<&ItemStack>) -> u32 {
+    let has_silk_touch = tool.is_some_and(|tool| {
         pumpkin_data::Enchantment::from_name("silk_touch")
             .is_some_and(|e| tool.get_enchantment_level(e) > 0)
     });
-
-    if experience
-        && !has_silk_touch
-        && let Some(experience) = &block.experience
-    {
+    if has_silk_touch {
+        return 0;
+    }
+    block.experience.as_ref().map_or(0, |experience| {
         let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(get_seed()));
-        let amount = experience.experience.get(&mut random);
-        if amount > 0 {
-            let mut event = crate::plugin::block::block_exp::BlockExpEvent {
-                block_pos: *pos,
-                world: world.clone(),
-                exp: amount,
-            };
-            if let Some(server) = world.server.upgrade() {
-                server.plugin_manager.fire_blocking(&server, &mut event);
-            }
-            if event.exp > 0 {
-                ExperienceOrbEntity::spawn(world, pos.to_f64(), event.exp as u32);
-            }
+        u32::try_from(experience.experience.get(&mut random)).unwrap_or(0)
+    })
+}
+
+/// Fires `BlockExpEvent` for `amount` and spawns the orbs.
+pub fn drop_experience(world: &Arc<World>, pos: &BlockPos, amount: u32) {
+    if amount > 0 {
+        let mut event = crate::plugin::block::block_exp::BlockExpEvent {
+            block_pos: *pos,
+            world: world.clone(),
+            exp: i32::try_from(amount).unwrap_or(i32::MAX),
+        };
+        if let Some(server) = world.server.upgrade() {
+            server.plugin_manager.fire_blocking(&server, &mut event);
+        }
+        if event.exp > 0 {
+            ExperienceOrbEntity::spawn(world, pos.to_f64(), event.exp as u32);
         }
     }
 }

@@ -382,18 +382,25 @@ impl ToFromWasmEvent
         })
     }
 
+    fn apply_wasm_event(&mut self, event: Event, _state: &mut PluginHostState) {
+        // The Wasm data has no world: keep the native one.
+        if let Event::EntityExplodeEvent(data) = event {
+            self.entity_id = data.entity_id;
+            self.position = pumpkin_util::math::vector3::Vector3::new(
+                data.position.0,
+                data.position.1,
+                data.position.2,
+            );
+            self.yield_rate = data.yield_rate;
+            self.cancelled = data.cancelled;
+        }
+    }
+
     fn from_wasm_event(event: Event, _state: &mut PluginHostState) -> Self {
         match event {
-            Event::EntityExplodeEvent(data) => Self {
-                entity_id: data.entity_id,
-                position: pumpkin_util::math::vector3::Vector3::new(
-                    data.position.0,
-                    data.position.1,
-                    data.position.2,
-                ),
-                yield_rate: data.yield_rate,
-                cancelled: data.cancelled,
-            },
+            Event::EntityExplodeEvent(_) => {
+                panic!("Cannot construct EntityExplodeEvent from WASM")
+            }
             _ => panic!("unexpected event type"),
         }
     }

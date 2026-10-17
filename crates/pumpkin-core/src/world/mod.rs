@@ -441,7 +441,7 @@ impl World {
         }
     }
 
-    pub fn update_active_chunks(&self) {
+    pub fn update_active_chunks(self: &Arc<Self>) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
         }) as i32;
@@ -497,7 +497,9 @@ impl World {
                 self.migrate_pending_block_entities(pos);
             }
         }
+        let mut changes = Vec::new();
         for change in self.level.loaded_chunk_changes() {
+            changes.push(change);
             match change {
                 pumpkin_world::level::LoadedChunkChange::Loaded(pos) => {
                     if active_chunks.contains(&pos)
@@ -526,6 +528,7 @@ impl World {
         let spawnable_chunks = tracker.loaded_active_chunks.len() as i32;
         drop(active_chunks);
         drop(tracker);
+        crate::plugin::level_events::chunk_changes(self, &changes);
 
         self.spawn_state.store(Arc::new(SpawnState::new(
             spawnable_chunks,
@@ -916,6 +919,11 @@ impl World {
             _ => {}
         }
         self.level_info.store(Arc::new(new_info));
+        if let Some(server) = self.server.upgrade() {
+            crate::plugin::level_events::game_rule_changed(&server, rule, || {
+                self.get_game_rule(rule)
+            });
+        }
         if *rule == GameRule::AdvanceTime {
             let level_time = self
                 .level_time
@@ -1680,8 +1688,11 @@ impl World {
                 let _guard = entity_handle.enter();
 
                 for (entity, entity_chunk) in batch {
-                    entity.get_entity().age.fetch_add(1, Relaxed);
-                    entity.tick(entity.as_ref(), server_ref);
+                    if crate::plugin::level_events::entity_tick_pre(server, entity) {
+                        entity.get_entity().age.fetch_add(1, Relaxed);
+                        entity.tick(entity.as_ref(), server_ref);
+                        crate::plugin::level_events::entity_tick_post(server, entity);
+                    }
 
                     let entity_inner = entity.get_entity();
                     let entity_pos = entity_inner.pos.load();
@@ -3905,12 +3916,17 @@ impl World {
 
     fn run_explosion(self: &Arc<Self>, explosion: &Explosion, position: Vector3<f64>, power: f32) {
         if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
-                crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
-                    0, position, power,
-                )
-            })
-            && event.cancelled
+            && server
+                .plugin_manager
+                .fire_blocking_with(&server, || {
+                    crate::plugin::api::events::entity::entity_explode::EntityExplodeEvent::new(
+                        0,
+                        position,
+                        power,
+                        self.clone(),
+                    )
+                })
+                .is_some_and(|event| event.cancelled)
         {
             return;
         }
@@ -4131,7 +4147,13 @@ impl World {
                         // Detach from the old world before publishing into the new one, so no
                         // observer sees the player in a world whose chunk manager doesn't match.
                         self.remove_player(player, false).await;
+                        let watched = player.watched_section.load();
                         player.unload_watched_chunks(self).await;
+                        crate::plugin::level_events::chunk_unwatch(
+                            player,
+                            self,
+                            watched.all_chunks_within(),
+                        );
                         player.change_world_chunks(&self.level, &destination);
                         player.living_entity.entity.set_world(destination.clone());
                         destination.players.rcu(|current_list| {
@@ -5375,26 +5397,15 @@ impl World {
             flags.remove(BlockFlags::SKIP_DROPS);
         }
 
-        if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
-                BlockBreakEvent::new(
-                    cause.cloned(),
-                    broken_block,
-                    *position,
-                    0,
-                    !flags.contains(BlockFlags::SKIP_DROPS),
-                )
-            })
-        {
-            if event.cancelled {
-                return None;
-            }
-            if event.drop {
-                flags.remove(BlockFlags::SKIP_DROPS);
-            } else {
-                flags.insert(BlockFlags::SKIP_DROPS);
-            }
-        }
+        let (drop, exp) = crate::plugin::level_events::block_break(
+            self,
+            cause,
+            broken_block,
+            broken_block_state,
+            position,
+            !flags.contains(BlockFlags::SKIP_DROPS),
+        )?;
+        flags.set(BlockFlags::SKIP_DROPS, !drop);
 
         if !flags.contains(BlockFlags::SKIP_DROPS) {
             let tool = cause.as_ref().and_then(|p| {
@@ -5408,7 +5419,10 @@ impl World {
                 killed_by_player: Some(cause.is_some()),
                 ..Default::default()
             };
-            crate::block::drop_loot(self, broken_block, position, true, &params);
+            crate::block::drop_loot(self, broken_block, position, exp.is_none(), &params);
+            if let Some(exp) = exp {
+                crate::block::drop_experience(self, position, exp);
+            }
         }
 
         let new_state_id = if broken_block.is_waterlogged(broken_block_state.id) {
@@ -5472,16 +5486,24 @@ impl World {
         }
 
         let mut drop = drop;
+        // Without a handler the experience stays `None` and `drop_loot` rolls it.
+        let mut exp = None;
         if let Some(server) = self.server.upgrade()
             && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
                 let player = breaker.and_then(|breaker| self.get_player_by_id(cause_id(breaker)));
-                BlockBreakEvent::new(player, block, *position, 0, drop)
+                let exp = if drop {
+                    crate::block::experience_to_drop(block, None)
+                } else {
+                    0
+                };
+                BlockBreakEvent::new(player, block, state, *position, exp, drop)
             })
         {
             if event.cancelled {
                 return false;
             }
             drop = event.drop;
+            exp = Some(event.exp);
         }
 
         // Vanilla skips the break effect for a `BaseFireBlock`.
@@ -5499,7 +5521,10 @@ impl World {
                 this_entity: breaker.map(|breaker| breaker.get_entity().entity_type),
                 ..Default::default()
             };
-            crate::block::drop_loot(self, block, position, true, &params);
+            crate::block::drop_loot(self, block, position, exp.is_none(), &params);
+            if let Some(exp) = exp {
+                crate::block::drop_experience(self, position, exp);
+            }
         }
         let new_state_id = if block.is_waterlogged(state.id) {
             Block::WATER.default_state.id

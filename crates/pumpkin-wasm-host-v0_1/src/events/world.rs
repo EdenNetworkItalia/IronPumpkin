@@ -55,16 +55,19 @@ impl ToFromWasmEvent for ChunkLoad {
             .add(self.world.clone())
             .expect("failed to add world resource");
 
-        let (chunk_x, chunk_z) = self
-            .chunk
-            .try_read()
-            .map_or((0, 0), |guard| (guard.x, guard.z));
         Event::ChunkLoadEvent(ChunkLoadEventData {
             target_world,
-            chunk_x,
-            chunk_z,
+            chunk_x: self.chunk.x,
+            chunk_z: self.chunk.z,
             cancelled: self.cancelled,
         })
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The Wasm data has the chunk position only: keep the native chunk.
+        let chunk = self.chunk.clone();
+        *self = Self::from_wasm_event(event, state);
+        self.chunk = chunk;
     }
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
@@ -94,7 +97,7 @@ impl ToFromWasmEvent for ChunkLoad {
                 };
                 Self {
                     world,
-                    chunk: Arc::new(tokio::sync::RwLock::new(chunk_data)),
+                    chunk: Arc::new(chunk_data),
                     cancelled: data.cancelled,
                 }
             }

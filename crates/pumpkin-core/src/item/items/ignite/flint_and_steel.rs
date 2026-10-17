@@ -65,6 +65,8 @@ impl ItemBehaviour for FlintAndSteelItem {
             location,
             location.offset(face.to_offset()),
             block,
+            Some(player),
+            item,
         );
 
         if ignited && player.gamemode.load() != pumpkin_util::GameMode::Creative {

@@ -95,6 +95,7 @@ trait CropBlockBase: PlantBlockBase {
                         return;
                     }
                     world.set_block_state(pos, event.new_state_id, BlockFlags::NOTIFY_LISTENERS);
+                    crate::plugin::level_events::crop_grow_post(world, pos, state);
                 } else {
                     world.set_block_state(pos, new_state_id, BlockFlags::NOTIFY_LISTENERS);
                 }
