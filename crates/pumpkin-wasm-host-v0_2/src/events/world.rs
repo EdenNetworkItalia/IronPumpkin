@@ -64,10 +64,11 @@ impl ToFromWasmEvent for ChunkLoad {
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        // The Wasm data has the chunk position only: keep the native chunk.
-        let chunk = self.chunk.clone();
-        *self = Self::from_wasm_event(event, state);
-        self.chunk = chunk;
+        // The Wasm data has the chunk position only: keep the native world and chunk.
+        cleanup_event(&event, state);
+        if let Event::ChunkLoadEvent(data) = event {
+            self.cancelled = data.cancelled;
+        }
     }
 
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
