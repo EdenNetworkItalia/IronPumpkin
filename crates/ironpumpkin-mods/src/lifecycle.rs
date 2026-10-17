@@ -7,10 +7,10 @@
 //! Then `CommonModLoader.load` runs common setup, sided setup (`FMLDedicatedServerSetupEvent` on
 //! a dedicated server), `ExtendPoiTypesEvent` (`RegistrationEvents.init`), enqueue IMC, process
 //! IMC and load complete. The registration events are methods of `NativeMod` too: see
-//! [`registration`](crate::registration). `NetworkRegistry.setup` then posts `RegisterPayloadHandlersEvent`, and
-//! `ServerLifecycleHooks.handleServerAboutToStart` loads the synced configs. Each
-//! step calls the method of every mod in load order before the next step starts, and each method
-//! runs on its own mod only, as each `NeoForge` mod has its own mod bus.
+//! [`registration`](crate::registration). `NetworkRegistry.setup` then posts
+//! `RegisterPayloadHandlersEvent`, and `ServerLifecycleHooks.handleServerAboutToStart` loads the
+//! synced configs. Each step calls the method of every mod in load order before the next step
+//! starts, and each method runs on its own mod only, as each `NeoForge` mod has its own mod bus.
 //!
 //! `RegisterEvent` is a Pumpkin event, because a `NeoForge` mod registers its listener on the mod
 //! bus: a mod registers a handler with [`ModInit::register_event`](crate::ModInit::register_event)
@@ -47,8 +47,8 @@ pub(crate) const REGISTRIES: [ContentKind; 7] = [
 /// Runs the steps after the last [`NativeMod::init`](crate::NativeMod::init): `RegisterEvent`
 /// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
 /// handlers or `None` when no handler listens, then the registration events and the lifecycle
-/// steps, with the local configs loaded before common setup, then the payload registration step `register_payload_handlers`, and the
-/// synced configs last.
+/// steps, with the local configs loaded before common setup, then the payload registration step
+/// `register_payload_handlers`, and the synced configs last.
 ///
 /// # Errors
 ///
