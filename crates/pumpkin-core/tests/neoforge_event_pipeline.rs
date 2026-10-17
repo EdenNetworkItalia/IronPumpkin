@@ -433,6 +433,19 @@ fn a_mod_places_a_block_through_the_world() {
     assert_eq!(entries(&placers), ["true stone"]);
 }
 
+/// `World::destroy_block` leaves the fluid of the block, as `Level.destroyBlock` sets
+/// `getFluidState(pos).createLegacyBlock()`: a seagrass leaves water.
+#[test]
+fn destroy_block_leaves_the_fluid_of_the_block() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(8, 120, 1);
+    set_loaded(pos, &Block::SEAGRASS);
+
+    assert!(world.destroy_block(&pos, false, None));
+    assert!(is(pos, &Block::WATER), "the seagrass left no water");
+}
+
 #[test]
 fn a_cause_less_set_block_state_fires_no_event() {
     let _serial = support::serial();

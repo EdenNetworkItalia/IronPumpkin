@@ -5440,17 +5440,7 @@ impl World {
             && broken_block != &Block::FIRE
             && broken_block != &Block::SOUL_FIRE
         {
-            let je_packet = CWorldEvent::new(
-                WorldEvent::ParticlesAndSoundDestroyBlock as i32,
-                *position,
-                broken_state_id.as_u16().into(),
-                false,
-            );
-            let be_packet = CLevelEvent {
-                event_id: VarInt(LevelEvent::ParticlesDestroyBlock as i32),
-                position: position.to_centered_f64().to_f32_lossy(),
-                data: VarInt(BlockState::to_be_network_id(broken_state_id) as i32),
-            };
+            let (je_packet, be_packet) = Self::destroy_block_effect(position, broken_state_id);
             let chunk_pos = position.chunk_position();
             if let Some(player) = cause {
                 // Java predicts its own break effect; Bedrock needs the server event.
@@ -5469,6 +5459,27 @@ impl World {
         }
 
         Some(broken_state_id)
+    }
+
+    /// The particles and the sound of the break of `state_id` at `position`, for each edition
+    /// (world event 2001).
+    fn destroy_block_effect(
+        position: &BlockPos,
+        state_id: BlockStateId,
+    ) -> (CWorldEvent, CLevelEvent) {
+        (
+            CWorldEvent::new(
+                WorldEvent::ParticlesAndSoundDestroyBlock as i32,
+                *position,
+                state_id.as_u16().into(),
+                false,
+            ),
+            CLevelEvent {
+                event_id: VarInt(LevelEvent::ParticlesDestroyBlock as i32),
+                position: position.to_centered_f64().to_f32_lossy(),
+                data: VarInt(BlockState::to_be_network_id(state_id) as i32),
+            },
+        )
     }
 
     /// Breaks the block at `position` as vanilla `Level.destroyBlock` does: a break without a
@@ -5507,11 +5518,8 @@ impl World {
 
         // Vanilla skips the break effect for a `BaseFireBlock`.
         if block != &Block::FIRE && block != &Block::SOUL_FIRE {
-            self.sync_world_event(
-                WorldEvent::ParticlesAndSoundDestroyBlock,
-                *position,
-                i32::from(state.id.as_u16()),
-            );
+            let (je_packet, be_packet) = Self::destroy_block_effect(position, state.id);
+            self.broadcast_to_chunk_editioned(position.chunk_position(), &je_packet, &be_packet);
         }
         if drop {
             let params = crate::world::loot::LootContextParameters {
@@ -5525,12 +5533,9 @@ impl World {
                 crate::block::drop_experience(self, position, exp);
             }
         }
-        let new_state_id = if block.is_waterlogged(state.id) {
-            Block::WATER.default_state.id
-        } else {
-            Block::AIR.default_state.id
-        };
-        self.set_block_state(position, new_state_id, BlockFlags::NOTIFY_ALL);
+        // `getFluidState(pos).createLegacyBlock()`: kelp, seagrass and bubble columns leave water.
+        let (_, fluid_state) = self.get_fluid_and_fluid_state(position);
+        self.set_block_state(position, fluid_state.block_state_id, BlockFlags::NOTIFY_ALL);
         self.emit_game_event(
             pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
             position.to_centered_f64(),
