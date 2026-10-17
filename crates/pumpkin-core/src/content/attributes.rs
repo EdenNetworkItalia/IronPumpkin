@@ -99,42 +99,44 @@ pub fn default_attributes(entity_type: &'static EntityType) -> AttributeList {
         .unwrap_or(entity_type.attributes)
 }
 
-#[cold]
-#[inline(never)]
 fn table() -> Option<&'static FxHashMap<u16, AttributeList>> {
     // A custom type gets its id at the freeze, so the table waits for it.
     dynamic::tables()?;
-    Some(TABLE.get_or_init(|| {
-        let pending = PENDING
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take()
-            .unwrap_or_default();
-        let mut table = FxHashMap::default();
-        let names: Vec<&String> = pending.created.keys().chain(pending.added.keys()).collect();
-        for name in names {
-            let Some(entity_type) = EntityType::from_name(name) else {
-                continue;
-            };
-            if table.contains_key(&entity_type.id) {
-                continue;
-            }
-            let mut attributes = pending
-                .created
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| entity_type.attributes.to_vec());
-            for (attribute, value) in pending.added.get(name).into_iter().flatten() {
-                match attributes.iter_mut().find(|(a, _)| a == attribute) {
-                    Some(entry) => entry.1 = *value,
-                    None => attributes.push((attribute.clone(), *value)),
-                }
-            }
-            let attributes: AttributeList = Box::leak(attributes.into_boxed_slice());
-            table.insert(entity_type.id, attributes);
+    Some(TABLE.get_or_init(build_table))
+}
+
+#[cold]
+#[inline(never)]
+fn build_table() -> FxHashMap<u16, AttributeList> {
+    let pending = PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take()
+        .unwrap_or_default();
+    let mut table = FxHashMap::default();
+    let names: Vec<&String> = pending.created.keys().chain(pending.added.keys()).collect();
+    for name in names {
+        let Some(entity_type) = EntityType::from_name(name) else {
+            continue;
+        };
+        if table.contains_key(&entity_type.id) {
+            continue;
         }
-        table
-    }))
+        let mut attributes = pending
+            .created
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| entity_type.attributes.to_vec());
+        for (attribute, value) in pending.added.get(name).into_iter().flatten() {
+            match attributes.iter_mut().find(|(a, _)| a == attribute) {
+                Some(entry) => entry.1 = *value,
+                None => attributes.push((attribute.clone(), *value)),
+            }
+        }
+        let attributes: AttributeList = Box::leak(attributes.into_boxed_slice());
+        table.insert(entity_type.id, attributes);
+    }
+    table
 }
 
 /// The names of the entity types that got a full attribute set from the creation event.

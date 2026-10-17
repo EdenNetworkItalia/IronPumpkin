@@ -180,35 +180,37 @@ impl Placement {
     }
 }
 
-#[cold]
-#[inline(never)]
 fn table() -> Option<&'static FxHashMap<u16, Placement>> {
     // A custom type gets its id at the freeze, so the table waits for it.
     dynamic::tables()?;
-    Some(TABLE.get_or_init(|| {
-        let pending = std::mem::take(&mut *PENDING.lock().unwrap_or_else(PoisonError::into_inner));
-        pending
-            .into_iter()
-            .filter(|(name, _)| !dynamic::is_placeholder(ContentKind::EntityType, name))
-            .filter_map(|(name, predicate)| {
-                let entity_type = EntityType::from_name(&name)?;
-                let restriction = SpawnRestriction {
-                    location: predicate
-                        .location
-                        .clone()
-                        .unwrap_or_else(|| entity_type.spawn_restriction.location.clone()),
-                    heightmap: predicate
-                        .heightmap
-                        .unwrap_or(entity_type.spawn_restriction.heightmap),
-                };
-                Some((
-                    entity_type.id,
-                    Placement {
-                        predicate,
-                        restriction,
-                    },
-                ))
-            })
-            .collect()
-    }))
+    Some(TABLE.get_or_init(build_table))
+}
+
+#[cold]
+#[inline(never)]
+fn build_table() -> FxHashMap<u16, Placement> {
+    let pending = std::mem::take(&mut *PENDING.lock().unwrap_or_else(PoisonError::into_inner));
+    pending
+        .into_iter()
+        .filter(|(name, _)| !dynamic::is_placeholder(ContentKind::EntityType, name))
+        .filter_map(|(name, predicate)| {
+            let entity_type = EntityType::from_name(&name)?;
+            let restriction = SpawnRestriction {
+                location: predicate
+                    .location
+                    .clone()
+                    .unwrap_or_else(|| entity_type.spawn_restriction.location.clone()),
+                heightmap: predicate
+                    .heightmap
+                    .unwrap_or(entity_type.spawn_restriction.heightmap),
+            };
+            Some((
+                entity_type.id,
+                Placement {
+                    predicate,
+                    restriction,
+                },
+            ))
+        })
+        .collect()
 }

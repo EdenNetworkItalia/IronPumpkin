@@ -68,19 +68,19 @@ pub fn profession_for_block(block: &Block) -> Option<VillagerProfession> {
     table()?.get(&block.id.as_u16()).copied()
 }
 
-#[cold]
-#[inline(never)]
 fn table() -> Option<&'static FxHashMap<u16, VillagerProfession>> {
     // A custom block gets its id at the freeze, so the table waits for it.
     dynamic::tables()?;
-    Some(TABLE.get_or_init(|| {
-        PENDING
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter_map(|(name, profession)| {
-                Some((Block::from_name(name)?.id.as_u16(), *profession))
-            })
-            .collect()
-    }))
+    Some(TABLE.get_or_init(build_table))
+}
+
+#[cold]
+#[inline(never)]
+fn build_table() -> FxHashMap<u16, VillagerProfession> {
+    PENDING
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .iter()
+        .filter_map(|(name, profession)| Some((Block::from_name(name)?.id.as_u16(), *profession)))
+        .collect()
 }
