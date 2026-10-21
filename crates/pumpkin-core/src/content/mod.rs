@@ -320,8 +320,7 @@ fn block_display(display: &str) -> Option<BlockStateId> {
     // `Block::from_properties` keeps the default for a value the block does not have, and the file
     // is edited by hand: search the states, so a display that names no state is rejected.
     block.states.iter().map(|state| state.id).find(|&id| {
-        block.properties(id).is_some_and(|properties| {
-            let values = properties.to_props();
+        block.string_properties(id).is_some_and(|values| {
             props
                 .iter()
                 .all(|pair| values.iter().any(|value| value == pair))
@@ -341,9 +340,8 @@ fn entity_type_display(display: &str) -> Option<&'static EntityType> {
 fn state_string(id: BlockStateId) -> String {
     let block = id.to_block();
     let mut text = dynamic::namespaced_name(block.name).into_owned();
-    if let Some(properties) = block.properties(id) {
+    if let Some(properties) = block.string_properties(id) {
         let pairs: Vec<String> = properties
-            .to_props()
             .into_iter()
             .map(|(key, value)| format!("{key}={value}"))
             .collect();
@@ -361,10 +359,9 @@ fn manifest_of(tables: &'static ContentTables) -> Manifest {
         .zip(tables.block_properties())
         .map(|(block, properties)| {
             let default = block
-                .properties(block.default_state.id)
+                .string_properties(block.default_state.id)
                 .map(|props| {
                     props
-                        .to_props()
                         .into_iter()
                         .map(|(key, value)| (key.to_string(), value.to_string()))
                         .collect()

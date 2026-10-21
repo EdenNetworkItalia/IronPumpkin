@@ -54,7 +54,7 @@ use pumpkin_core::{
     world::{ExplosionInteraction, chunker, natural_spawner},
 };
 use pumpkin_data::{
-    Block, BlockDirection, BlockStateId,
+    Block, BlockDirection, BlockStateId, Property,
     biome::Spawner,
     block_properties::{
         CampfireLikeProperties, DispenserLikeProperties, Facing, NoteBlockLikeProperties,
@@ -1070,10 +1070,11 @@ fn update_chunks_until(seen: &Log, expected: &[&str]) {
 #[test]
 fn one_event_per_fire_site_chunk_load_and_unload_events() {
     let _serial = support::serial();
-    let chunk = spot(22).chunk_position();
+    // The other slots keep their force tickets, which keep their neighbours loaded.
+    let chunk = spot(64).chunk_position();
     let seen = log_chunk_events(chunk);
 
-    load(spot(22));
+    load(spot(64));
     update_chunks_until(&seen, &["load"]);
 
     unload(chunk);
@@ -1101,7 +1102,7 @@ fn a_chunk_loaded_and_unloaded_within_one_tick_fires_no_chunk_event() {
 fn water_between_sources(pos: BlockPos) {
     let east = BlockPos::new(1, 0, 0).0;
     let flowing = Block::WATER
-        .from_properties(&[("level", "1")])
+        .from_properties(&[Property::Level(1)])
         .to_state_id(&Block::WATER);
     for offset in [-1, 0, 1] {
         let at = pos.offset(east * offset);

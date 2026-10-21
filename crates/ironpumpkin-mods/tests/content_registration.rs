@@ -112,7 +112,7 @@ fn a_mod_registers_a_block_and_an_item_that_the_registry_holds() {
     let lamp = Block::from_name("sample-mod:copper_lamp").unwrap();
     assert!(lamp.id.as_u16() >= Block::FIRST_CUSTOM_ID);
     assert_eq!(lamp.states.len(), 6);
-    let defaults = lamp.properties(lamp.default_state.id).unwrap().to_props();
+    let defaults = lamp.string_properties(lamp.default_state.id).unwrap();
     assert_eq!(defaults, vec![("level", "2"), ("lit", "false")]);
     assert_eq!(
         lamp.to_java_network_id(pumpkin_data::dynamic::ContentIds::Display),

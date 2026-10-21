@@ -22,7 +22,7 @@ fn parse(input: &str) -> Result<BlockStateArgument, CommandSyntaxError> {
 
 /// The property values of `state`, sorted by name.
 fn props(block: &Block, state: BlockStateId) -> Vec<(&'static str, &'static str)> {
-    let mut props = block.properties(state).unwrap().to_props();
+    let mut props = block.string_properties(state).unwrap();
     props.sort_unstable();
     props
 }

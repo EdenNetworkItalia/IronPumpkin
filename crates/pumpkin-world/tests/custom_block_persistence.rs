@@ -18,7 +18,7 @@ use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_world::chunk::ChunkData;
-use pumpkin_world::chunk::format::anvil::{AnvilChunkFile, SingleChunkDataSerializer};
+use pumpkin_world::chunk::format::anvil::{AnvilRegion, SingleChunkDataSerializer};
 use pumpkin_world::chunk::io::{Dirtiable, FileIO, LoadedData, file_manager::ChunkFileManager};
 use pumpkin_world::level::LevelFolder;
 
@@ -126,7 +126,7 @@ fn runtime() -> tokio::runtime::Runtime {
 
 fn save(world: &Path, chunks: Vec<Arc<ChunkData>>) {
     let folder = level_folder(world);
-    let manager = ChunkFileManager::<AnvilChunkFile<ChunkData>>::new(AnvilChunkConfig::default());
+    let manager = ChunkFileManager::<AnvilRegion, ChunkData>::new(AnvilChunkConfig::default());
     let data = chunks
         .into_iter()
         .map(|chunk| {
@@ -141,7 +141,7 @@ fn save(world: &Path, chunks: Vec<Arc<ChunkData>>) {
 
 fn load(world: &Path) -> Vec<Arc<ChunkData>> {
     let folder = level_folder(world);
-    let manager = ChunkFileManager::<AnvilChunkFile<ChunkData>>::new(AnvilChunkConfig::default());
+    let manager = ChunkFileManager::<AnvilRegion, ChunkData>::new(AnvilChunkConfig::default());
     let (send, mut receive) = tokio::sync::mpsc::channel(CHUNKS.len());
     let mut chunks = Vec::new();
     runtime().block_on(async {
@@ -166,8 +166,7 @@ fn load(world: &Path) -> Vec<Arc<ChunkData>> {
 
 fn sorted_props(id: BlockStateId) -> String {
     let mut props: Vec<String> = Block::from_state_id(id)
-        .properties(id)
-        .map(|props| props.to_props())
+        .string_properties(id)
         .unwrap_or_default()
         .into_iter()
         .map(|(name, value)| format!("{name}={value}"))
@@ -285,7 +284,7 @@ fn start_and_place(world: &Path) {
         let entries = palette_entries(chunk);
         for state in lamp.states {
             let mut properties = NbtCompound::new();
-            for (name, value) in lamp.properties(state.id).unwrap().to_props() {
+            for (name, value) in lamp.string_properties(state.id).unwrap() {
                 properties.put_string(name, value.to_string());
             }
             let mut expected = NbtCompound::new();

@@ -29,7 +29,7 @@ fn matches(predicate: &str, state: BlockStateId) -> bool {
 }
 
 fn state(block: &Block, properties: &[(&str, &str)]) -> BlockStateId {
-    block.from_properties(properties).to_state_id(block)
+    block.from_string_properties(properties).to_state_id(block)
 }
 
 fn text(value: &str) -> TextComponent {

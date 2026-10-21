@@ -79,10 +79,7 @@ impl BlockPredicate {
                 if properties.is_empty() {
                     return true;
                 }
-                let actual = block
-                    .properties(state)
-                    .map(|actual| actual.to_props())
-                    .unwrap_or_default();
+                let actual = block.string_properties(state).unwrap_or_default();
                 properties.iter().all(|property| actual.contains(property))
             }
             Self::Tag {
@@ -97,10 +94,7 @@ impl BlockPredicate {
                 if properties.is_empty() {
                     return true;
                 }
-                let actual = block
-                    .properties(state)
-                    .map(|actual| actual.to_props())
-                    .unwrap_or_default();
+                let actual = block.string_properties(state).unwrap_or_default();
                 properties.iter().all(|(name, input)| {
                     let Some((_, value)) = actual.iter().find(|(known, _)| known == name) else {
                         return false;
@@ -305,7 +299,7 @@ mod test {
     }
 
     fn state(block: &Block, properties: &[(&str, &str)]) -> BlockStateId {
-        block.from_properties(properties).to_state_id(block)
+        block.from_string_properties(properties).to_state_id(block)
     }
 
     fn snbt(input: &str) -> NbtCompound {

@@ -2,7 +2,7 @@ pub mod state_nbt;
 
 use std::collections::HashMap;
 
-use pumpkin_data::{Block, BlockState, BlockStateId};
+use pumpkin_data::{Block, BlockState, BlockStateId, Property};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -55,8 +55,8 @@ impl BlockStateCodec {
 
         let props_iter = properties_map
             .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect::<Vec<(&str, &str)>>();
+            .filter_map(|(k, v)| Property::from_str_pair(k, v))
+            .collect::<Vec<Property>>();
 
         let block_properties = block.from_properties(&props_iter);
         block_properties.to_state_id(block)

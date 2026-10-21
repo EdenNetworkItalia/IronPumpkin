@@ -248,7 +248,7 @@ fn start_without_mod(world: &Path) {
     assert!(dynamic::is_placeholder(ContentKind::Block, "test:lamp"));
     assert_eq!(lamp.states.len(), 8);
     assert_eq!(
-        lamp.properties(lamp.default_state.id).unwrap().to_props(),
+        lamp.string_properties(lamp.default_state.id).unwrap(),
         [("facing", "west"), ("lit", "false")]
     );
     assert_eq!(

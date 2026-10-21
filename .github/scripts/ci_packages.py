@@ -83,6 +83,12 @@ RUST_CI_IGNORED_FILES = {
 WIT_ROOT = Path("crates/pumpkin-plugin-wit")
 # Its own Cargo workspace, built by the `blueprint` job rather than by the package jobs.
 BLUEPRINT_ROOT = Path("blueprint")
+# Crates that generate Rust bindings from the WIT files; their dependents follow from the closure.
+WIT_CONSUMER_PACKAGES = {
+    "pumpkin-plugin-api",
+    "pumpkin-wasm-host-v0_1",
+    "pumpkin-wasm-host-v0_2",
+}
 
 
 def run_command(command: list[str], *, capture: bool = False) -> str:
@@ -206,6 +212,15 @@ def select_packages(
         if matching_roots:
             package_root = max(matching_roots, key=lambda root: len(root.parts))
             directly_affected.add(package_roots[package_root])
+            continue
+
+        # WIT packages have their own validation job and no Cargo manifest.
+        if path == WIT_ROOT or WIT_ROOT in path.parents:
+            directly_affected.update(
+                package
+                for package in WIT_CONSUMER_PACKAGES
+                if package in reverse_dependencies
+            )
             continue
 
         if is_rust_ci_ignored_change(path):

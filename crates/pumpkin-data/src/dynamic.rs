@@ -35,7 +35,7 @@ use pumpkin_util::identifier::{Identifier, VANILLA_NAMESPACE};
 #[cfg(feature = "item")]
 use pumpkin_util::text::hover::HoverEvent;
 
-use crate::block_properties::{BlockProperties, BlockProperty};
+use crate::block_properties::{BlockProperties, BlockProperty, Property};
 use crate::dynamic_types;
 #[cfg(feature = "entity_type")]
 use crate::entity_type::EntityType;
@@ -1728,11 +1728,44 @@ pub(crate) fn properties(
 /// properties (one state, the default).
 #[cold]
 #[inline(never)]
-pub(crate) fn properties_from_props(
-    block: &Block,
-    props: &[(&str, &str)],
-) -> Box<dyn BlockProperties> {
+pub(crate) fn properties_from_props(block: &Block, props: &[Property]) -> Box<dyn BlockProperties> {
     Box::new(DynamicProperties::from_props(props, block))
+}
+
+impl Block {
+    /// The property names and values of the state `id`, like `properties(id)?.to_props()` as
+    /// strings. A registered block also gives its properties that have no [`Property`] variant.
+    #[must_use]
+    pub fn string_properties(&self, id: BlockStateId) -> Option<Vec<(&'static str, &'static str)>> {
+        if is_custom_block(self.id.as_u16()) {
+            if properties_of(self.id).is_empty() {
+                return None;
+            }
+            return Some(DynamicProperties::from_state_id(id, self).string_props());
+        }
+        let properties = self.properties(id)?.to_props();
+        Some(
+            properties
+                .into_iter()
+                .map(|property| (property.key_str(), property.value_str()))
+                .collect(),
+        )
+    }
+
+    /// The properties of this block from names and values, like `from_properties`. Unknown names
+    /// and values keep the default. A registered block also reads its properties that have no
+    /// [`Property`] variant.
+    #[must_use]
+    pub fn from_string_properties(&self, props: &[(&str, &str)]) -> Box<dyn BlockProperties> {
+        if is_custom_block(self.id.as_u16()) {
+            return Box::new(DynamicProperties::from_string_props(props, self));
+        }
+        let props: Vec<Property> = props
+            .iter()
+            .filter_map(|(name, value)| Property::from_str_pair(name, value))
+            .collect();
+        self.from_properties(&props)
+    }
 }
 
 /// The property values of one state of a custom block: the state's index in the block's states.
@@ -1758,6 +1791,43 @@ impl DynamicProperties {
             .collect();
         values.reverse();
         values
+    }
+
+    fn string_props(&self) -> Vec<(&'static str, &'static str)> {
+        self.properties
+            .iter()
+            .zip(self.value_indices())
+            .map(|(property, value)| (property.name, property.values[value]))
+            .collect()
+    }
+
+    /// Starts from the default state. Unknown names and values keep the default value.
+    fn from_string_props(props: &[(&str, &str)], block: &Block) -> Self {
+        let default = Self::default(block);
+        let mut values = default.value_indices();
+        for (name, value) in props {
+            let Some(property) = default.properties.iter().position(|p| p.name == *name) else {
+                continue;
+            };
+            if let Some(value) = default.properties[property]
+                .values
+                .iter()
+                .position(|v| v == value)
+            {
+                values[property] = value;
+            }
+        }
+        let index = default
+            .properties
+            .iter()
+            .zip(values)
+            .fold(0, |index, (property, value)| {
+                index * property.values.len() + value
+            });
+        Self {
+            properties: default.properties,
+            index: index as u16,
+        }
     }
 }
 
@@ -1804,41 +1874,21 @@ impl BlockProperties for DynamicProperties {
         Self::from_state_id(block.default_state.id, block)
     }
 
-    fn to_props(&self) -> Vec<(&'static str, &'static str)> {
-        self.properties
-            .iter()
-            .zip(self.value_indices())
-            .map(|(property, value)| (property.name, property.values[value]))
+    /// Only the properties that have a [`Property`] variant: [`Block::string_properties`] gives
+    /// all of them.
+    fn to_props(&self) -> Vec<Property> {
+        self.string_props()
+            .into_iter()
+            .filter_map(|(name, value)| Property::from_str_pair(name, value))
             .collect()
     }
 
-    /// Starts from the default state. Unknown names and values keep the default value.
-    fn from_props(props: &[(&str, &str)], block: &Block) -> Self {
-        let default = Self::default(block);
-        let mut values = default.value_indices();
-        for (name, value) in props {
-            let Some(property) = default.properties.iter().position(|p| p.name == *name) else {
-                continue;
-            };
-            if let Some(value) = default.properties[property]
-                .values
-                .iter()
-                .position(|v| v == value)
-            {
-                values[property] = value;
-            }
-        }
-        let index = default
-            .properties
+    fn from_props(props: &[Property], block: &Block) -> Self {
+        let props: Vec<(&str, &str)> = props
             .iter()
-            .zip(values)
-            .fold(0, |index, (property, value)| {
-                index * property.values.len() + value
-            });
-        Self {
-            properties: default.properties,
-            index: index as u16,
-        }
+            .map(|property| (property.key_str(), property.value_str()))
+            .collect();
+        Self::from_string_props(&props, block)
     }
 }
 
@@ -2434,7 +2484,7 @@ mod tests {
             properties: tables.block_properties()[block],
             index,
         }
-        .to_props()
+        .string_props()
     }
 
     #[test]
@@ -2537,7 +2587,7 @@ mod tests {
 
         assert_eq!(tables.blocks()[0].states.len(), vanilla.states.len());
         for (index, state) in vanilla.states.iter().enumerate() {
-            let expected = vanilla.properties(state.id).unwrap().to_props();
+            let expected = vanilla.string_properties(state.id).unwrap();
             assert_eq!(props_at(&tables, 0, index as u16), expected);
         }
         let default = vanilla

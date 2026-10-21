@@ -251,11 +251,10 @@ pub(crate) fn to_wit_block_state(
     let internal_pos = pos.unwrap_or(&dummy_pos);
     let block = pumpkin_data::Block::from_state_id(state.id);
     let properties = block
-        .properties(state.id)
+        .string_properties(state.id)
         .map(|p| {
-            p.to_props()
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
+            p.into_iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
                 .collect()
         })
         .unwrap_or_default();
@@ -427,7 +426,7 @@ impl pumpkin::plugin::world::Host for PluginHostState {
         // An unknown property value keeps the default, but a panic must not cross the host
         // boundary when a schematic comes from another MC version.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let block_props = block.from_properties(&props);
+            let block_props = block.from_string_properties(&props);
             block_props.to_state_id(block).as_u16()
         }));
         Ok(result.ok())
@@ -442,11 +441,10 @@ impl pumpkin::plugin::world::Host for PluginHostState {
             let block = pumpkin_data::Block::from_state_id(bsid);
             let name = pumpkin_data::dynamic::namespaced_name(block.name).into_owned();
             let properties = block
-                .properties(bsid)
+                .string_properties(bsid)
                 .map(|p| {
-                    p.to_props()
-                        .into_iter()
-                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                    p.into_iter()
+                        .map(|(key, value)| (key.to_string(), value.to_string()))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -526,11 +524,10 @@ impl pumpkin::plugin::world::Host for PluginHostState {
         let bsid = BlockStateId::new_or_air(state_id);
         let block = pumpkin_data::Block::from_state_id(bsid);
         let props = block
-            .properties(bsid)
+            .string_properties(bsid)
             .map(|p| {
-                p.to_props()
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                p.into_iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string()))
                     .collect()
             })
             .unwrap_or_default();

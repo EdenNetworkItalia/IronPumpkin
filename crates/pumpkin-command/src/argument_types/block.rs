@@ -70,7 +70,7 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockArgumentType {
         let (block, id) = read_block(reader)?;
         let state = if reader.peek() == Some('[') {
             let properties = read_properties(reader, block, &id)?;
-            block.from_properties(&properties).to_state_id(block)
+            block.from_string_properties(&properties).to_state_id(block)
         } else {
             block.default_state.id
         };
@@ -141,10 +141,10 @@ pub(crate) fn read_nbt(
 pub(crate) fn property_schema(block: &Block) -> Vec<(&'static str, Vec<&'static str>)> {
     let mut schema: Vec<(&'static str, Vec<&'static str>)> = Vec::new();
     for state in block.states {
-        let Some(properties) = block.properties(state.id) else {
+        let Some(properties) = block.string_properties(state.id) else {
             break;
         };
-        for (name, value) in properties.to_props() {
+        for (name, value) in properties {
             match schema.iter_mut().find(|(known, _)| *known == name) {
                 Some((_, values)) => {
                     if !values.contains(&value) {
@@ -276,8 +276,7 @@ mod test {
     fn props(parsed: &BlockStateArgument) -> Vec<(&'static str, &'static str)> {
         let mut props = parsed
             .block
-            .properties(parsed.state)
-            .map(|properties| properties.to_props())
+            .string_properties(parsed.state)
             .unwrap_or_default();
         props.sort_unstable();
         props

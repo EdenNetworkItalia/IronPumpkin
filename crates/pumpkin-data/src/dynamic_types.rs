@@ -170,11 +170,10 @@ pub(crate) fn pending_block_entity_type(name: &str) -> Option<u16> {
 /// order of its index, and the values of the default state as defaults.
 #[must_use]
 pub fn property_definitions(block: &Block) -> Vec<BlockPropertyDefinition> {
-    let Some(default) = block.properties(block.default_state.id) else {
+    let Some(default) = block.string_properties(block.default_state.id) else {
         return Vec::new();
     };
     let mut properties: Vec<BlockPropertyDefinition> = default
-        .to_props()
         .into_iter()
         .map(|(name, value)| BlockPropertyDefinition {
             name: name.to_owned(),
@@ -184,10 +183,10 @@ pub fn property_definitions(block: &Block) -> Vec<BlockPropertyDefinition> {
         .collect();
     // The first state of each value index comes before the first state of the next one.
     for state in block.states {
-        let Some(props) = block.properties(state.id) else {
+        let Some(props) = block.string_properties(state.id) else {
             continue;
         };
-        for (property, (_, value)) in properties.iter_mut().zip(props.to_props()) {
+        for (property, (_, value)) in properties.iter_mut().zip(props) {
             if !property.values.iter().any(|known| known == value) {
                 property.values.push(value.to_owned());
             }

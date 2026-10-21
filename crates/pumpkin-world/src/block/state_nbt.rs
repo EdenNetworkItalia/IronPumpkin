@@ -10,17 +10,13 @@ use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use tracing::warn;
 
-// Pumpkin saves world data at DataVersion 4903 (26.2), which uses these keys.
+// The keys of 26.2. The writer keeps them, as the upstream chunk palette writer does, although
+// WORLD_DATA_VERSION is 26.3.
 const NAME_TAG: &str = "Name";
 const PROPERTIES_TAG: &str = "Properties";
 // 26.3 renamed them (data version 5006).
 const NAME_TAG_26_3: &str = "id";
 const PROPERTIES_TAG_26_3: &str = "properties";
-
-const _: () = assert!(
-    crate::chunk::format::anvil::WORLD_DATA_VERSION < 5006,
-    "WORLD_DATA_VERSION reached 26.3: write `id` and `properties` here, and keep reading `Name` and `Properties`"
-);
 
 /// Writes the compound that vanilla 26.2 writes: `Name`, plus `Properties` with every property of
 /// the state when the block has properties.
@@ -32,15 +28,14 @@ pub fn block_state_to_nbt(id: BlockStateId) -> NbtCompound {
         NAME_TAG,
         pumpkin_data::dynamic::namespaced_name(block.name).into_owned(),
     );
-    if let Some(properties) = block.properties(id) {
-        let properties = properties.to_props();
-        if !properties.is_empty() {
-            let mut properties_compound = NbtCompound::new();
-            for (name, value) in properties {
-                properties_compound.put_string(name, value.to_string());
-            }
-            compound.put_compound(PROPERTIES_TAG, properties_compound);
+    if let Some(properties) = block.string_properties(id)
+        && !properties.is_empty()
+    {
+        let mut properties_compound = NbtCompound::new();
+        for (name, value) in properties {
+            properties_compound.put_string(name, value.to_string());
         }
+        compound.put_compound(PROPERTIES_TAG, properties_compound);
     }
     compound
 }
@@ -123,11 +118,8 @@ pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
     if properties.is_empty() {
         return block.default_state.id;
     }
-    let id = block.from_properties(&properties).to_state_id(block);
-    let state_properties = block
-        .properties(id)
-        .map(|state| state.to_props())
-        .unwrap_or_default();
+    let id = block.from_string_properties(&properties).to_state_id(block);
+    let state_properties = block.string_properties(id).unwrap_or_default();
     let mut unknown = properties
         .iter()
         .filter(|(name, value)| !state_properties.contains(&(*name, *value)))
@@ -164,27 +156,12 @@ fn known_block(name: &str) -> Option<&'static Block> {
 /// Vanilla decodes each property on its own: a missing property, an unknown one or an invalid
 /// value leaves the default value of the block.
 fn state_with_properties(block: &'static Block, properties: &NbtCompound) -> &'static BlockState {
-    let Some(defaults) = block.properties(block.default_state.id) else {
-        return block.default_state;
-    };
-    let mut merged: Vec<(&str, &str)> = defaults.to_props();
-    for (name, value) in &properties.child_tags {
-        let Some(value) = value.extract_string() else {
-            continue;
-        };
-        let Some(entry) = merged.iter_mut().find(|(known, _)| *known == name.as_ref()) else {
-            continue;
-        };
-        let previous = std::mem::replace(&mut entry.1, value);
-        if block.state_from_properties(&merged).is_none()
-            && let Some(entry) = merged.iter_mut().find(|(known, _)| *known == name.as_ref())
-        {
-            entry.1 = previous;
-        }
-    }
-    block
-        .state_from_properties(&merged)
-        .unwrap_or(block.default_state)
+    let properties: Vec<(&str, &str)> = properties
+        .child_tags
+        .iter()
+        .filter_map(|(name, value)| Some((name.as_ref(), value.extract_string()?)))
+        .collect();
+    BlockState::from_id(block.from_string_properties(&properties).to_state_id(block))
 }
 
 #[cfg(test)]
@@ -243,8 +220,7 @@ mod tests {
 
     fn properties_of(id: BlockStateId) -> Vec<(String, String)> {
         let mut properties: Vec<(String, String)> = Block::from_state_id(id)
-            .properties(id)
-            .map(|properties| properties.to_props())
+            .string_properties(id)
             .unwrap_or_default()
             .into_iter()
             .map(|(name, value)| (name.to_string(), value.to_string()))

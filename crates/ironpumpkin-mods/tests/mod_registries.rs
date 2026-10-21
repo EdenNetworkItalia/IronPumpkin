@@ -220,7 +220,14 @@ fn a_played_mod_sound_reaches_the_players_near_the_position() {
     server();
     let (player, peer) = support::player_with_peer("SoundNear", NegotiatedState::default());
     let world = support::world();
-    let position = player.living_entity.entity.pos.load();
+    // The other tests of this binary join their players at the spawn and keep them.
+    let position = player
+        .living_entity
+        .entity
+        .pos
+        .load()
+        .add(&Vector3::new(1000.0, 0.0, 0.0));
+    player.living_entity.entity.pos.store(position);
     let far = position.add(&Vector3::new(100.0, 0.0, 0.0));
     assert_eq!(
         sound_events::play_sound(&world, &ZAP, SoundCategory::Players, &far, 1.0, 1.0),

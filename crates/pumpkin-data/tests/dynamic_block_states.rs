@@ -7,7 +7,7 @@
 
 use pumpkin_data::data_component_impl::IDSetContent;
 use pumpkin_data::dynamic::{self, BlockDefinition, BlockPropertyDefinition};
-use pumpkin_data::{Block, BlockState, BlockStateId};
+use pumpkin_data::{Block, BlockState, BlockStateId, Property};
 
 fn register(name: &str, properties: Vec<BlockPropertyDefinition>) {
     dynamic::register_block(BlockDefinition {
@@ -20,7 +20,7 @@ fn register(name: &str, properties: Vec<BlockPropertyDefinition>) {
 }
 
 fn props(block: &Block, id: BlockStateId) -> Option<Vec<(&'static str, &'static str)>> {
-    block.properties(id).map(|properties| properties.to_props())
+    block.string_properties(id)
 }
 
 #[test]
@@ -57,8 +57,12 @@ fn custom_state_ids_resolve_to_their_block_and_values() {
             assert_eq!(Block::from_state_id(id), crop);
             assert_eq!(BlockState::from_id_with_block(id).0, crop);
             assert_eq!(props(crop, id).unwrap(), expected);
-            assert_eq!(crop.from_properties(&expected).to_state_id(crop), id);
-            assert_eq!(crop.state_from_properties(&expected).unwrap().id, id);
+            assert_eq!(crop.from_string_properties(&expected).to_state_id(crop), id);
+            let typed: Vec<Property> = expected
+                .iter()
+                .filter_map(|(name, value)| Property::from_str_pair(name, value))
+                .collect();
+            assert_eq!(crop.state_from_properties(&typed).unwrap().id, id);
         }
     }
     assert_eq!(crop.default_state.id.as_u16(), base + 3);
@@ -68,7 +72,7 @@ fn custom_state_ids_resolve_to_their_block_and_values() {
     );
     // Missing and unknown values keep the default.
     assert_eq!(
-        crop.from_properties(&[("powered", "true"), ("age", "9"), ("x", "1")])
+        crop.from_string_properties(&[("powered", "true"), ("age", "9"), ("x", "1")])
             .to_state_id(crop)
             .as_u16(),
         base + 2

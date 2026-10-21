@@ -1695,7 +1695,7 @@ mod tests {
         // Add a transient component and a persistent component
         stack.patch.push((
             DataComponent::AdditionalTradeCost,
-            Some(crate::data_component_impl::AdditionalTradeCostImpl.to_dyn()),
+            Some(crate::data_component_impl::AdditionalTradeCostImpl { cost: 0 }.to_dyn()),
         ));
         stack.patch.push((
             DataComponent::Damage,
