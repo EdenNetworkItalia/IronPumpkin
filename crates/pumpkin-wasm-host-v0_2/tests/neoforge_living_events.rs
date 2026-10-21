@@ -16,9 +16,10 @@ mod guest;
 
 use std::sync::Arc;
 
-use guest::{drop_resource, fire, plugin, resource};
+use guest::{Guest, drop_resource, fire, plugin, resource};
 use pumpkin_core::{
     entity::{EntityBase, r#type::from_type},
+    plugin::EventPriority,
     plugin::living::{
         DamageReductions, DamageSource, EffectParticleModificationEvent, LivingConversionEventPost,
         LivingDamageEventPost, LivingDamageEventPre, LivingDestroyBlockEvent, LivingDrownEvent,
@@ -465,4 +466,61 @@ fn a_plugin_hides_an_effect_particle_and_refuses_an_effect() {
     );
     assert_eq!(event.result, MobEffectEventApplicableResult::DoNotApply);
     assert!(!event.application_result(true));
+}
+
+/// A guest that writes a knockback that is not finite back leaves the vanilla knockback: the fire
+/// site validates the values for native mods and Wasm plugins alike.
+#[test]
+fn a_plugin_that_writes_back_a_nan_knockback_keeps_the_vanilla_knockback() {
+    let world = support::world();
+    let attacker = support::player("WasmShover");
+    let zombie = from_type(
+        &EntityType::ZOMBIE,
+        Vector3::new(4000.5, 120.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    world.spawn_entity(zombie.clone());
+    attacker
+        .living_entity
+        .entity
+        .set_pos(Vector3::new(4002.5, 120.0, 0.5));
+    let zombie_id = id(&zombie);
+    support::server()
+        .plugin_manager
+        .register_with::<LivingKnockBackEvent, _>(
+            Arc::new(Guest::new(move |event: &mut Event, state: &mut _| {
+                let Event::LivingKnockBackEvent(data) = event else {
+                    panic!("expected knockback");
+                };
+                if resource(state, &data.entity).get_entity().entity_id == zombie_id {
+                    data.strength = f32::NAN;
+                    data.ratio_z = f64::NAN;
+                }
+            })),
+            EventPriority::Normal,
+            true,
+            true,
+        );
+
+    assert!(
+        zombie
+            .get_living_entity()
+            .expect("living")
+            .damage_with_context(
+                zombie.as_ref(),
+                1.0,
+                DamageType::GENERIC,
+                None,
+                Some(attacker.as_ref()),
+                Some(attacker.as_ref()),
+            )
+    );
+
+    let velocity = zombie.get_entity().velocity.load();
+    assert!(velocity.x.is_finite() && velocity.y.is_finite() && velocity.z.is_finite());
+    assert!(
+        (velocity.x.hypot(velocity.z) - 0.4).abs() < 1e-6,
+        "the vanilla knockback"
+    );
 }
