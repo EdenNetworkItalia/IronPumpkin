@@ -31,7 +31,9 @@
 //!   (player events: write-back `change_a_settable_field_critical_hit_event`, cancel
 //!   `cancel_sweep_attack_event`, both in `neoforge_player_events.rs`; level and block events:
 //!   write-back `change_a_settable_field_break_block_event`, cancel `cancel_break_block_event`,
-//!   both in `neoforge_level_events.rs`)
+//!   both in `neoforge_level_events.rs`; living events: write-back
+//!   `change_a_settable_field_living_damage_event_pre`, cancel `cancel_living_knock_back_event`,
+//!   both in `neoforge_living_events.rs`)
 //! - [ ] A Wasm plugin cancels the break of a native mod's block: task 2.18
 //! - [ ] A native handler cancels, a Wasm handler observes: task 2.18
 //! - [ ] A Wasm handler cancels, a native handler observes: task 2.18

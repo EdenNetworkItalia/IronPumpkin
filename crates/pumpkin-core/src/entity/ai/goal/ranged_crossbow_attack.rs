@@ -84,9 +84,13 @@ impl RangedCrossbowAttackGoal {
             .as_ref()
             .ok()
             .map(|eq| eq.get(&EquipmentSlot::MAIN_HAND));
+        drop(equipment_guard);
 
         let arrow_entity = Entity::new(world.clone(), mob_pos, &EntityType::ARROW);
-        let projectile = ItemStack::new(1, &Item::ARROW);
+        let projectile = crate::plugin::living_events::mob_projectile(
+            entity,
+            weapon_opt.as_ref().unwrap_or(ItemStack::EMPTY),
+        );
         let arrow = if let Some(ref weapon) = weapon_opt {
             ArrowEntity::new_shot_with_weapon(
                 arrow_entity,

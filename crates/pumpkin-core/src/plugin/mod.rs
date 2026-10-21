@@ -26,6 +26,7 @@ mod context_events;
 pub mod dispatch;
 pub(crate) mod interact_events;
 pub(crate) mod level_events;
+pub(crate) mod living_events;
 pub mod loader;
 pub mod network_events;
 /// Constants for plugin permissions.

@@ -164,6 +164,7 @@ impl HoglinEntity {
             mob.spawn_as_baby();
         }
 
+        crate::plugin::living_events::conversion_post(entity, &zoglin);
         world.spawn_entity(zoglin);
         entity.remove();
     }

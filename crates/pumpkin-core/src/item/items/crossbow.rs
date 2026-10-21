@@ -36,8 +36,9 @@ impl ItemBehaviour for CrossbowItem {
             return;
         }
 
-        let has_projectiles = player.find_crossbow_projectile().is_some();
-        if !has_projectiles && player.gamemode.load() != GameMode::Creative {
+        let (projectile, _) =
+            ProjectileWeaponItem::get_projectile(player, &stack, player.find_crossbow_projectile());
+        if projectile.is_empty() {
             return;
         }
 
@@ -55,18 +56,16 @@ impl ItemBehaviour for CrossbowItem {
             crate::enchantment::EnchantmentHelper::modify_crossbow_charge_time(&stack, 25);
 
         if use_ticks >= charge_time {
-            let arrow_slot = player.find_crossbow_projectile();
+            let (projectile, arrow_slot) = ProjectileWeaponItem::get_projectile(
+                player,
+                &stack,
+                player.find_crossbow_projectile(),
+            );
             let gamemode = player.gamemode.load();
             let is_creative = gamemode == GameMode::Creative;
 
-            if arrow_slot.is_some() || is_creative {
-                let projectile = arrow_slot.map_or_else(
-                    || ItemStack::new(1, &Item::ARROW),
-                    |slot| {
-                        let inventory = player.inventory();
-                        inventory.get_slot(slot).copy_with_count(1)
-                    },
-                );
+            if !projectile.is_empty() {
+                let projectile = projectile.copy_with_count(1);
 
                 let drawn = ProjectileWeaponItem::draw(&stack, &projectile, is_creative);
                 if !drawn.is_empty() {

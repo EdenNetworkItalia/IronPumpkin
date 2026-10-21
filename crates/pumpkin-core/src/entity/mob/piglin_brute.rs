@@ -167,6 +167,7 @@ impl PiglinBruteEntity {
             }
         }
 
+        crate::plugin::living_events::conversion_post(entity, &zombified);
         world.spawn_entity(zombified);
         entity.remove();
     }

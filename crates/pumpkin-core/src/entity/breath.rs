@@ -79,11 +79,15 @@ impl BreathManager {
             if new_air <= 0 {
                 let t = self.drowning_tick.fetch_add(1, Ordering::Relaxed) + 1;
 
-                if t >= DROWNING_INTERVAL {
+                let drowning = t >= DROWNING_INTERVAL;
+                let damage = crate::plugin::living_events::drown(player, drowning);
+                if drowning || damage.is_some() {
                     self.drowning_tick.store(0, Ordering::Relaxed);
+                }
+                if let Some(damage) = damage.filter(|damage| *damage > 0.0) {
                     player
                         .living_entity
-                        .damage(player, DROWNING_DAMAGE, DamageType::DROWN);
+                        .damage(player, damage, DamageType::DROWN);
                 }
             }
         } else {

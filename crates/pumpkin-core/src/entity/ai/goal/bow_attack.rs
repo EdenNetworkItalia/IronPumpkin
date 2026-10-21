@@ -83,8 +83,8 @@ impl BowAttackGoal {
         let world_full = entity.world.load_full();
 
         let arrow_entity = Entity::new(world.clone(), entity.pos.load(), &EntityType::ARROW);
-        let projectile = ItemStack::new(1, &Item::ARROW);
         let bow_item = Self::main_hand_item(mob);
+        let projectile = crate::plugin::living_events::mob_projectile(entity, &bow_item);
         let arrow = ArrowEntity::new_shot_with_weapon(
             arrow_entity,
             entity,

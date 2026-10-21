@@ -3135,7 +3135,27 @@ impl Player {
         }
     }
 
+    /// Vanilla `LivingEntity.releaseUsingItem`: the client released the item in use. The item
+    /// reacts, such as a bow that shoots, unless a handler cancels `LivingEntityUseItemEventStop`,
+    /// and the use stops.
+    pub fn release_using_item(&self) {
+        let item_in_use = self
+            .living_entity
+            .item_in_use
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(stack) = item_in_use
+            && let Some(server) = self.world().server.upgrade()
+            && crate::plugin::living_events::use_item_stop(self, &stack)
+        {
+            server.item_registry.on_stopped_using(&stack, self);
+        }
+        self.living_entity.clear_active_hand();
+    }
+
     pub fn jump(&self) {
+        crate::plugin::living_events::player_jump(self);
         self.stats
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

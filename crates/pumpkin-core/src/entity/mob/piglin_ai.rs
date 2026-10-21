@@ -259,7 +259,7 @@ impl PiglinAi {
         let modifier = if is_attack_target {
             1.0
         } else {
-            Self::visibility_percent(target)
+            Self::visibility_percent(piglin, target)
         };
         let visibility_distance =
             (Self::TARGETING_RANGE * modifier).max(Self::MIN_VISIBILITY_DISTANCE);
@@ -284,10 +284,10 @@ impl PiglinAi {
     }
 
     /// How visible `target` is to a piglin, from 1.0 down to 0.1.
-    fn visibility_percent(target: &Player) -> f64 {
+    fn visibility_percent(piglin: &PiglinEntity, target: &Player) -> f64 {
         target
             .living_entity
-            .visibility_percent(Some(&EntityType::PIGLIN))
+            .visibility_percent(Some(piglin as &dyn crate::entity::EntityBase))
     }
 
     pub fn throw_items(piglin: &PiglinEntity, items: Vec<ItemStack>) {

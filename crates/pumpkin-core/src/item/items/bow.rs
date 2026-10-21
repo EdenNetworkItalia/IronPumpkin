@@ -23,21 +23,16 @@ impl ItemMetadata for BowItem {
 
 impl ItemBehaviour for BowItem {
     fn normal_use(&self, _item: &Item, player: &Player) {
-        // Check if player has arrows (or is in creative mode)
-        let has_arrows = Self::has_arrows(player);
-        let gamemode = player.gamemode.load();
-
-        if crate::plugin::player_events::arrow_nock(
-            player,
-            has_arrows || gamemode == GameMode::Creative,
-        ) || (!has_arrows && gamemode != GameMode::Creative)
-        {
-            return;
-        }
-
-        // Get the held item stack
         let inventory = player.inventory();
         let stack = inventory.held_item();
+
+        // Vanilla `BowItem.use`: a creative player always finds a projectile.
+        let (projectile, _) =
+            ProjectileWeaponItem::get_projectile(player, &stack, player.find_arrow());
+        let found_projectile = !projectile.is_empty();
+        if crate::plugin::player_events::arrow_nock(player, found_projectile) || !found_projectile {
+            return;
+        }
 
         // Start the bow drawing animation
         player
@@ -71,10 +66,11 @@ impl BowItem {
         let use_ticks = Self::USE_DURATION - use_ticks;
 
         // Check arrows again
-        let arrow_slot = player.find_arrow();
+        let (projectile, arrow_slot) =
+            ProjectileWeaponItem::get_projectile(player, weapon, player.find_arrow());
         let gamemode = player.gamemode.load();
 
-        if arrow_slot.is_none() && gamemode != GameMode::Creative {
+        if projectile.is_empty() {
             return;
         }
 
@@ -87,13 +83,7 @@ impl BowItem {
             return;
         }
 
-        let projectile = arrow_slot.map_or_else(
-            || ItemStack::new(1, &Item::ARROW),
-            |slot| {
-                let stack = player.inventory.get_slot(slot);
-                stack.copy_with_count(1)
-            },
-        );
+        let projectile = projectile.copy_with_count(1);
         let infinite_projectile = projectile.item.id == Item::ARROW.id;
 
         // Calculate power and fire
@@ -129,11 +119,6 @@ impl BowItem {
 
         // Damage bow
         player.damage_held_item(1);
-    }
-
-    /// Check if player has arrows in their inventory
-    fn has_arrows(player: &Player) -> bool {
-        player.find_arrow().is_some()
     }
 
     /// Calculate the power/charge of the bow based on time held

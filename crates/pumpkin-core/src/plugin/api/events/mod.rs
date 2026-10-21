@@ -8,6 +8,7 @@ pub mod entity;
 pub mod hanging;
 pub mod inventory;
 pub mod level;
+pub mod living;
 pub mod network;
 pub mod player;
 pub mod raid;
