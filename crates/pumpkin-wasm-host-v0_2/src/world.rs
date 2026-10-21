@@ -86,6 +86,11 @@ pub(crate) fn from_wit_game_rule(rule: WitGameRule) -> GameRule {
     unsafe { std::mem::transmute::<u8, GameRule>(rule as u8) }
 }
 
+pub(crate) fn to_wit_game_rule(rule: &GameRule) -> WitGameRule {
+    // SAFETY: WIT GameRule and pumpkin_data::game_rules::GameRule have identical variant order
+    unsafe { std::mem::transmute::<u8, WitGameRule>(rule.clone() as u8) }
+}
+
 pub(crate) fn to_wit_game_rule_value(value: &GameRuleValue<i64, bool>) -> WitGameRuleValue {
     match *value {
         GameRuleValue::Int(v) => {
@@ -2144,6 +2149,20 @@ mod tests {
                 pumpkin_data::particle::Particle::from_id(wit as u16),
                 Some(internal)
             );
+        }
+    }
+
+    #[test]
+    fn wit_game_rules_match_internal_game_rules() {
+        for rule in GameRule::all() {
+            let wit = to_wit_game_rule(rule);
+            let wit_name = format!("{wit:?}");
+            assert_eq!(
+                wit_name.rsplit("::").next(),
+                Some(format!("{rule:?}").as_str()),
+                "{rule:?}"
+            );
+            assert_eq!(&from_wit_game_rule(wit), rule);
         }
     }
 }

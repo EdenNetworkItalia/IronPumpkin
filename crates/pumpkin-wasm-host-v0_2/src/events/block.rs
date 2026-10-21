@@ -1,11 +1,12 @@
-use pumpkin_data::{BlockState, BlockStateId};
+use pumpkin_data::BlockStateId;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::{
     events::{
         ToFromWasmEvent, cleanup_event, consume_player, consume_world, from_wasm_block_name,
-        from_wasm_block_position, to_wasm_block_name, to_wasm_block_position,
+        from_wasm_block_position, neoforge::state_from_wasm, to_wasm_block_name,
+        to_wasm_block_position,
     },
     pumpkin::plugin::event::{
         BellResonateEventData, BellRingEventData, BlockBreakEventData, BlockBrushEventData,
@@ -128,7 +129,7 @@ impl ToFromWasmEvent for BlockBreakEvent {
                 Self {
                     player: data.player.map(|player| consume_player(state, &player)),
                     block,
-                    state: BlockState::from_id(BlockStateId::new_or_air(data.state_id)),
+                    state: state_from_wasm(data.state_id),
                     block_position: from_wasm_block_position(data.block_pos),
                     exp: data.exp,
                     drop: data.should_drop,
@@ -265,12 +266,8 @@ impl ToFromWasmEvent for BlockPlaceEvent {
                     block_placed_against: from_wasm_block_name(&data.block_placed_against),
                     block_position: from_wasm_block_position(data.block_pos),
                     can_build: data.can_build,
-                    placed_state: BlockState::from_id(BlockStateId::new_or_air(
-                        data.placed_state_id,
-                    )),
-                    replaced_state: BlockState::from_id(BlockStateId::new_or_air(
-                        data.replaced_state_id,
-                    )),
+                    placed_state: state_from_wasm(data.placed_state_id),
+                    replaced_state: state_from_wasm(data.replaced_state_id),
                     cancelled: data.cancelled,
                 }
             }

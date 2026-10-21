@@ -28,7 +28,6 @@ use pumpkin_core::plugin::{
 };
 use pumpkin_data::{
     BlockState, BlockStateId, biome::Spawner, entity::EntityType, entity::MobCategory,
-    game_rules::GameRule,
 };
 use pumpkin_wasm_host_common::state::{FromResource, PluginHostState};
 use tokio::sync::Mutex;
@@ -42,7 +41,6 @@ use crate::{
     mob::to_wit_block_direction,
     pumpkin::plugin::{
         event::{Event, EventType},
-        game_rules::GameRule as WitGameRule,
         neoforge_events::{
             BlockEventBlockToolModificationEventData, BlockEventEntityPlaceEventData,
             ChunkWatchEventUnWatchData, CreateFluidSourceEventData, CropGrowEventPostData,
@@ -55,7 +53,7 @@ use crate::{
             SpawnerData, TriState as WitTriState, UseItemOnBlockEventData, UsePhase as WitUsePhase,
         },
     },
-    world::to_wit_game_rule_value,
+    world::{to_wit_game_rule, to_wit_game_rule_value},
 };
 
 pub(super) fn state_from_wasm(id: u16) -> &'static BlockState {
@@ -148,12 +146,6 @@ const fn to_wasm_mob_category(category: &MobCategory) -> WitMobCategory {
         id if id == MobCategory::WATER_AMBIENT.id => WitMobCategory::WaterAmbient,
         _ => WitMobCategory::Misc,
     }
-}
-
-fn to_wit_game_rule(rule: &GameRule) -> WitGameRule {
-    // SAFETY: WIT GameRule and pumpkin_data::game_rules::GameRule have identical variant order,
-    // both generated from the same game rule list
-    unsafe { std::mem::transmute::<u8, WitGameRule>(rule.clone() as u8) }
 }
 
 fn add<T: FromResource>(state: &mut PluginHostState, item: T::Internal) -> Resource<T> {
@@ -732,5 +724,33 @@ pub(crate) fn register_neoforge_event(
             on::<PlayerTickEventPost>(ctx, handler, priority, blocking);
         }
         _ => tracing::error!("non-NeoForge event should not be routed to register_neoforge_event"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wit_mob_categories_match_internal_mob_categories() {
+        let cases = [
+            (&MobCategory::MONSTER, WitMobCategory::Monster),
+            (&MobCategory::CREATURE, WitMobCategory::Creature),
+            (&MobCategory::AMBIENT, WitMobCategory::Ambient),
+            (&MobCategory::AXOLOTLS, WitMobCategory::Axolotls),
+            (
+                &MobCategory::UNDERGROUND_WATER_CREATURE,
+                WitMobCategory::UndergroundWaterCreature,
+            ),
+            (&MobCategory::WATER_CREATURE, WitMobCategory::WaterCreature),
+            (&MobCategory::WATER_AMBIENT, WitMobCategory::WaterAmbient),
+            (&MobCategory::MISC, WitMobCategory::Misc),
+        ];
+        for category in MobCategory::SPAWNING_CATEGORIES {
+            assert!(cases.iter().any(|(case, _)| case.id == category.id));
+        }
+        for (category, wit) in cases {
+            assert_eq!(to_wasm_mob_category(category), wit, "{}", category.id);
+        }
     }
 }
