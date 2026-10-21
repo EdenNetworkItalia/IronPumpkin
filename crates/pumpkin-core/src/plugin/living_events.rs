@@ -104,8 +104,8 @@ pub fn damage_post(
 }
 
 /// Fires `LivingShieldBlockEvent` for a damage of `damage` to `living`, which uses a shield.
-/// `vanilla_blocked` is whether the shield faces the damage and `original_blocked` whether the
-/// damage does not bypass the shield. Returns the blocked damage and the durability loss of the
+/// `vanilla_blocked` is whether the shield faces the damage, which gives the blocked damage of
+/// the event, and `original_blocked` whether the damage does not bypass the shield. Returns the blocked damage and the durability loss of the
 /// shield (-1 for the vanilla loss), or `None` when the shield blocks nothing.
 pub fn shield_block(
     living: &LivingEntity,
@@ -115,8 +115,12 @@ pub fn shield_block(
     original_blocked: bool,
 ) -> Option<(f32, i32)> {
     let vanilla = (vanilla_blocked && original_blocked).then_some((damage, -1));
+    // Vanilla `applyItemBlocking` returns before the event for a damage of 0.
+    if damage <= 0.0 {
+        return vanilla;
+    }
     let Some(event) = fire(&living.entity, |entity| {
-        let blocked_damage = if vanilla.is_some() { damage } else { 0.0 };
+        let blocked_damage = if vanilla_blocked { damage } else { 0.0 };
         LivingShieldBlockEvent::new(entity, source(), damage, blocked_damage, original_blocked)
     }) else {
         return vanilla;
