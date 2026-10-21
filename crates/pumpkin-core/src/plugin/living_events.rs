@@ -74,7 +74,8 @@ fn listens<E: Payload + 'static>(living: &LivingEntity) -> bool {
     listening::<E>(&living.entity).is_some()
 }
 
-/// Fires `LivingDamageEventPre` and returns the damage for the absorption and the health.
+/// Fires `LivingDamageEventPre` and returns the damage for the absorption and the health. A
+/// damage that is not finite keeps the damage before the event: the health would turn NaN.
 pub fn damage_pre(
     living: &LivingEntity,
     source: impl FnOnce() -> DamageSource,
@@ -84,7 +85,13 @@ pub fn damage_pre(
     fire(&living.entity, |entity| {
         LivingDamageEventPre::new(entity, source(), original_damage, damage)
     })
-    .map_or(damage, |event| event.new_damage)
+    .map_or(damage, |event| {
+        if event.new_damage.is_finite() {
+            event.new_damage
+        } else {
+            damage
+        }
+    })
 }
 
 /// Fires `LivingDamageEventPost` built by `make` after a damage changed the health.
@@ -197,7 +204,8 @@ pub fn use_item_stop(player: &Player, item: &ItemStack) -> bool {
 }
 
 /// Fires `LivingKnockBackEvent` before the knockback resistance. Returns the strength and the
-/// ratios, or `None` when a handler cancelled it.
+/// ratios, or `None` when a handler cancelled it. A strength that is negative or not finite, or a
+/// ratio that is not finite, keeps the values before the event: the velocity would turn NaN.
 pub fn knockback(
     entity: &dyn EntityBase,
     strength: f64,
@@ -213,7 +221,18 @@ pub fn knockback(
     }) else {
         return Some((strength, x, z));
     };
-    (!event.cancelled).then_some((f64::from(event.strength), event.ratio_x, event.ratio_z))
+    if event.cancelled {
+        return None;
+    }
+    let valid = event.strength.is_finite()
+        && event.strength >= 0.0
+        && event.ratio_x.is_finite()
+        && event.ratio_z.is_finite();
+    Some(if valid {
+        (f64::from(event.strength), event.ratio_x, event.ratio_z)
+    } else {
+        (strength, x, z)
+    })
 }
 
 /// Fires `LivingFallEvent`. Returns the fall distance and the damage multiplier, or `None` when
