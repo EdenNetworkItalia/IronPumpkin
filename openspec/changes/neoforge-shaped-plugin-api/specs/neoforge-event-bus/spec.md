@@ -111,7 +111,7 @@ Every event case that the host fires SHALL reach the handlers of every loaded na
 - **THEN** the server acts on the changed value, and skips the action of the cancelled event
 
 ### Requirement: Wasm plugins see the same events
-Every event case that the host fires SHALL reach the handlers of every loaded v0.2 Wasm plugin that listens to it, through the existing Pumpkin event pipeline and the same dispatch as for native mods, with write-back and cancellation. Per-tick and per-entity events SHALL reach Wasm plugins only in batches or not at all, under the performance rules of the Wasm executor. Status: planned (tasks 2.3, 2.12, 2.13 and 2.15).
+Every event case that the host fires SHALL reach the handlers of every loaded v0.2 Wasm plugin that listens to it, through the existing Pumpkin event pipeline and the same dispatch as for native mods, with write-back and cancellation. A tick event SHALL reach a Wasm plugin once per entity and tick. Status: planned (tasks 2.3, 2.12, 2.15; 2.27 done).
 
 #### Scenario: A Wasm plugin cancels the break of a native mod's block
 - **WHEN** native mod A registers the block `moda:ore` and places it, a Wasm plugin handles `BlockBreakEvent` and cancels it for that block, and a player breaks it
