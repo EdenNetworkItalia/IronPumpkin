@@ -18,6 +18,7 @@ use guest::{drop_resource, fire, plugin, resource};
 use pumpkin_core::{
     entity::r#type::from_type,
     plugin::{
+        PluginManager,
         entity::entity_explode::EntityExplodeEvent,
         level::{
             ChunkWatchEventUnWatch, ExplosionEventDetonate, ExplosionKnockbackEvent,
@@ -27,7 +28,7 @@ use pumpkin_core::{
     },
 };
 use pumpkin_data::{
-    biome::Biome,
+    biome::{Biome, Spawner},
     entity::{EntityType, MobCategory},
     game_rules::{GameRule, GameRuleValue},
 };
@@ -319,7 +320,10 @@ fn a_plugin_changes_and_cancels_the_potential_spawns() {
             kept,
             spawner("minecraft:goat", 1, 3),
             spawner("minecraft:not_a_mob", 1, 1),
-            spawner("minecraft:goat", 1, 3),
+            spawner("goat", 1, 3),
+            spawner("minecraft:goat", 0, 2),
+            spawner("minecraft:goat", 3, 2),
+            spawner("minecraft:goat", 1, MobCategory::CREATURE.max + 1),
         ];
     });
 
@@ -334,7 +338,11 @@ fn a_plugin_changes_and_cancels_the_potential_spawns() {
     );
 
     assert!(!event.cancelled);
-    assert_eq!(event.spawns.len(), 3, "the unknown entity type is dropped");
+    assert_eq!(
+        event.spawns.len(),
+        3,
+        "the unknown entity type and the counts the spawner cannot use are dropped"
+    );
     assert!(
         std::ptr::eq(event.spawns[0], first),
         "a kept entry keeps its static"
@@ -345,11 +353,11 @@ fn a_plugin_changes_and_cancels_the_potential_spawns() {
             event.spawns[1].min_count,
             event.spawns[1].max_count
         ),
-        ("minecraft:goat", 1, 3)
+        ("goat", 1, 3)
     );
     assert!(
         std::ptr::eq(event.spawns[1], event.spawns[2]),
-        "an added entry is leaked once"
+        "an added entry is leaked once, with or without the namespace"
     );
 
     let cancel = plugin::<LevelEventPotentialSpawns, _>(|event, _state| {
@@ -362,4 +370,61 @@ fn a_plugin_changes_and_cancels_the_potential_spawns() {
         LevelEventPotentialSpawns::new(support::world(), &MobCategory::CREATURE, pos, spawns),
     );
     assert!(event.cancelled);
+}
+
+/// Monster entries that no biome list has: six entity types, each with the counts `1..=max` for
+/// every `max` up to the mob cap of the category.
+fn new_monster_entries() -> Vec<SpawnerData> {
+    [
+        "zombie", "skeleton", "spider", "creeper", "witch", "enderman",
+    ]
+    .into_iter()
+    .flat_map(|name| {
+        (1..=MobCategory::MONSTER.max).map(move |max| spawner(&format!("minecraft:{name}"), 1, max))
+    })
+    .collect()
+}
+
+/// The spawn list of a monster spawn after `manager`.
+fn spawns_after(manager: &PluginManager) -> Vec<&'static Spawner> {
+    fire(
+        manager,
+        LevelEventPotentialSpawns::new(
+            support::world(),
+            &MobCategory::MONSTER,
+            BlockPos::new(0, 70, 0),
+            Vec::new(),
+        ),
+    )
+    .spawns
+}
+
+#[test]
+fn added_spawn_entries_are_reused_and_capped() {
+    let entries = new_monster_entries();
+    assert!(entries.len() >= 400);
+    let replace_with = |list: Vec<SpawnerData>| {
+        plugin::<LevelEventPotentialSpawns, _>(move |event, _state| {
+            if let Event::LevelEventPotentialSpawns(data) = event {
+                data.spawns.clone_from(&list);
+            }
+        })
+    };
+    let first_list = entries[..200].to_vec();
+
+    let first = spawns_after(&replace_with(first_list.clone()));
+    let second = spawns_after(&replace_with(entries[200..400].to_vec()));
+    let again = spawns_after(&replace_with(first_list));
+
+    assert_eq!(first.len(), 200);
+    assert!(
+        second.len() <= 56,
+        "the table holds at most 256 added entries, got {} more",
+        second.len()
+    );
+    assert_eq!(again.len(), 200);
+    assert!(
+        first.iter().zip(&again).all(|(a, b)| std::ptr::eq(*a, *b)),
+        "a second fire reuses the entries of the first"
+    );
 }

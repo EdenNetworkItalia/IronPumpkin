@@ -6,7 +6,10 @@
 //! A blocking handler writes back only the settable fields; the other fields keep the native
 //! values, as `NeoForge` has no setter for them.
 
-use std::sync::{Arc, Mutex as StdMutex, PoisonError};
+use std::sync::{
+    Arc, Mutex as StdMutex, PoisonError,
+    atomic::{AtomicBool, Ordering},
+};
 
 use pumpkin_core::plugin::{
     Context, EventPriority,
@@ -172,43 +175,65 @@ fn discard<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
 /// `&'static Spawner`, so each distinct entry is leaked once, up to this many.
 const MAX_ADDED_SPAWNERS: usize = 256;
 
+/// The longest spawn list that the host takes back from a Wasm handler.
+const MAX_GUEST_SPAWNS: usize = 256;
+
 static ADDED_SPAWNERS: StdMutex<Vec<&'static Spawner>> = StdMutex::new(Vec::new());
 
-fn spawner_matches(spawner: &Spawner, data: &SpawnerData) -> bool {
-    spawner.r#type == data.entity_type
+static ADDED_SPAWNERS_FULL: AtomicBool = AtomicBool::new(false);
+
+fn spawner_entity_type(name: &str) -> Option<&'static EntityType> {
+    EntityType::from_name(name.strip_prefix("minecraft:").unwrap_or(name))
+}
+
+fn spawner_matches(
+    spawner: &Spawner,
+    entity_type: &'static EntityType,
+    data: &SpawnerData,
+) -> bool {
+    spawner_entity_type(spawner.r#type).is_some_and(|other| std::ptr::eq(other, entity_type))
         && spawner.min_count == data.min_count
         && spawner.max_count == data.max_count
 }
 
 /// The native entry of `data`: an entry of the list before the handler, an entry added before,
-/// or a new entry. `None` for an unknown entity type or a full table of added entries.
+/// or a new entry. `None` for an unknown entity type, counts that the natural spawner cannot
+/// use, or a full table of added entries.
 fn from_wasm_spawner(
     original: &[&'static Spawner],
+    category: &MobCategory,
     data: &SpawnerData,
 ) -> Option<&'static Spawner> {
-    if let Some(spawner) = original.iter().find(|s| spawner_matches(s, data)) {
+    // A group larger than the mob cap of the category never spawns.
+    if data.min_count < 1 || data.max_count < data.min_count || data.max_count > category.max {
+        return None;
+    }
+    let entity_type = spawner_entity_type(&data.entity_type)?;
+    if let Some(spawner) = original
+        .iter()
+        .find(|spawner| spawner_matches(spawner, entity_type, data))
+    {
         return Some(spawner);
     }
-    let name = data
-        .entity_type
-        .strip_prefix("minecraft:")
-        .unwrap_or(&data.entity_type);
-    EntityType::from_name(name)?;
     let mut added = ADDED_SPAWNERS
         .lock()
         .unwrap_or_else(PoisonError::into_inner);
-    if let Some(spawner) = added.iter().find(|s| spawner_matches(s, data)) {
+    if let Some(spawner) = added
+        .iter()
+        .find(|spawner| spawner_matches(spawner, entity_type, data))
+    {
         return Some(spawner);
     }
     if added.len() >= MAX_ADDED_SPAWNERS {
-        tracing::warn!(
-            entity_type = data.entity_type,
-            "Wasm plugins added too many distinct spawn entries; the entry is dropped"
-        );
+        if !ADDED_SPAWNERS_FULL.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                "Wasm plugins added {MAX_ADDED_SPAWNERS} distinct spawn entries; further new entries are dropped"
+            );
+        }
         return None;
     }
     let spawner: &'static Spawner = Box::leak(Box::new(Spawner {
-        r#type: Box::leak(data.entity_type.clone().into_boxed_str()),
+        r#type: entity_type.resource_name,
         min_count: data.min_count,
         max_count: data.max_count,
     }));
@@ -517,7 +542,8 @@ impl ToFromWasmEvent for LevelEventPotentialSpawns {
             self.spawns = data
                 .spawns
                 .iter()
-                .filter_map(|spawner| from_wasm_spawner(&self.spawns, spawner))
+                .take(MAX_GUEST_SPAWNS)
+                .filter_map(|spawner| from_wasm_spawner(&self.spawns, self.category, spawner))
                 .collect();
             self.cancelled = data.cancelled;
         }
