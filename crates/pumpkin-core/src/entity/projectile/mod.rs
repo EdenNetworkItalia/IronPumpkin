@@ -235,6 +235,11 @@ impl ThrownItemEntity {
 
         // Handle hit or continue
         if let Some(h) = hit {
+            if self.has_hit.load(Ordering::SeqCst)
+                || crate::plugin::entity_events::projectile_impact(entity, || h.clone())
+            {
+                return;
+            }
             // Ensure hit is only processed once per projectile
             if self.has_hit.swap(true, Ordering::SeqCst) {
                 return;
@@ -344,6 +349,7 @@ fn get_hit_face(hit_pos: Vector3<f64>, block_pos: BlockPos) -> BlockDirection {
     }
 }
 
+#[derive(Clone)]
 pub enum ProjectileHit {
     Block {
         pos: BlockPos,

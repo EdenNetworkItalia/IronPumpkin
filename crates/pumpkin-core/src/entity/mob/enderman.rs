@@ -396,6 +396,7 @@ impl EndermanEntity {
                 pumpkin_world::clip::ClipFluid::None,
             ))
             .is_miss
+            && !crate::plugin::entity_events::suppress_enderman_anger(entity, player)
     }
 }
 

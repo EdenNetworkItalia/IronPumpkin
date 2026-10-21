@@ -368,6 +368,7 @@ impl Mob for SlimeEntity {
                 .width;
             let xz_offset = width / 4.0;
 
+            let mut children: Vec<Arc<dyn EntityBase>> = Vec::new();
             for i in 0..count {
                 let xd = ((i % 2) as f32 - 0.5) * xz_offset;
                 let zd = ((i / 2) as f32 - 0.5) * xz_offset;
@@ -390,7 +391,11 @@ impl Mob for SlimeEntity {
                     .entity
                     .yaw
                     .store(rand::random_range(0.0..360.0));
-                world.spawn_entity_non_save(slime_like as Arc<dyn EntityBase>);
+                children.push(slime_like);
+            }
+            let entity = &self.entity.living_entity.entity;
+            for child in crate::plugin::entity_events::mob_split(entity, children) {
+                world.spawn_entity_non_save(child);
             }
         }
     }

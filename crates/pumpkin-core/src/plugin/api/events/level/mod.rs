@@ -5,6 +5,7 @@
 
 pub mod block;
 pub mod chunk;
+pub mod entity;
 pub mod explosion;
 pub mod game_rule;
 pub mod spawn;
@@ -12,6 +13,7 @@ pub mod tick;
 
 pub use block::*;
 pub use chunk::*;
+pub use entity::*;
 pub use explosion::*;
 pub use game_rule::*;
 pub use spawn::*;

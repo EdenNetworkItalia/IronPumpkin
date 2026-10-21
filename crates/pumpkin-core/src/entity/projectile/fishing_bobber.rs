@@ -255,7 +255,15 @@ impl FishingBobberEntity {
             }
 
             let ebb = cand.get_entity().bounding_box.load().expand(0.3, 0.3, 0.3);
-            if ebb.intersects(&search_box) {
+            if ebb.intersects(&search_box)
+                && !crate::plugin::entity_events::projectile_impact(entity, || {
+                    ProjectileHit::Entity {
+                        entity: cand.clone(),
+                        hit_pos: new_pos,
+                        normal: velocity.normalize().multiply(-1.0, -1.0, -1.0),
+                    }
+                })
+            {
                 self.hooked_entity_id
                     .store(cand.get_entity().entity_id, Ordering::Relaxed);
                 entity.set_synced_data(

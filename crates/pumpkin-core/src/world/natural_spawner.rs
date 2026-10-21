@@ -3,7 +3,8 @@ use crate::content::spawn_placements::spawn_restriction;
 use crate::entity::EntityBase;
 use crate::entity::mob::spawn::finalize_spawn;
 use crate::entity::r#type::{check_spawn_rules, from_type};
-use crate::plugin::level_events;
+use crate::plugin::level::EntitySpawnReason;
+use crate::plugin::{entity_events, level_events};
 use crate::world::World;
 use arc_swap::ArcSwap;
 use crossbeam::atomic::AtomicCell;
@@ -618,15 +619,30 @@ pub fn spawn_mobs_for_chunk_generation(
                         fx,
                         f64::from(pos.0.y),
                         fz,
-                    )) && check_spawn_rules(entity_type, world, &check_pos, false)
-                    {
+                    )) && check_spawn_rules(
+                        entity_type,
+                        world,
+                        EntitySpawnReason::ChunkGeneration,
+                        &check_pos,
+                        false,
+                    ) {
                         let entity = from_type(entity_type, spawn_pos_f64, world, Uuid::new_v4());
                         entity
                             .get_entity()
                             .set_rotation(rand::random::<f32>() * 360.0, 0.0);
-                        group_data = finalize_spawn(&entity, world, group_data);
-                        world.spawn_entity_non_save(entity);
-                        success = true;
+                        if entity.get_mob().is_none()
+                            || entity_events::check_spawn_position(
+                                &entity,
+                                world,
+                                EntitySpawnReason::ChunkGeneration,
+                                None,
+                                || true,
+                            )
+                        {
+                            group_data = finalize_spawn(&entity, world, group_data);
+                            world.spawn_entity_non_save(entity);
+                            success = true;
+                        }
                     }
                 }
 
@@ -825,6 +841,13 @@ pub fn spawn_category_for_position(
                         let despawn_dist = f64::from(entity_type.category.despawn_distance);
                         !(player_distance_sq > despawn_dist * despawn_dist
                             && mob.remove_when_far_away(player_distance_sq))
+                            && entity_events::check_spawn_position(
+                                &entity,
+                                world,
+                                EntitySpawnReason::Natural,
+                                None,
+                                || true,
+                            )
                     });
 
                     if is_valid_for_mob {
@@ -833,7 +856,14 @@ pub fn spawn_category_for_position(
                         group_size += 1;
                         batch_buffer.push(entity);
                         spawn_state.after_spawn(entity_type, &check_pos, world);
-                        if cluster_size >= entity_type.limit_per_chunk {
+                        if let Some(spawned) = batch_buffer.last()
+                            && cluster_size
+                                >= entity_events::max_spawn_cluster_size(
+                                    world,
+                                    spawned,
+                                    entity_type.limit_per_chunk,
+                                )
+                        {
                             return batch_buffer;
                         }
 
@@ -993,7 +1023,13 @@ pub fn is_valid_spawn_position_for_type(
     if !is_spawn_position_ok(world, block_pos, entity_type) {
         return false;
     }
-    if !check_spawn_rules(entity_type, world, block_pos, is_thundering) {
+    if !check_spawn_rules(
+        entity_type,
+        world,
+        EntitySpawnReason::Natural,
+        block_pos,
+        is_thundering,
+    ) {
         return false;
     }
     if !world.is_space_empty(entity_type.get_spawn_bounding_box(

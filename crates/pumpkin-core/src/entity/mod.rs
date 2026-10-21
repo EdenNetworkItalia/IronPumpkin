@@ -3081,7 +3081,8 @@ impl Entity {
 
     /// Vanilla `Entity.isInvulnerableToBase`. Driven by the damage type tags, so datapacks
     /// decide what bypasses invulnerability or counts as fire and fall damage.
-    /// `cause` is the attacker (vanilla `DamageSource.getEntity`).
+    /// `cause` is the attacker (vanilla `DamageSource.getEntity`). The result goes through
+    /// `EntityInvulnerabilityCheckEvent`, as `NeoForge` patches the method.
     pub fn is_invulnerable_to(
         &self,
         damage_type: &DamageType,
@@ -3092,7 +3093,7 @@ impl Entity {
             .and_then(EntityBase::get_player)
             .is_some_and(Player::is_creative);
 
-        self.removed.load(Ordering::SeqCst)
+        let invulnerable = self.removed.load(Ordering::SeqCst)
             || (self.invulnerable.load(Ordering::Relaxed) && !bypasses && !creative_cause)
             || (damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_FIRE) && self.is_fire_immune())
             || (damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_FALL)
@@ -3105,7 +3106,13 @@ impl Entity {
                     .damage_immunities
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .contains(damage_type))
+                    .contains(damage_type));
+        crate::plugin::entity_events::is_entity_invulnerable_to(
+            self,
+            damage_type,
+            cause,
+            invulnerable,
+        )
     }
 
     /// Sets if the entity is invulnerable to a specific damage type

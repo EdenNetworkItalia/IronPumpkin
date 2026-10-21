@@ -27,8 +27,10 @@ use ironpumpkin_mods::{
     },
     math::{position::BlockPos, vector3::Vector3},
     pumpkin_core::{
-        block::PathComputationType, content::spawn_placements::spawn_restriction,
-        plugin::startup::STARTUP_HOOK, world::villager_poi::profession_for_block,
+        block::PathComputationType,
+        content::spawn_placements::spawn_restriction,
+        plugin::{level::EntitySpawnReason, startup::STARTUP_HOOK},
+        world::villager_poi::profession_for_block,
     },
     pumpkin_data::{
         Block, BlockState, BlockStateId,
@@ -293,8 +295,21 @@ fn a_spawn_placement_rejects_a_position() {
     let golem = EntityType::from_name(GOLEM).unwrap();
     let at = |x| BlockPos::new(x, 64, 0);
     // The original predicate passes and the `AND` predicate rejects one x.
-    assert!(check_spawn_rules(golem, &world, &at(REJECTED_X + 1), false));
-    assert!(!check_spawn_rules(golem, &world, &at(REJECTED_X), false));
+    let natural = EntitySpawnReason::Natural;
+    assert!(check_spawn_rules(
+        golem,
+        &world,
+        natural,
+        &at(REJECTED_X + 1),
+        false
+    ));
+    assert!(!check_spawn_rules(
+        golem,
+        &world,
+        natural,
+        &at(REJECTED_X),
+        false
+    ));
     let restriction = spawn_restriction(golem);
     assert!(matches!(restriction.location, SpawnLocation::InWater));
     assert_eq!(restriction.heightmap, HeightMap::OceanFloor);
@@ -302,12 +317,14 @@ fn a_spawn_placement_rejects_a_position() {
     assert!(check_spawn_rules(
         &EntityType::ZOMBIE,
         &world,
+        natural,
         &at(ZOMBIE_REJECTED_X + 1),
         false
     ));
     assert!(!check_spawn_rules(
         &EntityType::ZOMBIE,
         &world,
+        natural,
         &at(ZOMBIE_REJECTED_X),
         false
     ));

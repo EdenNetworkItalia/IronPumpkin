@@ -14,7 +14,7 @@ use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::mob::shulker::Axis;
-use crate::entity::{Entity, EntityBase};
+use crate::entity::{Entity, EntityBase, projectile::ProjectileHit};
 use crate::server::Server;
 
 // Direction ordinal constants
@@ -417,7 +417,15 @@ impl EntityBase for ShulkerBulletEntity {
         // Check for block collisions
         let new_bp = entity.block_pos.load();
         let state = world.get_block_state(&new_bp);
-        if !state.is_air() && state.is_solid() {
+        if !state.is_air()
+            && state.is_solid()
+            && !crate::plugin::entity_events::projectile_impact(entity, || ProjectileHit::Block {
+                pos: new_bp,
+                face: super::get_hit_face(new_pos, new_bp),
+                hit_pos: new_pos,
+                normal: vel.normalize().multiply(-1.0, -1.0, -1.0),
+            })
+        {
             if !self.has_hit.swap(true, Ordering::SeqCst) {
                 let pos = entity.pos.load();
                 world.play_sound_fine(
@@ -470,6 +478,14 @@ impl EntityBase for ShulkerBulletEntity {
                 continue;
             };
             if !living.entity.is_alive() {
+                continue;
+            }
+
+            if crate::plugin::entity_events::projectile_impact(entity, || ProjectileHit::Entity {
+                entity: hit_entity.clone(),
+                hit_pos: entity.pos.load(),
+                normal: vel.normalize().multiply(-1.0, -1.0, -1.0),
+            }) {
                 continue;
             }
 

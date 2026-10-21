@@ -531,7 +531,7 @@ impl PiglinEntity {
         let max_distance_sq = PiglinAi::ITEM_SCAN_RANGE * PiglinAi::ITEM_SCAN_RANGE;
 
         let nearest = if self.mob_entity.can_pick_up_loot()
-            && world.level_info.load().game_rules.mob_griefing
+            && crate::plugin::entity_events::can_entity_grief(&world, entity)
         {
             let mut candidates: Vec<(f64, Arc<dyn EntityBase>)> = world
                 .entities
@@ -766,7 +766,7 @@ impl PiglinEntity {
             return;
         }
         let world = entity.world.load();
-        if !world.level_info.load().game_rules.mob_griefing {
+        if !crate::plugin::entity_events::can_entity_grief(&world, entity) {
             return;
         }
 

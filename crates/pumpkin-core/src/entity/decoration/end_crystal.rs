@@ -81,9 +81,9 @@ impl EntityBase for EndCrystalEntity {
         damage_type: DamageType,
         _position: Option<Vector3<f64>>,
         _source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
-        if self.is_invulnerable() {
+        if self.is_invulnerable() || self.entity.is_invulnerable_to(&damage_type, cause) {
             return false;
         }
 

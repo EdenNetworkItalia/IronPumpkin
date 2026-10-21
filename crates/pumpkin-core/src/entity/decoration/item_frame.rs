@@ -404,7 +404,7 @@ impl EntityBase for ItemFrameEntity {
         damage_type: DamageType,
         _position: Option<Vector3<f64>>,
         source: Option<&dyn EntityBase>,
-        _cause: Option<&dyn EntityBase>,
+        cause: Option<&dyn EntityBase>,
     ) -> bool {
         let fixed = self.is_fixed();
         let is_creative_player = source.is_some_and(|s| {
@@ -422,6 +422,10 @@ impl EntityBase for ItemFrameEntity {
             self.drop_item(source, true);
             self.entity.remove();
             return true;
+        }
+
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
+            return false;
         }
 
         let has_item = !self.get_item().is_empty();

@@ -773,7 +773,12 @@ impl EntityBase for ArrowEntity {
         if let Some(h) = hit {
             match h {
                 ProjectileHit::Block { .. } => {
-                    if self.has_hit.swap(true, Ordering::SeqCst) {
+                    if self.has_hit.load(Ordering::SeqCst)
+                        || crate::plugin::entity_events::projectile_impact(&self.entity, || {
+                            h.clone()
+                        })
+                        || self.has_hit.swap(true, Ordering::SeqCst)
+                    {
                         return;
                     }
                     caller.on_hit(h);
@@ -785,7 +790,13 @@ impl EntityBase for ArrowEntity {
                         .read()
                         .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .len();
-                    if pierced_len >= pierce as usize && self.has_hit.swap(true, Ordering::SeqCst) {
+                    let last_hit = pierced_len >= pierce as usize;
+                    if (last_hit && self.has_hit.load(Ordering::SeqCst))
+                        || crate::plugin::entity_events::projectile_impact(&self.entity, || {
+                            h.clone()
+                        })
+                        || (last_hit && self.has_hit.swap(true, Ordering::SeqCst))
+                    {
                         return;
                     }
                     caller.on_hit(h);
