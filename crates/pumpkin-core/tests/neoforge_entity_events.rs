@@ -551,6 +551,9 @@ fn deny_mob_despawn_event() {
 fn change_a_settable_field_mob_spawn_event_position_check() {
     let pos = spot(10);
     set(pos, Block::STONE.default_state.id);
+    // The world seed is random: terrain in the search column moves the spawn or stops it.
+    set(pos.up(), Block::AIR.default_state.id);
+    set(pos.up_height(2), Block::AIR.default_state.id);
     let seen = log();
     let seen_by_handler = seen.clone();
     on::<MobSpawnEventPositionCheck, _>(move |event| {
