@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use guest::{fire, plugin, resource};
+use guest::{fire, is_shared_world, plugin, resource};
 use pumpkin_core::{
     entity::r#type::from_type,
     plugin::{
@@ -78,6 +78,7 @@ fn a_plugin_cancels_use_item_on_block_and_sets_its_result() {
         let Event::UseItemOnBlockEvent(data) = event else {
             panic!("expected use item on block");
         };
+        assert_eq!(resource(state, &data.player).gameprofile.name, "UseOnBlock");
         assert_eq!(data.hand, WitHand::Left);
         assert_eq!(native(&data.block_pos), pos);
         assert_eq!(data.face, WitBlockDirection::Up);
@@ -310,6 +311,8 @@ fn a_plugin_sets_the_final_state_of_a_tool_modification() {
         let Event::BlockEventBlockToolModificationEvent(data) = event else {
             panic!("expected tool modification");
         };
+        assert!(is_shared_world(state_table, &data.target_world));
+        assert_eq!(native(&data.block_pos), pos);
         assert!(data.player.is_none());
         assert_eq!(data.item_ability, FIRESTARTER_LIGHT);
         assert!(!data.simulated);
@@ -402,10 +405,11 @@ fn a_plugin_receives_a_crop_grow_post() {
 #[test]
 fn a_plugin_sets_can_convert_of_create_fluid_source() {
     let state = Block::WATER.default_state;
-    let manager = plugin::<CreateFluidSourceEvent, _>(move |event, _state| {
+    let manager = plugin::<CreateFluidSourceEvent, _>(move |event, state_table| {
         let Event::CreateFluidSourceEvent(data) = event else {
             panic!("expected create fluid source");
         };
+        assert!(is_shared_world(state_table, &data.target_world));
         assert_eq!(data.state_id, state.id.as_u16());
         assert!(data.vanilla_result);
         assert!(data.can_convert);
@@ -425,10 +429,11 @@ fn a_plugin_sets_can_convert_of_create_fluid_source() {
 #[test]
 fn a_plugin_tunes_and_cancels_a_note_block_change() {
     let state = Block::NOTE_BLOCK.default_state;
-    let manager = plugin::<NoteBlockEventChange, _>(move |event, _state| {
+    let manager = plugin::<NoteBlockEventChange, _>(move |event, state_table| {
         let Event::NoteBlockEventChange(data) = event else {
             panic!("expected note block change");
         };
+        assert!(is_shared_world(state_table, &data.target_world));
         assert_eq!((data.old_note, data.note), (3, 4));
         assert_eq!(data.state_id, state.id.as_u16());
         data.note = 12;
@@ -460,10 +465,11 @@ fn a_plugin_receives_a_piston_post() {
     let pos = BlockPos::new(13, 64, 13);
     let seen = Arc::new(Mutex::new(None));
     let record = seen.clone();
-    let manager = plugin::<PistonEventPost, _>(move |event, _state| {
+    let manager = plugin::<PistonEventPost, _>(move |event, state| {
         let Event::PistonEventPost(data) = event else {
             panic!("expected piston post");
         };
+        assert!(is_shared_world(state, &data.target_world));
         *record.lock().unwrap_or_else(PoisonError::into_inner) = Some((
             native(&data.block_pos),
             data.state_id,
@@ -570,8 +576,10 @@ fn world_place_block_by_an_entity_reaches_plugins_and_mods() {
     let world = support::world();
     let plugin_cancels = BlockPos::new(14, 120, 14);
     let mod_cancels = BlockPos::new(14, 120, 15);
+    let nobody_cancels = BlockPos::new(14, 120, 16);
     clear_loaded(plugin_cancels);
     clear_loaded(mod_cancels);
+    clear_loaded(nobody_cancels);
     let pig = from_type(
         &EntityType::PIG,
         Vector3::new(14.5, 121.0, 14.5),
@@ -594,6 +602,9 @@ fn world_place_block_by_an_entity_reaches_plugins_and_mods() {
                     if entity.get_entity().entity_id != pig_id {
                         return;
                     }
+                    let below = support::world().get_block_state(&native(&data.block_pos).down());
+                    assert_eq!(data.placed_against_state_id, below.id.as_u16());
+                    assert!(is_shared_world(state, &data.target_world));
                     record.lock().unwrap_or_else(PoisonError::into_inner).push((
                         native(&data.block_pos),
                         data.placed_state_id,
@@ -626,6 +637,8 @@ fn world_place_block_by_an_entity_reaches_plugins_and_mods() {
 
     assert!(!world.place_block(&plugin_cancels, stone, pig.as_ref()));
     assert!(!world.place_block(&mod_cancels, stone, pig.as_ref()));
+    assert!(world.place_block(&nobody_cancels, stone, pig.as_ref()));
+    assert_eq!(world.get_block_state_id(&nobody_cancels), stone);
 
     assert_eq!(
         world.get_block_state_id(&plugin_cancels),
@@ -643,6 +656,7 @@ fn world_place_block_by_an_entity_reaches_plugins_and_mods() {
         [
             (plugin_cancels, stone.as_u16(), air, false),
             (mod_cancels, stone.as_u16(), air, true),
+            (nobody_cancels, stone.as_u16(), air, false),
         ]
     );
     assert_eq!(

@@ -14,7 +14,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use guest::{drop_resource, fire, plugin, resource};
+use guest::{drop_resource, fire, is_shared_world, plugin, resource};
 use pumpkin_core::{
     entity::r#type::from_type,
     plugin::{
@@ -100,6 +100,7 @@ fn a_plugin_changes_the_blocks_and_entities_of_a_detonation() {
         let Event::ExplosionEventDetonate(data) = event else {
             panic!("expected explosion detonate");
         };
+        assert!(is_shared_world(state, &data.target_world));
         assert_eq!(data.center, (1.0, 70.0, 0.0));
         assert!((data.power - 3.0).abs() < f32::EPSILON);
         let blocks: Vec<_> = data.affected_blocks.iter().map(native).collect();
@@ -149,7 +150,10 @@ fn a_plugin_sets_the_knockback_of_an_explosion() {
         let Event::ExplosionKnockbackEvent(data) = event else {
             panic!("expected explosion knockback");
         };
+        assert!(is_shared_world(state, &data.target_world));
         assert_eq!(resource(state, &data.entity).get_entity().entity_id, pig_id);
+        assert_eq!(data.center, (0.0, 69.0, 0.0));
+        assert!((data.power - 4.0).abs() < f32::EPSILON);
         assert_eq!(data.knockback, (0.0, 1.0, 0.0));
         assert_eq!(data.affected_blocks.len(), 1);
         data.knockback = (2.0, 0.5, -2.0);
@@ -307,10 +311,11 @@ fn a_plugin_changes_and_cancels_the_potential_spawns() {
     let spawns: Vec<_> = Biome::PLAINS.spawners.creature.iter().collect();
     let first = spawns[0];
     let pos = BlockPos::new(0, 70, 0);
-    let manager = plugin::<LevelEventPotentialSpawns, _>(move |event, _state| {
+    let manager = plugin::<LevelEventPotentialSpawns, _>(move |event, state| {
         let Event::LevelEventPotentialSpawns(data) = event else {
             panic!("expected potential spawns");
         };
+        assert!(is_shared_world(state, &data.target_world));
         assert_eq!(data.category, WitMobCategory::Creature);
         assert_eq!(native(&data.block_pos), pos);
         assert_eq!(data.spawns.len(), Biome::PLAINS.spawners.creature.len());

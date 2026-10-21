@@ -109,6 +109,14 @@ where
     state.get(res).expect("live resource").clone()
 }
 
+/// Whether the world resource of a record is the overworld of the shared server.
+pub fn is_shared_world(
+    state: &PluginHostState,
+    world: &Resource<pumpkin_wasm_host_v0_2::pumpkin::plugin::world::World>,
+) -> bool {
+    Arc::ptr_eq(&resource(state, world), &crate::support::world())
+}
+
 pub fn drop_resource<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
     state.discard_to_be_removed(res);
 }
