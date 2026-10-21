@@ -172,7 +172,7 @@ pub fn suppress_enderman_anger(enderman: &Entity, player: &Player) -> bool {
 /// Fires `MobDespawnEvent` at the start of the despawn check of `mob`. Returns the result,
 /// `Default` without a handler.
 pub fn mob_despawn(mob: &Entity) -> MobDespawnResult {
-    let world = mob.world.load_full();
+    let world = mob.world.load();
     let Some(server) = listening::<MobDespawnEvent>(&world) else {
         return MobDespawnResult::Default;
     };
@@ -182,7 +182,9 @@ pub fn mob_despawn(mob: &Entity) -> MobDespawnResult {
     let pos = mob.pos.load();
     server
         .plugin_manager
-        .fire_blocking_with(&server, || MobDespawnEvent::new(entity, world.clone(), pos))
+        .fire_blocking_with(&server, || {
+            MobDespawnEvent::new(entity, mob.world.load_full(), pos)
+        })
         .map_or(MobDespawnResult::Default, |event| event.result)
 }
 
