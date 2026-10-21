@@ -10,6 +10,7 @@ use crate::entity::mob::warden::WardenEntity;
 use crate::entity::mob::warden_spawn_tracker::{MAX_WARNING_LEVEL, WardenSpawnTracker};
 use crate::entity::player::Player;
 use crate::entity::spawn_util::{SpawnStrategy, try_spawn_mob};
+use crate::plugin::level::EntitySpawnReason;
 use crate::world::World;
 use pumpkin_data::{
     BlockId, BlockStateId,
@@ -145,6 +146,7 @@ impl SculkShriekerBlock {
         let Some(warden) = try_spawn_mob(
             &EntityType::WARDEN,
             WardenEntity::new,
+            EntitySpawnReason::Triggered,
             world,
             pos,
             WARDEN_SPAWN_ATTEMPTS,

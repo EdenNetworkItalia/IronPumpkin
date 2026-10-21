@@ -1,6 +1,7 @@
-//! `register_neoforge_event` and `register_neoforge_living_event` register a v0.2 handler for the
-//! native event that each `EventType` names, and for no other (#131, #137). This file is its own
-//! test binary, so no other test registers handlers on the shared server.
+//! `register_neoforge_event`, `register_neoforge_living_event` and `register_neoforge_entity_event`
+//! register a v0.2 handler for the native event that each `EventType` names, and for no other
+//! (#131, #137, #138). This file is its own test binary, so no other test registers handlers on the
+//! shared server.
 #![expect(clippy::expect_used, reason = "a test fails on the first setup error")]
 
 #[path = "../../pumpkin-core/tests/support/mod.rs"]
@@ -28,6 +29,13 @@ use pumpkin_core::plugin::{
     player::use_item_on_block::UseItemOnBlockEvent,
     startup::create_context,
 };
+
+use pumpkin_core::plugin::level::{
+    EndermanAngerEvent, EntityInvulnerabilityCheckEvent, EntityLeaveLevelEvent,
+    EntityMobGriefingEvent, EntityStruckByLightningEvent, EntityTeleportEventSpreadPlayersCommand,
+    MobDespawnEvent, MobSpawnEventPositionCheck, MobSpawnEventSpawnPlacementCheck, MobSplitEvent,
+    ProjectileImpactEvent, SpawnClusterSizeEvent,
+};
 use pumpkin_wasm_host_common::{
     concurrent_store::{LegacySyncReentry, TokioSpawner, start_legacy_store},
     plugin::{PluginApiVersion, WasmPlugin},
@@ -37,6 +45,7 @@ use pumpkin_wasm_host_common::{
 use pumpkin_wasm_host_v0_2::{
     events::{
         WasmPluginEventHandler, neoforge::register_neoforge_event,
+        neoforge_entity::register_neoforge_entity_event,
         neoforge_living::register_neoforge_living_event,
     },
     pumpkin::plugin::event::EventType,
@@ -245,4 +254,82 @@ fn each_living_event_type_registers_its_own_event() {
         &cases,
         register_neoforge_living_event,
     );
+}
+
+/// The entity events of #138 route through `register_neoforge_entity_event` the same way.
+#[test]
+fn each_entity_event_type_registers_its_own_event() {
+    let server = support::server();
+    let context = create_context(
+        server,
+        PluginMetadata {
+            name: "v0.2-entity-routing-plugin".to_owned(),
+            version: "1.0.0".to_owned(),
+            authors: Vec::new(),
+            description: "v0.2 entity routing test plugin".to_owned(),
+            dependencies: Vec::new(),
+            permissions: Vec::new(),
+        },
+    );
+    let handler = handler();
+    let cases: [(EventType, Listens); 12] = [
+        (
+            EventType::EntityLeaveLevelEvent,
+            listens::<EntityLeaveLevelEvent>,
+        ),
+        (
+            EventType::EntityMobGriefingEvent,
+            listens::<EntityMobGriefingEvent>,
+        ),
+        (
+            EventType::EntityStruckByLightningEvent,
+            listens::<EntityStruckByLightningEvent>,
+        ),
+        (
+            EventType::EntityTeleportEventSpreadPlayersCommand,
+            listens::<EntityTeleportEventSpreadPlayersCommand>,
+        ),
+        (
+            EventType::ProjectileImpactEvent,
+            listens::<ProjectileImpactEvent>,
+        ),
+        (EventType::EndermanAngerEvent, listens::<EndermanAngerEvent>),
+        (EventType::MobDespawnEvent, listens::<MobDespawnEvent>),
+        (
+            EventType::MobSpawnEventPositionCheck,
+            listens::<MobSpawnEventPositionCheck>,
+        ),
+        (
+            EventType::MobSpawnEventSpawnPlacementCheck,
+            listens::<MobSpawnEventSpawnPlacementCheck>,
+        ),
+        (EventType::MobSplitEvent, listens::<MobSplitEvent>),
+        (
+            EventType::SpawnClusterSizeEvent,
+            listens::<SpawnClusterSizeEvent>,
+        ),
+        (
+            EventType::EntityInvulnerabilityCheckEvent,
+            listens::<EntityInvulnerabilityCheckEvent>,
+        ),
+    ];
+    let manager = &server.plugin_manager;
+    assert!(cases.iter().all(|(_, listens)| !listens(manager)));
+
+    for (registered, (event_type, _)) in cases.iter().enumerate() {
+        register_neoforge_entity_event(
+            &context,
+            &handler,
+            EventPriority::Normal,
+            true,
+            *event_type,
+        );
+        for (index, (other, listens)) in cases.iter().enumerate() {
+            assert_eq!(
+                listens(manager),
+                index <= registered,
+                "after {event_type:?}, the handlers of {other:?}"
+            );
+        }
+    }
 }

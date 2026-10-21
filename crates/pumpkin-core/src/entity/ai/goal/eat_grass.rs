@@ -84,11 +84,9 @@ impl Goal for EatGrassGoal {
             let block_pos = entity.block_pos.load();
             let world = entity.world.load_full();
 
-            let mob_griefing = world.level_info.load().game_rules.mob_griefing;
-
             let block_at_pos = world.get_block(&block_pos);
             if block_at_pos.has_tag(&tag::Block::MINECRAFT_EDIBLE_FOR_SHEEP) {
-                if mob_griefing {
+                if crate::plugin::entity_events::can_entity_grief(&world, entity) {
                     // Break effects, no drops.
                     world.break_block(&block_pos, None, BlockFlags::SKIP_DROPS);
                 }
@@ -97,7 +95,7 @@ impl Goal for EatGrassGoal {
                 let below_pos = block_pos.down();
                 let block_below = world.get_block(&below_pos);
                 if block_below.id == Block::GRASS_BLOCK.id {
-                    if mob_griefing {
+                    if crate::plugin::entity_events::can_entity_grief(&world, entity) {
                         world.sync_world_event(
                             WorldEvent::ParticlesAndSoundDestroyBlock,
                             below_pos,

@@ -254,15 +254,22 @@ impl EntityBase for LightningBoltEntity {
             );
 
             let entities = world.get_all_at_box(&damage_box);
-            if let Ok(mut hit_guard) = self.hit_entities.lock() {
-                for hit_entity in entities {
-                    if hit_entity.get_entity().entity_id == entity.entity_id {
-                        continue;
-                    }
-                    let hit_id = hit_entity.get_entity().entity_id;
-                    if hit_guard.insert(hit_id) {
-                        hit_entity.on_lightning_strike(hit_entity.as_ref(), self);
-                    }
+            let struck: Vec<_> = {
+                let Ok(mut hit_guard) = self.hit_entities.lock() else {
+                    return;
+                };
+                entities
+                    .into_iter()
+                    .filter(|hit_entity| {
+                        let hit_id = hit_entity.get_entity().entity_id;
+                        hit_id != entity.entity_id && hit_guard.insert(hit_id)
+                    })
+                    .collect()
+            };
+            // The strike events run outside the lock of the struck entities.
+            for hit_entity in struck {
+                if !crate::plugin::entity_events::struck_by_lightning(&world, &hit_entity, entity) {
+                    hit_entity.on_lightning_strike(hit_entity.as_ref(), self);
                 }
             }
         }

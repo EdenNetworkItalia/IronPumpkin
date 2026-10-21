@@ -14,7 +14,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 | **Binary output** | `.jar` file in the `mods/` folder | One server binary per modpack. The mod crate is compiled into it. |
 | **Mod descriptor** | `neoforge.mods.toml` and a `@Mod` class | The `NativeMod` trait (`id`, `display_name`, `version`, `client_required`) and `register_mod!`. An optional `neoforge.mods.toml` through `NativeMod::mods_toml()` gives the mod id, the namespace and the dependencies. See [Lifecycle](./lifecycle.md). |
 | **Lifecycle hooks** | `FMLCommonSetupEvent` and the other FML events | `NativeMod::init`, then `common_setup`, `dedicated_server_setup`, `inter_mod_enqueue`, `inter_mod_process` and `load_complete`, in load order. See [Lifecycle](./lifecycle.md). |
-| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting, player, level, block and living entity events have NeoForge fire sites and fields. Some player, level and living rows and the abstract classes stay planned, and the other entity events are planned (task 2.15). See [Events](./events.md) and [What is unsupported](./unsupported.md). |
+| **Event bus** | `IEventBus#addListener`, `@SubscribeEvent` | `ModInit::register_event` with a Pumpkin event handler, a priority, and the blocking and receive-canceled flags. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting, player, level, block, living entity, entity, mob and spawn events have NeoForge fire sites and fields. Some player, level, living and entity rows and the abstract classes stay planned. See [Events](./events.md) and [What is unsupported](./unsupported.md). |
 | **Registration** | `DeferredRegister`, `DeferredHolder` | `ModInit::register_block`, `register_item`, `register_entity_type`, `register_tag`, `register_sound_event`, `register_mob_effect`, `register_attribute` and `register_data_component_type` with builders. See [Registration](./registration.md) and [Data components, sounds, mob effects and attributes](./components-effects-attributes.md). |
 | **Config** | `ModConfigSpec` | `ModInit::register_config` with a `ConfigSpec` and a `ConfigType`: `Local`, `Synced` or `Startup`. The file is `config/<modid>-<type>.toml`. A `Synced` config goes to NeoForge clients as `neoforge:config_file`. See [Configuration](./configuration.md). |
 | **Network** | `PayloadRegistrar`, `PacketDistributor`, `RegisterConfigurationTasksEvent` | `RegisterPayloadHandlersEvent` and `RegisterConfigurationTasksEvent` as Pumpkin events, a `PayloadRegistrar` per channel id with raw bytes, and `network::send_to_player` and the broadcasts. The server negotiates the channels with a NeoForge client. See [Network payloads](./network.md). |
@@ -46,14 +46,6 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 - [Network payloads](./network.md): `PayloadRegistrar`, `IPayloadContext`, `PacketDistributor` and the configuration tasks against the `network` module.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
-
-## Planned pages
-
-A page for an API that does not exist yet is written when its task lands.
-
-| Page | NeoForge subject | Task |
-| :--- | :--- | :--- |
-| Entity events | `EntityJoinLevelEvent` and the entity, mob and item entity events; the living entity events are in [Events](./events.md#the-living-entity-events) | 2.15 |
 
 ## Look up a NeoForge class
 

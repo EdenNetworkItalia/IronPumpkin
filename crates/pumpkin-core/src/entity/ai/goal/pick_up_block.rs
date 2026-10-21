@@ -27,7 +27,7 @@ impl Goal for PickUpBlockGoal {
 
         let entity = &mob.get_mob_entity().living_entity.entity;
         let world = entity.world.load();
-        if !world.level_info.load().game_rules.mob_griefing {
+        if !crate::plugin::entity_events::can_entity_grief(&world, entity) {
             return false;
         }
 

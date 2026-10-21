@@ -283,6 +283,8 @@ impl EntityBase for TridentEntity {
 
         // Handle hit
         if let Some(h) = hit
+            && !self.has_hit.load(Ordering::SeqCst)
+            && !crate::plugin::entity_events::projectile_impact(&self.entity, || h.clone())
             && !self.has_hit.swap(true, Ordering::SeqCst)
         {
             caller.on_hit(h);

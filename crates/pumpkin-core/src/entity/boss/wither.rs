@@ -530,7 +530,9 @@ impl WitherEntity {
                 self.destroy_blocks_tick
                     .store(next_destroy, Ordering::Relaxed);
 
-                if next_destroy == 0 && world.level_info.load().game_rules.mob_griefing {
+                if next_destroy == 0
+                    && crate::plugin::entity_events::can_entity_grief(&world, entity)
+                {
                     let bb = entity.bounding_box.load();
                     let bb_width = bb.max.x - bb.min.x;
                     let bb_height = bb.max.y - bb.min.y;

@@ -24,6 +24,7 @@ pub mod cache;
 pub(crate) mod container_events;
 mod context_events;
 pub mod dispatch;
+pub(crate) mod entity_events;
 pub(crate) mod interact_events;
 pub(crate) mod level_events;
 pub(crate) mod living_events;

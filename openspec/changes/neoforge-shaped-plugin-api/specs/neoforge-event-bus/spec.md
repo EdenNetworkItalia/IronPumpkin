@@ -75,7 +75,7 @@ A cancellable event SHALL carry `cancelled` (the Pumpkin `Cancellable` trait). W
 - **THEN** the block stays and no later handler without receive-canceled runs
 
 ### Requirement: Results
-An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`TriState`, `InteractionResult` or the event's own result enum), and the host SHALL apply the set value as NeoForge does. Status: planned (tasks 2.13 and 2.15; `TriState` and `InteractionResult` exist, task 2.12, #112).
+An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`TriState`, `InteractionResult` or the event's own result enum), and the host SHALL apply the set value as NeoForge does. Status: supported (the `TriState` and `InteractionResult` events, #112; `MobEffectEvent.Applicable`, #137; the despawn and spawn checks, #138).
 
 #### Scenario: Deny a despawn
 - **WHEN** a `MobDespawnEvent` handler sets the result to `Deny`
@@ -89,7 +89,7 @@ A lifecycle method of `NativeMod` that hands the mod a registration API SHALL pa
 - **THEN** the call fails with a `registration-closed` error
 
 ### Requirement: One event per fire site
-A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from the NeoForge fire site, with the NeoForge fields. Where Pumpkin has an event for that fire site, the row SHALL map to that event and the missing fields SHALL be added to it. A new struct with the NeoForge name SHALL exist only where Pumpkin has no event for that fire site. A test SHALL cover each supported row. Status: planned (task 2.15; done: tasks 2.3, 2.12, 2.13, living rows; #102, #111, #112, #120, #137).
+A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from the NeoForge fire site, with the NeoForge fields. Where Pumpkin has an event for that fire site, the row SHALL map to that event and the missing fields SHALL be added to it. A new struct with the NeoForge name SHALL exist only where Pumpkin has no event for that fire site. A test SHALL cover each supported row. Status: supported (tasks 2.3, 2.12, 2.13 and 2.15; #102, #111, #112, #120, #137 and #138).
 
 #### Scenario: Player login
 - **WHEN** a player joins and a mod handles the Pumpkin event that the row of `PlayerEvent.PlayerLoggedInEvent` names
@@ -100,7 +100,7 @@ A NeoForge event whose row in `mapping-table.md` says supported SHALL fire from 
 - **THEN** the Pumpkin event carries the field, and no second struct for the same fire site exists
 
 ### Requirement: Every supported event reaches every mod
-Every event case that the host fires SHALL reach the handlers of every loaded native mod, with write-back of the settable fields and cancellation through `cancelled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: planned (task 2.15; the server, player, level and block, and living families are done, #102, #111, #112, #120 and #137).
+Every event case that the host fires SHALL reach the handlers of every loaded native mod, with write-back of the settable fields and cancellation through `cancelled`. An event that the host fires only to v0.2 plugins SHALL NOT count as supported. Each event family SHALL have a test for cancel and one for write-back. Status: supported (the server, player, level and block, living, and entity, mob and spawn families; #102, #111, #112, #120, #137 and #138).
 
 #### Scenario: A mod cancels the break of another mod's block
 - **WHEN** mod A registers the block `moda:ore` and places it, mod B handles `BlockBreakEvent` and cancels it for that block, and a player breaks it

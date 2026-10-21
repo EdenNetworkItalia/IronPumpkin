@@ -711,6 +711,20 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         Event::RaidTriggerEvent(_) => {}
         Event::LightningStrikeEvent(_) => {}
         Event::ConfigCustomPayloadEvent(_) => {}
+        event @ (Event::EntityLeaveLevelEvent(_)
+        | Event::EntityMobGriefingEvent(_)
+        | Event::EntityStruckByLightningEvent(_)
+        | Event::EntityTeleportEventSpreadPlayersCommand(_)
+        | Event::ProjectileImpactEvent(_)
+        | Event::EndermanAngerEvent(_)
+        | Event::MobDespawnEvent(_)
+        | Event::MobSpawnEventPositionCheck(_)
+        | Event::MobSpawnEventSpawnPlacementCheck(_)
+        | Event::MobSplitEvent(_)
+        | Event::SpawnClusterSizeEvent(_)
+        | Event::EntityInvulnerabilityCheckEvent(_)) => {
+            super::neoforge_entity::cleanup_neoforge_entity_event(event, state);
+        }
         event @ (Event::UseItemOnBlockEvent(_)
         | Event::BlockEventEntityPlaceEvent(_)
         | Event::BlockEventBlockToolModificationEvent(_)

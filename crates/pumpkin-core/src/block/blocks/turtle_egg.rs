@@ -49,7 +49,7 @@ impl TurtleEggBlock {
         if entity_type.id == EntityType::PLAYER.id {
             return true;
         }
-        world.level_info.load().game_rules.mob_griefing
+        crate::plugin::entity_events::can_entity_grief(world, entity.get_entity())
     }
 
     pub fn decrease_eggs(

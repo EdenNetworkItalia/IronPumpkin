@@ -10,6 +10,7 @@ use rand::RngExt;
 use uuid::Uuid;
 
 use crate::entity::{Entity, EntityBase, mob::Mob};
+use crate::plugin::level::EntitySpawnReason;
 use crate::world::World;
 
 #[derive(Clone, Copy)]
@@ -42,6 +43,7 @@ fn is_face_full_up(state: &BlockState) -> bool {
 pub fn try_spawn_mob<T: Mob + 'static>(
     entity_type: &'static EntityType,
     create: fn(Entity) -> Arc<T>,
+    spawn_type: EntitySpawnReason,
     world: &Arc<World>,
     start: &BlockPos,
     spawn_attempts: i32,
@@ -97,10 +99,17 @@ pub fn try_spawn_mob<T: Mob + 'static>(
             position,
             entity_type,
         ));
-        if !mob.check_spawn_obstruction(world) {
+        let entity = mob.clone() as Arc<dyn EntityBase>;
+        if !crate::plugin::entity_events::check_spawn_position(
+            &entity,
+            world,
+            spawn_type,
+            None,
+            || mob.check_spawn_obstruction(world),
+        ) {
             continue;
         }
-        world.spawn_entity(mob.clone() as Arc<dyn EntityBase>);
+        world.spawn_entity(entity);
         return Some(mob);
     }
 

@@ -207,6 +207,156 @@ interface neoforge-events {
         cancelled: bool,
     }
 
+    /// Why a mob spawns: the vanilla `EntitySpawnReason` of the spawn checks.
+    enum entity-spawn-reason {
+        natural,
+        chunk-generation,
+        spawner,
+        triggered,
+    }
+
+    /// The result of a spawn check: pass, let the server decide, or fail.
+    enum mob-spawn-result {
+        succeed,
+        default,
+        fail,
+    }
+
+    /// NeoForge `MobDespawnEvent.Result`: despawn now, let the server decide, or stay.
+    enum mob-despawn-result {
+        allow,
+        default,
+        deny,
+    }
+
+    /// A block that a projectile hit.
+    record projectile-block-hit {
+        block-pos: block-pos,
+        face: block-direction,
+        /// The point of the hit.
+        location: position,
+    }
+
+    /// An entity that a projectile hit.
+    record projectile-entity-hit {
+        entity: entity,
+        /// The point of the hit.
+        location: position,
+    }
+
+    /// What a projectile hit (vanilla `HitResult`).
+    variant projectile-hit {
+        block(projectile-block-hit),
+        entity(projectile-entity-hit),
+    }
+
+    /// NeoForge `EntityLeaveLevelEvent`: an entity left its world.
+    record entity-leave-level-event-data {
+        entity: entity,
+        target-world: %world,
+    }
+
+    /// NeoForge `EntityMobGriefingEvent`: an entity checks the `mobGriefing` game rule.
+    /// Settable: `can-grief`.
+    record entity-mob-griefing-event-data {
+        entity: entity,
+        mob-griefing-enabled: bool,
+        can-grief: bool,
+    }
+
+    /// NeoForge `EntityStruckByLightningEvent`: a bolt is about to strike an entity. A cancel
+    /// spares the entity.
+    record entity-struck-by-lightning-event-data {
+        entity: entity,
+        lightning: entity,
+        cancelled: bool,
+    }
+
+    /// NeoForge `EntityTeleportEvent.SpreadPlayersCommand`: `/spreadplayers` is about to move an
+    /// entity. Settable: `target`. A cancel leaves the entity where it is.
+    record entity-teleport-event-spread-players-command-data {
+        entity: entity,
+        target-world: %world,
+        target: position,
+        cancelled: bool,
+    }
+
+    /// NeoForge `ProjectileImpactEvent`: a projectile hits a block or an entity. A cancel skips
+    /// the hit, and the projectile flies on.
+    record projectile-impact-event-data {
+        projectile: entity,
+        ray: projectile-hit,
+        cancelled: bool,
+    }
+
+    /// NeoForge `EndermanAngerEvent`: a player stares at an enderman. A cancel makes the stare
+    /// not count.
+    record enderman-anger-event-data {
+        entity: entity,
+        player: player,
+        cancelled: bool,
+    }
+
+    /// NeoForge `MobDespawnEvent`: a mob checks whether it despawns. Settable: `result`.
+    record mob-despawn-event-data {
+        entity: entity,
+        target-world: %world,
+        position: position,
+        %result: mob-despawn-result,
+    }
+
+    /// NeoForge `MobSpawnEvent.PositionCheck`: the spawner checks the position of a created mob.
+    /// Settable: `result`.
+    record mob-spawn-event-position-check-data {
+        entity: entity,
+        target-world: %world,
+        position: position,
+        spawn-type: entity-spawn-reason,
+        /// The position of the mob spawner block, for a mob spawner.
+        spawner: option<block-pos>,
+        %result: mob-spawn-result,
+    }
+
+    /// NeoForge `MobSpawnEvent.SpawnPlacementCheck`: the spawn rules of an entity type decide
+    /// whether it may spawn at a position. Settable: `result`.
+    record mob-spawn-event-spawn-placement-check-data {
+        /// The namespaced entity type, such as `minecraft:zombie`.
+        entity-type: string,
+        target-world: %world,
+        spawn-type: entity-spawn-reason,
+        block-pos: block-pos,
+        /// The result of the spawn rules.
+        default-result: bool,
+        %result: mob-spawn-result,
+    }
+
+    /// NeoForge `MobSplitEvent`: a dead slime or magma cube splits. Settable: `children`, where
+    /// the host keeps only the children of the event, in the order of the list. A cancel spawns
+    /// no child.
+    record mob-split-event-data {
+        parent: entity,
+        children: list<entity>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `SpawnClusterSizeEvent`: the natural spawner reads how many mobs of one pack may
+    /// spawn in a chunk. Settable: `size`.
+    record spawn-cluster-size-event-data {
+        entity: entity,
+        size: s32,
+    }
+
+    /// NeoForge `EntityInvulnerabilityCheckEvent`: an entity checks whether a damage can hurt it.
+    /// Settable: `invulnerable`.
+    record entity-invulnerability-check-event-data {
+        entity: entity,
+        damage-type: damage-type,
+        /// The entity that caused the damage.
+        attacker: option<entity>,
+        original-invulnerable: bool,
+        invulnerable: bool,
+    }
+
     /// NeoForge `EntityTickEvent.Pre`: an entity that is not a player is about to tick. A cancel
     /// skips the tick and the post event.
     record entity-tick-event-pre-data {

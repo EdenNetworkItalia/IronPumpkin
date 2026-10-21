@@ -741,6 +741,16 @@ impl MobEntity {
     pub fn check_despawn(&self, mob: &dyn Mob) {
         let entity = &self.living_entity.entity;
 
+        match crate::plugin::entity_events::mob_despawn(entity) {
+            crate::plugin::level::MobDespawnResult::Allow => {
+                mob.get_entity().remove();
+                return;
+            }
+            // Pumpkin has no `noActionTime` for `Deny` to reset.
+            crate::plugin::level::MobDespawnResult::Deny => return,
+            crate::plugin::level::MobDespawnResult::Default => {}
+        }
+
         if self.persistence_required.load(Relaxed) || mob.requires_custom_persistence() {
             return;
         }

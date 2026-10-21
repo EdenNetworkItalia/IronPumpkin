@@ -4435,6 +4435,12 @@ impl World {
                         // stale data.
                         base_entity.velocity.store(Vector3::default());
 
+                        // NeoForge fires `EntityJoinLevelEvent` for a loaded entity too, and a
+                        // cancel keeps it out of the world, so its chunk no longer saves it.
+                        if world.spawn_cancelled(entity.as_ref()) {
+                            continue;
+                        }
+
                         // UUID-dedupes if another watcher already loaded this entity.
                         // Tracker owns pairing (spawn packets + vehicle restore).
                         world.add_entity_silent(entity.clone());
@@ -4891,6 +4897,11 @@ impl World {
             new_list
         });
         if let Some(ref player) = removed_player {
+            crate::plugin::entity_events::entities_left(
+                self,
+                &[player.clone() as Arc<dyn EntityBase>],
+            )
+            .await;
             crate::plugin::player_events::untrack_leaving_player(self, player);
             let uuid = player.gameprofile.id;
             let entity_id = player.entity_id();
@@ -4969,7 +4980,12 @@ impl World {
         let Some(mob) = vehicle.get_mob() else {
             return;
         };
+        let world = vehicle.get_entity().world.load_full();
         for rider in mob.get_mob_entity().take_pending_riders() {
+            // Vanilla `addFreshEntityWithPassengers` adds each rider with `addFreshEntity`.
+            if world.spawn_cancelled(rider.as_ref()) {
+                continue;
+            }
             rider.init_data_tracker();
             self.add_entity_silent(rider.clone());
             vehicle.get_entity().add_passenger(vehicle.clone(), rider);
@@ -5088,6 +5104,7 @@ impl World {
             return;
         }
         base_entity.removed.store(true, Ordering::Release);
+        let leaving = crate::plugin::entity_events::leaving(self, base_entity);
 
         self.spawn_state.load().remove_entity(self, entity);
         self.entity_tracker.remove_entity(entity, self);
@@ -5096,6 +5113,7 @@ impl World {
             new_entities.retain(|e| e.get_entity().entity_uuid != base_entity.entity_uuid);
             new_entities
         });
+        crate::plugin::entity_events::entity_left(leaving);
     }
 
     pub async fn remove_entities_in_chunks(
@@ -5127,10 +5145,11 @@ impl World {
         self.save_entities_by_chunk(&entities_to_remove, chunks_set.iter().copied())
             .await;
 
-        for entity in entities_to_remove {
+        for entity in &entities_to_remove {
             self.entity_tracker.remove_entity(entity.as_ref(), self);
             self.spawn_state.load().remove_entity(self, entity.as_ref());
         }
+        crate::plugin::entity_events::entities_left(self, &entities_to_remove).await;
 
         for chunk_pos in &chunks_set {
             self.save_block_entities(*chunk_pos);

@@ -83,8 +83,7 @@ impl<S: Stepping + Send + Sync, M: MoveToTargetPos + Send + Sync> Goal
 {
     fn can_start(&mut self, mob: &dyn Mob) -> bool {
         let world = mob.get_entity().world.load();
-        let level_info = world.level_info.load();
-        if !level_info.game_rules.mob_griefing {
+        if !crate::plugin::entity_events::can_entity_grief(&world, mob.get_entity()) {
             false
         } else if self.move_to_target_pos_goal.cooldown > 0 {
             self.move_to_target_pos_goal.cooldown -= 1;

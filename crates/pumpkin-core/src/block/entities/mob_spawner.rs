@@ -180,6 +180,17 @@ impl BlockEntity for MobSpawnerBlockEntity {
                 );
                 let yaw = rand::random::<f32>() * 360.0;
                 entity.get_entity().set_rotation(yaw, 0.0);
+                if entity.get_mob().is_some()
+                    && !crate::plugin::entity_events::check_spawn_position(
+                        &entity,
+                        world,
+                        crate::plugin::level::EntitySpawnReason::Spawner,
+                        Some(self.position),
+                        || true,
+                    )
+                {
+                    continue;
+                }
 
                 let mut event =
                     crate::plugin::api::events::entity::spawner_spawn::SpawnerSpawnEvent::new(
