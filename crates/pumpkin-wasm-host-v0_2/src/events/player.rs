@@ -790,7 +790,8 @@ impl ToFromWasmEvent for PlayerInteractEvent {
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        // The hand, the face, the hit vector and the dig action have no setter in NeoForge.
+        // The action, the position and the block keep the upstream Pumpkin write-back. The
+        // hand, the face, the hit vector and the dig action have no setter in NeoForge: keep them.
         cleanup_event(&event, state);
         if let Event::PlayerInteractEvent(data) = event {
             self.action = from_wasm_interact_action(data.action);

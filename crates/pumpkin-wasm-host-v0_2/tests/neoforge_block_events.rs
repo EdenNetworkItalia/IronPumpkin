@@ -201,6 +201,7 @@ fn a_plugin_receives_the_state_of_a_block_break_and_sets_its_drops() {
         };
         assert_eq!(data.state_id, state.id.as_u16());
         assert_eq!(data.exp, 3);
+        data.state_id = Block::STONE.default_state.id.as_u16();
         data.exp = 7;
         data.should_drop = false;
         data.cancelled = true;
@@ -214,10 +215,7 @@ fn a_plugin_receives_the_state_of_a_block_break_and_sets_its_drops() {
     assert!(event.cancelled);
     assert_eq!(event.exp, 7);
     assert!(!event.drop);
-    assert_eq!(
-        event.state.id, state.id,
-        "the state survives the write-back"
-    );
+    assert_eq!(event.state.id, state.id, "the state has no setter");
 }
 
 #[test]

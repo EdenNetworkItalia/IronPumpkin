@@ -140,7 +140,7 @@ impl ToFromWasmEvent for BlockBreakEvent {
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        // The Wasm data has no block state: keep the native one.
+        // `BreakBlockEvent#getState` has no setter: keep the native state.
         let block_state = self.state;
         *self = Self::from_wasm_event(event, state);
         self.state = block_state;
