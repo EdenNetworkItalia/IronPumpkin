@@ -49,7 +49,22 @@ const fn to_wasm_spawn_reason(reason: EntitySpawnReason) -> WitEntitySpawnReason
         EntitySpawnReason::Natural => WitEntitySpawnReason::Natural,
         EntitySpawnReason::ChunkGeneration => WitEntitySpawnReason::ChunkGeneration,
         EntitySpawnReason::Spawner => WitEntitySpawnReason::Spawner,
+        EntitySpawnReason::Structure => WitEntitySpawnReason::Structure,
+        EntitySpawnReason::Breeding => WitEntitySpawnReason::Breeding,
+        EntitySpawnReason::MobSummoned => WitEntitySpawnReason::MobSummoned,
+        EntitySpawnReason::Jockey => WitEntitySpawnReason::Jockey,
+        EntitySpawnReason::Event => WitEntitySpawnReason::Event,
+        EntitySpawnReason::Conversion => WitEntitySpawnReason::Conversion,
+        EntitySpawnReason::Reinforcement => WitEntitySpawnReason::Reinforcement,
         EntitySpawnReason::Triggered => WitEntitySpawnReason::Triggered,
+        EntitySpawnReason::Bucket => WitEntitySpawnReason::Bucket,
+        EntitySpawnReason::SpawnItemUse => WitEntitySpawnReason::SpawnItemUse,
+        EntitySpawnReason::Command => WitEntitySpawnReason::Command,
+        EntitySpawnReason::Dispenser => WitEntitySpawnReason::Dispenser,
+        EntitySpawnReason::Patrol => WitEntitySpawnReason::Patrol,
+        EntitySpawnReason::TrialSpawner => WitEntitySpawnReason::TrialSpawner,
+        EntitySpawnReason::Load => WitEntitySpawnReason::Load,
+        EntitySpawnReason::DimensionTravel => WitEntitySpawnReason::DimensionTravel,
     }
 }
 
