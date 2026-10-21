@@ -1,6 +1,6 @@
-//! `register_neoforge_event` registers a v0.2 handler for the native event that each `EventType`
-//! names, and for no other (#131). This file is its own test binary, so no other test registers
-//! handlers on the shared server.
+//! `register_neoforge_event` and `register_neoforge_living_event` register a v0.2 handler for the
+//! native event that each `EventType` names, and for no other (#131, #137). This file is its own
+//! test binary, so no other test registers handlers on the shared server.
 #![expect(clippy::expect_used, reason = "a test fails on the first setup error")]
 
 #[path = "../../pumpkin-core/tests/support/mod.rs"]
@@ -9,13 +9,21 @@ mod support;
 use std::sync::Arc;
 
 use pumpkin_core::plugin::{
-    EventPriority, Payload, PluginManager, PluginMetadata,
+    Context, EventPriority, Payload, PluginManager, PluginMetadata,
     level::{
         BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch,
         CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
         ExplosionEventDetonate, ExplosionKnockbackEvent, GameRuleChangedEvent,
         LevelEventPotentialSpawns, NoteBlockEventChange, PistonEventPost, PlayerTickEventPost,
         PlayerTickEventPre,
+    },
+    living::{
+        EffectParticleModificationEvent, LivingConversionEventPost, LivingDamageEventPost,
+        LivingDamageEventPre, LivingDestroyBlockEvent, LivingDrownEvent,
+        LivingEntityUseItemEventStart, LivingEntityUseItemEventStop, LivingEntityUseItemEventTick,
+        LivingEventLivingJumpEvent, LivingEventLivingVisibilityEvent, LivingExperienceDropEvent,
+        LivingFallEvent, LivingGetProjectileEvent, LivingKnockBackEvent, LivingShieldBlockEvent,
+        MobEffectEventApplicable,
     },
     player::use_item_on_block::UseItemOnBlockEvent,
     startup::create_context,
@@ -27,7 +35,10 @@ use pumpkin_wasm_host_common::{
     state::PluginHostState,
 };
 use pumpkin_wasm_host_v0_2::{
-    events::{WasmPluginEventHandler, neoforge::register_neoforge_event},
+    events::{
+        WasmPluginEventHandler, neoforge::register_neoforge_event,
+        neoforge_living::register_neoforge_living_event,
+    },
     pumpkin::plugin::event::EventType,
 };
 use wasmtime::{Config, Engine, Store};
@@ -66,13 +77,21 @@ fn listens<E: Payload + 'static>(manager: &PluginManager) -> bool {
     manager.has_handlers::<E>()
 }
 
-#[test]
-fn each_event_type_registers_its_own_event() {
+/// A register function of a module of `NeoForge` events.
+type Register = fn(&Context, &Arc<WasmPluginEventHandler>, EventPriority, bool, EventType);
+
+/// Registers the event type of each case in turn with `register`, and checks after each one that
+/// exactly the events of the cases so far have a handler.
+fn assert_each_registers_its_own_event(
+    name: &str,
+    cases: &[(EventType, Listens)],
+    register: Register,
+) {
     let server = support::server();
     let context = create_context(
         server,
         PluginMetadata {
-            name: "v0.2-routing-plugin".to_owned(),
+            name: name.to_owned(),
             version: "1.0.0".to_owned(),
             authors: Vec::new(),
             description: "v0.2 routing test plugin".to_owned(),
@@ -81,6 +100,23 @@ fn each_event_type_registers_its_own_event() {
         },
     );
     let handler = handler();
+    let manager = &server.plugin_manager;
+    assert!(cases.iter().all(|(_, listens)| !listens(manager)));
+
+    for (registered, (event_type, _)) in cases.iter().enumerate() {
+        register(&context, &handler, EventPriority::Normal, true, *event_type);
+        for (index, (other, listens)) in cases.iter().enumerate() {
+            assert_eq!(
+                listens(manager),
+                index <= registered,
+                "after {event_type:?}, the handlers of {other:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn each_event_type_registers_its_own_event() {
     let cases: [(EventType, Listens); 16] = [
         (
             EventType::UseItemOnBlockEvent,
@@ -135,17 +171,78 @@ fn each_event_type_registers_its_own_event() {
             listens::<PlayerTickEventPost>,
         ),
     ];
-    let manager = &server.plugin_manager;
-    assert!(cases.iter().all(|(_, listens)| !listens(manager)));
+    assert_each_registers_its_own_event("v0.2-routing-plugin", &cases, register_neoforge_event);
+}
 
-    for (registered, (event_type, _)) in cases.iter().enumerate() {
-        register_neoforge_event(&context, &handler, EventPriority::Normal, true, *event_type);
-        for (index, (other, listens)) in cases.iter().enumerate() {
-            assert_eq!(
-                listens(manager),
-                index <= registered,
-                "after {event_type:?}, the handlers of {other:?}"
-            );
-        }
-    }
+#[test]
+fn each_living_event_type_registers_its_own_event() {
+    let cases: [(EventType, Listens); 17] = [
+        (
+            EventType::LivingDamageEventPre,
+            listens::<LivingDamageEventPre>,
+        ),
+        (
+            EventType::LivingDamageEventPost,
+            listens::<LivingDamageEventPost>,
+        ),
+        (
+            EventType::LivingEntityUseItemEventStart,
+            listens::<LivingEntityUseItemEventStart>,
+        ),
+        (
+            EventType::LivingEntityUseItemEventTick,
+            listens::<LivingEntityUseItemEventTick>,
+        ),
+        (
+            EventType::LivingEntityUseItemEventStop,
+            listens::<LivingEntityUseItemEventStop>,
+        ),
+        (
+            EventType::LivingKnockBackEvent,
+            listens::<LivingKnockBackEvent>,
+        ),
+        (EventType::LivingFallEvent, listens::<LivingFallEvent>),
+        (EventType::LivingDrownEvent, listens::<LivingDrownEvent>),
+        (
+            EventType::LivingExperienceDropEvent,
+            listens::<LivingExperienceDropEvent>,
+        ),
+        (
+            EventType::LivingShieldBlockEvent,
+            listens::<LivingShieldBlockEvent>,
+        ),
+        (
+            EventType::LivingGetProjectileEvent,
+            listens::<LivingGetProjectileEvent>,
+        ),
+        (
+            EventType::LivingEventLivingJumpEvent,
+            listens::<LivingEventLivingJumpEvent>,
+        ),
+        (
+            EventType::LivingEventLivingVisibilityEvent,
+            listens::<LivingEventLivingVisibilityEvent>,
+        ),
+        (
+            EventType::LivingDestroyBlockEvent,
+            listens::<LivingDestroyBlockEvent>,
+        ),
+        (
+            EventType::LivingConversionEventPost,
+            listens::<LivingConversionEventPost>,
+        ),
+        (
+            EventType::EffectParticleModificationEvent,
+            listens::<EffectParticleModificationEvent>,
+        ),
+        (
+            EventType::MobEffectEventApplicable,
+            listens::<MobEffectEventApplicable>,
+        ),
+    ];
+    assert_each_registers_its_own_event(
+        "v0.2-living-routing-plugin",
+        &cases,
+        register_neoforge_living_event,
+    );
 }

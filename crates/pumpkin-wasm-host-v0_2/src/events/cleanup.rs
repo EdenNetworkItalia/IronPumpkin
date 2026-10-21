@@ -729,5 +729,24 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::PlayerTickEventPost(_)) => {
             super::neoforge::cleanup_neoforge_event(event, state);
         }
+        event @ (Event::LivingDamageEventPre(_)
+        | Event::LivingDamageEventPost(_)
+        | Event::LivingEntityUseItemEventStart(_)
+        | Event::LivingEntityUseItemEventTick(_)
+        | Event::LivingEntityUseItemEventStop(_)
+        | Event::LivingKnockBackEvent(_)
+        | Event::LivingFallEvent(_)
+        | Event::LivingDrownEvent(_)
+        | Event::LivingExperienceDropEvent(_)
+        | Event::LivingShieldBlockEvent(_)
+        | Event::LivingGetProjectileEvent(_)
+        | Event::LivingEventLivingJumpEvent(_)
+        | Event::LivingEventLivingVisibilityEvent(_)
+        | Event::LivingDestroyBlockEvent(_)
+        | Event::LivingConversionEventPost(_)
+        | Event::EffectParticleModificationEvent(_)
+        | Event::MobEffectEventApplicable(_)) => {
+            super::neoforge_living::cleanup_neoforge_living_event(event, state);
+        }
     }
 }

@@ -1683,6 +1683,27 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
                     ctx, &handler, priority, blocking, event_type,
                 );
             }
+            event_type @ (EventType::LivingDamageEventPre
+            | EventType::LivingDamageEventPost
+            | EventType::LivingEntityUseItemEventStart
+            | EventType::LivingEntityUseItemEventTick
+            | EventType::LivingEntityUseItemEventStop
+            | EventType::LivingKnockBackEvent
+            | EventType::LivingFallEvent
+            | EventType::LivingDrownEvent
+            | EventType::LivingExperienceDropEvent
+            | EventType::LivingShieldBlockEvent
+            | EventType::LivingGetProjectileEvent
+            | EventType::LivingEventLivingJumpEvent
+            | EventType::LivingEventLivingVisibilityEvent
+            | EventType::LivingDestroyBlockEvent
+            | EventType::LivingConversionEventPost
+            | EventType::EffectParticleModificationEvent
+            | EventType::MobEffectEventApplicable) => {
+                crate::events::neoforge_living::register_neoforge_living_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type => {
                 register_player_event(ctx, &handler, priority, blocking, event_type);
             }

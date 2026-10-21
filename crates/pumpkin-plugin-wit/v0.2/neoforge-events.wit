@@ -9,6 +9,7 @@ interface neoforge-events {
     use player.{player};
     use %world.{%world, entity, block-direction};
     use game-rules.{game-rule, game-rule-value};
+    use damage-types.{damage-type};
 
     /// NeoForge `TriState`: allow, let vanilla decide, or refuse.
     enum tri-state {
@@ -226,5 +227,207 @@ interface neoforge-events {
     /// NeoForge `PlayerTickEvent.Post`: the end of the tick of a player.
     record player-tick-event-post-data {
         player: player,
+    }
+
+    // The living entity events (`event.entity.living`). The entity of a record is the living
+    // entity, a player included.
+
+    /// NeoForge `DamageSource`.
+    record damage-source {
+        damage-type: damage-type,
+        /// The entity that dealt the damage, such as an arrow.
+        direct-entity: option<entity>,
+        /// The entity responsible for the damage, such as the shooter of the arrow.
+        causing-entity: option<entity>,
+        /// The position that the damage comes from, for a damage without an entity.
+        source-position: option<position>,
+    }
+
+    /// NeoForge `DamageContainer.Reduction`. `magic` holds the enchantments and the mob effects,
+    /// which Pumpkin computes in one step.
+    record damage-reductions {
+        invulnerability: f32,
+        armor: f32,
+        magic: f32,
+        absorption: f32,
+    }
+
+    /// An effect of a living entity, by its namespaced id such as `minecraft:speed`.
+    record mob-effect-data {
+        effect-id: string,
+        duration: s32,
+        amplifier: u8,
+        ambient: bool,
+        show-particles: bool,
+        show-icon: bool,
+    }
+
+    /// NeoForge `MobEffectEvent.Applicable.Result`.
+    enum mob-effect-event-applicable-result {
+        apply,
+        default,
+        do-not-apply,
+    }
+
+    /// NeoForge `LivingDamageEvent.Pre`: a damage is about to change the health, after the
+    /// armor, the effects and the hurt cooldown. Settable: `new-damage`.
+    record living-damage-event-pre-data {
+        entity: entity,
+        source: damage-source,
+        original-damage: f32,
+        new-damage: f32,
+    }
+
+    /// NeoForge `LivingDamageEvent.Post`: a damage changed the health.
+    record living-damage-event-post-data {
+        entity: entity,
+        source: damage-source,
+        original-damage: f32,
+        inflicted-damage: f32,
+        health-damage: f32,
+        blocked-damage: f32,
+        shield-damage: f32,
+        post-attack-invulnerability-ticks: s32,
+        should-cause-side-effects: bool,
+        reductions: damage-reductions,
+    }
+
+    /// NeoForge `LivingEntityUseItemEvent.Start`: an item use starts. Settable: `duration`. A
+    /// cancel or a negative duration starts no use.
+    record living-entity-use-item-event-start-data {
+        entity: entity,
+        item: item-stack,
+        hand: hand,
+        duration: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingEntityUseItemEvent.Tick`: a tick of an item use. Settable: `duration`, the
+    /// remaining ticks. A cancel sets them to -1; with no remaining tick the use finishes.
+    record living-entity-use-item-event-tick-data {
+        entity: entity,
+        item: item-stack,
+        hand: hand,
+        duration: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingEntityUseItemEvent.Stop`: a player releases the item it uses. A cancel
+    /// skips the release of the item.
+    record living-entity-use-item-event-stop-data {
+        entity: entity,
+        item: item-stack,
+        hand: hand,
+        duration: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingKnockBackEvent`: a knockback before the knockback resistance. Settable:
+    /// `strength`, `ratio-x` and `ratio-z`. A cancel gives no knockback.
+    record living-knock-back-event-data {
+        entity: entity,
+        strength: f32,
+        ratio-x: f64,
+        ratio-z: f64,
+        original-strength: f32,
+        original-ratio-x: f64,
+        original-ratio-z: f64,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingFallEvent`: a fall that may deal damage. Settable: `distance` and
+    /// `damage-multiplier`. A cancel deals no fall damage.
+    record living-fall-event-data {
+        entity: entity,
+        distance: f64,
+        damage-multiplier: f32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingDrownEvent`: a player out of air under water. Settable: `drowning`,
+    /// `damage-amount` and `bubble-count`. A cancel deals no damage.
+    record living-drown-event-data {
+        entity: entity,
+        drowning: bool,
+        damage-amount: f32,
+        bubble-count: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingExperienceDropEvent`: a killed entity drops experience. Settable:
+    /// `dropped-experience`. A cancel drops none.
+    record living-experience-drop-event-data {
+        entity: entity,
+        attacking-player: option<player>,
+        original-experience: s32,
+        dropped-experience: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingShieldBlockEvent`: a damage to an entity that uses a shield. Settable:
+    /// `blocked-damage`, `shield-damage` (-1 keeps the vanilla durability loss) and `blocked`.
+    record living-shield-block-event-data {
+        entity: entity,
+        source: damage-source,
+        damage: f32,
+        original-blocked-damage: f32,
+        blocked-damage: f32,
+        shield-damage: s32,
+        original-blocked: bool,
+        blocked: bool,
+    }
+
+    /// NeoForge `LivingGetProjectileEvent`: the ammunition of a bow or a crossbow. Settable:
+    /// `projectile`; the server takes nothing from the inventory for a changed projectile.
+    record living-get-projectile-event-data {
+        entity: entity,
+        projectile-weapon: item-stack,
+        projectile: item-stack,
+    }
+
+    /// NeoForge `LivingEvent.LivingJumpEvent`: an entity jumped from the ground.
+    record living-event-living-jump-event-data {
+        entity: entity,
+    }
+
+    /// NeoForge `LivingEvent.LivingVisibilityEvent`: a mob reads the visibility of an entity.
+    /// Settable: `visibility-modifier`.
+    record living-event-living-visibility-event-data {
+        entity: entity,
+        looking-entity: option<entity>,
+        visibility-modifier: f64,
+    }
+
+    /// NeoForge `LivingDestroyBlockEvent`: an entity is about to destroy a block. A cancel keeps
+    /// the block.
+    record living-destroy-block-event-data {
+        entity: entity,
+        block-pos: block-pos,
+        state-id: u16,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LivingConversionEvent.Post`: a mob converted to `outcome`.
+    record living-conversion-event-post-data {
+        entity: entity,
+        outcome: entity,
+    }
+
+    /// NeoForge `EffectParticleModificationEvent`: the particle of an effect. Settable:
+    /// `particle-color`, the ARGB colour of `minecraft:entity_effect`, and `visible`.
+    record effect-particle-modification-event-data {
+        entity: entity,
+        effect: mob-effect-data,
+        original-particle-color: s32,
+        particle-color: s32,
+        visible: bool,
+    }
+
+    /// NeoForge `MobEffectEvent.Applicable`: an effect is about to apply. Settable: `result`.
+    record mob-effect-event-applicable-data {
+        entity: entity,
+        effect: mob-effect-data,
+        effect-source: option<entity>,
+        %result: mob-effect-event-applicable-result,
     }
 }
