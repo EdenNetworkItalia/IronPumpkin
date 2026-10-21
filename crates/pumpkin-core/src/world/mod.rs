@@ -4408,43 +4408,9 @@ impl World {
                     );
                     chunk.live.store(true, Relaxed);
                     for entity_nbt in &entity_nbts {
-                        let Some(id) = entity_nbt.get_string("id") else {
-                            debug!("Entity has no ID");
-                            continue;
-                        };
-                        let Some(entity_type) =
-                            EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id))
-                        else {
-                            warn!("Entity has no valid Entity Type {id}");
-                            continue;
-                        };
-
-                        // Keep the persisted UUID so the entity keeps its identity
-                        // across reloads (matching vanilla); only fall back to a
-                        // fresh one if it is missing/corrupt.
-                        let uuid = entity_nbt.get_uuid("UUID").unwrap_or_else(Uuid::new_v4);
-                        // Pos is zero since it will be read from nbt.
-                        let entity =
-                            from_type(entity_type, Vector3::new(0.0, 0.0, 0.0), &world, uuid);
-                        entity.read_nbt_non_mut(entity_nbt);
-                        entity.init_data_tracker();
-
-                        let base_entity = entity.get_entity();
-                        // Clear velocity so the client does not replay the drop
-                        // animation; residual velocity from the original drop is
-                        // stale data.
-                        base_entity.velocity.store(Vector3::default());
-
-                        // NeoForge fires `EntityJoinLevelEvent` for a loaded entity too, and a
-                        // cancel keeps it out of the world, so its chunk no longer saves it.
-                        if world.spawn_cancelled(entity.as_ref()) {
-                            continue;
+                        if let Some(entity) = world.load_chunk_entity(entity_nbt) {
+                            player.try_restore_vehicle(&entity);
                         }
-
-                        // UUID-dedupes if another watcher already loaded this entity.
-                        // Tracker owns pairing (spawn packets + vehicle restore).
-                        world.add_entity_silent(entity.clone());
-                        player.try_restore_vehicle(&entity);
                     }
                 } else {
                     // Already live for other watchers: pair this player now so
@@ -4960,7 +4926,8 @@ impl World {
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
     #[expect(clippy::needless_pass_by_value)]
     pub fn spawn_entity_non_save(self: &Arc<Self>, entity: Arc<dyn EntityBase>) {
-        if entity.get_entity().entity_type.is_placeholder() || self.spawn_cancelled(entity.as_ref())
+        if entity.get_entity().entity_type.is_placeholder()
+            || self.spawn_cancelled(entity.as_ref(), false)
         {
             return;
         }
@@ -4983,7 +4950,7 @@ impl World {
         let world = vehicle.get_entity().world.load_full();
         for rider in mob.get_mob_entity().take_pending_riders() {
             // Vanilla `addFreshEntityWithPassengers` adds each rider with `addFreshEntity`.
-            if world.spawn_cancelled(rider.as_ref()) {
+            if world.spawn_cancelled(rider.as_ref(), false) {
                 continue;
             }
             rider.init_data_tracker();
@@ -4992,10 +4959,54 @@ impl World {
         }
     }
 
+    /// Makes the entity of a record of a loaded chunk live and returns it, or `None` for a
+    /// record without a known type or an entity whose [`EntitySpawnEvent`] a handler cancelled.
+    ///
+    /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
+    pub fn load_chunk_entity(
+        self: &Arc<Self>,
+        entity_nbt: &NbtCompound,
+    ) -> Option<Arc<dyn EntityBase>> {
+        let Some(id) = entity_nbt.get_string("id") else {
+            debug!("Entity has no ID");
+            return None;
+        };
+        let Some(entity_type) = EntityType::from_name(id.strip_prefix("minecraft:").unwrap_or(id))
+        else {
+            warn!("Entity has no valid Entity Type {id}");
+            return None;
+        };
+
+        // Keep the persisted UUID so the entity keeps its identity
+        // across reloads (matching vanilla); only fall back to a
+        // fresh one if it is missing/corrupt.
+        let uuid = entity_nbt.get_uuid("UUID").unwrap_or_else(Uuid::new_v4);
+        // Pos is zero since it will be read from nbt.
+        let entity = from_type(entity_type, Vector3::new(0.0, 0.0, 0.0), self, uuid);
+        entity.read_nbt_non_mut(entity_nbt);
+        entity.init_data_tracker();
+
+        // Clear velocity so the client does not replay the drop
+        // animation; residual velocity from the original drop is
+        // stale data.
+        entity.get_entity().velocity.store(Vector3::default());
+
+        // NeoForge fires `EntityJoinLevelEvent` for a loaded entity too, and a cancel keeps it
+        // out of the world, so its chunk no longer saves it.
+        if self.spawn_cancelled(entity.as_ref(), true) {
+            return None;
+        }
+
+        // UUID-dedupes if another watcher already loaded this entity.
+        // Tracker owns pairing (spawn packets + vehicle restore).
+        self.add_entity_silent(entity.clone());
+        Some(entity)
+    }
+
     /// Fires [`EntitySpawnEvent`] for `entity` and returns whether a handler cancelled it.
     ///
     /// [`EntitySpawnEvent`]: crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent
-    fn spawn_cancelled(self: &Arc<Self>, entity: &dyn EntityBase) -> bool {
+    fn spawn_cancelled(self: &Arc<Self>, entity: &dyn EntityBase, loaded_from_disk: bool) -> bool {
         let Some(server) = self.server.upgrade() else {
             return false;
         };
@@ -5003,12 +5014,15 @@ impl World {
             .plugin_manager
             .fire_blocking_with(&server, || {
                 let base = entity.get_entity();
-                crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
-                    base.entity_id,
-                    base.entity_type.id.to_string(),
-                    base.pos.load(),
-                    self.clone(),
-                )
+                let mut event =
+                    crate::plugin::api::events::entity::entity_spawn::EntitySpawnEvent::new(
+                        base.entity_id,
+                        base.entity_type.id.to_string(),
+                        base.pos.load(),
+                        self.clone(),
+                    );
+                event.loaded_from_disk = loaded_from_disk;
+                event
             })
             .is_some_and(|event| event.cancelled)
     }
@@ -5021,7 +5035,7 @@ impl World {
         if entity.get_entity().entity_type.is_placeholder() {
             return false;
         }
-        if self.spawn_cancelled(entity.as_ref()) {
+        if self.spawn_cancelled(entity.as_ref(), false) {
             return false;
         }
 

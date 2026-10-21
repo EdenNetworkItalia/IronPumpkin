@@ -189,6 +189,13 @@ impl ToFromWasmEvent for EntitySpawnEvent {
         })
     }
 
+    // The record has no `loaded_from_disk`, so the native flag stays.
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        let loaded_from_disk = self.loaded_from_disk;
+        *self = Self::from_wasm_event(event, state);
+        self.loaded_from_disk = loaded_from_disk;
+    }
+
     fn from_wasm_event(event: Event, state: &mut PluginHostState) -> Self {
         match event {
             Event::EntitySpawnEvent(data) => {
@@ -202,6 +209,7 @@ impl ToFromWasmEvent for EntitySpawnEvent {
                         data.position.2,
                     ),
                     world,
+                    loaded_from_disk: false,
                     cancelled: data.cancelled,
                 }
             }
