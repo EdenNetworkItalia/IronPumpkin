@@ -207,12 +207,27 @@ interface neoforge-events {
         cancelled: bool,
     }
 
-    /// Why a mob spawns: the vanilla `EntitySpawnReason` of the spawn checks.
+    /// Why a mob spawns: vanilla `EntitySpawnReason`.
     enum entity-spawn-reason {
         natural,
         chunk-generation,
         spawner,
+        structure,
+        breeding,
+        mob-summoned,
+        jockey,
+        event,
+        conversion,
+        reinforcement,
         triggered,
+        bucket,
+        spawn-item-use,
+        command,
+        dispenser,
+        patrol,
+        trial-spawner,
+        load,
+        dimension-travel,
     }
 
     /// The result of a spawn check: pass, let the server decide, or fail.

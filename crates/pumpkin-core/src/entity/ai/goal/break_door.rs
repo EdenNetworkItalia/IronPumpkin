@@ -79,7 +79,7 @@ impl Goal for BreakDoorGoal {
         let level_info = world.level_info.load();
         let door_pos = self.door_interact_goal.door_pos;
         // NeoForge `CommonHooks.canEntityDestroy` fires `LivingDestroyBlockEvent` here.
-        if !level_info.game_rules.mob_griefing
+        if !crate::plugin::entity_events::can_entity_grief(&world, mob.get_entity())
             || !crate::plugin::living_events::destroy_block(mob.get_entity(), door_pos, || {
                 world.get_block_state(&door_pos)
             })

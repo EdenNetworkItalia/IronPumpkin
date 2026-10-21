@@ -12,7 +12,6 @@ pub struct EndCrystalEntity {
     entity: Entity,
     beam_target: Mutex<Option<BlockPos>>,
     show_bottom: AtomicBool,
-    invulnerable: AtomicBool,
 }
 
 impl EndCrystalEntity {
@@ -22,7 +21,6 @@ impl EndCrystalEntity {
             entity,
             beam_target: Mutex::new(None),
             show_bottom: AtomicBool::new(false),
-            invulnerable: AtomicBool::new(false),
         }
     }
 
@@ -56,12 +54,15 @@ impl EndCrystalEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Vanilla `Entity.setInvulnerable`: the base flag that `is_invulnerable_to` reads.
     pub fn set_invulnerable(&self, invulnerable: bool) {
-        self.invulnerable.store(invulnerable, Ordering::Relaxed);
+        self.entity
+            .invulnerable
+            .store(invulnerable, Ordering::Relaxed);
     }
 
     pub fn is_invulnerable(&self) -> bool {
-        self.invulnerable.load(Ordering::Relaxed)
+        self.entity.invulnerable.load(Ordering::Relaxed)
     }
 }
 
@@ -83,7 +84,7 @@ impl EntityBase for EndCrystalEntity {
         _source: Option<&dyn EntityBase>,
         cause: Option<&dyn EntityBase>,
     ) -> bool {
-        if self.is_invulnerable() || self.entity.is_invulnerable_to(&damage_type, cause) {
+        if self.entity.is_invulnerable_to(&damage_type, cause) {
             return false;
         }
 

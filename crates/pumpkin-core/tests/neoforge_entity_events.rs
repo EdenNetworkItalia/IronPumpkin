@@ -31,7 +31,7 @@ use pumpkin_core::{
     },
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, Payload,
-        entity::entity_spawn::EntitySpawnEvent,
+        entity::{entity_spawn::EntitySpawnEvent, projectile_hit::ProjectileHitEvent},
         level::{
             EndermanAngerEvent, EntityInvulnerabilityCheckEvent, EntityLeaveLevelEvent,
             EntityMobGriefingEvent, EntitySpawnReason, EntityStruckByLightningEvent,
@@ -49,6 +49,7 @@ use pumpkin_data::{
     damage::DamageType,
     entity::{EntityType, MobCategory},
 };
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 use pumpkin_world::{chunk::ChunkHeightmapType, world::BlockFlags};
 use uuid::Uuid;
@@ -160,28 +161,93 @@ fn is_live(entity: &Arc<dyn EntityBase>) -> bool {
 /// `EntityLeaveLevelEvent` fires when an entity leaves its world, after it left the entity list.
 #[test]
 fn one_event_per_fire_site_entity_leave_level_event() {
+    let _serial = support::serial();
     let pos = spot(1);
     load(pos);
-    let pig = spawn(&EntityType::PIG, center(pos));
-    let pig_id = id(&pig);
+    let removed = spawn(&EntityType::PIG, center(pos));
+    let unloaded_pos = spot(17);
+    load(unloaded_pos);
+    let unloaded = spawn(&EntityType::COW, center(unloaded_pos));
+    let player = support::player("Leaver");
+    let ids = [id(&removed), id(&unloaded), player.entity_id()];
     let seen = log();
     let seen_by_handler = seen.clone();
     on::<EntityLeaveLevelEvent, _>(move |event| {
-        if event.entity.get_entity().entity_id == pig_id {
+        let entity_id = event.entity.get_entity().entity_id;
+        if ids.contains(&entity_id) {
             push(
                 &seen_by_handler,
                 format!(
-                    "{} {}",
+                    "{entity_id} {} {}",
                     Arc::ptr_eq(&event.world, &support::world()),
-                    event.world.get_entity_by_id(pig_id).is_some()
+                    event.world.get_entity_by_id(entity_id).is_some()
                 ),
             );
         }
     });
+    let world = support::world();
 
-    pig.get_entity().remove();
+    removed.get_entity().remove();
+    support::RUNTIME.block_on(async {
+        world
+            .remove_entities_in_chunks([unloaded_pos.chunk_position()])
+            .await;
+        world.remove_player(&player, false).await;
+    });
 
-    assert_eq!(entries(&seen), ["true false"]);
+    assert_eq!(
+        entries(&seen),
+        ids.map(|entity_id| format!("{entity_id} true false"))
+    );
+}
+
+/// The record of a pig as its chunk saves it.
+fn pig_record(pos: BlockPos) -> (Arc<dyn EntityBase>, NbtCompound) {
+    let pig = create(&EntityType::PIG, center(pos));
+    let mut nbt = NbtCompound::new();
+    pig.write_nbt(&mut nbt);
+    (pig, nbt)
+}
+
+/// `EntityJoinLevelEvent` (`EntitySpawnEvent`) fires for an entity that loads from its chunk,
+/// with `loaded_from_disk`, and the entity goes live.
+#[test]
+fn one_event_per_fire_site_entity_join_level_event_on_load() {
+    let pos = spot(18);
+    load(pos);
+    let (pig, record) = pig_record(pos);
+    let pig_uuid = pig.get_entity().entity_uuid;
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<EntitySpawnEvent, _>(move |event| {
+        if event.position == center(pos) {
+            push(&seen_by_handler, format!("{}", event.loaded_from_disk));
+        }
+    });
+
+    let loaded = support::world().load_chunk_entity(&record).unwrap();
+
+    assert_eq!(entries(&seen), ["true"]);
+    assert_eq!(loaded.get_entity().entity_uuid, pig_uuid);
+    assert!(is_live(&loaded));
+}
+
+/// A cancelled `EntitySpawnEvent` of a loaded entity keeps it out of the world.
+#[test]
+fn cancel_entity_join_level_event_on_load() {
+    let pos = spot(19);
+    load(pos);
+    let (pig, record) = pig_record(pos);
+    on::<EntitySpawnEvent, _>(move |event| {
+        if event.position == center(pos) && event.loaded_from_disk {
+            event.set_cancelled(true);
+        }
+    });
+
+    let loaded = support::world().load_chunk_entity(&record);
+
+    assert!(loaded.is_none());
+    assert!(!is_live(&pig));
 }
 
 /// `EntityJoinLevelEvent` (`EntitySpawnEvent`) fires for each rider of a mob that spawns, as
@@ -748,4 +814,70 @@ fn an_item_frame_fires_the_invulnerability_check() {
     assert_eq!(entries(&seen), ["frame"]);
     assert!(!damaged);
     assert!(is_live(&frame));
+}
+
+/// A cancelled `ProjectileImpactEvent` of an arrow skips the hit, so the arrow fires no
+/// `ProjectileHitEvent`.
+#[test]
+fn cancel_projectile_impact_event_of_an_arrow() {
+    let pos = spot(20);
+    set(pos, Block::STONE.default_state.id);
+    let arrow = spawn(
+        &EntityType::ARROW,
+        center(pos.up()) + Vector3::new(0.0, 0.5, 0.0),
+    );
+    let arrow_id = id(&arrow);
+    arrow
+        .get_entity()
+        .velocity
+        .store(Vector3::new(0.0, -1.0, 0.0));
+    let seen = log();
+    let seen_by_impact = seen.clone();
+    on::<ProjectileImpactEvent, _>(move |event| {
+        if event.projectile.get_entity().entity_id == arrow_id {
+            push(&seen_by_impact, "impact");
+            event.set_cancelled(true);
+        }
+    });
+    let seen_by_hit = seen.clone();
+    on::<ProjectileHitEvent, _>(move |event| {
+        if event.entity_id == arrow_id {
+            push(&seen_by_hit, "hit");
+        }
+    });
+
+    arrow.tick(arrow.as_ref(), support::server());
+
+    assert_eq!(entries(&seen), ["impact"]);
+}
+
+/// An invulnerable painting does not break, as vanilla `BlockAttachedEntity.hurtServer` reads
+/// `isInvulnerableToBase`.
+#[test]
+fn an_invulnerable_painting_does_not_break() {
+    let pos = spot(21);
+    load(pos);
+    let painting = spawn(&EntityType::PAINTING, center(pos));
+    painting
+        .get_entity()
+        .invulnerable
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+
+    let damaged = painting.damage(painting.as_ref(), 1.0, DamageType::GENERIC);
+
+    assert!(!damaged);
+    assert!(is_live(&painting));
+}
+
+/// An end crystal is fire immune, so fire damage does not destroy it.
+#[test]
+fn fire_does_not_destroy_an_end_crystal() {
+    let pos = spot(22);
+    load(pos);
+    let crystal = spawn(&EntityType::END_CRYSTAL, center(pos));
+
+    let damaged = crystal.damage(crystal.as_ref(), 1.0, DamageType::IN_FIRE);
+
+    assert!(!damaged);
+    assert!(is_live(&crystal));
 }

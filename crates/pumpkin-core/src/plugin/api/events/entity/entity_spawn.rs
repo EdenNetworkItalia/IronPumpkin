@@ -18,6 +18,11 @@ pub struct EntitySpawnEvent {
 
     /// The world in which the entity is spawned.
     pub world: Arc<World>,
+
+    /// Whether the entity loads from its chunk instead of spawning new, as `NeoForge`
+    /// `EntityJoinLevelEvent.loadedFromDisk`. A cancel of a loaded entity keeps it out of the
+    /// world, and the next save of its chunk no longer has it.
+    pub loaded_from_disk: bool,
 }
 
 impl EntitySpawnEvent {
@@ -33,6 +38,7 @@ impl EntitySpawnEvent {
             entity_type,
             position,
             world,
+            loaded_from_disk: false,
             cancelled: false,
         }
     }

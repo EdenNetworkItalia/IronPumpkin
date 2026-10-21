@@ -323,9 +323,9 @@ The package `event.entity` and the mob and spawn events of `event.entity.living`
 
 | NeoForge event | IronPumpkin event | Notes |
 | :--- | :--- | :--- |
-| `EntityJoinLevelEvent` | `entity::EntitySpawnEvent` | Fires for a spawn, for each rider that a spawned mob brings and for an entity that loads from its chunk. A cancel keeps the entity out of the world. A cancelled loaded entity is gone with the next save of its chunk, as on NeoForge. There is no `loadedFromDisk` field. |
+| `EntityJoinLevelEvent` | `entity::EntitySpawnEvent` | Fires for a spawn, for each rider that a spawned mob brings and for an entity that loads from its chunk. `loaded_from_disk` is true for a loaded entity. A cancel keeps the entity out of the world. A cancelled loaded entity is gone with the next save of its chunk, as on NeoForge, so a handler that blocks a mob type checks `loaded_from_disk` first. The v0.2 record has no such field. |
 | `EntityLeaveLevelEvent` | `level::EntityLeaveLevelEvent` | Fires after the entity left the entity list: a removal, the unload of its chunk, a player that leaves. A lookup in `world` no longer finds the entity. |
-| `EntityMobGriefingEvent` | `level::EntityMobGriefingEvent` | `can_grief` is settable and starts at the `mobGriefing` game rule. Fires at the sites where Pumpkin reads the rule for an entity: the turtle egg trample, the enderman block goals, the remove block goal of zombies, the sheep eating grass, the wither and the piglin item pick-up. A mob explosion fires nothing, because `World::explode` has no source entity. |
+| `EntityMobGriefingEvent` | `level::EntityMobGriefingEvent` | `can_grief` is settable and starts at the `mobGriefing` game rule. Fires at the sites where Pumpkin reads the rule for an entity: the turtle egg trample, the enderman block goals, the remove block goal of zombies, the door break goal, the sheep eating grass, the wither and the piglin item pick-up. A mob explosion fires nothing, because `World::explode` has no source entity. |
 | `EntityStruckByLightningEvent` | `level::EntityStruckByLightningEvent` | A cancel spares the entity from the bolt. Pumpkin strikes an entity once per bolt. |
 | `EntityTeleportEvent.SpreadPlayersCommand` | `level::EntityTeleportEventSpreadPlayersCommand` | `target` is settable. A cancel leaves the entity where it is. A handler of `entity::EntityTeleportEvent` does not get it. |
 | `ProjectileImpactEvent` | `level::ProjectileImpactEvent` | Fires for every projectile before it handles a hit. `ray` is a `ProjectileHit`: a block with its face, or an entity. A cancel skips the hit and the projectile flies on. |
@@ -336,7 +336,11 @@ The package `event.entity` and the mob and spawn events of `event.entity.living`
 | `SpawnClusterSizeEvent` | `level::SpawnClusterSizeEvent` | `size` is settable and starts at the limit per chunk of the entity type. |
 | `EntityInvulnerabilityCheckEvent` | `level::EntityInvulnerabilityCheckEvent` | `invulnerable` is settable. `damage_type` and `attacker` stand for the `DamageSource`. Fires for living entities, item entities, armor stands, item frames, paintings and end crystals. |
 
-The despawn, griefing, invulnerability, spawn and cluster events fire for each mob and check, behind the handler check of the fire site. Keep these handlers short. v0.2 Wasm plugins get the events through the same dispatch; the records are in `neoforge-events.wit`. A Wasm handler of `MobSplitEvent` can only drop or reorder the children, and a spread target that is not finite is ignored.
+The despawn, griefing, invulnerability, spawn and cluster events fire for each mob and check, behind the handler check of the fire site. Keep these handlers short. Some fire under a lock, so a handler must not go back to the locked object:
+
+- `EntityMobGriefingEvent` from a goal and `EndermanAngerEvent` fire inside the AI tick of the mob, under the lock of its goal selector or target selector. Do not change the goals of that mob from the handler.
+- The spawn checks of chunk generation (`MobSpawnEventPositionCheck` and `MobSpawnEventSpawnPlacementCheck` with `ChunkGeneration`) fire on the generation thread, while the chunk is generated. A handler that reads or changes the world around the new chunk can wait for that chunk and deadlock.
+- `EntityLeaveLevelEvent` of an ender dragon that the dragon fight removes on its first scan fires under the lock of the dragon fight. Do not damage an end crystal from that handler. v0.2 Wasm plugins get the events through the same dispatch; the records are in `neoforge-events.wit`. A Wasm handler of `MobSplitEvent` can only drop or reorder the children, and a spread target that is not finite is ignored.
 
 `XpOrbTargetingEvent` stays planned: the experience orb of Pumpkin never follows a player. `EntityEvent.EnteringSection`, `EntityEvent.EntityConstructing` and `EntityEvent.Size` stay planned too; the mapping table gives the reasons.
 

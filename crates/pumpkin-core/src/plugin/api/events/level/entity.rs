@@ -195,17 +195,30 @@ impl MobDespawnEvent {
     }
 }
 
-/// Why a mob spawns, as the vanilla `EntitySpawnReason` of the fire sites that `IronPumpkin` has.
+/// Why a mob spawns, as vanilla `EntitySpawnReason`. Pumpkin fires the spawn checks with
+/// `Natural`, `ChunkGeneration`, `Spawner` and `Triggered` (a warden that a sculk shrieker
+/// summons).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntitySpawnReason {
-    /// The natural spawner of a loaded chunk.
     Natural,
-    /// The spawns of a newly generated chunk.
     ChunkGeneration,
-    /// A mob spawner block.
     Spawner,
-    /// A warden that a sculk shrieker summons.
+    Structure,
+    Breeding,
+    MobSummoned,
+    Jockey,
+    Event,
+    Conversion,
+    Reinforcement,
     Triggered,
+    Bucket,
+    SpawnItemUse,
+    Command,
+    Dispenser,
+    Patrol,
+    TrialSpawner,
+    Load,
+    DimensionTravel,
 }
 
 /// The result of a spawn check, as `MobSpawnEvent.PositionCheck.Result` and
