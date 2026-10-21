@@ -36,8 +36,11 @@ impl ItemBehaviour for CrossbowItem {
             return;
         }
 
-        let (projectile, _) =
-            ProjectileWeaponItem::get_projectile(player, &stack, player.find_crossbow_projectile());
+        let (projectile, _) = crate::plugin::living_events::player_projectile(
+            player,
+            &stack,
+            player.find_crossbow_projectile(),
+        );
         if projectile.is_empty() {
             return;
         }
@@ -56,7 +59,7 @@ impl ItemBehaviour for CrossbowItem {
             crate::enchantment::EnchantmentHelper::modify_crossbow_charge_time(&stack, 25);
 
         if use_ticks >= charge_time {
-            let (projectile, arrow_slot) = ProjectileWeaponItem::get_projectile(
+            let (projectile, arrow_slot) = crate::plugin::living_events::player_projectile(
                 player,
                 &stack,
                 player.find_crossbow_projectile(),

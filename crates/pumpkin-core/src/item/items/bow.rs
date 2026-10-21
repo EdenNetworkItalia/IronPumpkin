@@ -28,7 +28,7 @@ impl ItemBehaviour for BowItem {
 
         // Vanilla `BowItem.use`: a creative player always finds a projectile.
         let (projectile, _) =
-            ProjectileWeaponItem::get_projectile(player, &stack, player.find_arrow());
+            crate::plugin::living_events::player_projectile(player, &stack, player.find_arrow());
         let found_projectile = !projectile.is_empty();
         if crate::plugin::player_events::arrow_nock(player, found_projectile) || !found_projectile {
             return;
@@ -67,7 +67,7 @@ impl BowItem {
 
         // Check arrows again
         let (projectile, arrow_slot) =
-            ProjectileWeaponItem::get_projectile(player, weapon, player.find_arrow());
+            crate::plugin::living_events::player_projectile(player, weapon, player.find_arrow());
         let gamemode = player.gamemode.load();
 
         if projectile.is_empty() {

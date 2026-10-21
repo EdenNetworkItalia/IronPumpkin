@@ -342,6 +342,29 @@ pub fn get_projectile(
     }
 }
 
+/// The ammunition of `player` for `weapon`, vanilla `Player.getProjectile`: the stack in the
+/// inventory `slot` that the weapon found, or an arrow for a creative player, after
+/// `LivingGetProjectileEvent`. Returns the projectile, empty for none, and the slot that it comes
+/// from.
+#[must_use]
+pub fn player_projectile(
+    player: &Player,
+    weapon: &ItemStack,
+    slot: Option<usize>,
+) -> (ItemStack, Option<usize>) {
+    let projectile = slot.map_or_else(
+        || {
+            if player.gamemode.load() == pumpkin_util::GameMode::Creative {
+                ItemStack::new(1, &pumpkin_data::item::Item::ARROW)
+            } else {
+                ItemStack::EMPTY.clone()
+            }
+        },
+        |slot| player.inventory.get_slot(slot),
+    );
+    get_projectile(player.get_entity(), weapon, projectile, slot)
+}
+
 /// The ammunition of a mob for `weapon`, vanilla `Monster.getProjectile`: an arrow, after
 /// `LivingGetProjectileEvent`. A mob that gets no ammunition shoots an arrow, as
 /// `ProjectileUtil.getMobArrow` does.
