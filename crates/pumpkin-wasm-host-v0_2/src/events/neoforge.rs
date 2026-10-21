@@ -304,7 +304,12 @@ impl ToFromWasmEvent for BlockEventBlockToolModificationEvent {
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
         cleanup_neoforge_event(&event, state);
         if let Event::BlockEventBlockToolModificationEvent(data) = event {
-            self.final_state = data.final_state_id.map(state_from_wasm);
+            // An id that names no state keeps the final state that the handlers before left.
+            if let Some(final_state) = data.final_state_id.map(BlockStateId::new) {
+                self.final_state = final_state.map(BlockState::from_id).or(self.final_state);
+            } else {
+                self.final_state = None;
+            }
             self.cancelled = data.cancelled;
         }
     }

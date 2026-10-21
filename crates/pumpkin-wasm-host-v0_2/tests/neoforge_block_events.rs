@@ -371,6 +371,30 @@ fn a_plugin_cancels_a_tool_modification() {
 }
 
 #[test]
+fn an_invalid_final_state_of_a_tool_modification_keeps_the_final_state() {
+    let manager = plugin::<BlockEventBlockToolModificationEvent, _>(|event, _state| {
+        if let Event::BlockEventBlockToolModificationEvent(data) = event {
+            data.final_state_id = Some(u16::MAX);
+        }
+    });
+    let state = Block::CAMPFIRE.default_state;
+
+    let event = fire(
+        &manager,
+        BlockEventBlockToolModificationEvent::new(
+            support::world(),
+            BlockPos::new(9, 64, 9),
+            None,
+            ItemStack::new(1, &Item::FLINT_AND_STEEL),
+            FIRESTARTER_LIGHT,
+            state,
+        ),
+    );
+
+    assert_eq!(event.final_state.map(|state| state.id), Some(state.id));
+}
+
+#[test]
 fn a_plugin_receives_a_crop_grow_post() {
     let world = support::world();
     let pos = BlockPos::new(10, 64, 10);
