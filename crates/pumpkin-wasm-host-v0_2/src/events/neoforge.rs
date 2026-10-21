@@ -148,7 +148,7 @@ const fn to_wasm_mob_category(category: &MobCategory) -> WitMobCategory {
     }
 }
 
-fn add<T: FromResource>(state: &mut PluginHostState, item: T::Internal) -> Resource<T> {
+pub(super) fn add<T: FromResource>(state: &mut PluginHostState, item: T::Internal) -> Resource<T> {
     state.add(item).expect("failed to add resource")
 }
 
@@ -159,7 +159,7 @@ fn add_item_stack(
     add(state, Arc::new(Mutex::new(item.clone())))
 }
 
-fn discard<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
+pub(super) fn discard<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
     state.discard_to_be_removed(res);
 }
 
