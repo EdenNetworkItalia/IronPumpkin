@@ -667,7 +667,7 @@ pub(super) fn cleanup_neoforge_event(event: &Event, state: &mut PluginHostState)
 }
 
 /// Registers a Wasm handler for an event of this module.
-pub(crate) fn register_neoforge_event(
+pub fn register_neoforge_event(
     ctx: &Context,
     handler: &Arc<WasmPluginEventHandler>,
     priority: EventPriority,
