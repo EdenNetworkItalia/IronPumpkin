@@ -1,4 +1,4 @@
-use pumpkin_data::{Block, BlockStateId};
+use pumpkin_data::{BlockState, BlockStateId};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -113,6 +113,7 @@ impl ToFromWasmEvent for BlockBreakEvent {
         Event::BlockBreakEvent(BlockBreakEventData {
             player,
             block: to_wasm_block_name(self.block),
+            state_id: self.state.id.as_u16(),
             block_pos: to_wasm_block_position(self.block_position),
             exp: self.exp,
             should_drop: self.drop,
@@ -127,7 +128,7 @@ impl ToFromWasmEvent for BlockBreakEvent {
                 Self {
                     player: data.player.map(|player| consume_player(state, &player)),
                     block,
-                    state: block.default_state,
+                    state: BlockState::from_id(BlockStateId::new_or_air(data.state_id)),
                     block_position: from_wasm_block_position(data.block_pos),
                     exp: data.exp,
                     drop: data.should_drop,
@@ -248,6 +249,8 @@ impl ToFromWasmEvent for BlockPlaceEvent {
             block_placed_against: to_wasm_block_name(self.block_placed_against),
             block_pos: to_wasm_block_position(self.block_position),
             can_build: self.can_build,
+            placed_state_id: self.placed_state.id.as_u16(),
+            replaced_state_id: self.replaced_state.id.as_u16(),
             cancelled: self.cancelled,
         })
     }
@@ -262,21 +265,17 @@ impl ToFromWasmEvent for BlockPlaceEvent {
                     block_placed_against: from_wasm_block_name(&data.block_placed_against),
                     block_position: from_wasm_block_position(data.block_pos),
                     can_build: data.can_build,
-                    placed_state: block_placed.default_state,
-                    replaced_state: Block::AIR.default_state,
+                    placed_state: BlockState::from_id(BlockStateId::new_or_air(
+                        data.placed_state_id,
+                    )),
+                    replaced_state: BlockState::from_id(BlockStateId::new_or_air(
+                        data.replaced_state_id,
+                    )),
                     cancelled: data.cancelled,
                 }
             }
             _ => panic!("unexpected event type"),
         }
-    }
-
-    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        // The Wasm data has no block states: keep the native ones.
-        let (placed_state, replaced_state) = (self.placed_state, self.replaced_state);
-        *self = Self::from_wasm_event(event, state);
-        self.placed_state = placed_state;
-        self.replaced_state = replaced_state;
     }
 }
 
@@ -947,10 +946,16 @@ impl ToFromWasmEvent for BlockMultiPlaceEvent {
             .iter()
             .map(|(pos, id)| (to_wasm_block_position(*pos), id.as_u16()))
             .collect();
+        let replaced_blocks = self
+            .replaced_blocks
+            .iter()
+            .map(|(pos, state)| (to_wasm_block_position(*pos), state.id.as_u16()))
+            .collect();
         Event::BlockMultiPlaceEvent(BlockMultiPlaceEventData {
             player,
             target_world,
             placed_blocks,
+            replaced_blocks,
             cancelled: self.cancelled,
         })
     }

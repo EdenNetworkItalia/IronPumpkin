@@ -1,0 +1,230 @@
+/// The records of the events that IronPumpkin fires with the names, fields, cancel and result
+/// rules of NeoForge 26.3, at fire sites where Pumpkin has no event.
+///
+/// A block state is a block state id. A blocking handler writes back only the fields that its
+/// record names as settable; the host keeps the other fields.
+interface neoforge-events {
+    use common.{block-pos, hand, position};
+    use item-stack.{item-stack};
+    use player.{player};
+    use %world.{%world, entity, block-direction};
+    use game-rules.{game-rule, game-rule-value};
+
+    /// NeoForge `TriState`: allow, let vanilla decide, or refuse.
+    enum tri-state {
+        %true,
+        default,
+        %false,
+    }
+
+    /// Vanilla `InteractionResult`.
+    enum interaction-result {
+        /// The action ran, and the other players see the arm swing.
+        success,
+        /// The action ran, and every player sees the arm swing.
+        success-server,
+        /// The action ran, without a swing.
+        consume,
+        fail,
+        pass,
+        /// The block use goes on as with an empty hand.
+        try-with-empty-hand,
+    }
+
+    /// NeoForge `PlayerInteractEvent.LeftClickBlock.Action`: the dig action of a left click.
+    enum left-click-block-action {
+        start,
+        stop,
+        abort,
+    }
+
+    /// NeoForge `UseItemOnBlockEvent.UsePhase`.
+    enum use-phase {
+        /// The item use before the block use. Pumpkin items have none.
+        item-before-block,
+        block,
+        /// The item use on the block, which also places a block item.
+        item-after-block,
+    }
+
+    /// NeoForge `PistonEvent.PistonMoveType`.
+    enum piston-move-type {
+        extend,
+        retract,
+    }
+
+    /// Vanilla `MobCategory`.
+    enum mob-category {
+        monster,
+        creature,
+        ambient,
+        axolotls,
+        underground-water-creature,
+        water-creature,
+        water-ambient,
+        misc,
+    }
+
+    /// A mob that the natural spawner may spawn. The biome lists of Pumpkin have no weights.
+    record spawner-data {
+        /// The namespaced entity type, such as `minecraft:zombie`.
+        entity-type: string,
+        min-count: s32,
+        max-count: s32,
+    }
+
+    /// NeoForge `UseItemOnBlockEvent`: one phase of a right click on a block, after the
+    /// player interact event with the action right click block. Settable: `cancellation-result`.
+    /// A cancel skips the phase and gives `cancellation-result` in place of its result.
+    record use-item-on-block-event-data {
+        player: player,
+        hand: hand,
+        /// A copy of the stack in `hand` at the start of the phase.
+        item: item-stack,
+        block-pos: block-pos,
+        face: block-direction,
+        /// The clicked point, in world coordinates.
+        hit-vector: position,
+        phase: use-phase,
+        cancellation-result: interaction-result,
+        cancelled: bool,
+    }
+
+    /// NeoForge `BlockEvent.EntityPlaceEvent` for an entity that is not a player, before the
+    /// block changes. A cancel keeps the block.
+    record block-event-entity-place-event-data {
+        entity: entity,
+        target-world: %world,
+        block-pos: block-pos,
+        placed-state-id: u16,
+        replaced-state-id: u16,
+        /// The state of the block below `block-pos`.
+        placed-against-state-id: u16,
+        cancelled: bool,
+    }
+
+    /// NeoForge `BlockEvent.BlockToolModificationEvent`: a fire starter or shears change a
+    /// block. Settable: `final-state-id`, where `none` is no change and `state-id` keeps the
+    /// vanilla change. A cancel is no change.
+    record block-event-block-tool-modification-event-data {
+        target-world: %world,
+        block-pos: block-pos,
+        /// `none` for a dispenser.
+        player: option<player>,
+        held-item: item-stack,
+        /// The NeoForge `ItemAbility`, such as `firestarter_light` or `shears_trim`.
+        item-ability: string,
+        simulated: bool,
+        state-id: u16,
+        final-state-id: option<u16>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `CropGrowEvent.Post`: a crop grew one age in its random tick.
+    record crop-grow-event-post-data {
+        target-world: %world,
+        block-pos: block-pos,
+        original-state-id: u16,
+        state-id: u16,
+    }
+
+    /// NeoForge `CreateFluidSourceEvent`: a fluid source counts toward a new source next to it.
+    /// Settable: `can-convert`.
+    record create-fluid-source-event-data {
+        target-world: %world,
+        block-pos: block-pos,
+        state-id: u16,
+        vanilla-result: bool,
+        can-convert: bool,
+    }
+
+    /// NeoForge `NoteBlockEvent.Change`: a player tunes a note block. Settable: `note`, the note
+    /// id from 0 to 24; a value above 24 keeps the vanilla note. A cancel keeps the note.
+    record note-block-event-change-data {
+        target-world: %world,
+        block-pos: block-pos,
+        state-id: u16,
+        old-note: u8,
+        note: u8,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PistonEvent.Post`: a piston moved its blocks.
+    record piston-event-post-data {
+        target-world: %world,
+        /// The position of the piston base.
+        block-pos: block-pos,
+        /// The state of the piston base after the move.
+        state-id: u16,
+        direction: block-direction,
+        move-type: piston-move-type,
+    }
+
+    /// NeoForge `ExplosionEvent.Detonate`: an explosion has its blocks and entities and has
+    /// changed nothing yet. Settable: `affected-blocks` and `affected-entities`; the explosion
+    /// changes and damages only what the last handler left.
+    record explosion-event-detonate-data {
+        target-world: %world,
+        center: position,
+        power: f32,
+        affected-blocks: list<block-pos>,
+        affected-entities: list<entity>,
+    }
+
+    /// NeoForge `ExplosionKnockbackEvent`: an explosion pushes an entity. Settable: `knockback`.
+    record explosion-knockback-event-data {
+        target-world: %world,
+        center: position,
+        power: f32,
+        entity: entity,
+        knockback: position,
+        affected-blocks: list<block-pos>,
+    }
+
+    /// NeoForge `ChunkWatchEvent.UnWatch`: a player stops watching a chunk.
+    record chunk-watch-event-un-watch-data {
+        player: player,
+        target-world: %world,
+        chunk-x: s32,
+        chunk-z: s32,
+    }
+
+    /// NeoForge `GameRuleChangedEvent`: a game rule changed.
+    record game-rule-changed-event-data {
+        rule: game-rule,
+        value: game-rule-value,
+    }
+
+    /// NeoForge `LevelEvent.PotentialSpawns`: the natural spawner reads the mobs that may spawn at
+    /// a position. Settable: `spawns`; an entry with an unknown entity type is dropped. A cancel
+    /// spawns nothing.
+    record level-event-potential-spawns-data {
+        target-world: %world,
+        category: mob-category,
+        block-pos: block-pos,
+        spawns: list<spawner-data>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `EntityTickEvent.Pre`: an entity that is not a player is about to tick. A cancel
+    /// skips the tick and the post event.
+    record entity-tick-event-pre-data {
+        entity: entity,
+        cancelled: bool,
+    }
+
+    /// NeoForge `EntityTickEvent.Post`: an entity that is not a player ticked.
+    record entity-tick-event-post-data {
+        entity: entity,
+    }
+
+    /// NeoForge `PlayerTickEvent.Pre`: the start of the tick of a player.
+    record player-tick-event-pre-data {
+        player: player,
+    }
+
+    /// NeoForge `PlayerTickEvent.Post`: the end of the tick of a player.
+    record player-tick-event-post-data {
+        player: player,
+    }
+}

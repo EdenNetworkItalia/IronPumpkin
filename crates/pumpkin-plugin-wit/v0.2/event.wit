@@ -6,11 +6,21 @@ interface event {
     use screens.{screen};
     use player.{player};
     use text.{text-component};
-    use %world.{%world};
+    use %world.{%world, chunk, block-direction};
     use java-packets.{serverbound-packet as java-serverbound-packet, clientbound-packet as java-clientbound-packet};
     use bedrock-packets.{serverbound-packet as bedrock-serverbound-packet, clientbound-packet as bedrock-clientbound-packet};
     use uuid.{uuid};
     use java-dialogs.{dialog};
+    use neoforge-events.{
+        tri-state, interaction-result, left-click-block-action,
+        use-item-on-block-event-data, block-event-entity-place-event-data,
+        block-event-block-tool-modification-event-data, crop-grow-event-post-data,
+        create-fluid-source-event-data, note-block-event-change-data, piston-event-post-data,
+        explosion-event-detonate-data, explosion-knockback-event-data,
+        chunk-watch-event-un-watch-data, game-rule-changed-event-data,
+        level-event-potential-spawns-data, entity-tick-event-pre-data,
+        entity-tick-event-post-data, player-tick-event-pre-data, player-tick-event-post-data,
+    };
 
     variant serverbound-packet {
         java(java-serverbound-packet),
@@ -182,6 +192,20 @@ interface event {
         action: interact-action,
         clicked-pos: option<block-pos>,
         block: string,
+        /// The hand of the interaction. A left click always uses the main hand.
+        hand: hand,
+        /// The clicked face, for a click on a block.
+        face: option<block-direction>,
+        /// The clicked point of a right click on a block, in world coordinates.
+        hit-vector: option<position>,
+        /// The dig action of a left click on a block.
+        left-click-action: option<left-click-block-action>,
+        /// Settable. Whether the block reacts: `false` skips the block use or the block attack.
+        use-block: tri-state,
+        /// Settable. Whether the item reacts to a right click on a block.
+        use-item: tri-state,
+        /// Settable. The result of a cancelled right click.
+        cancellation-result: interaction-result,
         cancelled: bool
     }
 
@@ -239,6 +263,7 @@ interface event {
     record block-break-event-data {
         player: option<player>,
         block: string,
+        state-id: u16,
         block-pos: block-pos,
         exp: u32,
         should-drop: bool,
@@ -277,6 +302,8 @@ interface event {
         block-placed-against: string,
         block-pos: block-pos,
         can-build: bool,
+        placed-state-id: u16,
+        replaced-state-id: u16,
         cancelled: bool
     }
 
@@ -439,6 +466,7 @@ interface event {
 
     record chunk-load-event-data {
         target-world: %world,
+        chunk: chunk,
         chunk-x: s32,
         chunk-z: s32,
         cancelled: bool
@@ -535,6 +563,7 @@ interface event {
         entity-id: s32,
         position: position,
         yield-rate: f32,
+        target-world: %world,
         cancelled: bool
     }
 
@@ -1511,6 +1540,8 @@ interface event {
         player: player,
         target-world: %world,
         placed-blocks: list<tuple<block-pos, u16>>,
+        /// The states that the placement replaces, in the order of `placed-blocks`.
+        replaced-blocks: list<tuple<block-pos, u16>>,
         cancelled: bool
     }
 
@@ -2215,6 +2246,22 @@ interface event {
         raid-trigger-event,
         lightning-strike-event,
         config-custom-payload-event,
+        use-item-on-block-event,
+        block-event-entity-place-event,
+        block-event-block-tool-modification-event,
+        crop-grow-event-post,
+        create-fluid-source-event,
+        note-block-event-change,
+        piston-event-post,
+        explosion-event-detonate,
+        explosion-knockback-event,
+        chunk-watch-event-un-watch,
+        game-rule-changed-event,
+        level-event-potential-spawns,
+        entity-tick-event-pre,
+        entity-tick-event-post,
+        player-tick-event-pre,
+        player-tick-event-post,
     }
 
     variant event {
@@ -2492,5 +2539,21 @@ interface event {
         raid-trigger-event(raid-trigger-event-data),
         lightning-strike-event(lightning-strike-event-data),
         config-custom-payload-event(config-custom-payload-event-data),
+        use-item-on-block-event(use-item-on-block-event-data),
+        block-event-entity-place-event(block-event-entity-place-event-data),
+        block-event-block-tool-modification-event(block-event-block-tool-modification-event-data),
+        crop-grow-event-post(crop-grow-event-post-data),
+        create-fluid-source-event(create-fluid-source-event-data),
+        note-block-event-change(note-block-event-change-data),
+        piston-event-post(piston-event-post-data),
+        explosion-event-detonate(explosion-event-detonate-data),
+        explosion-knockback-event(explosion-knockback-event-data),
+        chunk-watch-event-un-watch(chunk-watch-event-un-watch-data),
+        game-rule-changed-event(game-rule-changed-event-data),
+        level-event-potential-spawns(level-event-potential-spawns-data),
+        entity-tick-event-pre(entity-tick-event-pre-data),
+        entity-tick-event-post(entity-tick-event-post-data),
+        player-tick-event-pre(player-tick-event-pre-data),
+        player-tick-event-post(player-tick-event-post-data),
     }
 }

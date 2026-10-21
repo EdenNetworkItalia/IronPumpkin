@@ -55,8 +55,13 @@ impl ToFromWasmEvent for ChunkLoad {
             .add(self.world.clone())
             .expect("failed to add world resource");
 
+        let chunk = state
+            .add((self.world.clone(), Arc::downgrade(&self.chunk)))
+            .expect("failed to add chunk resource");
+
         Event::ChunkLoadEvent(ChunkLoadEventData {
             target_world,
+            chunk,
             chunk_x: self.chunk.x,
             chunk_z: self.chunk.z,
             cancelled: self.cancelled,
@@ -64,7 +69,7 @@ impl ToFromWasmEvent for ChunkLoad {
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-        // The Wasm data has the chunk position only: keep the native world and chunk.
+        // The world and the chunk have no setter in NeoForge: keep the native ones.
         cleanup_event(&event, state);
         if let Event::ChunkLoadEvent(data) = event {
             self.cancelled = data.cancelled;
@@ -75,6 +80,17 @@ impl ToFromWasmEvent for ChunkLoad {
         match event {
             Event::ChunkLoadEvent(data) => {
                 let world = consume_world(state, &data.target_world);
+                if let Some(chunk) = state
+                    .take(data.chunk)
+                    .ok()
+                    .and_then(|(_, chunk)| chunk.upgrade())
+                {
+                    return Self {
+                        world,
+                        chunk,
+                        cancelled: data.cancelled,
+                    };
+                }
                 let chunk_data = pumpkin_world::chunk::ChunkData {
                     section: pumpkin_world::chunk::ChunkSections::new(24, -64),
                     heightmap: std::sync::Mutex::new(

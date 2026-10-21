@@ -219,6 +219,7 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         }
         Event::ChunkLoadEvent(data) => {
             cleanup_world(state, &data.target_world);
+            state.discard_to_be_removed(&data.chunk);
         }
         Event::ChunkSaveEvent(data) => {
             cleanup_world(state, &data.target_world);
@@ -246,7 +247,9 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
             }
         }
         Event::EntityEnterLoveModeEvent(_) => {}
-        Event::EntityExplodeEvent(_) => {}
+        Event::EntityExplodeEvent(data) => {
+            cleanup_world(state, &data.target_world);
+        }
         Event::EntityMountEvent(_) => {}
         Event::EntityPickupItemEvent(_) => {}
         Event::EntityPortalEvent(_) => {}
@@ -708,5 +711,23 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         Event::RaidTriggerEvent(_) => {}
         Event::LightningStrikeEvent(_) => {}
         Event::ConfigCustomPayloadEvent(_) => {}
+        event @ (Event::UseItemOnBlockEvent(_)
+        | Event::BlockEventEntityPlaceEvent(_)
+        | Event::BlockEventBlockToolModificationEvent(_)
+        | Event::CropGrowEventPost(_)
+        | Event::CreateFluidSourceEvent(_)
+        | Event::NoteBlockEventChange(_)
+        | Event::PistonEventPost(_)
+        | Event::ExplosionEventDetonate(_)
+        | Event::ExplosionKnockbackEvent(_)
+        | Event::ChunkWatchEventUnWatch(_)
+        | Event::GameRuleChangedEvent(_)
+        | Event::LevelEventPotentialSpawns(_)
+        | Event::EntityTickEventPre(_)
+        | Event::EntityTickEventPost(_)
+        | Event::PlayerTickEventPre(_)
+        | Event::PlayerTickEventPost(_)) => {
+            super::neoforge::cleanup_neoforge_event(event, state);
+        }
     }
 }

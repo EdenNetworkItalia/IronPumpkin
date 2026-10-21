@@ -774,16 +774,32 @@ impl ToFromWasmEvent for PlayerInteractEvent {
             action: to_wasm_interact_action(&self.action),
             clicked_pos: self.clicked_pos.map(to_wasm_block_position),
             block: self.block.name.to_string(),
+            hand: to_wasm_hand(self.hand),
+            face: self.face.map(crate::mob::to_wit_block_direction),
+            hit_vector: self.hit_vector.map(to_wasm_position),
+            left_click_action: self
+                .left_click_action
+                .map(super::neoforge::to_wasm_left_click_action),
+            use_block: super::neoforge::to_wasm_tri_state(self.use_block),
+            use_item: super::neoforge::to_wasm_tri_state(self.use_item),
+            cancellation_result: super::neoforge::to_wasm_interaction_result(
+                self.cancellation_result,
+            ),
             cancelled: self.cancelled,
         })
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // The hand, the face, the hit vector and the dig action have no setter in NeoForge.
         cleanup_event(&event, state);
         if let Event::PlayerInteractEvent(data) = event {
             self.action = from_wasm_interact_action(data.action);
             self.clicked_pos = data.clicked_pos.map(from_wasm_block_position);
             self.block = from_wasm_block_name(&data.block);
+            self.use_block = super::neoforge::from_wasm_tri_state(data.use_block);
+            self.use_item = super::neoforge::from_wasm_tri_state(data.use_item);
+            self.cancellation_result =
+                super::neoforge::from_wasm_interaction_result(data.cancellation_result);
             self.cancelled = data.cancelled;
         }
     }
@@ -797,6 +813,16 @@ impl ToFromWasmEvent for PlayerInteractEvent {
                     from_wasm_block_name(&data.block),
                     data.clicked_pos.map(from_wasm_block_position),
                 );
+                event.hand = from_wasm_hand(data.hand);
+                event.face = data.face.map(crate::mob::from_wit_block_direction);
+                event.hit_vector = data.hit_vector.map(from_wasm_position);
+                event.left_click_action = data
+                    .left_click_action
+                    .map(super::neoforge::from_wasm_left_click_action);
+                event.use_block = super::neoforge::from_wasm_tri_state(data.use_block);
+                event.use_item = super::neoforge::from_wasm_tri_state(data.use_item);
+                event.cancellation_result =
+                    super::neoforge::from_wasm_interaction_result(data.cancellation_result);
                 event.cancelled = data.cancelled;
                 event
             }

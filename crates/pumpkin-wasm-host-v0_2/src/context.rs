@@ -1663,6 +1663,26 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
             | EventType::DialogClearEvent) => {
                 register_dialog_event(ctx, &handler, priority, blocking, event_type);
             }
+            event_type @ (EventType::UseItemOnBlockEvent
+            | EventType::BlockEventEntityPlaceEvent
+            | EventType::BlockEventBlockToolModificationEvent
+            | EventType::CropGrowEventPost
+            | EventType::CreateFluidSourceEvent
+            | EventType::NoteBlockEventChange
+            | EventType::PistonEventPost
+            | EventType::ExplosionEventDetonate
+            | EventType::ExplosionKnockbackEvent
+            | EventType::ChunkWatchEventUnWatch
+            | EventType::GameRuleChangedEvent
+            | EventType::LevelEventPotentialSpawns
+            | EventType::EntityTickEventPre
+            | EventType::EntityTickEventPost
+            | EventType::PlayerTickEventPre
+            | EventType::PlayerTickEventPost) => {
+                crate::events::neoforge::register_neoforge_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type => {
                 register_player_event(ctx, &handler, priority, blocking, event_type);
             }

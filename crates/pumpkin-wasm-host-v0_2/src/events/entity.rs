@@ -373,17 +373,21 @@ impl ToFromWasmEvent
 impl ToFromWasmEvent
     for pumpkin_core::plugin::api::events::entity::entity_explode::EntityExplodeEvent
 {
-    fn to_wasm_event(&self, _state: &mut PluginHostState) -> Event {
+    fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
         Event::EntityExplodeEvent(EntityExplodeEventData {
             entity_id: self.entity_id,
             position: to_wasm_position(self.position),
             yield_rate: self.yield_rate,
+            target_world: state
+                .add(self.world.clone())
+                .expect("failed to add world resource"),
             cancelled: self.cancelled,
         })
     }
 
-    fn apply_wasm_event(&mut self, event: Event, _state: &mut PluginHostState) {
-        // The Wasm data has no world: keep the native one.
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // `ExplosionEvent#getLevel` has no setter: keep the native world.
+        cleanup_event(&event, state);
         if let Event::EntityExplodeEvent(data) = event {
             self.entity_id = data.entity_id;
             self.position = pumpkin_util::math::vector3::Vector3::new(

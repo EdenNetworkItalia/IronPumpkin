@@ -22,3 +22,14 @@ impl GameRuleChangedEvent {
         Self { rule, value }
     }
 }
+
+// `GameRuleValue` is generated without `Clone`; the Wasm hosts clone the event for each handler.
+impl Clone for GameRuleChangedEvent {
+    fn clone(&self) -> Self {
+        let value = match &self.value {
+            GameRuleValue::Int(value) => GameRuleValue::Int(*value),
+            GameRuleValue::Bool(value) => GameRuleValue::Bool(*value),
+        };
+        Self::new(self.rule.clone(), value)
+    }
+}

@@ -25,6 +25,7 @@ pub mod enchantment;
 pub mod entity;
 pub mod hanging;
 pub mod inventory;
+pub mod neoforge;
 pub mod player;
 pub mod raid;
 pub mod server;
