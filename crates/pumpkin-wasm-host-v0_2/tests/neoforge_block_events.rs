@@ -231,6 +231,8 @@ fn a_plugin_receives_the_states_of_a_block_place() {
         };
         assert_eq!(data.placed_state_id, placed.id.as_u16());
         assert_eq!(data.replaced_state_id, replaced.id.as_u16());
+        data.placed_state_id = Block::STONE.default_state.id.as_u16();
+        data.replaced_state_id = Block::STONE.default_state.id.as_u16();
         data.cancelled = true;
     });
 
@@ -248,8 +250,14 @@ fn a_plugin_receives_the_states_of_a_block_place() {
     );
 
     assert!(event.cancelled);
-    assert_eq!(event.placed_state.id, placed.id);
-    assert_eq!(event.replaced_state.id, replaced.id);
+    assert_eq!(
+        event.placed_state.id, placed.id,
+        "the placed state has no setter"
+    );
+    assert_eq!(
+        event.replaced_state.id, replaced.id,
+        "the replaced state has no setter"
+    );
 }
 
 #[test]

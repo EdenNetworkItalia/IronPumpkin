@@ -277,6 +277,15 @@ impl ToFromWasmEvent for BlockPlaceEvent {
             _ => panic!("unexpected event type"),
         }
     }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        // `EntityPlaceEvent#getPlacedBlock` and `getBlockSnapshot` have no setter: keep the
+        // native states.
+        let (placed_state, replaced_state) = (self.placed_state, self.replaced_state);
+        *self = Self::from_wasm_event(event, state);
+        self.placed_state = placed_state;
+        self.replaced_state = replaced_state;
+    }
 }
 
 impl ToFromWasmEvent for BlockDamageEvent {
