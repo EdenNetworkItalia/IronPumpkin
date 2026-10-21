@@ -50,6 +50,7 @@ where
         let mut wasm = event.to_wasm_event(&mut state);
         (self.edit)(&mut wasm, &mut state);
         cleanup_event(&wasm, &mut state);
+        assert_released(&state);
         Box::pin(async {})
     }
 
@@ -62,8 +63,18 @@ where
         let mut wasm = event.to_wasm_event(&mut state);
         (self.edit)(&mut wasm, &mut state);
         event.apply_wasm_event(wasm, &mut state);
+        assert_released(&state);
         Box::pin(async {})
     }
+}
+
+/// Checks that the host took back or dropped every resource of the record. A tick event fires
+/// per entity and tick, so a leak would grow fast.
+fn assert_released(state: &PluginHostState) {
+    assert!(
+        state.resource_table.is_empty(),
+        "the round trip left resources in the table"
+    );
 }
 
 /// A plugin manager with one blocking v0.2 handler for `E`, registered as
