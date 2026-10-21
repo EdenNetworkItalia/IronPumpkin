@@ -215,7 +215,7 @@ impl Block {
             }
 
             *waterlogged = value;
-            Some(self.from_properties(&props).to_state_id(self))
+            Some(self.with_properties(id, &props))
         })
     }
 
@@ -268,9 +268,7 @@ impl Block {
                 crate::block_rotation::Rotation::None,
                 mirror,
             );
-            let new_props = self.from_properties(&transformed);
-            let new_state_id = new_props.to_state_id(self);
-            BlockState::from_id(new_state_id)
+            BlockState::from_id(self.with_properties(id, &transformed))
         } else {
             BlockState::from_id(id)
         }
@@ -293,9 +291,7 @@ impl Block {
                 rotation,
                 crate::block_rotation::Mirror::None,
             );
-            let new_props = self.from_properties(&transformed);
-            let new_state_id = new_props.to_state_id(self);
-            BlockState::from_id(new_state_id)
+            BlockState::from_id(self.with_properties(id, &transformed))
         } else {
             BlockState::from_id(id)
         }

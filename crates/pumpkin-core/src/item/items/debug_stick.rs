@@ -108,7 +108,7 @@ impl DebugStickItem {
                 }
             }
 
-            let new_state_id = block.from_properties(&new_props).to_state_id(block);
+            let new_state_id = block.with_properties(state_id, &new_props);
             let world = player.world();
             world.set_block_state(pos, new_state_id, BlockFlags::NOTIFY_ALL);
 

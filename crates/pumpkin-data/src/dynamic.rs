@@ -1758,13 +1758,26 @@ impl Block {
     #[must_use]
     pub fn from_string_properties(&self, props: &[(&str, &str)]) -> Box<dyn BlockProperties> {
         if is_custom_block(self.id.as_u16()) {
-            return Box::new(DynamicProperties::from_string_props(props, self));
+            return Box::new(DynamicProperties::default(self).with_string_props(props));
         }
         let props: Vec<Property> = props
             .iter()
             .filter_map(|(name, value)| Property::from_str_pair(name, value))
             .collect();
         self.from_properties(&props)
+    }
+
+    /// The state `id` with `props` set: `from_properties(props).to_state_id(self)` for a
+    /// generated block. A registered block starts from `id`, so the properties that `props` does
+    /// not name, such as the ones without a [`Property`] variant, keep their value.
+    #[must_use]
+    pub fn with_properties(&self, id: BlockStateId, props: &[Property]) -> BlockStateId {
+        if is_custom_block(self.id.as_u16()) {
+            return DynamicProperties::from_state_id(id, self)
+                .with_props(props)
+                .to_state_id(self);
+        }
+        self.from_properties(props).to_state_id(self)
     }
 }
 
@@ -1801,15 +1814,14 @@ impl DynamicProperties {
             .collect()
     }
 
-    /// Starts from the default state. Unknown names and values keep the default value.
-    fn from_string_props(props: &[(&str, &str)], block: &Block) -> Self {
-        let default = Self::default(block);
-        let mut values = default.value_indices();
+    /// Sets each named property to its value. Unknown names and values keep the current value.
+    fn with_string_props(self, props: &[(&str, &str)]) -> Self {
+        let mut values = self.value_indices();
         for (name, value) in props {
-            let Some(property) = default.properties.iter().position(|p| p.name == *name) else {
+            let Some(property) = self.properties.iter().position(|p| p.name == *name) else {
                 continue;
             };
-            if let Some(value) = default.properties[property]
+            if let Some(value) = self.properties[property]
                 .values
                 .iter()
                 .position(|v| v == value)
@@ -1817,7 +1829,7 @@ impl DynamicProperties {
                 values[property] = value;
             }
         }
-        let index = default
+        let index = self
             .properties
             .iter()
             .zip(values)
@@ -1825,9 +1837,23 @@ impl DynamicProperties {
                 index * property.values.len() + value
             });
         Self {
-            properties: default.properties,
+            properties: self.properties,
             index: index as u16,
         }
+    }
+
+    /// Like `with_string_props`. A property whose `value_str` does not name its value, such as an
+    /// int above the table of `value_str`, keeps the current value.
+    fn with_props(self, props: &[Property]) -> Self {
+        let props: Vec<(&str, &str)> = props
+            .iter()
+            .filter(|property| {
+                Property::from_str_pair(property.key_str(), property.value_str())
+                    .is_some_and(|parsed| parsed.matches_property(**property))
+            })
+            .map(|property| (property.key_str(), property.value_str()))
+            .collect();
+        self.with_string_props(&props)
     }
 }
 
@@ -1874,21 +1900,21 @@ impl BlockProperties for DynamicProperties {
         Self::from_state_id(block.default_state.id, block)
     }
 
-    /// Only the properties that have a [`Property`] variant: [`Block::string_properties`] gives
-    /// all of them.
+    /// Only the properties that have a [`Property`] variant whose `value_str` names the value:
+    /// [`Block::string_properties`] gives all of them.
     fn to_props(&self) -> Vec<Property> {
         self.string_props()
             .into_iter()
-            .filter_map(|(name, value)| Property::from_str_pair(name, value))
+            .filter_map(|(name, value)| {
+                Property::from_str_pair(name, value)
+                    .filter(|property| property.value_str() == value)
+            })
             .collect()
     }
 
+    /// Starts from the default state. Unknown names and values keep the default value.
     fn from_props(props: &[Property], block: &Block) -> Self {
-        let props: Vec<(&str, &str)> = props
-            .iter()
-            .map(|property| (property.key_str(), property.value_str()))
-            .collect();
-        Self::from_string_props(&props, block)
+        Self::default(block).with_props(props)
     }
 }
 

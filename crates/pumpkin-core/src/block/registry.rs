@@ -817,9 +817,7 @@ impl BlockRegistry {
                     }
                 }
             }
-            new_state = placed_block
-                .from_properties(&prop_list)
-                .to_state_id(placed_block);
+            new_state = placed_block.with_properties(new_state, &prop_list);
         }
 
         // Mirror vanilla obstruction checks: only entities that block building should prevent
