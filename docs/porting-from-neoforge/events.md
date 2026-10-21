@@ -243,7 +243,7 @@ No event of the table fires under the screen-handler lock. The anvil, grindstone
 
 The contract of `StatAwardEvent`: `value` is the new total, and the server stores it in the statistic that `category` and `stat` name. `amount` is the change, that is the new total minus the total before the event. A handler that changes only `amount` has no effect, because `value` wins. To change the result, set `value`.
 
-`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The page for the entity family is planned (task 2.15). Until it lands, a handler for such an event runs only where Pumpkin already fires it.
+`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The living entity events are in [the living section](#the-living-entity-events). The other entity events wait for task 2.15: until they land, a handler for such an event runs only where Pumpkin already fires it.
 
 ## The player events
 
@@ -290,6 +290,32 @@ The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin 
 v0.2 Wasm plugins get these events, `UseItemOnBlockEvent` and the new fields of `PlayerInteractEvent` through the same dispatch as native mods. The WIT records are in `event.wit` and `neoforge-events.wit` of `crates/pumpkin-plugin-wit/v0.2`, with block states as state ids. A v0.2 handler of a `neoforge-events.wit` event writes back only the fields that NeoForge can set. The merged Pumpkin events of `event.wit` keep their upstream write-back of the old fields, such as the block and the position, and keep the new fields that NeoForge cannot set. A new entry in `spawns` names its entity type. An entry with an unknown type, a minimum count below 1, a maximum below the minimum or a maximum above the mob cap of the category is dropped. A Wasm listener of a tick event costs a guest call per entity or player and tick, about 9.3 µs each for one caller. The entities tick in parallel and queue on the one store of the plugin. Keep Wasm tick handlers for small worlds, or port the logic to a native mod.
 
 These rows stay planned: `BlockEvent.FarmlandTrampleEvent` (Pumpkin never tramples farmland), `LevelEvent.CreateSpawnPosition` (Pumpkin picks the spawn before the server exists), `ChunkDataEvent.Load` and `Save` (the chunk I/O runs in `pumpkin-world`), `AlterGroundEvent` and `ChunkTicketLevelUpdatedEvent` (engine extension points of M5). The mapping table gives the reasons.
+
+## The living entity events
+
+The package `event.entity.living` maps to Pumpkin events. Where Pumpkin already had an event at the fire site, the NeoForge event maps to it: `LivingIncomingDamageEvent` is `entity::EntityDamageEvent`, `MobEffectEvent.Added` is `entity::EntityPotionEffectEvent`. The other events are in `ironpumpkin_mods::event::living` with the NeoForge name and the parent prefix: `LivingDamageEvent.Pre` is `LivingDamageEventPre`, `LivingEvent.LivingJumpEvent` is `LivingEventLivingJumpEvent`. The `entity` of each event is the living entity, a player included. `mapping-table.md` names the Rust type of each row.
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `LivingDamageEvent.Pre` | `living::LivingDamageEventPre` | Fires after the armor, the effects and the hurt cooldown, before the absorption. `new_damage` is settable. `source` has the damage type, the direct and the causing entity and the position. There are no reduction modifiers. |
+| `LivingDamageEvent.Post` | `living::LivingDamageEventPost` | Fires after the health changed, also after the death. `reductions.magic` holds the enchantments and the mob effects together. |
+| `LivingShieldBlockEvent` | `living::LivingShieldBlockEvent` | Fires for a damage to an entity that holds up a shield. `blocked`, `blocked_damage` and `shield_damage` are settable. The rest of a partly blocked damage goes on. |
+| `LivingKnockBackEvent` | `living::LivingKnockBackEvent` | Fires before the knockback resistance, for the knockback of a damage and of a player attack. `strength`, `ratio_x` and `ratio_z` are settable. A cancel gives no knockback. |
+| `LivingFallEvent` | `living::LivingFallEvent` | `distance` and `damage_multiplier` are settable. A cancel deals no fall damage. The fall distance of a player comes from its client. |
+| `LivingDrownEvent` | `living::LivingDrownEvent` | Fires for players only: Pumpkin ticks the air of players only. `drowning` is `true` in the tick of the damage. A cancel deals no damage. |
+| `LivingExperienceDropEvent` | `living::LivingExperienceDropEvent` | Fires when a player killed the mob. `dropped_experience` is settable. A cancel drops no experience. |
+| `LivingEntityUseItemEvent.Start`, `Tick` and `Stop` | `living::LivingEntityUseItemEventStart`, `Tick` and `Stop` | `duration` is settable on `Start` and `Tick`. A cancel of `Start` starts no use. With no remaining tick, a consumable finishes in that tick and another item stops being used. A cancel of `Stop` releases nothing: a bow shoots no arrow. `LivingEntityUseItemEvent` is a concrete parent: register a `ParentEventHandler` with `register_parent_event` to get the three. `Finish` is `player::player_item_consume::PlayerItemConsumeEvent`. |
+| `LivingGetProjectileEvent` | `living::LivingGetProjectileEvent` | Fires for the bows and crossbows of players and mobs. `projectile` is settable. A projectile that a handler sets is a copy: the server takes nothing from the inventory for it. |
+| `LivingEvent.LivingJumpEvent` | `living::LivingEventLivingJumpEvent` | A mob fires it when it jumps. A player fires it when the movement packets show a jump: the client already moved, so a handler cannot change the jump. |
+| `LivingEvent.LivingVisibilityEvent` | `living::LivingEventLivingVisibilityEvent` | `modify_visibility` multiplies `visibility_modifier`. |
+| `LivingDestroyBlockEvent` | `living::LivingDestroyBlockEvent` | Fires for the blocks that a wither breaks and when a mob starts to break a door. A cancel keeps the block. |
+| `LivingConversionEvent.Post` | `living::LivingConversionEventPost` | Fires for a hoglin, a piglin and a piglin brute that convert. Pumpkin has no other conversion. |
+| `EffectParticleModificationEvent` | `living::EffectParticleModificationEvent` | `visible` and `particle_color` are settable. The particle is always `minecraft:entity_effect`, so its options are the ARGB colour. |
+| `MobEffectEvent.Applicable` | `living::MobEffectEventApplicable` | `result` is settable: `Apply`, `Default` or `DoNotApply`. `effect_source` is always `None`. |
+
+v0.2 Wasm plugins get these events through the same dispatch as native mods. The WIT records are in `neoforge-events.wit`, and a v0.2 handler writes back only the fields that NeoForge can set.
+
+`LivingEquipmentChangeEvent` stays planned: Pumpkin has no equipment diff in the living tick, so the server knows no previous stack of a slot. The mapping table gives the reason.
 
 ## Causes: what a `FakePlayer` did
 

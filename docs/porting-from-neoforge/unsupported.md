@@ -15,7 +15,7 @@ The inventory in `design.md` of the change folder has one row for each element o
 | **Mod loading** | The loader scans `mods/` and loads each jar | No loading. Cargo compiles the mod into the binary. A change needs a new build. |
 | **Mixins and access transformers** | Mixin configs and `accesstransformer.cfg` | Source patches. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
 | **Registries** | Any registry, with a `DeferredRegister` | Block, item, entity type, tag, sound event, mob effect, data component type and attribute. The rest waits for M5 or is not supported. |
-| **Events** | The NeoForge event catalogue | Pumpkin events. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting, player, level and block events have NeoForge fire sites and fields. See [Events](./events.md). Five player rows are planned, as listed below, and [Events](./events.md) lists the level rows that stay planned. The entity family is planned (task 2.15). |
+| **Events** | The NeoForge event catalogue | Pumpkin events. The server, tick, chat, statistic, anvil, grindstone, brewing, enchanting, player, level, block and living entity events have NeoForge fire sites and fields. See [Events](./events.md). Five player rows are planned, as listed below, and [Events](./events.md) lists the level and living rows that stay planned. The other entity events are planned (task 2.15). |
 | **Data generation and game tests** | `runData`, `RegisterGameTestsEvent` | Not supported |
 | **Mod version records of a world** | `ModMismatchEvent` | Not supported. Pumpkin does not keep them. |
 | **Creative tabs** | `creative_mode_tab` registry, `BuildCreativeModeTabContentsEvent` | The server never reads them. `ModInit::register_creative_mode_tab` accepts a tab and ignores it. |
@@ -27,7 +27,7 @@ The inventory in `design.md` of the change folder has one row for each element o
 **Planned, with a task.** The API has a task in `tasks.md` of the change. The page of this guide for that API is written when the task lands. These are the tasks for the families that mods use most:
 
 - 2.12: the player rows that stay planned, listed below.
-- 2.15: the entity family of events.
+- 2.15: the entity, mob and spawn events.
 - 2.7: capabilities.
 - 2.9: menus.
 - 2.10: shapes.
