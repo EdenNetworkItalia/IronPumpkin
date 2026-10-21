@@ -32,8 +32,9 @@ fn listening<E: Payload + 'static>(world: &World) -> Option<Arc<Server>> {
         .filter(|server| server.plugin_manager.has_handlers::<E>())
 }
 
-/// The live entity of `entity` in `world`. The tracker holds every entity of the world.
-fn live(world: &World, entity: &Entity) -> Option<Arc<dyn EntityBase>> {
+/// The live entity of `entity` in `world`. The tracker holds every entity of the world, so the
+/// linear scan of `World::get_entity_by_id` is only the fallback.
+pub fn live(world: &World, entity: &Entity) -> Option<Arc<dyn EntityBase>> {
     world
         .entity_tracker
         .entity_map

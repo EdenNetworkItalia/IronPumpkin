@@ -33,9 +33,9 @@ fn listening<E: Payload + 'static>(entity: &crate::entity::Entity) -> Option<Arc
     server.plugin_manager.has_handlers::<E>().then_some(server)
 }
 
-/// The shared handle of the entity with the id of `entity`, from its world.
+/// The shared handle of `entity`, from its world.
 fn shared(entity: &crate::entity::Entity) -> Option<Arc<dyn EntityBase>> {
-    entity.world.load().get_entity_by_id(entity.entity_id)
+    crate::plugin::entity_events::live(&entity.world.load(), entity)
 }
 
 /// Fires `E` built by `make` for `entity` when a handler listens, and returns it with the changes.
@@ -60,7 +60,8 @@ pub fn damage_source(
     cause: Option<&dyn EntityBase>,
 ) -> DamageSource {
     let world = living.entity.world.load();
-    let find = |entity: &dyn EntityBase| world.get_entity_by_id(entity.get_entity().entity_id);
+    let find =
+        |entity: &dyn EntityBase| crate::plugin::entity_events::live(&world, entity.get_entity());
     DamageSource {
         damage_type,
         direct_entity: source.and_then(find),
