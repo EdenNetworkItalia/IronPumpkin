@@ -416,7 +416,11 @@ impl EntityBase for ItemFrameEntity {
             damage_type == DamageType::OUT_OF_WORLD || damage_type == DamageType::GENERIC_KILL;
 
         if fixed {
-            if !bypasses_invuln && !is_creative_player {
+            // Vanilla `canHurtWhenFixed(source) && super.hurtServer(..)`, which reads
+            // `isInvulnerableToBase` too.
+            if (!bypasses_invuln && !is_creative_player)
+                || self.entity.is_invulnerable_to(&damage_type, cause)
+            {
                 return false;
             }
             self.drop_item(source, true);
