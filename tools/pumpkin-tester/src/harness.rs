@@ -106,7 +106,9 @@ pub fn spawn_java_listener(
                                         .await;
 
                                     if let ClientPlatform::Java(client) = player.client.as_ref() {
-                                        client.progress_player_packets(&player, &server_clone).await;
+                                        if joined {
+                                            client.progress_player_packets(&player, &server_clone).await;
+                                        }
                                         client.close();
                                         client.await_tasks().await;
                                     }
