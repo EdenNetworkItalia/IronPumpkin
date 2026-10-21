@@ -1845,6 +1845,45 @@ mod tests {
     }
 
     #[test]
+    fn chunk_and_entity_writers_declare_the_26_2_data_version() {
+        use std::sync::atomic::AtomicBool;
+
+        // Vanilla 26.2. The writers produce its shape, so vanilla 26.3 runs its fixers from it.
+        const DATA_VERSION_26_2: i32 = 4903;
+
+        let data_version = |bytes: &[u8]| {
+            let mut cursor = std::io::Cursor::new(bytes);
+            let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(
+                pumpkin_nbt::deserializer::NbtStreamReader(&mut cursor),
+            );
+            pumpkin_nbt::Nbt::read(&mut reader)
+                .unwrap()
+                .root_tag
+                .get_int("DataVersion")
+        };
+
+        let chunk = ChunkData::empty(0, 0).to_bytes().unwrap();
+        assert_eq!(data_version(&chunk), Some(DATA_VERSION_26_2));
+
+        let mut enderman = NbtCompound::new();
+        enderman.put_string("id", "minecraft:enderman".to_string());
+        enderman.put_compound(
+            "carriedBlockState",
+            crate::block::state_nbt::block_state_to_nbt(Block::STONE.default_state.id),
+        );
+        let entities = ChunkEntityData {
+            x: 0,
+            z: 0,
+            data: std::sync::Mutex::new(vec![enderman]),
+            live: AtomicBool::new(false),
+            dirty: AtomicBool::new(false),
+        }
+        .to_bytes()
+        .unwrap();
+        assert_eq!(data_version(&entities), Some(DATA_VERSION_26_2));
+    }
+
+    #[test]
     fn extract_u8_array_from_vanilla_string_palette() {
         let list_tag = NbtTag::List(vec![
             NbtTag::String("minecraft:plains".to_string().into()),

@@ -10,13 +10,17 @@ use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use tracing::warn;
 
-// The keys of 26.2. The writer keeps them, as the upstream chunk palette writer does, although
-// WORLD_DATA_VERSION is 26.3.
+// The keys of 26.2, the shape that WORLD_DATA_VERSION declares.
 const NAME_TAG: &str = "Name";
 const PROPERTIES_TAG: &str = "Properties";
 // 26.3 renamed them (data version 5006).
 const NAME_TAG_26_3: &str = "id";
 const PROPERTIES_TAG_26_3: &str = "properties";
+
+const _: () = assert!(
+    crate::chunk::format::anvil::WORLD_DATA_VERSION < 5006,
+    "WORLD_DATA_VERSION reached 26.3: write `id` and `properties` here, and keep reading `Name` and `Properties`"
+);
 
 /// Writes the compound that vanilla 26.2 writes: `Name`, plus `Properties` with every property of
 /// the state when the block has properties.

@@ -362,7 +362,7 @@ fn read_root_vehicle(nbt: &NbtCompound) -> Option<Uuid> {
     ))
 }
 
-pub const DATA_VERSION: i32 = 5023; // 26.3
+pub const DATA_VERSION: i32 = pumpkin_world::chunk::format::anvil::WORLD_DATA_VERSION;
 
 /// Food exhaustion applied for every block a player mines.
 ///
