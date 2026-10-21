@@ -38,6 +38,9 @@ use tokio::{
 use uuid::Uuid;
 
 pub const PACKET_TIMEOUT: Duration = Duration::from_secs(10);
+/// The first join generates the spawn chunk before the server sends the rest of the play login.
+/// A debug build on a small CI runner needs more than `PACKET_TIMEOUT` for it.
+const SPAWN_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub struct HeadlessBot {
     pub name: String,
@@ -57,7 +60,11 @@ impl HeadlessBot {
     }
 
     pub async fn next_packet(&mut self) -> Result<RawPacket, String> {
-        match timeout(PACKET_TIMEOUT, self.reader.get_raw_packet()).await {
+        self.next_packet_within(PACKET_TIMEOUT).await
+    }
+
+    async fn next_packet_within(&mut self, limit: Duration) -> Result<RawPacket, String> {
+        match timeout(limit, self.reader.get_raw_packet()).await {
             Ok(Ok(packet)) => Ok(packet),
             Ok(Err(err)) => Err(format!("Bot '{}' packet decode error: {err}", self.name)),
             Err(_) => Err(format!(
@@ -143,7 +150,7 @@ impl HeadlessBot {
         let mut saw_initial_pos = false;
 
         while !(saw_play_login && saw_initial_pos) {
-            let pkt = bot.next_packet().await?;
+            let pkt = bot.next_packet_within(SPAWN_TIMEOUT).await?;
             if pkt.id == play_login_id {
                 saw_play_login = true;
             } else if pkt.id == player_pos_id {
