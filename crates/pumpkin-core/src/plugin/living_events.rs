@@ -132,6 +132,18 @@ pub fn use_item_start(
     item: &ItemStack,
     duration: i32,
 ) -> Option<i32> {
+    // Vanilla `startUsingItem` starts only when no use runs; Pumpkin items call
+    // `set_active_hand` again to refresh a running use.
+    let using = || {
+        living
+            .item_in_use
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_some()
+    };
+    if listening::<LivingEntityUseItemEventStart>(&living.entity).is_none() || using() {
+        return Some(duration);
+    }
     let Some(event) = fire(&living.entity, |entity| {
         LivingEntityUseItemEventStart::new(entity, item.clone(), hand, duration)
     }) else {
@@ -142,8 +154,9 @@ pub fn use_item_start(
 
 /// Fires `LivingEntityUseItemEventTick` for the item that `living` uses, before the item ticks,
 /// and stores the remaining use ticks of the handlers. Returns `true` when the handlers left no
-/// tick to a consumable, which then finishes in this tick. Another item stops being used: the
-/// server finishes only consumables.
+/// tick to a consumable, which then finishes in this tick. A crossbow, which vanilla releases on
+/// `useOnRelease`, keeps its use, and the event no longer fires for it. Another item stops being
+/// used: the server finishes only consumables.
 pub fn use_item_tick(living: &LivingEntity) -> bool {
     use std::sync::atomic::Ordering::Relaxed;
 
@@ -177,7 +190,9 @@ pub fn use_item_tick(living: &LivingEntity) -> bool {
     {
         return true;
     }
-    living.clear_active_hand();
+    if item.item.id != pumpkin_data::item::Item::CROSSBOW.id {
+        living.clear_active_hand();
+    }
     false
 }
 
