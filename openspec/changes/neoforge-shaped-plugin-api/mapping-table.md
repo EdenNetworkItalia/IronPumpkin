@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 262 | 262 | 0 | 0 | 0 | 228 | 60 |
-| Inventory, planned | 473 | 428 | 43 | 2 | 0 | 325 | 63 |
+| Inventory, supported | 274 | 274 | 0 | 0 | 0 | 239 | 60 |
+| Inventory, planned | 461 | 416 | 43 | 2 | 0 | 314 | 63 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -111,7 +111,7 @@ How to read it:
 | `LivingHealEvent` | 13 | event class | `event-bus.event::living-heal-event` | supported |
 | `MobEffectEvent` | 13 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PlayerEvent.StartTracking` | 13 | event class | `pumpkin_core::plugin::player::PlayerEventStartTracking` | supported |
-| `ProjectileImpactEvent` | 12 | event class | `event-bus.event::projectile-impact-event` | planned |
+| `ProjectileImpactEvent` | 12 | event class | `pumpkin_core::plugin::level::ProjectileImpactEvent` | supported |
 | `ExplosionEvent` | 12 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `EntityTickEvent.Pre` | 12 | event class | `pumpkin_core::plugin::level::EntityTickEventPre` | supported |
 | `ItemAttributeModifierEvent` | 11 | event class | `event-bus.event::item-attribute-modifier-event` | planned |
@@ -126,8 +126,8 @@ How to read it:
 | `InterModProcessEvent` | 10 | event class | `NativeMod::inter_mod_process` (`imc::InterModProcess::get_messages`, `imc::ImcMessage`) | supported |
 | `RegisterTicketControllersEvent` | 10 | event class | `event-bus` doc, not supported | planned |
 | `AnvilUpdateEvent` | 9 | event class | `pumpkin_core::plugin::inventory::PrepareAnvilEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
-| `EntityInvulnerabilityCheckEvent` | 9 | event class | `event-bus.event::entity-invulnerability-check-event` | planned |
-| `EntityLeaveLevelEvent` | 9 | event class | `event-bus.event::entity-leave-level-event` | planned |
+| `EntityInvulnerabilityCheckEvent` | 9 | event class | `pumpkin_core::plugin::level::EntityInvulnerabilityCheckEvent` | supported |
+| `EntityLeaveLevelEvent` | 9 | event class | `pumpkin_core::plugin::level::EntityLeaveLevelEvent` | supported |
 | `EntityMountEvent` | 9 | event class | `event-bus.event::entity-mount-event` | supported |
 | `LivingEntityUseItemEvent.Finish` | 9 | event class | `event-bus.event::living-entity-use-item-event-finish` | supported |
 | `LivingEntityUseItemEvent.Start` | 9 | event class | `event-bus.event::living-entity-use-item-event-start` | planned |
@@ -140,7 +140,7 @@ How to read it:
 | `MobEffectEvent.Added` | 8 | event class | `event-bus.event::mob-effect-event-added` | supported |
 | `LootTableLoadEvent` | 7 | event class | `event-bus.event::loot-table-load-event` | planned |
 | `MobEffectEvent.Applicable` | 7 | event class | `event-bus.event::mob-effect-event-applicable` | planned |
-| `MobSpawnEvent.PositionCheck` | 7 | event class | `event-bus.event::mob-spawn-event-position-check` | planned |
+| `MobSpawnEvent.PositionCheck` | 7 | event class | `pumpkin_core::plugin::level::MobSpawnEventPositionCheck` | supported |
 | `AdvancementEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PlayerInteractEvent.LeftClickEmpty` | 7 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerXpEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -176,8 +176,8 @@ How to read it:
 | `LivingEntityUseItemEvent.Stop` | 4 | event class | `event-bus.event::living-entity-use-item-event-stop` | planned |
 | `LivingEntityUseItemEvent.Tick` | 4 | event class | `event-bus.event::living-entity-use-item-event-tick` | planned |
 | `LivingEvent.LivingVisibilityEvent` | 4 | event class | `event-bus.event::living-event-living-visibility-event` | planned |
-| `MobDespawnEvent` | 4 | event class | `event-bus.event::mob-despawn-event` | planned |
-| `MobSpawnEvent.SpawnPlacementCheck` | 4 | event class | `event-bus.event::mob-spawn-event-spawn-placement-check` | planned |
+| `MobDespawnEvent` | 4 | event class | `pumpkin_core::plugin::level::MobDespawnEvent` | supported |
+| `MobSpawnEvent.SpawnPlacementCheck` | 4 | event class | `pumpkin_core::plugin::level::MobSpawnEventSpawnPlacementCheck` | supported |
 | `BonemealEvent` | 4 | event class | `event-bus.event::bonemeal-event` | supported |
 | `PlayerDestroyItemEvent` | 4 | event class | `event-bus.event::player-destroy-item-event` | supported |
 | `PlayerEvent.ItemSmeltedEvent` | 4 | event class | `event-bus.event::player-event-item-smelted-event` | supported |
@@ -192,10 +192,10 @@ How to read it:
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `pumpkin_core::plugin::inventory::GrindstoneEventOnTakeItem` (fires outside the screen lock on every take; a cancel gives no experience and puts the inputs back) | supported |
 | `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
-| `EntityMobGriefingEvent` | 3 | event class | `event-bus.event::entity-mob-griefing-event` | planned |
+| `EntityMobGriefingEvent` | 3 | event class | `pumpkin_core::plugin::level::EntityMobGriefingEvent` | supported |
 | `ArmorHurtEvent` | 3 | event class | `event-bus.event::armor-hurt-event` | supported |
 | `BabyEntitySpawnEvent` | 3 | event class | `event-bus.event::baby-entity-spawn-event` | supported |
-| `EndermanAngerEvent` | 3 (21.1 `EnderManAngerEvent`) | event class | `event-bus.event::enderman-anger-event` | planned |
+| `EndermanAngerEvent` | 3 (21.1 `EnderManAngerEvent`) | event class | `pumpkin_core::plugin::level::EndermanAngerEvent` | supported |
 | `LivingConversionEvent.Post` | 3 | event class | `event-bus.event::living-conversion-event-post` | planned |
 | `LivingConversionEvent.Pre` | 3 | event class | `event-bus.event::living-conversion-event-pre` | supported |
 | `LivingDestroyBlockEvent` | 3 | event class | `event-bus.event::living-destroy-block-event` | planned |
@@ -211,8 +211,8 @@ How to read it:
 | `PlayLevelSoundEvent.AtPosition` | 2 | event class | `event-bus.event::play-level-sound-event-at-position` | planned |
 | `GetEnchantmentLevelEvent` | 2 | event class | `event-bus.event::get-enchantment-level-event` | planned |
 | `EntityEvent.EntityConstructing` | 2 | event class | `event-bus.event::entity-event-entity-constructing` | planned |
-| `EntityStruckByLightningEvent` | 2 | event class | `event-bus.event::entity-struck-by-lightning-event` | planned |
-| `EntityTeleportEvent.SpreadPlayersCommand` | 2 | event class | `event-bus.event::entity-teleport-event-spread-players-command` | planned |
+| `EntityStruckByLightningEvent` | 2 | event class | `pumpkin_core::plugin::level::EntityStruckByLightningEvent` | supported |
+| `EntityTeleportEvent.SpreadPlayersCommand` | 2 | event class | `pumpkin_core::plugin::level::EntityTeleportEventSpreadPlayersCommand` | supported |
 | `ItemExpireEvent` | 2 | event class | `event-bus.event::item-expire-event` | supported |
 | `AnimalTameEvent` | 2 | event class | `event-bus.event::animal-tame-event` | supported |
 | `LivingGetProjectileEvent` | 2 | event class | `event-bus.event::living-get-projectile-event` | planned |
@@ -238,7 +238,7 @@ How to read it:
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
 | `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingUseTotemEvent` | 1 | event class | `event-bus.event::living-use-totem-event` | supported |
-| `MobSplitEvent` | 1 | event class | `event-bus.event::mob-split-event` | planned |
+| `MobSplitEvent` | 1 | event class | `pumpkin_core::plugin::level::MobSplitEvent` | supported |
 | `AdvancementEvent.AdvancementProgressEvent` | 1 | event class | `event-bus.event::advancement-event-advancement-progress-event` | planned |
 | `ArrowNockEvent` | 1 | event class | `pumpkin_core::plugin::player::ArrowNockEvent` (a set `action` stops the draw) | supported |
 | `CanContinueSleepingEvent` | 1 | event class | `event-bus.event::can-continue-sleeping-event` | planned |
@@ -282,7 +282,7 @@ How to read it:
 | `LivingDrownEvent` | 0 | event class | `event-bus.event::living-drown-event` | planned |
 | `LivingSwapItemsEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingSwapItemsEvent.Hands` | 0 | event class | `event-bus.event::living-swap-items-event-hands` | supported |
-| `SpawnClusterSizeEvent` | 0 | event class | `event-bus.event::spawn-cluster-size-event` | planned |
+| `SpawnClusterSizeEvent` | 0 | event class | `pumpkin_core::plugin::level::SpawnClusterSizeEvent` | supported |
 | `AnvilCraftEvent.Pre` | 0 | event class | `pumpkin_core::plugin::player::AnvilCraftEventPre` (under the screen-handler lock; a cancel skips the cost) | supported |
 | `ClientInformationUpdatedEvent` | 0 | event class | `pumpkin_core::plugin::player::ClientInformationUpdatedEvent` | supported |
 | `CustomClickActionEvent` | 0 | event class | `event-bus.event::custom-click-action-event` | supported |

@@ -243,7 +243,7 @@ No event of the table fires under the screen-handler lock. The anvil, grindstone
 
 The contract of `StatAwardEvent`: `value` is the new total, and the server stores it in the statistic that `category` and `stat` name. `amount` is the change, that is the new total minus the total before the event. A handler that changes only `amount` has no effect, because `value` wins. To change the result, set `value`.
 
-`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The page for the entity family is planned (task 2.15). Until it lands, a handler for such an event runs only where Pumpkin already fires it.
+`mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The living events are planned (task 2.15). Until they land, a handler for such an event runs only where Pumpkin already fires it.
 
 ## The player events
 
@@ -290,6 +290,29 @@ The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin 
 v0.2 Wasm plugins get these events, `UseItemOnBlockEvent` and the new fields of `PlayerInteractEvent` through the same dispatch as native mods. The WIT records are in `event.wit` and `neoforge-events.wit` of `crates/pumpkin-plugin-wit/v0.2`, with block states as state ids. A v0.2 handler of a `neoforge-events.wit` event writes back only the fields that NeoForge can set. The merged Pumpkin events of `event.wit` keep their upstream write-back of the old fields, such as the block and the position, and keep the new fields that NeoForge cannot set. A new entry in `spawns` names its entity type. An entry with an unknown type, a minimum count below 1, a maximum below the minimum or a maximum above the mob cap of the category is dropped. A Wasm listener of a tick event costs a guest call per entity or player and tick, about 9.3 µs each for one caller. The entities tick in parallel and queue on the one store of the plugin. Keep Wasm tick handlers for small worlds, or port the logic to a native mod.
 
 These rows stay planned: `BlockEvent.FarmlandTrampleEvent` (Pumpkin never tramples farmland), `LevelEvent.CreateSpawnPosition` (Pumpkin picks the spawn before the server exists), `ChunkDataEvent.Load` and `Save` (the chunk I/O runs in `pumpkin-world`), `AlterGroundEvent` and `ChunkTicketLevelUpdatedEvent` (engine extension points of M5). The mapping table gives the reasons.
+
+## The entity, mob and spawn events
+
+The package `event.entity` and the mob and spawn events of `event.entity.living` map to Pumpkin events. `EntityJoinLevelEvent` is `entity::EntitySpawnEvent`, as before. The other events are in `ironpumpkin_mods::event::level` with the NeoForge name and the parent prefix: `MobSpawnEvent.PositionCheck` is `MobSpawnEventPositionCheck`. Each event carries the live entity as `Arc<dyn EntityBase>`.
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `EntityJoinLevelEvent` | `entity::EntitySpawnEvent` | Fires for a spawn, for each rider that a spawned mob brings and for an entity that loads from its chunk. A cancel keeps the entity out of the world. A cancelled loaded entity is gone with the next save of its chunk, as on NeoForge. There is no `loadedFromDisk` field. |
+| `EntityLeaveLevelEvent` | `level::EntityLeaveLevelEvent` | Fires after the entity left the entity list: a removal, the unload of its chunk, a player that leaves. A lookup in `world` no longer finds the entity. |
+| `EntityMobGriefingEvent` | `level::EntityMobGriefingEvent` | `can_grief` is settable and starts at the `mobGriefing` game rule. Fires at the sites where Pumpkin reads the rule for an entity: the turtle egg trample, the enderman block goals, the remove block goal of zombies, the sheep eating grass, the wither and the piglin item pick-up. A mob explosion fires nothing, because `World::explode` has no source entity. |
+| `EntityStruckByLightningEvent` | `level::EntityStruckByLightningEvent` | A cancel spares the entity from the bolt. Pumpkin strikes an entity once per bolt. |
+| `EntityTeleportEvent.SpreadPlayersCommand` | `level::EntityTeleportEventSpreadPlayersCommand` | `target` is settable. A cancel leaves the entity where it is. A handler of `entity::EntityTeleportEvent` does not get it. |
+| `ProjectileImpactEvent` | `level::ProjectileImpactEvent` | Fires for every projectile before it handles a hit. `ray` is a `ProjectileHit`: a block with its face, or an entity. A cancel skips the hit and the projectile flies on. |
+| `EndermanAngerEvent` | `level::EndermanAngerEvent` | Fires when a player without a carved pumpkin stares at the enderman. A cancel makes the stare not count. |
+| `MobDespawnEvent` | `level::MobDespawnEvent` | Once per mob and tick, also for a persistent mob. `result` is a `MobDespawnResult`: `Allow` removes the mob now, `Deny` keeps it for this tick. |
+| `MobSpawnEvent.PositionCheck`, `MobSpawnEvent.SpawnPlacementCheck` | `level::MobSpawnEventPositionCheck`, `MobSpawnEventSpawnPlacementCheck` | `result` is a `MobSpawnResult`: `Succeed`, `Default` or `Fail`. `spawn_type` is an `EntitySpawnReason`. The placement check has `default_result`, the result of the spawn rules, and no random source. |
+| `MobSplitEvent` | `level::MobSplitEvent` | `children` is settable. A child must be a new entity: the server skips a child that is already in the world. A cancel spawns no child. |
+| `SpawnClusterSizeEvent` | `level::SpawnClusterSizeEvent` | `size` is settable and starts at the limit per chunk of the entity type. |
+| `EntityInvulnerabilityCheckEvent` | `level::EntityInvulnerabilityCheckEvent` | `invulnerable` is settable. `damage_type` and `attacker` stand for the `DamageSource`. Fires for living entities, item entities, armor stands, item frames, paintings and end crystals. |
+
+The despawn, griefing, invulnerability, spawn and cluster events fire for each mob and check, behind the handler check of the fire site. Keep these handlers short. v0.2 Wasm plugins get the events through the same dispatch; the records are in `neoforge-events.wit`. A Wasm handler of `MobSplitEvent` can only drop or reorder the children, and a spread target that is not finite is ignored.
+
+`XpOrbTargetingEvent` stays planned: the experience orb of Pumpkin never follows a player. `EntityEvent.EnteringSection`, `EntityEvent.EntityConstructing` and `EntityEvent.Size` stay planned too; the mapping table gives the reasons.
 
 ## Causes: what a `FakePlayer` did
 

@@ -18,7 +18,7 @@
 //! - [x] Change a settable field: `change_a_settable_field_anvil_update_event` (the slice has no
 //!   `LivingHealEvent`; the anvil output is its settable field)
 //! - [x] Cancel a block break: `cancel_break_block_event` in `neoforge_level_events.rs`
-//! - [ ] Deny a despawn: no event of this slice has a result
+//! - [x] Deny a despawn: `deny_mob_despawn_event` in `neoforge_entity_events.rs`
 //! - [ ] Late call: task 2.2
 //! - [ ] Player login: `World::spawn_java_player` needs a client that takes the spawn chunks;
 //!   the play state of the headless client (task 2.21) covers it

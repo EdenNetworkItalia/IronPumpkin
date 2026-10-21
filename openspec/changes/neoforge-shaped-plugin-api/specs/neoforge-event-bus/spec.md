@@ -75,7 +75,7 @@ A cancellable event SHALL carry `cancelled` (the Pumpkin `Cancellable` trait). W
 - **THEN** the block stays and no later handler without receive-canceled runs
 
 ### Requirement: Results
-An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`TriState`, `InteractionResult` or the event's own result enum), and the host SHALL apply the set value as NeoForge does. Status: planned (tasks 2.13 and 2.15; `TriState` and `InteractionResult` exist, task 2.12, #112).
+An event with a NeoForge result setter SHALL carry the result as a settable field of an enum type (`TriState`, `InteractionResult` or the event's own result enum), and the host SHALL apply the set value as NeoForge does. Status: supported for the despawn and spawn checks (#138) and the `TriState` and `InteractionResult` events (#112); planned for the other result events (task 2.15).
 
 #### Scenario: Deny a despawn
 - **WHEN** a `MobDespawnEvent` handler sets the result to `Deny`
