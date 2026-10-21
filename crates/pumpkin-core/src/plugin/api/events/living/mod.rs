@@ -51,7 +51,8 @@ pub struct DamageReductions {
 pub struct LivingDamageEventPre {
     pub entity: Arc<dyn EntityBase>,
     pub source: DamageSource,
-    /// The damage when the hurt began, after `EntityDamageEvent` (`LivingIncomingDamageEvent`).
+    /// The damage when the hurt began, before `EntityDamageEvent` (`LivingIncomingDamageEvent`),
+    /// as `DamageContainer.originalDamage`.
     pub original_damage: f32,
     pub new_damage: f32,
 }
