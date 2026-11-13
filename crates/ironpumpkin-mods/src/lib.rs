@@ -89,6 +89,7 @@ pub mod network;
 pub mod registration;
 pub mod registry;
 pub mod sound_events;
+pub mod transfer;
 pub mod version;
 
 /// The events a mod can listen to, and the traits to handle them.

@@ -2045,6 +2045,7 @@ dependencies = [
  "pumpkin-config",
  "pumpkin-core",
  "pumpkin-data",
+ "pumpkin-inventory",
  "pumpkin-macros",
  "pumpkin-nbt",
  "pumpkin-protocol",

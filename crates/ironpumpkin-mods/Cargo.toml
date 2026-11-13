@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 pumpkin-codecs.workspace = true
 pumpkin-core.workspace = true
 pumpkin-data.workspace = true
+pumpkin-inventory.workspace = true
 pumpkin-macros.workspace = true
 pumpkin-nbt.workspace = true
 pumpkin-util.workspace = true
