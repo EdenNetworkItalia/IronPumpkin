@@ -1895,13 +1895,19 @@ impl World {
             order::set_entity_order(Some(first_order + index as u64 * order::ORDERS_PER_ENTITY));
 
             let base = entity.get_entity();
+            // `NeoForge` fires `EntityTickEvent.Pre` before `commonTick` (the age) in
+            // `ServerLevel.tickNonPassenger`, but a rider runs `commonTick` and the motion
+            // reset of vanilla `rideTick` before the event, so a cancel keeps them.
+            let rider = base.has_vehicle();
+            if rider {
+                base.tick_count.fetch_add(1, Relaxed);
+                base.velocity.store(Vector3::default());
+            }
             if !crate::plugin::level_events::entity_tick_pre(server, entity, tick_events) {
                 return;
             }
-            base.tick_count.fetch_add(1, Relaxed);
-            // Vanilla `rideTick`: a rider starts its tick without motion
-            if base.has_vehicle() {
-                base.velocity.store(Vector3::default());
+            if !rider {
+                base.tick_count.fetch_add(1, Relaxed);
             }
             entity.tick(entity.as_ref(), server_ref);
             crate::plugin::level_events::entity_tick_post(server, entity, tick_events);

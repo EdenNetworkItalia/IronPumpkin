@@ -630,6 +630,51 @@ fn cancel_entity_tick_event_pre() {
     assert_eq!(age(&item), 0);
 }
 
+/// A cancelled `EntityTickEventPre` of a rider keeps its age: `ServerLevel.tickPassenger` runs
+/// `commonTick` before `rideTick`, where `NeoForge` fires the event.
+#[test]
+fn cancel_entity_tick_event_pre_of_a_rider_keeps_its_age() {
+    let _serial = support::serial();
+    let vehicle = item_at(spot(33));
+    let world = support::world();
+    let rider = Arc::new(ItemEntity::new(
+        Entity::new(
+            world.clone(),
+            vehicle.get_entity().pos.load(),
+            &EntityType::ITEM,
+        ),
+        ItemStack::new(1, &Item::APPLE),
+    ));
+    world.spawn_entity(rider.clone());
+    vehicle
+        .get_entity()
+        .add_passenger(vehicle.clone(), rider.clone());
+    let id = rider.get_entity().entity_id;
+    let seen = log();
+    let pre = seen.clone();
+    on::<EntityTickEventPre, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            push(
+                &pre,
+                format!(
+                    "pre {}",
+                    event
+                        .entity
+                        .get_entity()
+                        .tick_count
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                ),
+            );
+            event.set_cancelled(true);
+        }
+    });
+
+    world.tick(support::server());
+
+    assert_eq!(entries(&seen), ["pre 1"]);
+    assert_eq!(age(&rider), 1);
+}
+
 /// Uses the note block at `pos` with `player`, as a right click without an item.
 fn tune(player: &Arc<Player>, pos: BlockPos) -> BlockActionResult {
     let server = support::server();
