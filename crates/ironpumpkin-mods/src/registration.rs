@@ -7,7 +7,9 @@
 //! 1. After the last `RegisterEvent`, in `GameData.postRegisterEvents`:
 //!    [`EntityAttributeCreationEvent`], [`EntityAttributeModificationEvent`],
 //!    [`RegisterSpawnPlacementsEvent`] and [`BlockEntityTypeAddBlocksEvent`].
-//! 2. After `dedicated_server_setup`, in `RegistrationEvents.init`: [`ExtendPoiTypesEvent`].
+//! 2. After `dedicated_server_setup`, in `RegistrationEvents.init`:
+//!    [`RegisterCapabilitiesEvent`](crate::capabilities::RegisterCapabilitiesEvent), once per
+//!    listener priority, then [`ExtendPoiTypesEvent`].
 //!
 //! Every event fires before the freeze of the content registry, so a mod names entries by
 //! `namespace:path`, as `registry` does: a mod entry has no id yet. A name without a namespace is
@@ -84,6 +86,8 @@ pub enum RegistrationError {
     UnknownBlock(String),
     /// No vanilla POI type has this name.
     UnknownPoiType(String),
+    /// No vanilla or mod item has this name.
+    UnknownItem(String),
     /// The entity type already has default attributes: every vanilla type with attributes, or a
     /// mod type that got them before. `NeoForge`: "Duplicate `DefaultAttributes` entry".
     DuplicateAttributes(String),
@@ -104,6 +108,7 @@ impl fmt::Display for RegistrationError {
             Self::UnknownEntityType(name) => write!(f, "unknown entity type \"{name}\""),
             Self::UnknownBlock(name) => write!(f, "unknown block \"{name}\""),
             Self::UnknownPoiType(name) => write!(f, "unknown POI type \"{name}\""),
+            Self::UnknownItem(name) => write!(f, "unknown item \"{name}\""),
             Self::DuplicateAttributes(name) => {
                 write!(f, "entity type \"{name}\" already has default attributes")
             }
@@ -188,7 +193,7 @@ macro_rules! registration_event {
 
 /// A vanilla or mod entity type name, with the `minecraft` namespace when it has none, and
 /// whether the type is vanilla.
-fn entity_type(name: &str) -> Result<(String, bool), RegistrationError> {
+pub(crate) fn entity_type(name: &str) -> Result<(String, bool), RegistrationError> {
     let name = namespaced(name);
     if let Some(entity_type) = EntityType::from_name(&name)
         && entity_type.id < EntityType::COUNT
@@ -203,7 +208,7 @@ fn entity_type(name: &str) -> Result<(String, bool), RegistrationError> {
 
 /// A vanilla or mod block name, with the `minecraft` namespace when it has none, and the vanilla
 /// block when it is one.
-fn block(name: &str) -> Result<(String, Option<&'static Block>), RegistrationError> {
+pub(crate) fn block(name: &str) -> Result<(String, Option<&'static Block>), RegistrationError> {
     let name = namespaced(name);
     if let Some(block) = Block::from_name(&name).filter(|block| block.id.as_u16() < BlockId::COUNT)
     {
@@ -215,7 +220,7 @@ fn block(name: &str) -> Result<(String, Option<&'static Block>), RegistrationErr
     Err(RegistrationError::UnknownBlock(name))
 }
 
-fn namespaced(name: &str) -> String {
+pub(crate) fn namespaced(name: &str) -> String {
     let name = name.strip_prefix('#').unwrap_or(name);
     if name.contains(':') {
         name.to_owned()

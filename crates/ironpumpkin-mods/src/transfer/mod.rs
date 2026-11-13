@@ -1,7 +1,7 @@
 //! The `NeoForge` transfer API (`net.neoforged.neoforge.transfer`).
 //!
 //! Resources, resource and energy handlers, item access and transactions, over Pumpkin item
-//! stacks, fluids and inventories. The [`capabilities`](crate::capabilities) module exposes the handlers on blocks,
+//! stacks, fluids and inventories. The `capabilities` module exposes the handlers on blocks,
 //! entities and items.
 //!
 //! Every `insert` and `extract` takes an open [`TransactionContext`]: see [`transaction`].
@@ -735,7 +735,7 @@ impl EnergyHandler for SimpleEnergyHandler {
 
 /// `ItemAccess`: the stack that an item capability reads and changes, such as a stack in a
 /// player hand. It is the context of the item capabilities in
-/// [`capabilities`](crate::capabilities).
+/// `capabilities`.
 pub trait ItemAccess: Send + Sync {
     /// `getResource`.
     fn get_resource(&self) -> ItemResource;

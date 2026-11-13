@@ -5,7 +5,8 @@
 //! `EntityAttributeModificationEvent`, `RegisterSpawnPlacementsEvent` and
 //! `BlockEntityTypeAddBlocksEvent` (`GameData.postRegisterEvents`), and loads the local configs.
 //! Then `CommonModLoader.load` runs common setup, sided setup (`FMLDedicatedServerSetupEvent` on
-//! a dedicated server), `ExtendPoiTypesEvent` (`RegistrationEvents.init`), enqueue IMC, process
+//! a dedicated server), `RegisterCapabilitiesEvent` and `ExtendPoiTypesEvent`
+//! (`RegistrationEvents.init`), enqueue IMC, process
 //! IMC and load complete. The registration events are methods of `NativeMod` too: see
 //! [`registration`](crate::registration). `NetworkRegistry.setup` then posts
 //! `RegisterPayloadHandlersEvent`. Each step calls the method of every mod in load order before
@@ -87,7 +88,9 @@ pub(crate) fn run(
     for loaded in mods {
         loaded.native_mod.dedicated_server_setup();
     }
-    // `RegistrationEvents.init`, the "Registration events" task after the sided setup.
+    // `RegistrationEvents.init`, the "Registration events" task after the sided setup:
+    // `CapabilityHooks.init`, then `PoiTypeExtender.extendPoiTypes`.
+    crate::capabilities::post(mods)?;
     post(mods, |m, event| m.extend_poi_types(event))?;
     let mut queue = ImcQueue::default();
     for loaded in mods {
