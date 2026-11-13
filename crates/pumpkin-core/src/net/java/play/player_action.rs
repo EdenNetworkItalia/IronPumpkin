@@ -3,6 +3,8 @@ use super::*;
 use crate::plugin::interact_events;
 use crate::plugin::player::player_interact_event::LeftClickBlockAction;
 use crate::plugin::results::TriState;
+#[path = "player_action_ironpumpkin.rs"]
+mod ironpumpkin;
 
 impl JavaClient {
     #[expect(clippy::too_many_lines)]
@@ -319,28 +321,6 @@ impl JavaClient {
             self.packet_sequence.load(Ordering::Relaxed).max(sequence),
             Ordering::Relaxed,
         );
-    }
-
-    /// Fires `PlayerInteractEvent.LeftClickBlock` for a dig action, first, as
-    /// `ServerPlayerGameMode.handleBlockBreakAction` does in `NeoForge` 26.3 (and Bukkit on the
-    /// dig start). Returns `None` when a handler cancelled it: the action does not run and the
-    /// client gets the block back. Otherwise returns `use_block`.
-    fn fire_left_click_block(
-        player: &Arc<Player>,
-        player_action: &SPlayerAction,
-        action: LeftClickBlockAction,
-    ) -> Option<TriState> {
-        let position = player_action.position;
-        let use_block =
-            interact_events::left_click_block(player, position, player_action.face, action);
-        if use_block.is_none() {
-            let state_id = player.world().get_block_state_id(&position);
-            player.try_send_client_packet(&CBlockUpdate::new(
-                position,
-                VarInt(i32::from(state_id.as_u16())),
-            ));
-        }
-        use_block
     }
 
     fn sync_block_state_to_client(&self, world: &World, position: BlockPos) {

@@ -40,6 +40,8 @@ use crate::net::ClientPlatform;
 use crate::net::java::JavaClient;
 use crate::world::World;
 use crate::world::chunker::get_view_distance;
+#[path = "entity_tracker_ironpumpkin.rs"]
+mod ironpumpkin;
 
 /// Vanilla `VecDeltaCodec.encode`: Java `Math.round` on the 1/4096
 fn encode_pos(value: f64) -> i64 {
@@ -150,20 +152,6 @@ impl TrackedEntity {
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .is_empty()
-    }
-
-    /// Adds `player` to the viewers without pairing it. Returns whether it was not a viewer.
-    pub fn mark_seen_by(&self, player: &Arc<Player>) -> bool {
-        let inserted = self
-            .seen_by
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(player.gameprofile.id, player.clone())
-            .is_none();
-        if inserted && matches!(player.client.as_ref(), ClientPlatform::Bedrock(_)) {
-            self.bedrock_watchers.fetch_add(1, Relaxed);
-        }
-        inserted
     }
 
     #[must_use]

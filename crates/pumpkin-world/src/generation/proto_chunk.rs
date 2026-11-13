@@ -66,6 +66,8 @@ use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 
 use crate::generation::structure::template::BlockPlacer;
 use crate::tick::{ScheduledTick, TickPriority};
+#[path = "proto_chunk_ironpumpkin.rs"]
+mod ironpumpkin;
 
 pub trait GenerationCache: HeightLimitView + BlockAccessor {
     fn get_center_chunk_mut(&mut self) -> &mut ProtoChunk;
@@ -432,38 +434,6 @@ impl ProtoChunk {
             proto_chunk.saved_structure_data = Some(chunk_data.structures.clone());
         }
         proto_chunk
-    }
-
-    /// The vanilla `structures` tag of this chunk, as `SerializableChunkData.packStructureData`
-    /// builds it.
-    #[must_use]
-    pub fn structure_data(&self) -> NbtCompound {
-        if let Some(saved) = &self.saved_structure_data {
-            return saved.clone();
-        }
-        let chunk_pos = Vector2::new(self.x, self.z);
-        let mut starts = NbtCompound::new();
-        for (structure, instance) in &self.structure_starts {
-            if let StructureInstance::Start(position) = instance
-                && StructureStart::from_position(*structure, chunk_pos, position).is_some()
-            {
-                starts.put_compound(
-                    &format!("minecraft:{}", structure.to_name()),
-                    start::create_tag(*structure, chunk_pos, position),
-                );
-            }
-        }
-        let mut references = NbtCompound::new();
-        for (structure, chunks) in &self.packed_structure_references {
-            references.put(
-                &format!("minecraft:{}", structure.to_name()),
-                NbtTag::LongArray(chunks.clone()),
-            );
-        }
-        let mut tag = NbtCompound::new();
-        tag.put_compound("starts", starts);
-        tag.put_compound("References", references);
-        tag
     }
 
     #[inline]
