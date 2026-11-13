@@ -12,7 +12,6 @@ use pumpkin_util::math::{block_box::BlockBox, vector3::Vector3};
 use thiserror::Error;
 
 use super::processor::StructureProcessor;
-use crate::block::state_nbt::state_compound_parts;
 use crate::generation::structure::structures::jigsaw::{JigsawBlock, JigsawJointType};
 
 /// Errors that can occur when loading or saving a structure template.
@@ -372,14 +371,17 @@ impl PaletteEntry {
     /// Deserializes a palette entry from an NBT compound tag.
     pub fn from_nbt_compound(entry_compound: &NbtCompound) -> Result<Self, TemplateError> {
         // 26.3 renamed the palette keys from Name and Properties to id and properties
-        let (name, properties) = state_compound_parts(entry_compound);
-        let name = name
+        let name = entry_compound
+            .get_string("id")
+            .or_else(|| entry_compound.get_string("Name"))
             .or_else(|| entry_compound.get_string(""))
             .ok_or(TemplateError::MissingField("palette.id"))?
             .to_string();
 
-        let properties: Vec<pumpkin_data::Property> =
-            properties.map_or_else(Vec::new, |props_compound| {
+        let properties: Vec<pumpkin_data::Property> = entry_compound
+            .get_compound("properties")
+            .or_else(|| entry_compound.get_compound("Properties"))
+            .map_or_else(Vec::new, |props_compound| {
                 props_compound
                     .child_tags
                     .iter()

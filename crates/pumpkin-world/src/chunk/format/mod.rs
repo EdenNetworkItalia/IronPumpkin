@@ -20,7 +20,7 @@ use tracing::{error, warn};
 
 use crate::{
     block::state_nbt::{
-        block_state_to_nbt, first_report, palette_entry_to_state, palette_name_to_state,
+        block_state_to_nbt, first_report, palette_entry_to_state, report_unknown_palette_block,
     },
     chunk::{
         ChunkEntityData, ChunkReadingError, ChunkSerializingError,
@@ -144,10 +144,27 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
                     pumpkin_nbt::tag::NbtTag::Short(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Byte(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Long(x) => BlockStateId::new_or_air(*x as u16),
+                    pumpkin_nbt::tag::NbtTag::String(s) => {
+                        // Upstream's resolver warns on every entry; a 26.3 world writes each
+                        // default state as a bare name, so check first and warn once per name.
+                        if Block::from_name(s).is_none() {
+                            report_unknown_palette_block(s);
+                            return BlockStateId::AIR;
+                        }
+                        let entry =
+                            crate::generation::structure::template::PaletteEntry::new(s.to_string());
+                        if let Some(state) =
+                            crate::generation::structure::template::BlockStateResolver::resolve_simple(
+                                &entry,
+                            )
+                        {
+                            return state.id;
+                        }
+                        BlockStateId::AIR
+                    }
                     pumpkin_nbt::tag::NbtTag::Compound(compound) => {
                         palette_entry_to_state(compound)
                     }
-                    pumpkin_nbt::tag::NbtTag::String(name) => palette_name_to_state(name),
                     _ => BlockStateId::AIR,
                 })
                 .collect();
@@ -1928,6 +1945,26 @@ mod tests {
             );
         }
         assert!(!first_report(&UNKNOWN_PALETTE_BIOMES, name));
+    }
+
+    #[test]
+    fn extract_u16_array_loads_an_unknown_bare_name_as_air_and_warns_once() {
+        let name = "test:missing_bare_block";
+        let list_tag = NbtTag::List(vec![
+            NbtTag::String(name.to_string().into()),
+            NbtTag::String("minecraft:stone".to_string().into()),
+        ]);
+        for _ in 0..3 {
+            let result = extract_u16_array(&list_tag).expect("should extract block palette");
+            assert_eq!(
+                result.as_ref(),
+                [BlockStateId::AIR, Block::STONE.default_state.id]
+            );
+        }
+        assert!(!first_report(
+            &crate::block::state_nbt::UNKNOWN_PALETTE_BLOCKS,
+            name
+        ));
     }
 
     #[test]

@@ -45,8 +45,8 @@ pub fn block_state_to_nbt(id: BlockStateId) -> NbtCompound {
 }
 
 /// The block name and the properties compound of a block state compound, with the keys of 26.3 or
-/// of 26.2. `PaletteEntry::from_nbt_compound` reads templates through this too.
-pub(crate) fn state_compound_parts(compound: &NbtCompound) -> (Option<&str>, Option<&NbtCompound>) {
+/// of 26.2.
+fn state_compound_parts(compound: &NbtCompound) -> (Option<&str>, Option<&NbtCompound>) {
     let name = compound
         .get_string(NAME_TAG_26_3)
         .or_else(|| compound.get_string(NAME_TAG));
@@ -87,13 +87,22 @@ pub fn block_state_from_compound(compound: &NbtCompound) -> Option<BlockStateId>
 
 /// Block names the chunk palette reader has warned about. A world copied from another server
 /// references the same missing block in many sections and chunks; one warning per name is enough.
-static UNKNOWN_PALETTE_BLOCKS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
+pub(crate) static UNKNOWN_PALETTE_BLOCKS: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 static UNKNOWN_PALETTE_PROPERTIES: Mutex<BTreeSet<String>> = Mutex::new(BTreeSet::new());
 
 #[cold]
 pub(crate) fn first_report(reported: &Mutex<BTreeSet<String>>, name: &str) -> bool {
     let mut reported = reported.lock().unwrap_or_else(PoisonError::into_inner);
     !reported.contains(name) && reported.insert(name.to_owned())
+}
+
+/// Warns once per name for the whole process that a palette block name is not registered.
+pub(crate) fn report_unknown_palette_block(name: &str) {
+    if first_report(&UNKNOWN_PALETTE_BLOCKS, name) {
+        warn!(
+            "Block {name} in a chunk palette is not registered: it loads as air. Other references to it are not logged"
+        );
+    }
 }
 
 /// Reads one entry of a chunk section's block palette.
@@ -107,11 +116,7 @@ pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
         return BlockStateId::AIR;
     };
     let Some(block) = Block::from_name(name) else {
-        if first_report(&UNKNOWN_PALETTE_BLOCKS, name) {
-            warn!(
-                "Block {name} in a chunk palette is not registered: it loads as air. Other references to it are not logged"
-            );
-        }
+        report_unknown_palette_block(name);
         return BlockStateId::AIR;
     };
     let properties: Vec<(&str, &str)> = properties
@@ -142,15 +147,6 @@ pub(crate) fn palette_entry_to_state(compound: &NbtCompound) -> BlockStateId {
         );
     }
     id
-}
-
-/// Reads a bare-name entry of a chunk section's block palette. 26.3 writes the default state of a
-/// block as its name alone (`BlockState.CODEC` is `Codec.either(block, full state)`), so a section
-/// full of stone has the entry `minecraft:stone`.
-pub(crate) fn palette_name_to_state(name: &str) -> BlockStateId {
-    let mut compound = NbtCompound::new();
-    compound.put_string(NAME_TAG_26_3, name.to_string());
-    palette_entry_to_state(&compound)
 }
 
 fn known_block(name: &str) -> Option<&'static Block> {
