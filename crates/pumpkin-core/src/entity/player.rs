@@ -9295,7 +9295,7 @@ impl InventoryPlayer for Player {
 #[cfg(test)]
 mod tests {
     use super::{
-        ParticleStatus, bedrock_container_slot, bedrock_container_type, read_last_death_location,
+        bedrock_container_slot, bedrock_container_type, read_last_death_location,
         read_root_vehicle, write_last_death_location, write_root_vehicle,
     };
     use pumpkin_data::{Block, screen::WindowType};
@@ -9403,16 +9403,6 @@ mod tests {
     }
 
     #[test]
-    fn particle_status_wraps_out_of_range_ids_like_vanilla() {
-        assert_eq!(ParticleStatus::from(0), ParticleStatus::All);
-        assert_eq!(ParticleStatus::from(2), ParticleStatus::Minimal);
-        assert_eq!(ParticleStatus::from(3), ParticleStatus::All);
-        assert_eq!(ParticleStatus::from(4), ParticleStatus::Decreased);
-        assert_eq!(ParticleStatus::from(-1), ParticleStatus::Minimal);
-        assert_eq!(ParticleStatus::from(-2), ParticleStatus::Decreased);
-    }
-
-    #[test]
     fn reach_distances_adhere_to_platform_defaults() {
         // Standard entity interaction range: ~3.0 for Java, ~3.5 for Bedrock
         let java_default = 3.0f64;
@@ -9489,3 +9479,7 @@ mod tests {
         assert_eq!(read_last_death_location(&nbt), None);
     }
 }
+
+#[cfg(test)]
+#[path = "player_ironpumpkin_tests.rs"]
+mod ironpumpkin_tests;
