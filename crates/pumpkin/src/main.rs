@@ -42,12 +42,9 @@ use tracing::{debug, info, warn};
 
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// IronPumpkin branding. The `/pumpkin` command keeps its own copy of the links.
-const BRAND_NAME: &str = "IronPumpkin";
-const WEBSITE_URL: &str = "https://eden.network";
-const DISCORD_URL: &str = "https://discord.eden.network";
-const ISSUES_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin/issues";
-const UPSTREAM_URL: &str = "https://github.com/Pumpkin-MC/Pumpkin";
+use pumpkin_util::branding::{
+    DISCORD_URL, ISSUES_URL, NAME as BRAND_NAME, UPSTREAM_URL, WEBSITE_URL,
+};
 
 static MAIN_THREAD: OnceLock<ThreadId> = OnceLock::new();
 

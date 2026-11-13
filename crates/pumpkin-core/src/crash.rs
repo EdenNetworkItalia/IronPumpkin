@@ -7,6 +7,7 @@ use std::{
     thread::{self, Thread},
 };
 
+use pumpkin_util::branding::ISSUES_URL;
 use pumpkin_util::text::{
     TextComponent,
     color::{Color, NamedColor},
@@ -18,8 +19,6 @@ use time::OffsetDateTime;
 use tracing::error;
 
 pub const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
-
-const ISSUES_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin/issues";
 
 /// Writes to a string which cannot fail.
 macro_rules! writeln_output {

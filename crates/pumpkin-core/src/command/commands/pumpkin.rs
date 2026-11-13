@@ -16,20 +16,16 @@ use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
 
-const DESCRIPTION: &str = "Display information about IronPumpkin.";
+#[path = "pumpkin_ironpumpkin.rs"]
+mod ironpumpkin;
+use ironpumpkin::{
+    CONTRIBUTORS_URL, DESCRIPTION, NAME, REPO_URL, WEBSITE_URL, add_credit, add_discord,
+    cache_after_fetch,
+};
+
 const PERMISSION: &str = "pumpkin:command.pumpkin";
 
-// IronPumpkin branding. `main.rs` keeps its own copy of the links.
-const REPO_URL: &str = "https://github.com/EdenNetworkItalia/IronPumpkin";
-const CONTRIBUTORS_URL: &str =
-    "https://api.github.com/repos/EdenNetworkItalia/IronPumpkin/contributors?per_page=100";
-const UPSTREAM_URL: &str = "https://github.com/Pumpkin-MC/Pumpkin";
-const WEBSITE_URL: &str = "https://eden.network";
-const DISCORD_URL: &str = "https://discord.eden.network";
-
 const CACHE_DURATION: Duration = Duration::from_hours(24);
-/// How long an empty result stays cached, so a server without network does not retry at each call.
-const EMPTY_CACHE_DURATION: Duration = Duration::from_mins(5);
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct Executor;
@@ -55,27 +51,6 @@ struct ContributorCache {
 static CONTRIBUTORS_CACHE: LazyLock<Mutex<Option<ContributorCache>>> =
     LazyLock::new(|| Mutex::new(None));
 
-/// The cache entry after a fetch. An empty result means that the fetch failed or found nobody:
-/// the entry keeps the previous list and expires after `EMPTY_CACHE_DURATION`.
-fn cache_after_fetch(
-    previous: Option<ContributorCache>,
-    fetched: Vec<Contributor>,
-) -> ContributorCache {
-    let (data, ttl) = if fetched.is_empty() {
-        (
-            previous.map_or_else(Vec::new, |cache| cache.data),
-            EMPTY_CACHE_DURATION,
-        )
-    } else {
-        (fetched, CACHE_DURATION)
-    };
-    ContributorCache {
-        fetched_at: Instant::now(),
-        ttl,
-        data,
-    }
-}
-
 #[cfg(test)]
 fn fetch_all_contributors_cached() -> Vec<Contributor> {
     if let Ok(guard) = CONTRIBUTORS_CACHE.lock()
@@ -91,7 +66,7 @@ fn fetch_all_contributors_cached() -> Vec<Contributor> {
 async fn fetch_all_contributors() -> Vec<Contributor> {
     // No fallback to a default client: it has no timeout.
     let Ok(client) = pumpkin_auth::client_builder()
-        .user_agent("IronPumpkin")
+        .user_agent(NAME)
         .timeout(HTTP_TIMEOUT)
         .build()
     else {
@@ -209,20 +184,7 @@ impl CommandExecutor for Executor {
                 .color_named(NamedColor::Gold),
         );
 
-        let credit_translation =
-            get_translation_text("pumpkin:commands.pumpkin.credit", locale, vec![]);
-        let credit_hover_translation =
-            get_translation_text("pumpkin:commands.pumpkin.credit.hover", locale, vec![]);
-        msg = msg.add_child(
-            TextComponent::text(credit_translation)
-                .click_event(ClickEvent::OpenUrl {
-                    url: Cow::from(UPSTREAM_URL),
-                })
-                .hover_event(HoverEvent::show_text(TextComponent::text(
-                    credit_hover_translation,
-                )))
-                .color_named(NamedColor::Yellow),
-        );
+        msg = add_credit(msg, locale);
 
         let github_translation =
             get_translation_text("pumpkin:commands.pumpkin.github", locale, vec![]);
@@ -243,24 +205,7 @@ impl CommandExecutor for Executor {
 
         msg = msg.add_child(TextComponent::text("  "));
 
-        let discord_translation =
-            get_translation_text("pumpkin:commands.pumpkin.discord", locale, vec![]);
-        let discord_hover_translation =
-            get_translation_text("pumpkin:commands.pumpkin.discord.hover", locale, vec![]);
-        msg = msg.add_child(
-            TextComponent::text(discord_translation)
-                .click_event(ClickEvent::OpenUrl {
-                    url: Cow::from(DISCORD_URL),
-                })
-                .hover_event(HoverEvent::show_text(TextComponent::text(
-                    discord_hover_translation,
-                )))
-                .color_named(NamedColor::Blue)
-                .bold()
-                .underlined(),
-        );
-
-        msg = msg.add_child(TextComponent::text("  "));
+        msg = add_discord(msg, locale);
 
         let website_translation =
             get_translation_text("pumpkin:commands.pumpkin.website", locale, vec![]);
@@ -312,7 +257,7 @@ fn format_contributors_message(contributors: &[Contributor]) -> TextComponent {
         .collect::<Vec<_>>()
         .join(", ");
 
-    TextComponent::text(format!("IronPumpkin Contributors ({count}):\n"))
+    TextComponent::text(format!("{NAME} Contributors ({count}):\n"))
         .color_named(NamedColor::Green)
         .bold()
         .add_child(
@@ -340,7 +285,7 @@ impl CommandExecutor for ContributorsExecutor {
                 .send_message(format_contributors_message(&cache.data));
         } else {
             context.source.send_message(
-                TextComponent::text("Fetching IronPumpkin contributors...")
+                TextComponent::text(format!("Fetching {NAME} contributors..."))
                     .color_named(NamedColor::Gray),
             );
         }
@@ -420,57 +365,8 @@ mod test {
         assert_eq!(contributors.len(), 1);
         assert_eq!(contributors[0].login, "test_user");
     }
-
-    #[test]
-    fn empty_result_is_cached_for_a_few_minutes() {
-        assert_eq!(EMPTY_CACHE_DURATION, Duration::from_mins(5));
-        let cache = cache_after_fetch(None, Vec::new());
-        assert!(cache.data.is_empty());
-        assert_eq!(cache.ttl, EMPTY_CACHE_DURATION);
-    }
-
-    #[test]
-    fn empty_result_keeps_the_previous_list() {
-        let previous = ContributorCache {
-            fetched_at: Instant::now(),
-            ttl: CACHE_DURATION,
-            data: vec![Contributor {
-                login: "test_user".to_string(),
-            }],
-        };
-        let cache = cache_after_fetch(Some(previous), Vec::new());
-        assert_eq!(cache.data.len(), 1);
-        assert_eq!(cache.ttl, EMPTY_CACHE_DURATION);
-
-        let fresh = cache_after_fetch(
-            Some(cache),
-            vec![Contributor {
-                login: "other".to_string(),
-            }],
-        );
-        assert_eq!(fresh.data[0].login, "other");
-        assert_eq!(fresh.ttl, CACHE_DURATION);
-    }
-
-    #[test]
-    fn version_translation_names_ironpumpkin_in_every_language() {
-        let dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/translations");
-        let mut checked = 0;
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            let json = std::fs::read_to_string(&path).unwrap();
-            let map: std::collections::HashMap<String, String> =
-                serde_json::from_str(&json).unwrap();
-            if let Some(version) = map.get("commands.pumpkin.version") {
-                assert!(
-                    version.starts_with("IronPumpkin "),
-                    "{} has {version:?}",
-                    path.display()
-                );
-                checked += 1;
-            }
-        }
-        assert!(checked > 0);
-    }
 }
+
+#[cfg(test)]
+#[path = "pumpkin_ironpumpkin_tests.rs"]
+mod ironpumpkin_tests;
