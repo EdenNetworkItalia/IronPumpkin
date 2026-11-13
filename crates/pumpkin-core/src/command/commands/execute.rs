@@ -24,7 +24,6 @@ use crate::command::argument_types::coordinates::rotation::RotationArgumentType;
 use crate::command::argument_types::coordinates::swizzle::SwizzleArgumentType;
 use crate::command::argument_types::coordinates::vec3::Vec3ArgumentType;
 use crate::command::argument_types::core::string::StringArgumentType;
-use crate::command::argument_types::dimension::DimensionArgument;
 use crate::command::argument_types::entity::EntityArgumentType;
 use crate::command::argument_types::entity_anchor::{EntityAnchorArgumentType, EntityAnchorExt};
 use crate::command::argument_types::identifier::IdentifierArgumentType;
@@ -32,13 +31,14 @@ use crate::command::argument_types::nbt_path::{NbtPath, NbtPathArgumentType};
 use crate::command::argument_types::objective::ObjectiveArgumentType;
 use crate::command::argument_types::range::{FloatRangeArgumentType, IntRangeArgumentType};
 use crate::command::argument_types::resource::{ENTITY_TYPE_ARGUMENT, ResourceArgument};
-use crate::command::argument_types::resource_key::BIOME_REGISTRY;
+use crate::command::argument_types::resource_key::{
+    BIOME_REGISTRY, DIMENSION_REGISTRY, ResourceKeyArgument,
+};
 use crate::command::argument_types::resource_or_tag::{ResourceOrTag, ResourceOrTagArgument};
 use crate::command::argument_types::score_holder::ScoreHolderArgumentType;
 use crate::command::commands::data::{
     BlockDataAccessor, DataAccessor, EntityDataAccessor, StorageDataAccessor,
 };
-use crate::command::commands::test_block_predicate;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
 use crate::command::errors::error_types::CommandErrorType;
@@ -107,7 +107,7 @@ fn execute_at_modifier(context: &CommandContext) -> crate::command::node::Redire
 
 fn execute_in_modifier(context: &CommandContext) -> crate::command::node::RedirectModifierResult {
     let mut source = context.source.as_ref().clone();
-    source.world = Some(DimensionArgument::get_dimension(context, "dimension")?);
+    source.world = Some(ResourceKeyArgument::get_dimension(context, "dimension")?);
     Ok(vec![Arc::new(source)])
 }
 
@@ -265,12 +265,13 @@ fn execute_if_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
-    let predicate = BlockPredicateArgumentType::get(context, "block")?;
+    let expected = BlockPredicateArgumentType::get(context, "block")?;
 
-    if let Some(ref world) = context.source.world
-        && test_block_predicate(world, &predicate, &pos)
-    {
-        return Ok(vec![context.source.clone()]);
+    if let Some(ref world) = context.source.world {
+        let state_id = world.get_block_state_id(&pos);
+        if expected.test(state_id, || world.get_block_entity_nbt(&pos)) {
+            return Ok(vec![context.source.clone()]);
+        }
     }
     Ok(vec![])
 }
@@ -279,10 +280,11 @@ fn execute_unless_block_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
     let pos = BlockPosArgumentType::get_block_pos(context, "pos")?;
-    let predicate = BlockPredicateArgumentType::get(context, "block")?;
+    let expected = BlockPredicateArgumentType::get(context, "block")?;
 
     if let Some(ref world) = context.source.world {
-        if !test_block_predicate(world, &predicate, &pos) {
+        let state_id = world.get_block_state_id(&pos);
+        if !expected.test(state_id, || world.get_block_entity_nbt(&pos)) {
             return Ok(vec![context.source.clone()]);
         }
     } else {
@@ -322,7 +324,7 @@ fn execute_unless_loaded_modifier(
 fn execute_if_dimension_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let dimension = DimensionArgument::get_dimension(context, "dimension")?;
+    let dimension = ResourceKeyArgument::get_dimension(context, "dimension")?;
 
     if let Some(ref world) = context.source.world
         && Arc::ptr_eq(world, &dimension)
@@ -335,7 +337,7 @@ fn execute_if_dimension_modifier(
 fn execute_unless_dimension_modifier(
     context: &CommandContext,
 ) -> crate::command::node::RedirectModifierResult {
-    let dimension = DimensionArgument::get_dimension(context, "dimension")?;
+    let dimension = ResourceKeyArgument::get_dimension(context, "dimension")?;
 
     if let Some(ref world) = context.source.world {
         if !Arc::ptr_eq(world, &dimension) {
@@ -1096,7 +1098,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
             )),
         )
         .then(literal("in").then(
-            argument("dimension", DimensionArgument).redirect_with_modifier(
+            argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY)).redirect_with_modifier(
                 Redirection::Root,
                 RedirectModifier::Custom(Arc::new(execute_in_modifier)),
             ),
@@ -1255,7 +1257,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 )
                 .then(
                     literal("dimension").then(
-                        argument("dimension", DimensionArgument)
+                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
                             .fork(
                                 Redirection::Root,
                                 RedirectModifier::Custom(Arc::new(execute_if_dimension_modifier)),
@@ -1468,7 +1470,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
                 )
                 .then(
                     literal("dimension").then(
-                        argument("dimension", DimensionArgument)
+                        argument("dimension", ResourceKeyArgument(DIMENSION_REGISTRY))
                             .fork(
                                 Redirection::Root,
                                 RedirectModifier::Custom(Arc::new(
