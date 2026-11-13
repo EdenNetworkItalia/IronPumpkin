@@ -7,15 +7,39 @@ on this repo, not upstream.
 
 ## Orchestration
 
-The session agent orchestrates. It plans, creates issues, delegates, reviews results and
-keeps the issues and the status issue updated. It does not implement tasks itself.
+The session agent plans, creates issues, keeps the issues and the status issue updated, and
+reviews delegated results. It works inline by default and delegates only when one holds:
 
-- Delegate implementation tasks to Opus 5.5 with `effort: high` (`model: "opus"`).
-- Delegate simple tasks (docs, config, small mechanical edits, lookups) to Sonnet 5.5 with
-  `effort: xhigh` (`model: "sonnet"`).
-- Planning and review of a delegated result stay on the session model.
-- One issue per delegated agent. The agent prompt carries the issue number, the acceptance
-  criteria and the verification commands. The agent reports back conclusions, not file dumps.
+- a lookup or sweep would read more than ~30k tokens and its answer is short: `retriever`;
+- large work splits into independent chunks that run in parallel;
+- a review must not be anchored on the session's own reading.
+
+A task that fits in ~10 tool calls, one verification run included, stays inline. Design choices,
+ambiguous scope and subtle bugs stay with the session model. Every Agent call passes `model` and
+`effort`; pick the cheapest pair that fits:
+
+| Task | `model` | `effort` |
+|---|---|---|
+| Lookups and read-only sweeps (`retriever`) | `haiku` | `medium` |
+| Mechanical edits from an exact spec | `haiku` | `low` |
+| Run commands or tests and report | `haiku` | `medium` |
+| Docs, config or research that needs judgment, too large for inline | `sonnet` | `medium` |
+| Implementation from a clear spec with a test, too large for inline | `sonnet` | `medium` |
+| Longer or harder implementation, debugging from a reproducer | `sonnet` | `high` |
+| Independent review of a non-trivial or risky change set | `opus` | `high` |
+| Hidden edge cases: protocol and wire format, chunk and NBT formats, codegen, event dispatch, locks and concurrency, performance | `opus` | `xhigh` |
+
+- Close open choices in the spec before a `high` or `xhigh` agent runs. Tell it to report an
+  ambiguous requirement instead of picking a reading. Do not push `sonnet` above `high`.
+- When an agent fails, find the cause before the retry: a vague prompt needs a better prompt; a
+  skipped file or an early stop needs one more `effort` level; a wrong result with the right
+  context needs the next model. One step per retry.
+- One issue per delegated agent. The brief (~300 tokens) carries the issue number, the acceptance
+  criteria, `path:line` pointers to what the session already read, the verification commands and
+  the report format. The report starts with `done`, `blocked` or `question` and gives conclusions,
+  not file dumps.
+- Every brief states that the agent must not spawn sub-agents (no Agent tool, no Workflow) and
+  must read inline. Nested agents multiply token cost and reload the whole rule set.
 - Independent tasks run in parallel in one message.
 
 ## Issues and specs
@@ -31,10 +55,10 @@ Work is tracked as GitHub issues on `EdenNetworkItalia/IronPumpkin`, one issue p
 - An issue body has the description, `## Acceptance criteria` as a checklist, `## Notes`,
   `## Commits` (hash and subject) and "Depends on #N (title)" lines for its dependencies. Done
   issues are closed with `gh issue close --reason completed`.
-- Taking an issue means tracking it. The agent (or the orchestrator on its behalf) sets the
+- Taking an issue means tracking it. The agent (or the session on its behalf) sets the
   `in-progress` label and the assignee and comments "Started by <model> agent" before any work;
   posts progress when a step lands or a blocker appears; posts the evidence per acceptance
-  criterion at the end; the orchestrator closes it with the commit hashes and removes the label.
+  criterion at the end; the session closes it with the commit hashes and removes the label.
   An issue is never left half-tracked: either it carries `in-progress` and a live owner, or it
   is open with no label and free, or it is closed.
 - Never take an issue that has `in-progress` or an assignee, even if it looks stale: a colleague
@@ -57,8 +81,6 @@ Work is tracked as GitHub issues on `EdenNetworkItalia/IronPumpkin`, one issue p
 
 Keep IronPumpkin changes in separate crates or clearly bounded modules where possible, so that
 `git merge upstream/master` stays cheap.
-- Every agent prompt states that the agent must not spawn sub-agents (no Agent tool, no Workflow)
-  and must read inline. Nested agents multiply token cost and reload the whole rule set.
 
 ## Writing to the owner
 
@@ -83,12 +105,14 @@ decompiled vanilla reference; the owner opens the PR.
 
 ## Review of a wave
 
-When every task of a wave is done, before the orchestrator commits, one Opus 5.5 agent with
-`effort: high` reviews the whole wave's diff against vanilla, NeoForge sources and AGENTS.md. Keep
-each review small: one review per wave, split by crate or concern when the diff exceeds roughly
-800 changed lines, and brief the reviewer with the tasks' acceptance criteria, the reference sources
-and the question each slice must answer. Findings go back to the implementing agent or into a
-follow-up task; the orchestrator does not fix code itself.
+Verify once per change set, not once per agent. A small diff gets its tests run inline. When
+every task of a wave is done, before the commit, one `opus` agent with `effort: high` reviews the
+whole wave's diff against vanilla, NeoForge sources and AGENTS.md. It gets the spec and the diff,
+not the implementer's summary, and reproduces the bug or exercises the feature. Keep each review
+small: split by crate or concern when the diff exceeds roughly 800 changed lines, and brief the
+reviewer with the tasks' acceptance criteria, the reference sources and the question each slice
+must answer. The session fixes small findings itself; larger findings go back to the implementing
+agent or into a follow-up task.
 
 ## Resuming after a context reset
 
