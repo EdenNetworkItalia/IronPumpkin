@@ -2068,6 +2068,7 @@ dependencies = [
  "ironpumpkin-mods",
  "pumpkin",
  "pumpkin-config",
+ "pumpkin-inventory",
  "pumpkin-neoforge-client",
  "pumpkin-protocol",
  "tempfile",
