@@ -26,6 +26,7 @@ members = [
     "crates/pumpkin-world",
     "crates/ironpumpkin-mods",
     "crates/ironpumpkin-test-mod",
+    "crates/ironpumpkin-test-guest",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-tester",

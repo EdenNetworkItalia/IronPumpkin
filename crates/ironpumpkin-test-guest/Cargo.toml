@@ -1,0 +1,21 @@
+[package]
+name = "ironpumpkin-test-guest"
+version.workspace = true
+description = "v0.2 Wasm plugins for the cross-channel dispatch tests of ironpumpkin-mods."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[[example]]
+name = "dispatch_peer"
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { workspace = true, features = ["async", "realloc", "std", "bitflags"] }
+
+[lints]
+workspace = true
