@@ -130,6 +130,11 @@ fn placed_chest_impl<E: BlockEntity + 'static>(
             neighbor_props.to_state_id(args.block),
             BlockFlags::NOTIFY_LISTENERS,
         );
+        // NeoForge `ChestBlockEntity.setBlockState`: a new chest type changes the item handler.
+        crate::plugin::capabilities::invalidate_block(
+            args.world,
+            &args.position.offset(connected_towards.to_offset()),
+        );
     }
 }
 
@@ -335,6 +340,11 @@ fn broken_chest_impl(args: &BrokenArgs<'_>) {
             &args.position.offset(connected_towards.to_offset()),
             neighbor_props.to_state_id(args.block),
             BlockFlags::NOTIFY_LISTENERS,
+        );
+        // NeoForge `ChestBlockEntity.setBlockState`: a new chest type changes the item handler.
+        crate::plugin::capabilities::invalidate_block(
+            args.world,
+            &args.position.offset(connected_towards.to_offset()),
         );
     }
 }

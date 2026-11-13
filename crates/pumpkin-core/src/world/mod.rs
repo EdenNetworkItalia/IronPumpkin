@@ -7093,6 +7093,7 @@ impl World {
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             chunk.mark_dirty(true);
         });
+        crate::plugin::capabilities::invalidate_block(self, &block_pos);
     }
 
     pub fn add_block_entity_nbt(&self, block_pos: BlockPos, nbt: &NbtCompound) {
@@ -7145,6 +7146,7 @@ impl World {
             self.level.read_chunk_sync(&chunk_pos, |chunk| {
                 chunk.mark_dirty(true);
             });
+            crate::plugin::capabilities::invalidate_block(self, block_pos);
         }
     }
 
