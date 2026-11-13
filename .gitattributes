@@ -5,3 +5,7 @@ assets/neoforge/*.toml -text
 # Needs `git config merge.keep-ours.driver true`; see "Upstream sync" in CLAUDE.md.
 crates/pumpkin-data/src/generated/** merge=keep-ours
 crates/pumpkin-wasm-host-v0_2/src/generated_packets.rs merge=keep-ours
+# No generator writes these three (slot_ranges has one that main.rs never runs): merge them by text.
+crates/pumpkin-data/src/generated/status_effect.rs !merge
+crates/pumpkin-data/src/generated/slot_ranges.rs !merge
+crates/pumpkin-data/src/generated/enchantments.rs !merge
