@@ -18,6 +18,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 | **Registration** | `DeferredRegister`, `DeferredHolder` | `ModInit::register_block`, `register_item`, `register_entity_type`, `register_tag`, `register_sound_event`, `register_mob_effect`, `register_attribute` and `register_data_component_type` with builders. See [Registration](./registration.md) and [Data components, sounds, mob effects and attributes](./components-effects-attributes.md). |
 | **Config** | `ModConfigSpec` | `ModInit::register_config` with a `ConfigSpec` and a `ConfigType`: `Local`, `Synced` or `Startup`. The file is `config/<modid>-<type>.toml`. A `Synced` config goes to NeoForge clients as `neoforge:config_file`. See [Configuration](./configuration.md). |
 | **Network** | `PayloadRegistrar`, `PacketDistributor`, `RegisterConfigurationTasksEvent` | `RegisterPayloadHandlersEvent` and `RegisterConfigurationTasksEvent` as Pumpkin events, a `PayloadRegistrar` per channel id with raw bytes, and `network::send_to_player` and the broadcasts. The server negotiates the channels with a NeoForge client. See [Network payloads](./network.md). |
+| **Capabilities** | `BlockCapability`, `RegisterCapabilitiesEvent`, `ResourceHandler`, `Transaction` | The `capabilities` and `transfer` modules: the same keys, providers, lookups, caches and transactions, with trait objects. `NativeMod::register_capabilities` runs once per listener priority. See [Capabilities and the transfer API](./capabilities.md). |
 | **Mixins and reflection** | Mixin configs, access transformers, reflection | Source patches that the pack build applies. See [Mixins, reflection and access transformers](./mixins-and-patches.md). |
 | **Build and distribution** | Gradle, a jar on a mod site | `cargo xtask build` and a GitHub Action. A release has one binary per platform. See [Setup and build](./setup-and-build.md). |
 | **Client side** | The same jar runs on the client | A NeoForge client needs a Java mod with the same registry names. See [What is unsupported](./unsupported.md). |
@@ -30,7 +31,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 
 1. Create a pack from the template and build it once. See [Setup and build](./setup-and-build.md).
 2. Port the content: blocks, items, entity types and tags. See [Registration](./registration.md).
-3. Port the lifecycle, the config, the event listeners and the network payloads. See [Lifecycle](./lifecycle.md), [Configuration](./configuration.md), [Events](./events.md) and [Network payloads](./network.md).
+3. Port the lifecycle, the config, the event listeners, the network payloads and the capabilities. See [Lifecycle](./lifecycle.md), [Configuration](./configuration.md), [Events](./events.md), [Network payloads](./network.md) and [Capabilities](./capabilities.md).
 4. Port each mixin, access transformer and reflection call. Use a NeoForge event or an `ironpumpkin-mods` function when one exists. Use a source patch when none exists. See [Mixins, reflection and access transformers](./mixins-and-patches.md).
 5. Check the rest of the mod against [What is unsupported](./unsupported.md).
 6. Keep the Java client half of the mod, with the same registry names, for NeoForge clients.
@@ -44,6 +45,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 - [Configuration](./configuration.md): `ModConfigSpec` and the config types against `ConfigSpec` and `ConfigType`.
 - [Events](./events.md): `@SubscribeEvent` and `IEventBus` against `ModInit::register_event`.
 - [Network payloads](./network.md): `PayloadRegistrar`, `IPayloadContext`, `PacketDistributor` and the configuration tasks against the `network` module.
+- [Capabilities and the transfer API](./capabilities.md): `BlockCapability`, `RegisterCapabilitiesEvent`, the transfer handlers and transactions against the `capabilities` and `transfer` modules, and what hoppers and droppers do with them.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
 
