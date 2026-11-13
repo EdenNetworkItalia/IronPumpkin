@@ -204,7 +204,7 @@ A client that connects after a reload gets the new text of a synced file. The se
 
 ## Restart flags
 
-A value with `world_restart` or `game_restart` keeps the value that it loaded with. `get` returns that value until the server restarts. The file changes at once. A dedicated server closes its world only when it stops, so `world_restart` acts like `game_restart`. A synced config cannot have a `game_restart` value: `register_config` fails with `ConfigError::InvalidSpec`.
+A value with `world_restart` or `game_restart` keeps the value that it loaded with. The file changes at once. `get` returns the kept value of a `game_restart` value until the process exits. `get` returns the kept value of a `world_restart` value until its server stops, as `NeoForgeMod.serverStopping` resets the `RestartType.WORLD` caches. The next server of the process reads the value of the file at its first `get`. A synced config cannot have a `game_restart` value: `register_config` fails with `ConfigError::InvalidSpec`.
 
 ## Errors
 

@@ -7,6 +7,12 @@
 //! calls the lifecycle methods ([`lifecycle`]) and fires `RegisterPayloadHandlersEvent`
 //! ([`network`]).
 //!
+//! The mods load once per process, as `NeoForge` loads them once. A process that embeds several
+//! servers, one after another, loads the mods with the first server. Each server gets the
+//! commands, permissions, event handlers and services that the `init` of every mod registered,
+//! and the payload channels; the Synced configs load and the server lifecycle events fire for
+//! each server.
+//!
 //! This crate is the only `IronPumpkin` dependency a mod needs. It re-exports the server types:
 //!
 //! | Module          | Contents                                                                  |
@@ -42,14 +48,15 @@ use std::{
     collections::HashMap,
     fmt,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
     entity::custom,
     plugin::{
-        Context, PluginMetadata, network_events,
+        Context, PluginMetadata,
+        network_events::{self, ModChannels},
         startup::{self, NativeModInfo},
     },
 };
@@ -107,6 +114,7 @@ macro_rules! __translate_cross {
     }};
 }
 
+use config::ConfigType;
 use content::{ContentKind, EntityFactory, RegistryError};
 use event::{EventHandler, EventPriority, ParentEventHandler, Payload, registries::RegisterEvent};
 use imc::{InterModEnqueue, InterModProcess};
@@ -176,7 +184,7 @@ pub trait NativeMod: Sync {
     fn client_required(&self) -> bool {
         true
     }
-    /// Called once at startup, before the first world loads.
+    /// Called once per process, before the first world loads.
     ///
     /// If a content registration fails, the server logs the first error with the mod id and
     /// stops after `init` returns, before the content phase. Do not panic or unwrap the `Result`
@@ -244,14 +252,15 @@ macro_rules! register_mod {
     };
 }
 
-type Registration = Box<dyn FnOnce(&Context)>;
+/// A registration of [`NativeMod::init`], applied to the context of the mod on each server.
+type Registration = Box<dyn Fn(&Context) + Send + Sync>;
 
 /// What a mod registers during [`NativeMod::init`].
 ///
-/// The server applies the registrations in the mod's name when `init` returns, except the content
-/// registrations ([`ModInit::register_block`], [`ModInit::register_item`],
-/// [`ModInit::register_entity_type`] and [`ModInit::register_tag`]), which apply at once and
-/// return a `Result`.
+/// The server applies the registrations in the mod's name after the last `init`, and again on
+/// each later server of the process, except the content registrations
+/// ([`ModInit::register_block`], [`ModInit::register_item`], [`ModInit::register_entity_type`]
+/// and [`ModInit::register_tag`]), which apply at once, once per process, and return a `Result`.
 ///
 /// `ModInit` keeps the first content registration error, even if the mod ignores the `Result`.
 /// After `init` returns, the server logs that error with the mod id and stops before the content
@@ -324,8 +333,9 @@ impl ModInit {
     ) {
         let node = node.into();
         let permission = permission.into();
-        self.registrations
-            .push(Box::new(move |cx| cx.register_command(node, permission)));
+        self.registrations.push(Box::new(move |cx| {
+            cx.register_command(node.clone(), permission.clone());
+        }));
     }
 
     /// See [`Context::register_command_with_aliases`].
@@ -339,7 +349,7 @@ impl ModInit {
         let aliases = aliases.to_vec();
         let permission = permission.into();
         self.registrations.push(Box::new(move |cx| {
-            cx.register_command_with_aliases(node, &aliases, permission);
+            cx.register_command_with_aliases(node.clone(), &aliases, permission.clone());
         }));
     }
 
@@ -364,7 +374,12 @@ impl ModInit {
         receive_canceled: bool,
     ) {
         self.registrations.push(Box::new(move |cx| {
-            cx.register_event_with::<E, H>(handler, priority, blocking, receive_canceled);
+            cx.register_event_with::<E, H>(
+                handler.clone(),
+                priority.clone(),
+                blocking,
+                receive_canceled,
+            );
         }));
     }
 
@@ -381,14 +396,19 @@ impl ModInit {
         receive_canceled: bool,
     ) {
         self.registrations.push(Box::new(move |cx| {
-            cx.register_parent_event::<P, H>(handler, priority, blocking, receive_canceled);
+            cx.register_parent_event::<P, H>(
+                handler.clone(),
+                priority.clone(),
+                blocking,
+                receive_canceled,
+            );
         }));
     }
 
     /// See [`Context::register_permission`].
     pub fn register_permission(&mut self, permission: Permission) {
         self.registrations.push(Box::new(move |cx| {
-            if let Err(err) = cx.register_permission(permission) {
+            if let Err(err) = cx.register_permission(permission.clone()) {
                 error!("[ironpumpkin] {}: {err}", cx.get_metadata().name);
             }
         }));
@@ -407,7 +427,7 @@ impl ModInit {
             // `block_on`. Blocking is safe: no plugin has loaded yet, so the services lock is
             // uncontended. `unconstrained` keeps an exhausted coop budget from spinning.
             futures::executor::block_on(tokio::task::unconstrained(
-                cx.register_service(name, service),
+                cx.register_service(name.clone(), service.clone()),
             ));
         }));
     }
@@ -543,18 +563,9 @@ impl ModInit {
     /// tracing subscriber, so its log lines already reach the server log; the subscriber is
     /// installed only when the server has none.
     pub fn init_log(&mut self) {
-        self.registrations.push(Box::new(|cx| {
-            // `Context::init_log` panics when a global subscriber is already set.
-            if !tracing::dispatcher::has_been_set() {
-                cx.init_log();
-            }
-        }));
-    }
-
-    fn apply(self, cx: &Context) {
-        for registration in self.registrations {
-            registration(cx);
-        }
+        // `Context::init_log` keeps a global subscriber that is already set (`try_init`), so two
+        // servers that start at the same time cannot both install one.
+        self.registrations.push(Box::new(Context::init_log));
     }
 }
 
@@ -714,18 +725,70 @@ fn native_mod_infos(mods: &[LoadedMod], mod_list: &ModList) -> Vec<NativeModInfo
         .collect()
 }
 
-/// Initializes every linked mod against `server` in load order, then runs the [`lifecycle`] and
-/// the config loads around it.
+/// What the mod loading leaves for each server of the process.
+struct LoadedMods {
+    /// The registrations of each mod's `init`, in load order.
+    mods: Vec<ModRegistrations>,
+    configs: Vec<Arc<config::ModConfig>>,
+    channels: ModChannels,
+}
+
+struct ModRegistrations {
+    metadata: PluginMetadata,
+    registrations: Vec<Registration>,
+}
+
+impl LoadedMods {
+    /// Applies the registrations of every mod's `init` to `server`, in load order.
+    fn register(&self, server: &Arc<Server>) {
+        for loaded in &self.mods {
+            let cx = startup::create_context(server, loaded.metadata.clone());
+            for registration in &loaded.registrations {
+                registration(&cx);
+            }
+        }
+    }
+}
+
+static LOADED: OnceLock<LoadedMods> = OnceLock::new();
+
+/// Loads the linked mods with the first server of the process, then prepares `server` for them.
 ///
-/// It stops the process if the mods conflict, a dependency is unmet or a mod fails to register
-/// its content. Set as the startup hook of `pumpkin-core`.
+/// The mod loading runs once per process, as on `NeoForge`: it calls `init` of every mod in load
+/// order, applies its registrations to the first server, fires `RegisterEvent` through that
+/// server, runs the [`lifecycle`] with the Local configs and fires
+/// `RegisterPayloadHandlersEvent`. A later server gets the same registrations and payload
+/// channels. Every server then loads the Synced configs and starts the config polling, as
+/// `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED` for each server.
+///
+/// It stops the process if the mods conflict, a dependency is unmet, a mod fails to register its
+/// content or a config cannot load. Set as the startup hook of `pumpkin-core`.
 pub fn init_mods(server: &Arc<Server>) {
+    let mut first = false;
+    let loaded = LOADED.get_or_init(|| {
+        first = true;
+        load_mods(server)
+    });
+    if !first {
+        loaded.register(server);
+        // Same blocking pattern as `ModInit::register_service`: the hook runs inside `Server::new`.
+        futures::executor::block_on(tokio::task::unconstrained(
+            network_events::add_payload_handlers(server, &loaded.channels),
+        ));
+    }
+    config::load(&loaded.configs, ConfigType::Synced).unwrap_or_else(|err| refuse_to_start(&err));
+    config::start(server, loaded.configs.clone());
+}
+
+/// The mod loading of [`init_mods`], with the first server.
+fn load_mods(server: &Arc<Server>) -> LoadedMods {
     let (by_id, mod_list) = load(linked_mods()).unwrap_or_else(|err| refuse_to_start(&err));
     mod_list.set();
     let mod_list = ModList::get();
     let mods = in_order(&by_id, mod_list);
     startup::set_native_mods(native_mod_infos(&mods, mod_list));
     let mut configs = Vec::new();
+    let mut registrations = Vec::new();
     for loaded in &mods {
         let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
             continue;
@@ -735,16 +798,24 @@ pub fn init_mods(server: &Arc<Server>) {
         let mut init =
             run_init(loaded.native_mod, init).unwrap_or_else(|err| refuse_to_start(&err));
         configs.append(&mut init.configs);
-        let metadata = PluginMetadata {
-            name: info.mod_id.clone(),
-            version: info.version.to_string(),
-            authors: info.authors.iter().cloned().collect(),
-            description: info.description.clone(),
-            dependencies: Vec::new(),
-            permissions: Vec::new(),
-        };
-        init.apply(&startup::create_context(server, metadata));
+        registrations.push(ModRegistrations {
+            metadata: PluginMetadata {
+                name: info.mod_id.clone(),
+                version: info.version.to_string(),
+                authors: info.authors.iter().cloned().collect(),
+                description: info.description.clone(),
+                dependencies: Vec::new(),
+                permissions: Vec::new(),
+            },
+            registrations: init.registrations,
+        });
     }
+    let mut loaded = LoadedMods {
+        mods: registrations,
+        configs,
+        channels: ModChannels::default(),
+    };
+    loaded.register(server);
     // Same blocking pattern as `ModInit::register_service`: the hook runs inside `Server::new`.
     let fire_register = |registry| {
         futures::executor::block_on(tokio::task::unconstrained(
@@ -754,19 +825,19 @@ pub fn init_mods(server: &Arc<Server>) {
         ))
     };
     let register_payload_handlers = || {
-        futures::executor::block_on(tokio::task::unconstrained(
+        loaded.channels = futures::executor::block_on(tokio::task::unconstrained(
             network_events::register_payload_handlers(server),
         ));
     };
     lifecycle::run(
         &mods,
         mod_list,
-        &configs,
+        &loaded.configs,
         fire_register,
         register_payload_handlers,
     )
     .unwrap_or_else(|err| refuse_to_start(&err));
-    config::start(server, configs).unwrap_or_else(|err| refuse_to_start(&err));
+    config::publish_synced(&loaded.configs).unwrap_or_else(|err| refuse_to_start(&err));
     let names: Vec<String> = startup::native_mods()
         .iter()
         .map(|native_mod| {
@@ -786,6 +857,7 @@ pub fn init_mods(server: &Arc<Server>) {
             format!(": {}", names.join(", "))
         }
     );
+    loaded
 }
 
 #[cfg(test)]

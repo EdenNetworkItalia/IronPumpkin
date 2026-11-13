@@ -2,7 +2,7 @@
 //! `NeoForge` network API.
 //!
 //! A mod registers its channels in a handler of [`RegisterPayloadHandlersEvent`]. The event fires
-//! once at startup, after `load_complete` of every mod and before the synced configs load. Each
+//! once per process, after `load_complete` of every mod and before the synced configs load. Each
 //! [`PayloadRegistrar`] method registers one channel with a direction, a phase, the version of the
 //! registrar, its optional flag and its handler thread. The server offers every channel in the
 //! `NeoForge` channel negotiation: a `NeoForge` client without a required channel, or with another

@@ -12,7 +12,8 @@ use crate::{
     server::Server,
 };
 
-/// Runs once in [`Server::new`], after the server exists and before the first world loads.
+/// Runs in each [`Server::new`], after the server exists and before its first world loads. A
+/// process that embeds several servers calls it once per server.
 pub static STARTUP_HOOK: OnceLock<fn(&Arc<Server>)> = OnceLock::new();
 
 /// A native mod compiled into the binary.

@@ -49,10 +49,10 @@
 //! 2. [`ConfigType::Local`] loads after the last `init` and before `common_setup`, as
 //!    `CommonModLoader.begin` loads `LOCAL` after the registries and before
 //!    `FMLCommonSetupEvent`. `common_setup` reads it.
-//! 3. [`ConfigType::Synced`] loads after `load_complete` and before the server starts, as
-//!    `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED`. The parity harness trace
-//!    (`tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`) shows
-//!    `FMLLoadCompleteEvent`, then `ModConfigEvent.Loading` of the synced config, then
+//! 3. [`ConfigType::Synced`] loads after `load_complete` and before each server starts, as
+//!    `ServerLifecycleHooks.handleServerAboutToStart` loads `SYNCED` for each server. The parity
+//!    harness trace (`tools/parity-probe/captures/neoforge-26.3.0.64-beta/probe-trace.jsonl`)
+//!    shows `FMLLoadCompleteEvent`, then `ModConfigEvent.Loading` of the synced config, then
 //!    `ServerAboutToStartEvent`.
 //!
 //! [`NativeMod::config_loading`](crate::NativeMod::config_loading) runs for every config when it
@@ -81,7 +81,10 @@ use std::{
 
 use pumpkin_core::plugin::{
     BoxFuture, EventHandler,
-    api::events::{EventPriority, server::server_tick_end::ServerTickEndEvent},
+    api::events::{
+        EventPriority,
+        server::{server_lifecycle::ServerStoppingEvent, server_tick_end::ServerTickEndEvent},
+    },
     startup::{self, SyncedConfigSource},
 };
 use toml::{Table, Value};
@@ -514,8 +517,9 @@ impl ConfigSpecBuilder {
         self
     }
 
-    /// The next value keeps the value it loaded with until the server restarts. A dedicated
-    /// server closes its world only when it stops, so this acts like [`Self::game_restart`].
+    /// The next value keeps the value it loaded with until its server stops, like
+    /// `RestartType.WORLD`. The next server of the process reads the value of the file when it
+    /// first gets it.
     pub const fn world_restart(&mut self) -> &mut Self {
         self.pending.restart = Some(Restart::World);
         self
@@ -770,7 +774,8 @@ const MAX_FILE_SIZE: usize = 1 << 20;
 struct State {
     /// `None` until the config loads.
     values: Option<Vec<Value>>,
-    /// What `get` returns for a value with a restart flag: the value it loaded with.
+    /// What `get` returns for a value with a restart flag: the value it loaded with, or `None`
+    /// for a World value whose server stopped until the next `get`.
     pinned: Vec<Option<Value>>,
     /// The file as the host last read or wrote it, which is also the synced body.
     text: String,
@@ -852,8 +857,9 @@ impl ModConfig {
     }
 
     /// The current value at `path` (sections and key joined with `.`). A value with a restart
-    /// flag keeps the value it loaded with until the server restarts, like the cached `get` of
-    /// `NeoForge`.
+    /// flag keeps the value it loaded with, like the cached `get` of `NeoForge`: a
+    /// [`world_restart`](ConfigSpecBuilder::world_restart) value until its server stops, a
+    /// [`game_restart`](ConfigSpecBuilder::game_restart) value until the process exits.
     ///
     /// # Errors
     ///
@@ -866,8 +872,33 @@ impl ModConfig {
             .values
             .as_ref()
             .ok_or_else(|| ConfigError::NotLoaded(self.file_name.clone()))?;
-        let value = state.pinned[index].as_ref().unwrap_or(&values[index]);
+        if state.pinned[index].is_some() || self.spec.values[index].restart == Restart::None {
+            return self.convert(
+                index,
+                state.pinned[index].as_ref().unwrap_or(&values[index]),
+            );
+        }
+        drop(state);
+        // A World value after its server stopped: the first `get` caches it again, as
+        // `ConfigValue.get` fills the cache that `resetCaches(WORLD)` cleared.
+        let mut state = self.write_state();
+        let State { values, pinned, .. } = &mut *state;
+        let values = values
+            .as_ref()
+            .ok_or_else(|| ConfigError::NotLoaded(self.file_name.clone()))?;
+        let value = pinned[index].get_or_insert_with(|| values[index].clone());
         self.convert(index, value)
+    }
+
+    /// Clears the cached World values, as `NeoForgeMod.serverStopping` calls
+    /// `resetCaches(RestartType.WORLD)` on every config.
+    fn reset_world(&self) {
+        let mut state = self.write_state();
+        for (spec, pinned) in self.spec.values.iter().zip(&mut state.pinned) {
+            if spec.restart == Restart::World {
+                *pinned = None;
+            }
+        }
     }
 
     /// The default value at `path`.
@@ -1316,16 +1347,44 @@ pub(crate) fn load(configs: &[Arc<ModConfig>], config_type: ConfigType) -> Resul
     Ok(())
 }
 
-/// Publishes the synced configs to the `SyncConfig` configuration task and starts the polling of
-/// every config. Runs after [`load`] of the synced configs.
-pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) -> Result<(), String> {
+/// Publishes the synced configs to the `SyncConfig` configuration task, once per process.
+pub(crate) fn publish_synced(configs: &[Arc<ModConfig>]) -> Result<(), String> {
     startup::set_synced_configs(
         configs
             .iter()
             .filter(|config| config.config_type == ConfigType::Synced)
             .map(|config| config.clone() as Arc<dyn SyncedConfigSource>)
             .collect(),
-    )?;
+    )
+}
+
+/// Clears the cached World values of every config when its server stops.
+struct WorldReset(Vec<Arc<ModConfig>>);
+
+impl EventHandler<ServerStoppingEvent> for WorldReset {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        _event: &'a mut ServerStoppingEvent,
+    ) -> BoxFuture<'a, ()> {
+        for config in &self.0 {
+            config.reset_world();
+        }
+        Box::pin(async {})
+    }
+}
+
+/// Starts the polling of every config on the ticks of `server` and clears the cached World
+/// values when `server` stops. Runs for each server, after [`load`] of the synced configs.
+pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) {
+    if configs.is_empty() {
+        return;
+    }
+    server.plugin_manager.register::<ServerStoppingEvent, _>(
+        Arc::new(WorldReset(configs.clone())),
+        EventPriority::Normal,
+        true,
+    );
     if let Some(poller) = Poller::new(configs, server.basic_config.mod_config_reload_ticks) {
         server.plugin_manager.register::<ServerTickEndEvent, _>(
             Arc::new(poller),
@@ -1333,7 +1392,6 @@ pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) -> Resul
             false,
         );
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -1593,6 +1651,11 @@ mod tests {
         // A value with a restart flag keeps the value it loaded with.
         config.set("seed", 9i64).unwrap();
         assert_eq!(config.get::<i64>("seed"), Ok(7));
+        // When its server stops, a World value takes the current value at the next `get`.
+        config.reset_world();
+        assert_eq!(config.get::<i64>("seed"), Ok(9));
+        config.set("seed", 11i64).unwrap();
+        assert_eq!(config.get::<i64>("seed"), Ok(9));
     }
 
     #[test]

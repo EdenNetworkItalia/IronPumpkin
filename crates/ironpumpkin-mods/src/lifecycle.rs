@@ -8,9 +8,14 @@
 //! a dedicated server), `ExtendPoiTypesEvent` (`RegistrationEvents.init`), enqueue IMC, process
 //! IMC and load complete. The registration events are methods of `NativeMod` too: see
 //! [`registration`](crate::registration). `NetworkRegistry.setup` then posts
-//! `RegisterPayloadHandlersEvent`, and `ServerLifecycleHooks.handleServerAboutToStart` loads the
-//! synced configs. Each step calls the method of every mod in load order before the next step
-//! starts, and each method runs on its own mod only, as each `NeoForge` mod has its own mod bus.
+//! `RegisterPayloadHandlersEvent`. Each step calls the method of every mod in load order before
+//! the next step starts, and each method runs on its own mod only, as each `NeoForge` mod has its
+//! own mod bus. These steps run once per process.
+//!
+//! The steps of each server come after: `ServerLifecycleHooks.handleServerAboutToStart` loads the
+//! synced configs and posts `ServerAboutToStartEvent` for each server, and the other server
+//! lifecycle events follow. A process that embeds a second server runs them again
+//! ([`init_mods`](crate::init_mods)).
 //!
 //! `RegisterEvent` is a Pumpkin event, because a `NeoForge` mod registers its listener on the mod
 //! bus: a mod registers a handler with [`ModInit::register_event`](crate::ModInit::register_event)
@@ -47,8 +52,8 @@ pub(crate) const REGISTRIES: [ContentKind; 7] = [
 /// Runs the steps after the last [`NativeMod::init`](crate::NativeMod::init): `RegisterEvent`
 /// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
 /// handlers or `None` when no handler listens, then the registration events and the lifecycle
-/// steps, with the local configs loaded before common setup, then the payload registration step
-/// `register_payload_handlers`, and the synced configs last.
+/// steps, with the local configs loaded before common setup, and the payload registration step
+/// `register_payload_handlers` last.
 ///
 /// # Errors
 ///
@@ -102,7 +107,7 @@ pub(crate) fn run(
         loaded.native_mod.load_complete();
     }
     register_payload_handlers();
-    config::load(configs, ConfigType::Synced)
+    Ok(())
 }
 
 /// Calls the method of a registration event on every mod in load order, as `ModLoader.postEvent`
@@ -384,6 +389,8 @@ mod tests {
                 .push("RegisterPayloadHandlersEvent".to_owned());
         })
         .unwrap();
+        // `init_mods` loads the synced configs for each server, after the mod loading.
+        crate::config::load(&init.configs, ConfigType::Synced).unwrap();
         assert_eq!(
             *CONFIG_CALLS.lock().unwrap(),
             [
