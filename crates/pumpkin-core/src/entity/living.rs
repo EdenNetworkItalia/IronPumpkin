@@ -1058,20 +1058,12 @@ impl LivingEntity {
         false
     }
 
-    /// Like vanilla, the dead are not healed and a negative amount takes health.
-    ///
-    /// A negative amount can only come from a splash or lingering instant health
-    /// potion with a custom amplifier of 29 mod 32 (`4 << 29` overflows). In vanilla:
-    /// 1. Health is clamped to 0, `die` is never called.
-    /// 2. Mobs then play the death animation and vanish after 20 ticks, without drops.
-    /// 3. A player at 0 health gets the death screen and respawns, without drops.
-    ///
-    /// Kept for parity, the tick and respawn paths already treat 0 health like vanilla.
-    // TODO: config option to prevent this (clamp the amount or run the real death flow).
+    /// `NeoForge` `LivingEntity.heal`: `LivingHealEvent` (`EntityRegainHealthEvent`) fires first,
+    /// for every call. A cancel heals nothing and a handler sets the amount. An amount that is
+    /// not more than 0 then heals nothing, so the negative amount of an overflowing instant
+    /// health amplifier takes no health, unlike vanilla. The dead are not healed.
     pub fn heal(&self, additional_health: f32) {
-        if self.health.load() <= 0.0 || additional_health == 0.0 {
-            return;
-        }
+        let mut amount = additional_health;
         if let Some(server) = self.entity.world.load().server.upgrade()
             && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
                 crate::plugin::api::events::entity::entity_regain_health::EntityRegainHealthEvent::new(
@@ -1079,14 +1071,22 @@ impl LivingEntity {
                     additional_health,
                 )
             })
-            && event.cancelled
         {
+            if event.cancelled {
+                return;
+            }
+            // A NaN would heal to 0 health through the clamp of `set_health`.
+            if event.amount.is_finite() {
+                amount = event.amount;
+            }
+        }
+        if amount <= 0.0 {
             return;
         }
         // A handler may have changed health, or killed the entity.
         let health = self.health.load();
         if health > 0.0 {
-            self.set_health(health + additional_health);
+            self.set_health(health + amount);
         }
     }
 

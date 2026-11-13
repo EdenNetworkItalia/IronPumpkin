@@ -33,6 +33,7 @@ use pumpkin_core::{
     },
     plugin::{
         BoxFuture, Cancellable, EventHandler, EventPriority, ParentEventHandler, Payload,
+        events::entity::EntityRegainHealthEvent,
         living::{
             EffectParticleModificationEvent, LivingConversionEventPost, LivingDamageEventPost,
             LivingDamageEventPre, LivingDestroyBlockEvent, LivingDrownEvent,
@@ -160,6 +161,61 @@ const fn speed(duration: i32) -> Effect {
         show_icon: true,
         blend: false,
     }
+}
+
+/// `LivingHealEvent` (`EntityRegainHealthEvent`) sets the amount that `LivingEntity.heal` adds:
+/// `heal = EventHooks.onLivingHeal(this, heal)`.
+#[test]
+fn change_a_settable_field_living_heal_event() {
+    let _serial = support::serial();
+    let zombie = spawn(&EntityType::ZOMBIE, 336.5);
+    let zombie_id = id(&zombie);
+    on::<EntityRegainHealthEvent, _>(move |event| {
+        if event.entity_id == zombie_id {
+            event.amount = 3.0;
+        }
+    });
+    living(&zombie).set_health(5.0);
+
+    living(&zombie).heal(1.0);
+
+    assert_eq!(living(&zombie).health.load(), 8.0);
+}
+
+/// `LivingEntity.heal` of `NeoForge` fires `LivingHealEvent` for every call, also with an amount
+/// of 0 and for the dead, and then heals only an amount above 0 and a living entity. A cancel
+/// heals nothing.
+#[test]
+fn living_heal_event_fires_for_every_heal_and_heals_only_a_positive_amount() {
+    let _serial = support::serial();
+    let zombie = spawn(&EntityType::ZOMBIE, 352.5);
+    let zombie_id = id(&zombie);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<EntityRegainHealthEvent, _>(move |event| {
+        if event.entity_id == zombie_id {
+            push(&seen_by_handler, event.amount.to_string());
+            if event.amount == 0.0 {
+                event.amount = 2.0;
+            } else if event.amount == 1.5 {
+                event.set_cancelled(true);
+            }
+        }
+    });
+    let health = || living(&zombie).health.load();
+    living(&zombie).set_health(10.0);
+
+    living(&zombie).heal(0.0);
+    assert_eq!(health(), 12.0);
+    living(&zombie).heal(-4.0);
+    assert_eq!(health(), 12.0);
+    living(&zombie).heal(1.5);
+    assert_eq!(health(), 12.0);
+    living(&zombie).set_health(0.0);
+    living(&zombie).heal(5.0);
+    assert_eq!(health(), 0.0);
+
+    assert_eq!(entries(&seen), ["0", "-4", "1.5", "5"]);
 }
 
 /// `LivingDamageEvent.Pre` (`LivingDamageEventPre`) fires after the reductions with a settable
