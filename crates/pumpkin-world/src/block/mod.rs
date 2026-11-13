@@ -6,6 +6,14 @@ use pumpkin_data::{Block, BlockState, BlockStateId, Property};
 use pumpkin_nbt::compound::NbtCompound;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// `StateHolder.ID_TAG`.
+const ID_TAG: &str = "id";
+/// `StateHolder.PROPERTIES_TAG`.
+const PROPERTIES_TAG: &str = "properties";
+/// The keys of 26.2 and older. `BlockStateFieldNamesFix` renames them to the two above.
+const LEGACY_ID_TAG: &str = "Name";
+const LEGACY_PROPERTIES_TAG: &str = "Properties";
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "PascalCase")]
 pub struct BlockStateCodec {
@@ -63,14 +71,14 @@ impl BlockStateCodec {
         block_properties.to_state_id(block)
     }
 
-    /// Writes `Name`, plus `Properties` when the state has any. A mod block keeps its namespace.
+    /// Writes `id`, plus `properties` when the state has any. A mod block keeps its namespace.
     #[must_use]
     pub fn state_to_nbt(state_id: BlockStateId) -> NbtCompound {
         state_nbt::block_state_to_nbt(state_id)
     }
 
-    /// Reads a state written by [`Self::state_to_nbt`], or the compound of 26.3. Unknown blocks give
-    /// `None`.
+    /// Reads a state written by [`Self::state_to_nbt`], or by 26.2 and older with `Name` and
+    /// `Properties`. Unknown blocks give `None`.
     #[must_use]
     pub fn state_from_nbt(nbt: &NbtCompound) -> Option<BlockStateId> {
         state_nbt::block_state_from_compound(nbt)
@@ -88,18 +96,39 @@ mod test {
         use super::BlockStateCodec;
         use pumpkin_data::Block;
 
+        // 26.3 `StateHolder.codec`: `id` and `properties`.
         let state = Block::GRASS_BLOCK.default_state.id;
         let nbt = BlockStateCodec::state_to_nbt(state);
-        assert_eq!(nbt.get_string("Name"), Some("minecraft:grass_block"));
+        assert_eq!(nbt.get_string("id"), Some("minecraft:grass_block"));
         assert_eq!(
-            nbt.get_compound("Properties")
+            nbt.get_compound("properties")
                 .and_then(|properties| properties.get_string("snowy")),
             Some("false")
         );
+        assert!(nbt.get_string("Name").is_none());
+        assert!(nbt.get_compound("Properties").is_none());
         assert_eq!(BlockStateCodec::state_from_nbt(&nbt), Some(state));
 
         let stone = BlockStateCodec::state_to_nbt(Block::STONE.default_state.id);
-        assert!(stone.get_compound("Properties").is_none());
+        assert!(stone.get_compound("properties").is_none());
+    }
+
+    #[test]
+    fn block_state_nbt_reads_the_26_2_keys() {
+        use super::BlockStateCodec;
+        use pumpkin_data::Block;
+        use pumpkin_nbt::compound::NbtCompound;
+
+        let mut properties = NbtCompound::new();
+        properties.put_string("snowy", "true".to_string());
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("Name", "minecraft:grass_block".to_string());
+        nbt.put_compound("Properties", properties);
+
+        let expected = Block::GRASS_BLOCK
+            .from_properties(&[pumpkin_data::Property::Snowy(true)])
+            .to_state_id(&Block::GRASS_BLOCK);
+        assert_eq!(BlockStateCodec::state_from_nbt(&nbt), Some(expected));
     }
 
     #[test]

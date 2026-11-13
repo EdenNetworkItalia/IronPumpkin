@@ -19,9 +19,8 @@ use rustc_hash::FxHashMap;
 use tracing::{error, warn};
 
 use crate::{
-    block::state_nbt::{
-        block_state_to_nbt, first_report, palette_entry_to_state, report_unknown_palette_block,
-    },
+    block::BlockStateCodec,
+    block::state_nbt::{first_report, palette_entry_to_state, report_unknown_palette_block},
     chunk::{
         ChunkEntityData, ChunkReadingError, ChunkSerializingError,
         format::anvil::{SingleChunkDataSerializer, WORLD_DATA_VERSION},
@@ -234,6 +233,25 @@ where
         position: BlockPos::new(x, y, z),
         value,
     })
+}
+
+/// The schema version of `SignsOpFlagFix` in `DataFixers`.
+const SIGNS_OP_FLAG_FIX_VERSION: i32 = 5002;
+
+/// Applies `SignsOpFlagFix`. Data older than 5002 has no `allow_op_features` flag, and vanilla
+/// sets it on every sign and hanging sign, so signs made before the flag keep their commands.
+fn fix_signs_op_flag(data_version: i32, block_entities: &mut FxHashMap<BlockPos, NbtCompound>) {
+    if data_version >= SIGNS_OP_FLAG_FIX_VERSION {
+        return;
+    }
+    for nbt in block_entities.values_mut() {
+        if matches!(
+            nbt.get_string("id"),
+            Some("minecraft:sign" | "minecraft:hanging_sign")
+        ) {
+            nbt.put_bool("allow_op_features", true);
+        }
+    }
 }
 
 impl ChunkData {
@@ -471,6 +489,11 @@ impl ChunkData {
                 }
             }
         }
+        // Vanilla reads a missing version as the oldest one.
+        fix_signs_op_flag(
+            root_tag.get_int("DataVersion").unwrap_or(-1),
+            &mut block_entities,
+        );
 
         let light_correct = root_tag.get_bool("isLightOn").unwrap_or(false);
 
@@ -611,7 +634,7 @@ impl ChunkData {
             let palette_tags: Vec<NbtTag> = block_states_nbt
                 .palette
                 .iter()
-                .map(|&id| NbtTag::Compound(block_state_to_nbt(id)))
+                .map(|&id| NbtTag::Compound(BlockStateCodec::state_to_nbt(id)))
                 .collect();
             bs_comp.put_list("palette", palette_tags);
             section_comp.put_compound("block_states", bs_comp);
@@ -946,7 +969,7 @@ impl ChunkData {
             )));
         }
 
-        let _data_version = buf.get_i32();
+        let data_version = buf.get_i32();
         let x_pos = buf.get_i32();
         let z_pos = buf.get_i32();
         if x_pos != position.x || z_pos != position.y {
@@ -1167,6 +1190,8 @@ impl ChunkData {
                 block_entities.insert(BlockPos::new(x, y, z), nbt);
             }
         }
+        // Pump chunks carry the data version of their block entity NBT, so they need the fix too.
+        fix_signs_op_flag(data_version, &mut block_entities);
 
         let custom_data = if (flags & (1 << 4)) != 0 {
             if buf.remaining() < 4 {
@@ -1730,6 +1755,167 @@ mod tests {
         assert_eq!(result[1], repeater_state);
     }
 
+    fn repeater_state() -> BlockStateId {
+        Block::REPEATER
+            .from_properties(&[
+                pumpkin_data::Property::Facing(pumpkin_data::block_properties::Facing::East),
+                pumpkin_data::Property::Delay(2),
+                pumpkin_data::Property::Locked(false),
+                pumpkin_data::Property::Powered(false),
+            ])
+            .to_state_id(&Block::REPEATER)
+    }
+
+    #[test]
+    fn chunk_palette_writes_the_26_3_block_state_keys() {
+        // 26.3 `StateHolder.codec` dispatches on `id` and reads `properties`.
+        let chunk = ChunkData::empty(0, 0);
+        chunk.set_block_absolute_y(1, 70, 2, repeater_state());
+
+        let bytes = chunk.to_bytes().unwrap();
+        let mut cursor = std::io::Cursor::new(&bytes[..]);
+        let mut reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
+        let root = pumpkin_nbt::Nbt::read(&mut reader).unwrap().root_tag;
+
+        let sections = root.get_list("sections").unwrap();
+        let section = sections
+            .iter()
+            .filter_map(NbtTag::extract_compound)
+            .find(|section| section.get_byte("Y") == Some(4))
+            .unwrap();
+        let palette = section
+            .get_compound("block_states")
+            .and_then(|block_states| block_states.get_list("palette"))
+            .unwrap();
+        let repeater = palette
+            .iter()
+            .filter_map(NbtTag::extract_compound)
+            .find(|entry| entry.get_string("id") == Some("minecraft:repeater"))
+            .expect("the palette has a repeater entry under `id`");
+        let properties = repeater.get_compound("properties").unwrap();
+        assert_eq!(properties.get_string("facing"), Some("east"));
+        assert_eq!(properties.get_string("delay"), Some("2"));
+        assert_eq!(properties.get_string("locked"), Some("false"));
+        assert_eq!(properties.get_string("powered"), Some("false"));
+
+        for entry in palette.iter().filter_map(NbtTag::extract_compound) {
+            assert!(entry.get_string("Name").is_none());
+            assert!(entry.get_compound("Properties").is_none());
+        }
+    }
+
+    #[test]
+    fn chunk_palette_reads_both_key_shapes_and_bare_names() {
+        // 26.3 writes `id` and `properties`, 26.2 and older wrote `Name` and `Properties`,
+        // and a palette entry can also be a bare block name.
+        let mut new_entry = NbtCompound::new();
+        new_entry.put_string("id", "minecraft:repeater".to_string());
+        let mut new_properties = NbtCompound::new();
+        new_properties.put_string("facing", "east".to_string());
+        new_properties.put_string("delay", "2".to_string());
+        new_properties.put_string("locked", "false".to_string());
+        new_properties.put_string("powered", "false".to_string());
+        new_entry.put_compound("properties", new_properties.clone());
+
+        let mut old_entry = NbtCompound::new();
+        old_entry.put_string("Name", "minecraft:repeater".to_string());
+        old_entry.put_compound("Properties", new_properties);
+
+        let palette = NbtTag::List(vec![
+            NbtTag::Compound(new_entry),
+            NbtTag::Compound(old_entry),
+            NbtTag::String("minecraft:stone".to_string().into()),
+        ]);
+        let result = extract_u16_array(&palette).expect("should extract palette");
+        assert_eq!(
+            &*result,
+            &[
+                repeater_state(),
+                repeater_state(),
+                Block::STONE.default_state.id
+            ]
+        );
+    }
+
+    #[test]
+    fn signs_read_from_data_older_than_5002_get_the_op_flag() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        // `SignsOpFlagFix` is registered at schema 5002 in `DataFixers`: it sets
+        // `allow_op_features` on every sign and hanging sign of older data.
+        let pos = BlockPos::new(1, -60, 2);
+        let flag_after_load = |data_version: Option<i32>, id: &str| {
+            let mut sign = NbtCompound::new();
+            sign.put_string("id", id.to_string());
+            sign.put_int("x", pos.0.x);
+            sign.put_int("y", pos.0.y);
+            sign.put_int("z", pos.0.z);
+
+            let mut nbt = test_chunk(vec![test_section(-4, "minecraft:stone", true)]);
+            match data_version {
+                Some(version) => nbt.root_tag.put_int("DataVersion", version),
+                None => {
+                    nbt.root_tag.child_tags.remove("DataVersion");
+                }
+            }
+            nbt.root_tag
+                .put_list("block_entities", vec![NbtTag::Compound(sign)]);
+
+            let chunk = ChunkData::from_bytes(&nbt.write(), Vector2::new(0, 0)).unwrap();
+            let block_entities = chunk.pending_block_entities.lock().unwrap();
+            block_entities[&pos].get_bool("allow_op_features")
+        };
+
+        for id in ["minecraft:sign", "minecraft:hanging_sign"] {
+            assert_eq!(flag_after_load(Some(5001), id), Some(true));
+            assert_eq!(flag_after_load(Some(5002), id), None);
+            assert_eq!(flag_after_load(Some(WORLD_DATA_VERSION), id), None);
+            // 26.2.
+            assert_eq!(flag_after_load(Some(4903), id), Some(true));
+            // Vanilla reads a missing version as the oldest one.
+            assert_eq!(flag_after_load(None, id), Some(true));
+        }
+        assert_eq!(flag_after_load(Some(4903), "minecraft:chest"), None);
+    }
+
+    #[test]
+    fn signs_read_from_a_pump_chunk_older_than_5002_get_the_op_flag() {
+        use crate::chunk::ChunkData;
+        use pumpkin_util::math::vector2::Vector2;
+
+        // The pump header stores the data version after the magic and the format byte.
+        const DATA_VERSION_OFFSET: usize = 5;
+        let pos = BlockPos::new(1, -60, 2);
+        let flag_after_load = |data_version: i32, id: &str| {
+            let chunk = ChunkData::empty(0, 0);
+            let mut sign = NbtCompound::new();
+            sign.put_string("id", id.to_string());
+            sign.put_int("x", pos.0.x);
+            sign.put_int("y", pos.0.y);
+            sign.put_int("z", pos.0.z);
+            chunk
+                .pending_block_entities
+                .lock()
+                .unwrap()
+                .insert(pos, sign);
+
+            let mut bytes = chunk.internal_to_pump_bytes().to_vec();
+            bytes[DATA_VERSION_OFFSET..DATA_VERSION_OFFSET + 4]
+                .copy_from_slice(&data_version.to_be_bytes());
+            let loaded = ChunkData::internal_from_pump_bytes(&bytes, Vector2::new(0, 0)).unwrap();
+            let block_entities = loaded.pending_block_entities.lock().unwrap();
+            block_entities[&pos].get_bool("allow_op_features")
+        };
+
+        for id in ["minecraft:sign", "minecraft:hanging_sign"] {
+            // IronPumpkin wrote pump chunks at 4903 before it wrote 5023.
+            assert_eq!(flag_after_load(4903, id), Some(true));
+            assert_eq!(flag_after_load(WORLD_DATA_VERSION, id), None);
+        }
+        assert_eq!(flag_after_load(4903, "minecraft:chest"), None);
+    }
+
     #[test]
     fn chunk_with_a_missing_section_loads_plains() {
         use crate::chunk::ChunkData;
@@ -1804,17 +1990,15 @@ mod tests {
     }
 
     #[test]
-    fn palette_entries_equal_the_vanilla_26_2_compounds() {
+    fn palette_entries_equal_the_vanilla_26_3_compounds() {
         use crate::block::state_nbt::{block_state_from_nbt, fixtures};
         use pumpkin_util::math::vector2::Vector2;
 
+        // Vanilla 26.3 writes a non-default state as this compound. A default state is a bare
+        // name there, which `vanilla_26_3_chunk.rs` in pumpkin-core compares by state.
         let vanilla: Vec<NbtCompound> = [
-            (fixtures::ENDER_STONE_26_2, "carriedBlockState"),
-            (fixtures::ENDER_GRASS_26_2, "carriedBlockState"),
-            (fixtures::ENDER_GRASS_SNOWY_26_2, "carriedBlockState"),
-            (fixtures::DISPLAY_STAIRS_26_2, "block_state"),
-            (fixtures::DISPLAY_REPEATER_26_2, "block_state"),
-            (fixtures::DISPLAY_AIR_26_2, "block_state"),
+            (fixtures::ENDER_GRASS_SNOWY_26_3, "carriedBlockState"),
+            (fixtures::DISPLAY_STAIRS_26_3, "block_state"),
         ]
         .iter()
         .map(|(hex_bytes, key)| fixtures::read(hex_bytes).get_compound(key).unwrap().clone())
@@ -1862,11 +2046,11 @@ mod tests {
     }
 
     #[test]
-    fn chunk_and_entity_writers_declare_the_26_2_data_version() {
+    fn chunk_and_entity_writers_declare_the_26_3_data_version() {
         use std::sync::atomic::AtomicBool;
 
-        // Vanilla 26.2. The writers produce its shape, so vanilla 26.3 runs its fixers from it.
-        const DATA_VERSION_26_2: i32 = 4903;
+        // Vanilla 26.3. The writers produce its shape, so vanilla runs no data fixer on it.
+        const DATA_VERSION_26_3: i32 = 5023;
 
         let data_version = |bytes: &[u8]| {
             let mut cursor = std::io::Cursor::new(bytes);
@@ -1880,7 +2064,7 @@ mod tests {
         };
 
         let chunk = ChunkData::empty(0, 0).to_bytes().unwrap();
-        assert_eq!(data_version(&chunk), Some(DATA_VERSION_26_2));
+        assert_eq!(data_version(&chunk), Some(DATA_VERSION_26_3));
 
         let mut enderman = NbtCompound::new();
         enderman.put_string("id", "minecraft:enderman".to_string());
@@ -1897,7 +2081,7 @@ mod tests {
         }
         .to_bytes()
         .unwrap();
-        assert_eq!(data_version(&entities), Some(DATA_VERSION_26_2));
+        assert_eq!(data_version(&entities), Some(DATA_VERSION_26_3));
     }
 
     #[test]

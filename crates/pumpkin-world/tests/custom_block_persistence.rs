@@ -288,8 +288,8 @@ fn start_and_place(world: &Path) {
                 properties.put_string(name, value.to_string());
             }
             let mut expected = NbtCompound::new();
-            expected.put_string("Name", LAMP.to_string());
-            expected.put_compound("Properties", properties);
+            expected.put_string("id", LAMP.to_string());
+            expected.put_compound("properties", properties);
             assert_eq!(
                 entries.iter().filter(|entry| **entry == expected).count(),
                 LAMP_YS.len(),
@@ -298,7 +298,7 @@ fn start_and_place(world: &Path) {
         }
         assert!(!entries.iter().any(|entry| {
             entry
-                .get_string("Name")
+                .get_string("id")
                 .is_some_and(|name| name.starts_with("minecraft:test"))
         }));
     }

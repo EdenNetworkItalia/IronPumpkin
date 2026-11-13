@@ -10,26 +10,19 @@ use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use tracing::warn;
 
-// The keys of 26.2, the shape that WORLD_DATA_VERSION declares.
-const NAME_TAG: &str = "Name";
-const PROPERTIES_TAG: &str = "Properties";
-// 26.3 renamed them (data version 5006).
-const NAME_TAG_26_3: &str = "id";
-const PROPERTIES_TAG_26_3: &str = "properties";
+use super::{ID_TAG, LEGACY_ID_TAG, LEGACY_PROPERTIES_TAG, PROPERTIES_TAG};
 
-const _: () = assert!(
-    crate::chunk::format::anvil::WORLD_DATA_VERSION < 5006,
-    "WORLD_DATA_VERSION reached 26.3: write `id` and `properties` here, and keep reading `Name` and `Properties`"
-);
-
-/// Writes the compound that vanilla 26.2 writes: `Name`, plus `Properties` with every property of
-/// the state when the block has properties.
+/// Writes the compound of 26.3 `StateHolder.codec`: `id`, plus `properties` with every property
+/// of the state when the block has properties.
+///
+/// Vanilla `BlockState.CODEC` writes a default state as its bare name. The full compound decodes to
+/// the same state, so this writer always uses it.
 #[must_use]
 pub fn block_state_to_nbt(id: BlockStateId) -> NbtCompound {
     let block = Block::from_state_id(id);
     let mut compound = NbtCompound::new();
     compound.put_string(
-        NAME_TAG,
+        ID_TAG,
         pumpkin_data::dynamic::namespaced_name(block.name).into_owned(),
     );
     if let Some(properties) = block.string_properties(id)
@@ -48,11 +41,11 @@ pub fn block_state_to_nbt(id: BlockStateId) -> NbtCompound {
 /// of 26.2.
 fn state_compound_parts(compound: &NbtCompound) -> (Option<&str>, Option<&NbtCompound>) {
     let name = compound
-        .get_string(NAME_TAG_26_3)
-        .or_else(|| compound.get_string(NAME_TAG));
+        .get_string(ID_TAG)
+        .or_else(|| compound.get_string(LEGACY_ID_TAG));
     let properties = compound
-        .get_compound(PROPERTIES_TAG_26_3)
-        .or_else(|| compound.get_compound(PROPERTIES_TAG));
+        .get_compound(PROPERTIES_TAG)
+        .or_else(|| compound.get_compound(LEGACY_PROPERTIES_TAG));
     (name, properties)
 }
 
@@ -306,19 +299,33 @@ mod tests {
     }
 
     #[test]
-    fn writes_what_vanilla_26_2_writes() {
+    fn writes_what_vanilla_26_3_writes() {
         for (hex_bytes, key) in [
-            (fixtures::ENDER_STONE_26_2, "carriedBlockState"),
-            (fixtures::ENDER_GRASS_26_2, "carriedBlockState"),
-            (fixtures::ENDER_GRASS_SNOWY_26_2, "carriedBlockState"),
-            (fixtures::DISPLAY_STAIRS_26_2, "block_state"),
-            (fixtures::DISPLAY_REPEATER_26_2, "block_state"),
-            (fixtures::DISPLAY_AIR_26_2, "block_state"),
+            (fixtures::ENDER_GRASS_SNOWY_26_3, "carriedBlockState"),
+            (fixtures::DISPLAY_STAIRS_26_3, "block_state"),
         ] {
             let root = read(hex_bytes);
             let vanilla = root.get_compound(key).unwrap();
             let id = block_state_from_nbt(root.get(key).unwrap()).unwrap();
             assert_eq!(&block_state_to_nbt(id), vanilla, "{key} in {hex_bytes}");
+        }
+
+        // A default state: vanilla writes the bare name, the writer the full compound of it.
+        for (hex_bytes, key) in [
+            (fixtures::ENDER_GRASS_26_3, "carriedBlockState"),
+            (fixtures::DISPLAY_AIR_26_3, "block_state"),
+        ] {
+            let root = read(hex_bytes);
+            let name = root.get_string(key).unwrap();
+            let id = block_state_from_nbt(root.get(key).unwrap()).unwrap();
+            let written = block_state_to_nbt(id);
+            assert_eq!(written.get_string("id"), Some(name), "{key} in {hex_bytes}");
+            assert!(written.get("Name").is_none());
+            assert_eq!(
+                block_state_from_nbt(&NbtTag::Compound(written)),
+                Some(id),
+                "{key} in {hex_bytes}"
+            );
         }
     }
 
