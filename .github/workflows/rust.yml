@@ -25,6 +25,11 @@ on:
         required: false
         default: "16"
         type: string
+      full:
+        description: Run the full test matrix and the release builds
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -59,6 +64,8 @@ jobs:
         env:
           CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CI_DISPATCH_FULL: ${{ inputs.full && 'true' || vars.CI_DISPATCH_FULL }}
+          CI_PR_TEST_MATRIX: ${{ vars.CI_PR_TEST_MATRIX }}
         run: >-
           python .github/scripts/ci_packages.py plan
           --event "${{ github.event_name }}"

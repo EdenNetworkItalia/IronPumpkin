@@ -256,7 +256,11 @@ def plan(args: argparse.Namespace) -> None:
         blueprint_changed = has_blueprint_changes(changed)
     else:
         selected = all_packages
-        run_full = True
+        # A fork can keep manual runs light with CI_DISPATCH_FULL=false; the nightly stays full.
+        run_full = (
+            args.event != "workflow_dispatch"
+            or os.environ.get("CI_DISPATCH_FULL", "true") != "false"
+        )
         should_check_wit = True
         blueprint_changed = True
         reason = {
@@ -265,7 +269,9 @@ def plan(args: argparse.Namespace) -> None:
         }.get(args.event, f"Triggered by {args.event.replace('_', ' ')}")
 
     has_code = bool(selected)
-    test_matrix = FULL_TEST_MATRIX if run_full else PR_TEST_MATRIX
+    pr_matrix_override = os.environ.get("CI_PR_TEST_MATRIX", "")
+    pr_test_matrix = json.loads(pr_matrix_override) if pr_matrix_override else PR_TEST_MATRIX
+    test_matrix = FULL_TEST_MATRIX if run_full else pr_test_matrix
     outputs = {
         "affected_packages": json.dumps(selected, separators=(",", ":")),
         "blueprint_changed": str(blueprint_changed).lower(),
