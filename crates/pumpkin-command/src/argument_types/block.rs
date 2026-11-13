@@ -1,7 +1,7 @@
 use crate::{
     argument_types::{
         argument_type::{ArgumentType, JavaClientArgumentType},
-        nbt::NbtCompoundArgumentType,
+        block_predicate::{ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES, parse_nbt},
     },
     context::command_context::CommandContext,
     errors::command_syntax_error::CommandSyntaxError,
@@ -38,16 +38,6 @@ pub const INVALID_VALUE_ERROR_TYPE: CommandErrorType<3> = CommandErrorType::new(
     translation::java::ARGUMENT_BLOCK_PROPERTY_INVALID,
 );
 
-pub const EXPECTED_VALUE_ERROR_TYPE: CommandErrorType<2> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_NOVALUE,
-);
-
-pub const UNCLOSED_PROPERTIES_ERROR_TYPE: CommandErrorType<0> = CommandErrorType::new(
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
-    translation::java::ARGUMENT_BLOCK_PROPERTY_UNCLOSED,
-);
-
 /// A block state parsed from `id[property=value,...]{nbt}`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStateArgument {
@@ -67,14 +57,32 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockArgumentType {
         if reader.peek() == Some('#') {
             return Err(TAG_DISALLOWED_ERROR_TYPE.create(reader));
         }
-        let (block, id) = read_block(reader)?;
+        let start = reader.cursor();
+        while let Some(c) = reader.peek() {
+            if c.is_alphanumeric() || c == '_' || c == ':' || c == '/' || c == '.' || c == '-' {
+                reader.skip();
+            } else {
+                break;
+            }
+        }
+        let block_name = &reader.string()[start..reader.cursor()];
+        let normalized = if block_name.contains(':') {
+            block_name.to_string()
+        } else {
+            format!("minecraft:{block_name}")
+        };
+
+        let Some(block) = Block::from_name(&normalized) else {
+            reader.set_cursor(start);
+            return Err(INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized)));
+        };
         let state = if reader.peek() == Some('[') {
-            let properties = read_properties(reader, block, &id)?;
+            let properties = read_properties(reader, block, &normalized)?;
             block.from_string_properties(&properties).to_state_id(block)
         } else {
             block.default_state.id
         };
-        let nbt = read_nbt(reader)?;
+        let nbt = parse_nbt(reader)?;
         Ok(BlockStateArgument { block, state, nbt })
     }
 
@@ -92,47 +100,6 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for BlockArgumentType {
         builder: SuggestionsBuilder,
     ) -> Suggestions {
         builder.build()
-    }
-}
-
-/// Reads a block id as vanilla `BlockStateParser.readBlock` does, and returns the block with its
-/// namespaced id.
-pub(crate) fn read_block(
-    reader: &mut StringReader,
-) -> Result<(&'static Block, String), CommandSyntaxError> {
-    let start = reader.cursor();
-    while let Some(c) = reader.peek() {
-        if c.is_alphanumeric() || c == '_' || c == ':' || c == '/' || c == '.' || c == '-' {
-            reader.skip();
-        } else {
-            break;
-        }
-    }
-    let block_name = &reader.string()[start..reader.cursor()];
-    let normalized = if block_name.contains(':') {
-        block_name.to_string()
-    } else {
-        format!("minecraft:{block_name}")
-    };
-
-    let Some(block) = Block::from_name(&normalized) else {
-        reader.set_cursor(start);
-        return Err(INVALID_BLOCK_ERROR_TYPE.create(reader, TextComponent::text(normalized)));
-    };
-    Ok((block, normalized))
-}
-
-/// Reads the block entity data `{...}` after a block, if any.
-pub(crate) fn read_nbt(
-    reader: &mut StringReader,
-) -> Result<Option<NbtCompound>, CommandSyntaxError> {
-    if reader.peek() == Some('{') {
-        Ok(Some(ArgumentType::<crate::source::DummySource>::parse(
-            &NbtCompoundArgumentType,
-            reader,
-        )?))
-    } else {
-        Ok(None)
     }
 }
 
@@ -207,7 +174,7 @@ pub(crate) fn read_properties(
         }
         reader.skip_whitespace();
         if reader.peek() != Some('=') {
-            return Err(EXPECTED_VALUE_ERROR_TYPE.create(
+            return Err(ERROR_NO_VALUE.create(
                 reader,
                 TextComponent::text(input_name),
                 TextComponent::text(id.to_string()),
@@ -231,20 +198,19 @@ pub(crate) fn read_properties(
         match reader.peek() {
             Some(',') => reader.skip(),
             Some(']') => break,
-            Some(_) => return Err(UNCLOSED_PROPERTIES_ERROR_TYPE.create(reader)),
+            Some(_) => return Err(ERROR_UNCLOSED_PROPERTIES.create(reader)),
             None => {}
         }
     }
     if !reader.can_read_char() {
-        return Err(UNCLOSED_PROPERTIES_ERROR_TYPE.create(reader));
+        return Err(ERROR_UNCLOSED_PROPERTIES.create(reader));
     }
     reader.skip();
     Ok(set)
 }
 
 impl BlockArgumentType {
-    /// Returns the parsed block state and its block entity data.
-    pub fn get_state<S: crate::source::CommandSource>(
+    pub fn get<S: crate::source::CommandSource>(
         context: &CommandContext<S>,
         name: &str,
     ) -> Result<BlockStateArgument, CommandSyntaxError> {
@@ -256,10 +222,11 @@ impl BlockArgumentType {
 mod test {
     use super::{
         BlockArgumentType, BlockStateArgument, DUPLICATE_PROPERTY_ERROR_TYPE,
-        EXPECTED_VALUE_ERROR_TYPE, INVALID_BLOCK_ERROR_TYPE, INVALID_VALUE_ERROR_TYPE,
-        TAG_DISALLOWED_ERROR_TYPE, UNCLOSED_PROPERTIES_ERROR_TYPE, UNKNOWN_PROPERTY_ERROR_TYPE,
+        INVALID_BLOCK_ERROR_TYPE, INVALID_VALUE_ERROR_TYPE, TAG_DISALLOWED_ERROR_TYPE,
+        UNKNOWN_PROPERTY_ERROR_TYPE,
     };
     use crate::argument_types::argument_type::ArgumentType;
+    use crate::argument_types::block_predicate::{ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES};
     use crate::errors::command_syntax_error::CommandSyntaxError;
     use crate::source::DummySource;
     use crate::string_reader::StringReader;
@@ -418,15 +385,15 @@ mod test {
 
     #[test]
     fn missing_value() {
-        let expected = EXPECTED_VALUE_ERROR_TYPE
-            .create_without_context(text("lit"), text("minecraft:redstone_lamp"));
+        let expected =
+            ERROR_NO_VALUE.create_without_context(text("lit"), text("minecraft:redstone_lamp"));
         assert_error("redstone_lamp[lit]", &expected, 17);
         assert_error("redstone_lamp[lit ", &expected, 18);
     }
 
     #[test]
     fn unclosed_properties() {
-        let expected = UNCLOSED_PROPERTIES_ERROR_TYPE.create_without_context();
+        let expected = ERROR_UNCLOSED_PROPERTIES.create_without_context();
         assert_error("redstone_lamp[", &expected, 14);
         assert_error("redstone_lamp[lit=true", &expected, 22);
         assert_error("redstone_lamp[lit=true;]", &expected, 22);

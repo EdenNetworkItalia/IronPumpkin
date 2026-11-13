@@ -1,7 +1,6 @@
 use crate::command::argument_builder::{ArgumentBuilder, argument, command, literal};
 use crate::command::argument_types::block_predicate::BlockPredicateArgumentType;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
-use crate::command::commands::block_entity_nbt;
 use crate::command::context::command_context::CommandContext;
 use crate::command::errors::error_types::CommandErrorType;
 use crate::command::node::dispatcher::CommandDispatcher;
@@ -82,7 +81,7 @@ impl CommandExecutor for CloneExecutor {
         let end = BlockPosArgumentType::get_block_pos(context, ARG_END)?;
         let dest = BlockPosArgumentType::get_block_pos(context, ARG_DEST)?;
 
-        let filter = if self.has_filter {
+        let filter_block = if self.has_filter {
             Some(BlockPredicateArgumentType::get(context, ARG_FILTER)?)
         } else {
             None
@@ -172,27 +171,25 @@ impl CommandExecutor for CloneExecutor {
                     let should_clone = match self.mask_mode {
                         MaskMode::Replace => true,
                         MaskMode::Masked => !pumpkin_data::block_properties::is_air(state_id),
-                        MaskMode::Filtered => {
-                            filter.as_ref().is_some_and(|f| f.test_state(state_id))
-                        }
+                        MaskMode::Filtered => filter_block.as_ref().is_some_and(|f| {
+                            f.test(state_id, || world.get_block_entity_nbt(&src_pos))
+                        }),
                     };
-                    if !should_clone {
-                        continue;
-                    }
 
-                    let block_entity_nbt = block_entity_nbt(world, &src_pos);
-                    if let Some(f) = &filter
-                        && !f.test_nbt(block_entity_nbt.as_ref())
-                    {
-                        continue;
-                    }
+                    if should_clone {
+                        let block_entity_nbt = world.get_block_entity(&src_pos).map(|be| {
+                            let mut nbt = NbtCompound::new();
+                            be.write_internal(&mut nbt);
+                            nbt
+                        });
 
-                    blocks_to_clone.push(ClonedBlock {
-                        src_pos,
-                        dest_pos,
-                        state_id,
-                        block_entity_nbt,
-                    });
+                        blocks_to_clone.push(ClonedBlock {
+                            src_pos,
+                            dest_pos,
+                            state_id,
+                            block_entity_nbt,
+                        });
+                    }
                 }
             }
         }
