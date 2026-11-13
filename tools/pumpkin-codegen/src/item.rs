@@ -1964,8 +1964,10 @@ pub fn build() -> TokenStream {
         );
         let component_based = item.component_based;
 
-        let components_bytes_lit =
-            LitByteStr::new(&item.components.write_bedrock(), Span::call_site());
+        let components_bytes_lit = LitByteStr::new(
+            &crate::canonical_nbt::write_bedrock(item.components.clone()),
+            Span::call_site(),
+        );
 
         bedrock_constants.extend(quote! {
             pub const #const_ident: Self = Self {

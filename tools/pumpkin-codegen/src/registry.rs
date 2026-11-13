@@ -133,18 +133,7 @@ pub(crate) fn build() -> TokenStream {
                         }
 
                         let nbt_tag = json_to_nbt_tag(entry_data);
-                        let bytes = match nbt_tag {
-                            pumpkin_nbt::tag::NbtTag::Compound(compound) => {
-                                pumpkin_nbt::Nbt::from(compound).write_unnamed()
-                            }
-                            other => {
-                                let mut bytes = Vec::new();
-                                let mut writer =
-                                    pumpkin_nbt::serializer::NbtWriteHelperJava::new(&mut bytes);
-                                let _ = other.serialize(&mut writer);
-                                bytes.into()
-                            }
-                        };
+                        let bytes = crate::canonical_nbt::write_tag(nbt_tag);
                         let byte_literal = Literal::byte_string(&bytes);
 
                         quote! {

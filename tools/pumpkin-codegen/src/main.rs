@@ -34,6 +34,7 @@ mod biome;
 mod bitsets;
 mod block;
 mod block_transformer;
+mod canonical_nbt;
 mod carver;
 mod cat_variant;
 mod chat_type;

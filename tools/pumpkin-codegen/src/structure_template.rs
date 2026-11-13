@@ -255,10 +255,12 @@ fn parse_template_nbt(
             packed_blocks.push(state as u8);
 
             if let Some(nbt) = b.get_compound("nbt") {
-                let nbt_bytes = pumpkin_nbt::Nbt::from(nbt.clone()).write_unnamed();
+                let nbt_bytes = crate::canonical_nbt::write_tag(
+                    pumpkin_nbt::tag::NbtTag::Compound(nbt.clone()),
+                );
                 block_entities.push(ParsedBlockEntity {
                     pos: [px, py, pz],
-                    nbt: nbt_bytes.to_vec(),
+                    nbt: nbt_bytes,
                 });
             }
         }
@@ -292,12 +294,13 @@ fn parse_template_nbt(
             let bz = block_pos_list[2].extract_int().unwrap_or(0);
 
             let nbt = e.get_compound("nbt").cloned().unwrap_or_default();
-            let nbt_bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
+            let nbt_bytes =
+                crate::canonical_nbt::write_tag(pumpkin_nbt::tag::NbtTag::Compound(nbt));
 
             entities.push(ParsedEntity {
                 pos: [px, py, pz],
                 block_pos: [bx, by, bz],
-                nbt: nbt_bytes.to_vec(),
+                nbt: nbt_bytes,
             });
         }
     }

@@ -82,6 +82,32 @@ Work is tracked as GitHub issues on `EdenNetworkItalia/IronPumpkin`, one issue p
 Keep IronPumpkin changes in separate crates or clearly bounded modules where possible, so that
 `git merge upstream/master` stays cheap.
 
+Merge steps for `git merge upstream/master`:
+
+1. Once per checkout, set the merge driver that `.gitattributes` names for generated files:
+   `git config merge.keep-ours.driver true`. The driver is local config, so a fresh clone needs
+   this line. Without it a merge writes conflict markers into the generated files.
+2. Run the merge. The files under `crates/pumpkin-data/src/generated/` and
+   `crates/pumpkin-wasm-host-v0_2/src/generated_packets.rs` keep our side. The v0.1 host has no
+   generator: merge `crates/pumpkin-wasm-host-v0_1/` by hand. Resolve the other conflicts as usual
+   (`rerere` is on).
+3. Regenerate everything from the merged `assets/` and codegen sources, then format. Codegen output
+   in `pumpkin-plugin-api` is not formatted, so `cargo fmt` is part of the step:
+
+   ```bash
+   cargo run --locked -p pumpkin-codegen
+   cargo run --locked -p pumpkin-codegen -- wit
+   cargo fmt --all
+   ```
+
+4. Review `git diff --stat` and the diff of the regenerated files. They must differ from the merge
+   result only by what upstream changed in `assets/` or in the generators. A large unrelated diff
+   means a fork change in a generator was lost in the merge: fix the generator, not the output.
+   Commit the result as its own commit after the merge commit.
+
+A codegen run on a clean checkout of `master` changes nothing: the generators write NBT through
+`tools/pumpkin-codegen/src/canonical_nbt.rs`, which sorts compound keys. A diff on a clean tree is a bug.
+
 ## Writing to the owner
 
 Always write with full context. Never refer to a plan item, decision, task or option by a bare
