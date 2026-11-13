@@ -2066,6 +2066,7 @@ dependencies = [
  "hex",
  "ironpumpkin-mods",
  "pumpkin",
+ "pumpkin-config",
  "pumpkin-neoforge-client",
  "pumpkin-protocol",
  "tempfile",

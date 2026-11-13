@@ -12,11 +12,12 @@ ironpumpkin-mods.workspace = true
 
 [dev-dependencies]
 pumpkin = { path = "../pumpkin" }
+pumpkin-config.workspace = true
 pumpkin-neoforge-client = { path = "../../tools/pumpkin-neoforge-client" }
 pumpkin-protocol.workspace = true
 hex.workspace = true
 tempfile.workspace = true
-tokio = { workspace = true, features = ["rt", "time"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
 
 [lints]
 workspace = true
