@@ -2045,10 +2045,12 @@ dependencies = [
  "pumpkin-config",
  "pumpkin-core",
  "pumpkin-data",
+ "pumpkin-inventory",
  "pumpkin-macros",
  "pumpkin-nbt",
  "pumpkin-protocol",
  "pumpkin-util",
+ "pumpkin-wasm-host",
  "pumpkin-world",
  "serde_json",
  "tempfile",
@@ -2057,6 +2059,15 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "wasi-preview1-component-adapter-provider",
+ "wit-component 0.262.0",
+]
+
+[[package]]
+name = "ironpumpkin-test-guest"
+version = "0.2.2+26.3-26.60"
+dependencies = [
+ "wit-bindgen 0.63.0",
 ]
 
 [[package]]
@@ -5221,6 +5232,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
+name = "wasi-preview1-component-adapter-provider"
+version = "50.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08af31e188aec735fabb6370000e3c5954eae92d434a63ad22f665b55b01dda4"
+
+[[package]]
 name = "wasip2"
 version = "1.0.4+wasi-0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5956,6 +5973,7 @@ version = "0.63.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b85a987ab61d365382d25c7d47e26edd48941b3bf6e3fbf76eff918bc71dab06"
 dependencies = [
+ "bitflags 2.13.2",
  "wit-bindgen-rust-macro",
 ]
 

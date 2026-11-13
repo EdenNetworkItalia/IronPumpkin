@@ -24,7 +24,11 @@ tracing.workspace = true
 [dev-dependencies]
 arc-swap.workspace = true
 pumpkin-config.workspace = true
+pumpkin-inventory.workspace = true
 pumpkin-protocol.workspace = true
+pumpkin-wasm-host = { workspace = true, features = ["v0_2"] }
+wasi-preview1-component-adapter-provider = "=50.0.1"
+wit-component = { version = "=0.262.0", default-features = false }
 tempfile.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing-subscriber.workspace = true
