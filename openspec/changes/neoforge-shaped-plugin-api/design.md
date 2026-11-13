@@ -96,6 +96,31 @@ A Pumpkin event that exists but fires only for a subset of NeoForge's cases is `
 
 Some NeoForge 26.3 names differ from older porting guides and from the roadmap text in #29. Block breaking is `net.neoforged.neoforge.event.level.block.BreakBlockEvent`, not `BlockEvent.BreakEvent`. Config types are `LOCAL`, `CLIENT`, `SYNCED` and `STARTUP` in FancyModLoader 12.0.8. The event names of the Pumpkin events follow the 26.3 names.
 
+### World data format
+
+IronPumpkin loads vanilla worlds. A world that IronPumpkin wrote is not meant to go back to vanilla: mod blocks and entities would be lost there. The readers are the primary target. The writers produce the 26.3 shape, so IronPumpkin stays aligned with upstream Pumpkin.
+
+- Chunks, entity chunks, POI and player data declare DataVersion 5023 (`WORLD_DATA_VERSION`). `level.dat` keeps the version it read. At 5023 vanilla runs no data fixer, so every writer must produce the 26.3 shape. The audit of the 16 vanilla fixes between 4903 and 5023 is on #144.
+- Block states use the keys of 26.3 `StateHolder.codec`: `id` and `properties`. The readers also take `Name`/`Properties` (26.2 and older) and a bare name (a default state).
+- Pot decorations are the map of 26.3 `PotDecorations.CODEC`, in the item component and in the decorated pot `sherds`: one optional item per side, and only the present sides are written. The readers also take the old list and pad it with bricks, as `PotDecorationsComponentUnflatteningFix` does.
+- The item reader drops `minecraft:map_color` and splits `minecraft:swing_animation` into `minecraft:attack_animation` and `minecraft:interact_animation`, as `MapColorComponentRemovalFix` and `SwingAnimationComponentSplitFix` do. 26.3 has neither key, and an unknown component name fails the whole stack.
+- POI records use the `pos` int array of `PoiRecord.Packed.CODEC`. The reader also takes the `x`/`y`/`z` ints that Pumpkin wrote before.
+- A sign or hanging sign read from an Anvil or pump chunk below 5002, or with no DataVersion, gets `allow_op_features=true`, as `SignsOpFlagFix` does. This applies to every such chunk, also to chunks that IronPumpkin wrote at 4903: the owner chose vanilla parity over a heuristic on the missing `LastUpdate` key.
+- The code follows the upstream PR branches on the fork, so the upstream merge stays cheap: `fix/chunk-palette-26-3-keys`, `fix/pot-decorations-map` and `fix/sign-op-flag-old-data` (`fix_signs_op_flag` in `ChunkData::internal_from_bytes`). IronPumpkin diverges in one place: its palette goes through `BlockStateCodec::state_to_nbt` and `block/state_nbt.rs`, which the custom content registry needs for mod blocks and placeholders. Upstream writes the palette entry inline. The POI, armor stand and item component reader fixes change upstream files and have no upstream branch yet: they are candidates for upstream PRs.
+
+Open rows, raw NBT that Pumpkin does not convert:
+
+- A block entity stays raw NBT in the chunk until the world touches it, and an entity record of an unknown type stays raw. Pumpkin writes this NBT back unchanged under 5023. Data from a world below 5023 keeps its old shape there: a decorated pot that never woke up keeps the `sherds` list. IronPumpkin reads both shapes, vanilla 26.3 does not.
+- `SignsOpFlagFix` also acts on a sign in item `block_entity_data` (a sign item in a chest or an inventory). IronPumpkin applies it only to chunk block entities: the item reader has no data version.
+- Fixes for worlds between 4435 (the oldest `level.dat` Pumpkin accepts) and 4903 that IronPumpkin does not apply: `TridentAnimationFix` (a `minecraft:consumable` animation `spear` becomes `trident`; Pumpkin fails the stack) and `ExplorerMapItemFix` (a `minecraft:filled_map` with a `+` decoration stays a filled map instead of the 26.3 explorer map item). For worlds below 5013, `MergeTerrainChunkStatusFix` maps the chunk status `noise` and `surface` to `biomes` and drops the blocks. IronPumpkin maps them to `terrain`, so a proto-chunk that had no surface yet skips the surface step.
+
+Reader follow-ups from the audit of a vanilla 26.3 world (the losses on load, with the vanilla codec as reference):
+
+- Block entities: `CustomName` of chests and furnaces; `LootTable`/`LootTableSeed` of barrels (an unopened barrel loses its loot); `SpawnPotentials` of spawners; `RecipesUsed` and `speed_multiplier` of furnaces, smokers and blast furnaces; `total_fuel`, `total_brew_time` and `speed_multiplier` of brewing stands; `UpdateLastExecution` of command blocks (read as false); `listener` of sculk sensors and shrieker; `cursors` of sculk catalysts; `countdown` of potent sulfur; `align_items_to_bottom` of shelves; `resolved` of written books.
+- Entities: `BlockState` and the fall fields of falling blocks; `block_state` of primed TNT; `DisplayState` of minecarts; `Inventory` and `Gossips` of villagers; `color` and `block_pos` of cushions; `block_pos` of item frames; `PickupDelay` of items above 255 (an `AtomicU8`: 32767, never pick up, becomes 255); `glow_color_override` of displays.
+- Pot decorations: a 26.2 decorated pot without `sherds` gets four bricks from `PotDecorationsBlockEntityUnflatteningFix` (`orElseEmptyList`); IronPumpkin keeps it empty. It matters only for the sherd drop of a broken pot, which Pumpkin does not have yet.
+- Writer that IronPumpkin reads back but vanilla does not: `potion_contents.potion` as an integer id (26.3 `Potion.CODEC` takes the registry name).
+
 ## Native channel
 
 ### Why native
