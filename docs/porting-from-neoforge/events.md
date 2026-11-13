@@ -220,7 +220,7 @@ The table lists the events that have the NeoForge fire site, fields and cancel r
 
 | NeoForge event | IronPumpkin event | Notes |
 | :--- | :--- | :--- |
-| `RegisterEvent` | `registries::RegisterEvent` | Once for `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, after the last `init` and before `common_setup`. Register content with `content::RegisterEventExt`. See [Registration](./registration.md). |
+| `RegisterEvent` | `registries::RegisterEvent` | Once for `minecraft:attribute`, `minecraft:data_component_type`, `minecraft:sound_event`, `minecraft:mob_effect`, `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, in that order, after the last `init` and before `common_setup`. Register content with `content::RegisterEventExt`. See [Registration](./registration.md). |
 | `ServerAboutToStartEvent` | `server::ServerAboutToStartEvent` | After the synced configs load and the content freeze, before the worlds load. Only native mods get it. The datapack recipes and tags are not loaded yet. See [Lifecycle](./lifecycle.md). |
 | `ServerStartingEvent` | `server::ServerStartingEvent` | After the worlds load, before the first tick and the first connection |
 | `ServerStartedEvent` | `server::ServerLoadEvent` | Before the first tick |
