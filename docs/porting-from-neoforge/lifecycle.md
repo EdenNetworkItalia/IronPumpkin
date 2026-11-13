@@ -28,6 +28,7 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | **`ServerAboutToStartEvent`** | Fires before the worlds load, on the game bus | A Pumpkin event with the same position. Only native mods receive it. |
 | **Registry freeze** | Right after `RegisterEvent`, before `FMLCommonSetupEvent` | After `load_complete` and the Synced configs. See "The registry freeze". |
 | **Config loading** | A Local config loads before common setup. A Synced config loads when the server is about to start. | A Local config loads after every `init` and before `common_setup`. A Synced config loads after `load_complete`. See [Configuration](./configuration.md). |
+| **Several servers in one process** | FML loads the mods once. Each `MinecraftServer` loads the Synced configs and posts the server lifecycle events. | The mods load once, with the first server. Each server gets the registrations of `init`, loads the Synced configs and fires the server lifecycle events. See "Several servers in one process". |
 
 ---
 
@@ -191,7 +192,7 @@ The mapping from the Java code to the Rust code:
 
 ## The order of the steps
 
-The server runs these steps once at startup. Each step calls the method of every mod, in load order, before the next step starts.
+Steps 1 to 10 are the mod loading. They run once per process, with the first server. Steps 11 to 14 run for each server. Each step calls the method of every mod, in load order, before the next step starts.
 
 1. It reads the metadata of every mod and checks the ids and the dependencies. It stops the server on an error.
 2. It calls `NativeMod::init` of each mod. A Startup config loads inside `register_config`, and its `config_loading` runs there.
@@ -204,11 +205,32 @@ The server runs these steps once at startup. Each step calls the method of every
 9. It calls `load_complete`.
 10. It fires `RegisterPayloadHandlersEvent`. The payload registration closes when the event returns.
 11. It loads the Synced configs and calls `config_loading` for each.
-12. It freezes the content registry.
+12. It freezes the content registry. A later server of the process reuses the frozen registry.
 13. It fires `ServerAboutToStartEvent`. Only native mods receive it. The datapack recipes and tags are not loaded yet.
 14. It loads the worlds. The other server events, such as `ServerStartingEvent`, fire after this step.
 
 The order of steps 2 to 9 is the order of `CommonModLoader.begin` and `CommonModLoader.load` in NeoForge 26.3. The trace of a NeoForge 26.3.0.64-beta dedicated server fires `RegisterPayloadHandlersEvent` after `FMLLoadCompleteEvent` and before the load of the Synced config. A mod has no `ModInit` after `init` returns, so it registers content, commands and handlers in `init`.
+
+## Several servers in one process
+
+A host that embeds Pumpkin can start a server, stop it and start another one in the same process, as an integrated server opens one world after another. The split is that of NeoForge 26.3:
+
+| Step | NeoForge | IronPumpkin |
+| :--- | :--- | :--- |
+| `init`, content, `RegisterEvent`, the registration events, the lifecycle methods, the Local configs | Once per process, in `CommonModLoader` | Once per process, with the first server |
+| `RegisterPayloadHandlersEvent` | Once per process: `NetworkRegistry.setup` throws on a second call | Once per process. Each later server gets the same channels and handlers. |
+| Commands, permissions, event handlers and services of `init` | A game bus listener stays on `NeoForge.EVENT_BUS` for every server. `RegisterCommandsEvent` fires in the `Commands` constructor of each server, and `handleServerStarting` collects the permission nodes for each server. | Applied to each server. Each server has its own event bus, so a handler runs once per fire of its server and never for another server. |
+| Synced configs | `ServerLifecycleHooks.handleServerAboutToStart` loads them for each server | Loaded for each server, before `ServerAboutToStartEvent`. `config_loading` runs for each server. |
+| Config polling | The file watcher of FML (`ConfigWatcher`) | One poller on the ticks of each server |
+| `world_restart` values | `NeoForgeMod.serverStopping` clears their cache when each server stops | Cleared when each server stops. The next `get` reads the current value. |
+| `ServerAboutToStartEvent` to `ServerStoppedEvent` | Once per server | Once per server |
+
+The handlers are the same objects on every server: state that a handler keeps carries over to the next server, as on NeoForge.
+
+IronPumpkin differs in two places:
+
+- The mod loading runs inside the first `Server::new`, because `RegisterEvent` and `RegisterPayloadHandlersEvent` fire through the event bus of a server. A handler of those events gets the first server as its `server` argument. NeoForge loads the mods before any server exists.
+- A Synced config stays loaded after its server stops, and the next server reloads it from `config/`. NeoForge unloads it in `handleServerStopped` (`ModConfigEvent.Unloading`) and reads the `syncedconfig` folder of the world first. IronPumpkin has no unloading hook and no world override.
 
 ## The registry freeze
 
