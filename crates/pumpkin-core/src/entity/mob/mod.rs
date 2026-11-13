@@ -1154,8 +1154,10 @@ impl MobEntity {
                 mob.get_entity().remove();
                 return;
             }
-            // Pumpkin has no `noActionTime` for `Deny` to reset.
-            crate::plugin::level::MobDespawnResult::Deny => return,
+            crate::plugin::level::MobDespawnResult::Deny => {
+                self.living_entity.no_action_time.store(0, Relaxed);
+                return;
+            }
             crate::plugin::level::MobDespawnResult::Default => {}
         }
 

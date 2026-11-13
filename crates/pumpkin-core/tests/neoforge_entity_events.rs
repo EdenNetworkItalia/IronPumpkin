@@ -15,7 +15,10 @@ mod support;
 
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicI32, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -523,6 +526,14 @@ fn check_despawn(mob: &Arc<dyn EntityBase>) {
     mob.get_mob_entity().check_despawn(mob);
 }
 
+fn idle(mob: &Arc<dyn EntityBase>) -> &AtomicI32 {
+    &mob.get_mob()
+        .unwrap()
+        .get_mob_entity()
+        .living_entity
+        .no_action_time
+}
+
 /// Scenario "Deny a despawn": a mob far from the only player despawns, and the same mob with a
 /// `Deny` result stays.
 #[test]
@@ -544,11 +555,15 @@ fn deny_mob_despawn_event() {
         .get_entity()
         .set_pos(center(pos) + Vector3::new(200.0, 0.0, 0.0));
 
+    idle(&denied).store(700, Ordering::Relaxed);
+
     check_despawn(&denied);
     check_despawn(&vanilla);
 
     assert!(is_live(&denied));
     assert!(!is_live(&vanilla));
+    // `EventHooks.checkMobDespawn`: `DENY -> mob.setNoActionTime(0)`.
+    assert_eq!(idle(&denied).load(Ordering::Relaxed), 0);
 }
 
 /// `MobSpawnEvent.PositionCheck` fires for the summon of a warden with its spawn type, and
