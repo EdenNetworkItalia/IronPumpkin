@@ -3,7 +3,8 @@
 //! Native mods register their blocks, items, entity types and tags before the first world loads.
 //! [`run`] then reads the world's content manifest, registers a placeholder for each listed name
 //! that no mod registered, freezes the registry and writes the manifest back. The manifest holds
-//! names only: ids are allocated again at every start.
+//! names only: ids are allocated again at every start. A second server in the same process finds
+//! the registry frozen: it reuses the frozen tables and fails on a manifest entry they lack.
 //!
 //! The manifest also keeps the explicit tags of each entry and the mod tags with their declared
 //! values, so a placeholder keeps its tags when the mod that defined them is missing.
@@ -55,6 +56,15 @@ pub enum ContentError {
         kind: ContentKind,
         name: String,
         source: RegistryError,
+    },
+    #[error(
+        "cannot start this world: {} lists the {kind} \"{name}\", which the content registry of this process lacks. An earlier server in this process froze the registry, so it cannot add a placeholder. Start the world in a process that registers the content, or fix the entry while the server is stopped",
+        path.display()
+    )]
+    Missing {
+        path: PathBuf,
+        kind: ContentKind,
+        name: String,
     },
     #[error("cannot freeze the content registry: {0}")]
     Freeze(RegistryError),
@@ -114,25 +124,27 @@ struct DisplayEntry {
 }
 
 /// Runs the content phase for the world in `world_path` and returns the names that got a
-/// placeholder. Runs once, before the first world loads.
+/// placeholder.
+///
+/// The first call in a process registers the placeholders and freezes the registry. A later call,
+/// for a second server in the same process, reuses the frozen tables and registers nothing.
 ///
 /// With no custom content and no mod tag it writes nothing, so a vanilla server leaves the world
-/// unchanged. An
-/// entry that cannot be restored stops the run before the freeze and leaves the manifest as it
-/// is, because rewriting it would lose that content.
+/// unchanged. An entry that cannot be restored stops the run before the freeze and leaves the
+/// manifest as it is, because rewriting it would lose that content. The same holds for an entry
+/// that a frozen registry lacks ([`ContentError::Missing`]).
 pub fn run(world_path: &Path) -> Result<Vec<(ContentKind, String)>, ContentError> {
     let path = manifest_path(world_path);
     let manifest = read_manifest(&path)?;
-    let placeholders = register_placeholders(&path, &manifest)?;
-    let tables = dynamic::freeze().map_err(ContentError::Freeze)?;
-    for block in tables.blocks() {
-        if let Some(block_type) = dynamic_types::block_type_without_block_entity(block) {
-            warn!(
-                "[ironpumpkin] the block \"{}\" has the block type \"minecraft:{}\" but not its block entity, so the behaviour of the type finds none: add the block with BlockEntityTypeAddBlocksEvent",
-                block.name, block_type.name
-            );
-        }
-    }
+    let (tables, placeholders) = if let Some(tables) = dynamic::tables() {
+        check_frozen_covers(&path, &manifest, tables)?;
+        (tables, Vec::new())
+    } else {
+        let placeholders = register_placeholders(&path, &manifest)?;
+        let tables = dynamic::freeze().map_err(ContentError::Freeze)?;
+        warn_block_types_without_block_entity(tables);
+        (tables, placeholders)
+    };
     let current = manifest_of(tables);
     if !current.is_empty() {
         warn_changed(ContentKind::Block, &manifest.blocks, &current.blocks);
@@ -145,6 +157,62 @@ pub fn run(world_path: &Path) -> Result<Vec<(ContentKind, String)>, ContentError
         write_manifest(&path, &current)?;
     }
     Ok(placeholders)
+}
+
+fn warn_block_types_without_block_entity(tables: &'static ContentTables) {
+    for block in tables.blocks() {
+        if let Some(block_type) = dynamic_types::block_type_without_block_entity(block) {
+            warn!(
+                "[ironpumpkin] the block \"{}\" has the block type \"minecraft:{}\" but not its block entity, so the behaviour of the type finds none: add the block with BlockEntityTypeAddBlocksEvent",
+                block.name, block_type.name
+            );
+        }
+    }
+}
+
+/// Checks that the frozen tables hold every entry and mod tag of the manifest. The registry takes
+/// no placeholder after the freeze, so an entry it lacks stops the run.
+fn check_frozen_covers(
+    path: &Path,
+    manifest: &Manifest,
+    tables: &'static ContentTables,
+) -> Result<(), ContentError> {
+    let missing = |kind: ContentKind, name: String| ContentError::Missing {
+        path: path.to_path_buf(),
+        kind,
+        name,
+    };
+    if let Some(name) = manifest
+        .blocks
+        .keys()
+        .find(|name| Block::from_name(name).is_none_or(|block| block.id.as_u16() < BlockId::COUNT))
+    {
+        return Err(missing(ContentKind::Block, name.clone()));
+    }
+    if let Some(name) = manifest
+        .items
+        .keys()
+        .find(|name| Item::from_registry_key(name).is_none_or(|item| item.id < Item::COUNT))
+    {
+        return Err(missing(ContentKind::Item, name.clone()));
+    }
+    if let Some(name) = manifest.entity_types.keys().find(|name| {
+        EntityType::from_name(name).is_none_or(|entity_type| entity_type.id < EntityType::COUNT)
+    }) {
+        return Err(missing(ContentKind::EntityType, name.clone()));
+    }
+    let tags = [
+        (ContentKind::Block, &manifest.block_tags),
+        (ContentKind::Item, &manifest.item_tags),
+        (ContentKind::EntityType, &manifest.entity_type_tags),
+    ];
+    for (kind, saved) in tags {
+        let registered = tables.mod_tags(kind);
+        if let Some(name) = saved.keys().find(|name| !registered.contains_key(*name)) {
+            return Err(missing(kind, format!("#{name}")));
+        }
+    }
+    Ok(())
 }
 
 /// Warns once per name that a mod registers differently from the manifest.

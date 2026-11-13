@@ -104,6 +104,7 @@ fn content_phase_writes_the_manifest_and_restores_placeholders() {
             "vanilla" => start_vanilla(Path::new(&world)),
             "changed" => start_with_changed_mod(Path::new(&world)),
             "invalid" => start_with_invalid_manifests(Path::new(&world)),
+            "second_server" => start_second_server(Path::new(&world)),
             _ => panic!("unknown phase {phase}"),
         }
         return;
@@ -147,6 +148,9 @@ fn content_phase_writes_the_manifest_and_restores_placeholders() {
 
     let invalid = tempfile::tempdir().unwrap();
     start("invalid", invalid.path());
+
+    let second = tempfile::tempdir().unwrap();
+    start("second_server", second.path());
 }
 
 fn start_with_mod(world: &Path) {
@@ -369,4 +373,109 @@ fn start_with_invalid_manifests(root: &Path) {
 fn start_vanilla(world: &Path) {
     assert_eq!(content::run(world).unwrap(), []);
     assert!(!manifest_path(world).exists());
+}
+
+fn write_manifest_json(world: &Path, manifest: &Value) -> String {
+    let path = manifest_path(world);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let text = manifest.to_string();
+    std::fs::write(&path, &text).unwrap();
+    text
+}
+
+/// A second server in the same process reuses the frozen tables: it registers no placeholder,
+/// writes the manifest of the tables, and fails on an entry that the tables lack.
+fn start_second_server(root: &Path) {
+    dynamic::register_block(BlockDefinition {
+        name: "test:lamp".to_string(),
+        display: Block::REDSTONE_LAMP.default_state.id,
+        properties: vec![BlockPropertyDefinition::bool("lit", false)],
+        tags: Vec::new(),
+    })
+    .unwrap();
+
+    // The first world lists content that no mod registers, so the first run adds placeholders.
+    let ghosts = json!({
+        "format": 1,
+        "blocks": { "test:ghost": { "display": "minecraft:stone" } },
+        "items": { "test:ghost": { "display": "minecraft:stick" } },
+        "entity_types": { "test:ghost": { "display": "minecraft:zombie" } },
+        "block_tags": { "test:ghost_tag": ["minecraft:stone"] }
+    });
+    let first = root.join("first");
+    write_manifest_json(&first, &ghosts);
+    assert_eq!(content::run(&first).unwrap().len(), 3);
+    let written = std::fs::read_to_string(manifest_path(&first)).unwrap();
+
+    // A world that lists the same content finds every entry in the frozen tables.
+    let same = root.join("same");
+    write_manifest_json(&same, &ghosts);
+    assert_eq!(content::run(&same).unwrap(), []);
+    assert_eq!(
+        std::fs::read_to_string(manifest_path(&same)).unwrap(),
+        written
+    );
+    assert!(dynamic::is_placeholder(ContentKind::Block, "test:ghost"));
+
+    // A new world gets the manifest of the frozen tables, as the first run writes it.
+    let fresh = root.join("fresh");
+    assert_eq!(content::run(&fresh).unwrap(), []);
+    let fresh_manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(manifest_path(&fresh)).unwrap()).unwrap();
+    assert!(fresh_manifest["blocks"]["test:lamp"].is_object());
+    assert!(fresh_manifest["blocks"]["test:ghost"].is_object());
+    assert!(fresh_manifest["block_tags"]["test:ghost_tag"].is_array());
+
+    // An entry that the frozen tables lack stops the run and leaves the manifest as it is.
+    let lacking = [
+        (
+            ContentKind::Block,
+            "test:other",
+            json!({ "blocks": { "test:other": { "display": "minecraft:stone" } } }),
+        ),
+        (
+            ContentKind::Item,
+            "test:other",
+            json!({ "items": { "test:other": { "display": "minecraft:stick" } } }),
+        ),
+        (
+            ContentKind::EntityType,
+            "test:other",
+            json!({ "entity_types": { "test:other": { "display": "minecraft:zombie" } } }),
+        ),
+        (
+            ContentKind::Block,
+            "#test:other",
+            json!({ "block_tags": { "test:other": [] } }),
+        ),
+        (
+            ContentKind::Item,
+            "#test:other",
+            json!({ "item_tags": { "test:other": [] } }),
+        ),
+        (
+            ContentKind::EntityType,
+            "#test:other",
+            json!({ "entity_type_tags": { "test:other": [] } }),
+        ),
+    ];
+    for (index, (kind, name, mut manifest)) in lacking.into_iter().enumerate() {
+        manifest["format"] = json!(1);
+        let world = root.join(format!("lacking_{index}"));
+        let text = write_manifest_json(&world, &manifest);
+        match content::run(&world).unwrap_err() {
+            ContentError::Missing {
+                kind: missing_kind,
+                name: missing_name,
+                ..
+            } => assert_eq!((missing_kind, missing_name.as_str()), (kind, name)),
+            error => panic!("unexpected error: {error}"),
+        }
+        assert_eq!(
+            std::fs::read_to_string(manifest_path(&world)).unwrap(),
+            text
+        );
+    }
+    assert!(!dynamic::is_registered(ContentKind::Block, "test:other"));
+    assert!(Block::from_name("test:other").is_none());
 }
