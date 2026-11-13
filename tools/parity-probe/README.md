@@ -18,7 +18,7 @@ driver is the headless client `tools/pumpkin-neoforge-client` in `record` mode, 
 | `diff.py` | Compares two traces. Python 3 standard library only. |
 | `probe-channel.toml` | The channel of the Java probe, for the channel map of the client. |
 | `captures/neoforge-26.3.0.64-beta/probe-trace.jsonl` | The Java trace, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace.jsonl` | The Rust trace, recorded on 2026-10-16. |
+| `captures/ironpumpkin/probe-trace.jsonl` | The Rust trace, recorded on 2026-11-13 on the merge of upstream `e9dc12e9a`. |
 | `captures/ironpumpkin/diff.txt` | The output of `diff.py` for the two traces. |
 
 ## Trace format
@@ -45,7 +45,7 @@ The tick events are counted and only the first `ServerTickEvent.Pre` and the fir
 | Event | Bus | Fields | IronPumpkin today |
 |:--|:--|:--|:--|
 | `FMLConstructModEvent` | mod | none | `NativeMod::init` |
-| `RegisterEvent` | mod | `registry`: only `minecraft:block`, `minecraft:item`, `minecraft:entity_type` | `RegisterEvent` (`registries::RegisterEvent`) |
+| `RegisterEvent` | mod | `registry`: the Java probe traces only `minecraft:block`, `minecraft:item`, `minecraft:entity_type`; the Rust probe traces every registry that fires | `RegisterEvent` (`registries::RegisterEvent`) |
 | `FMLCommonSetupEvent` | mod | none | `NativeMod::common_setup` |
 | `FMLLoadCompleteEvent` | mod | none | `NativeMod::load_complete` |
 | `RegisterPayloadHandlersEvent` | mod | none; the probe registers `parityprobe:ping` here | `network::RegisterPayloadHandlersEvent` |
@@ -69,8 +69,8 @@ listens to it, and the captures and `diff.txt` are recorded again.
 
 ## Result of slice 1
 
-`captures/ironpumpkin/diff.txt` reports no differences. IronPumpkin fires the 16 events of the Java
-trace in the order of NeoForge and with the same fields:
+`captures/ironpumpkin/diff.txt` reports 4 differences, all `extra` `RegisterEvent` lines. IronPumpkin
+fires the 16 events of the Java trace in the order of NeoForge and with the same fields:
 
 - `FMLConstructModEvent` and the three `RegisterEvent` lines (`minecraft:block`,
   `minecraft:entity_type`, `minecraft:item`).
@@ -79,6 +79,13 @@ trace in the order of NeoForge and with the same fields:
   `ServerStartedEvent`.
 - `ServerTickEvent.Pre`, `ServerTickEvent.Post` and `RegisterConfigurationTasksEvent`.
 - `ServerStoppingEvent` and `ServerStoppedEvent`.
+
+| Difference | NeoForge | IronPumpkin | Verdict | Cause |
+|:--|:--|:--|:--|:--|
+| `RegisterEvent` for `minecraft:attribute`, `minecraft:data_component_type`, `minecraft:sound_event` and `minecraft:mob_effect` (4 `extra` lines) | not in the trace | fired before `minecraft:block`, in this order | probe filter | `ParityProbe.onRegister` of the Java probe records only `minecraft:block`, `minecraft:item` and `minecraft:entity_type`. NeoForge fires `RegisterEvent` for every registry, so the capture lacks these lines because of the filter, not because NeoForge skips them. IronPumpkin backs these four registries, and the Rust probe records every `RegisterEvent`. The order follows `GameData.getRegistrationOrder` (`REGISTRIES` in `ironpumpkin-mods/src/lifecycle.rs`). |
+
+The capture does not compare the order of the four extra registries with NeoForge. To compare it,
+widen the filter of the Java probe and record the NeoForge trace again.
 
 On both servers, `RegisterPayloadHandlersEvent` fires at startup after `FMLLoadCompleteEvent` and
 before `ModConfigEvent.Loading` of the `SYNCED` config, and `RegisterConfigurationTasksEvent` fires
@@ -331,7 +338,7 @@ from an empty server directory, are byte-identical.
 | `PlayerInteractEvent.LeftClickBlock` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | same | It fires for each dig action, as NeoForge, not on the arm swing, and a cancel stops the action and re-syncs the block: tests `left_click_block_fires_at_the_dig_start` and `finished_digging_breaks_only_the_started_dig`. |
 | `BreakBlockEvent` | step 2: `1 -1 0` | step 2: `1 -1 0` | same | The dig also breaks the plant on the block (`1 0 0`), and Pumpkin fires `BlockBreakEvent` without a player for it, where NeoForge posts nothing (design.md row). |
 | `PlayerSwitchHotbarSlotEvent.Pre` | none: the slot does not change | none | same | Both fire it only when the slot changes: test `switch_hotbar_slot_event_pre_fires_only_on_a_change`. |
-| `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | none in the window | same | Pumpkin does not cache the name and fires on every read (design.md row); no step of the script reads it. |
+| `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | none in the window | same | Pumpkin does not cache the name and fires on every read (design.md row). The only read in the script is the chat line of an announced advancement. The only read the script can reach is the chat line of an announced advancement. The `hold` step puts `minecraft:stone` in the inventory. That must not grant `minecraft:story/mine_stone`: its criterion tests the tag `#minecraft:stone_tool_materials` (cobblestone, blackstone, cobbled deepslate), as in vanilla. A grant here fires one extra `NameFormat` at step 3. |
 | `PlayerInteractEvent.RightClickBlock` | step 4: `up`, `main_hand`, `minecraft:stone`, `1 -2 0` | step 4: `up`, `main_hand`, `minecraft:stone`, `1 -2 0` | same | Test `right_click_block_and_use_item_on_block_fire_each_phase`; the `use_block` and `use_item` denials and the cancellation result: tests `use_block_and_use_item_denials_follow_common_hooks` and `a_success_cancellation_result_swings_the_arm_without_the_action`. |
 | `UseItemOnBlockEvent` | step 4: three events, phases `item_before_block`, `block`, `item_after_block` | step 4: the same three events | same | One event per phase that runs, as NeoForge: test `right_click_block_and_use_item_on_block_fire_each_phase`. |
 | `BlockEvent.EntityPlaceEvent` | step 4: `minecraft:stone`, `1 -1 0` | step 4: `minecraft:stone`, `1 -1 0` | same | Pumpkin fires it before the block changes; NeoForge fires it after and restores the block on a cancel. |

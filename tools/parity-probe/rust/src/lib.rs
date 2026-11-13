@@ -199,8 +199,9 @@ fn register_config(cx: &mut ModInit) -> Result<(), ConfigError> {
 
 register_mod!(ParityProbe);
 
-/// `RegisterEvent` with the key of the registry. `IronPumpkin` fires it for the three registries
-/// that the Java probe traces, `minecraft:block`, `minecraft:entity_type` and `minecraft:item`.
+/// `RegisterEvent` with the key of the registry. The probe traces every registry that fires. The
+/// Java probe filters to `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, so
+/// `diff.py` reports the other registries as `extra`.
 struct Register;
 
 impl EventHandler<RegisterEvent> for Register {

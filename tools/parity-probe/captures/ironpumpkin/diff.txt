@@ -1,1 +1,5 @@
-no differences
+extra    candidate #1 RegisterEvent {"registry":"minecraft:attribute"}
+extra    candidate #2 RegisterEvent {"registry":"minecraft:data_component_type"}
+extra    candidate #3 RegisterEvent {"registry":"minecraft:sound_event"}
+extra    candidate #4 RegisterEvent {"registry":"minecraft:mob_effect"}
+4 differences (extra 4)
