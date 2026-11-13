@@ -86,6 +86,7 @@ impl std::error::Error for NetworkError {}
 pub type PayloadHandler = Arc<dyn Fn(&[u8], &mut PayloadContext<'_>) + Send + Sync>;
 
 /// One channel that a mod registered.
+#[derive(Clone)]
 pub(crate) struct PayloadRegistration {
     pub(crate) id: Identifier,
     pub(crate) protocols: &'static [ConnectionProtocol],

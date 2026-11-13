@@ -107,15 +107,21 @@ impl fmt::Debug for ModTasks {
     }
 }
 
-/// The payload registration step, once at startup.
+/// The channels that the payload registration step registered, for a later server of the same
+/// process.
+#[derive(Clone, Default)]
+pub struct ModChannels(Arc<[PayloadRegistration]>);
+
+/// The payload registration step, once per process.
 ///
 /// It fires [`RegisterPayloadHandlersEvent`] when a handler listens, then offers the registered
-/// channels in the negotiation and keeps their handlers. It runs before the synced configs load,
-/// as `NetworkRegistry.setup` does on `NeoForge`. A second call does nothing.
-pub async fn register_payload_handlers(server: &Arc<Server>) {
-    if server.network_registry.mod_payloads.0.get().is_some() {
-        error!("[ironpumpkin] the payload handlers are registered once");
-        return;
+/// channels in the negotiation of `server` and keeps their handlers. It runs before the synced
+/// configs load, as `NetworkRegistry.setup` does on `NeoForge`. It returns the channels, which a
+/// later server of the process gets through [`add_payload_handlers`]. A second call on one
+/// server does nothing.
+pub async fn register_payload_handlers(server: &Arc<Server>) -> ModChannels {
+    if has_payload_handlers(server) {
+        return ModChannels::default();
     }
     let registrations = if server
         .plugin_manager
@@ -133,7 +139,36 @@ pub async fn register_payload_handlers(server: &Arc<Server>) {
     } else {
         Vec::new()
     };
+    ModChannels(set_payload_handlers(server, registrations).await.into())
+}
+
+/// Gives `server` the channels and handlers of an earlier payload registration step.
+///
+/// It does not fire [`RegisterPayloadHandlersEvent`]: `NeoForge` keeps one network registry for
+/// every server of the process. A second call on one server does nothing.
+pub async fn add_payload_handlers(server: &Arc<Server>, channels: &ModChannels) {
+    set_payload_handlers(server, channels.0.to_vec()).await;
+}
+
+/// Whether `server` already has its payload handlers. Logs an error if it has.
+fn has_payload_handlers(server: &Server) -> bool {
+    let set = server.network_registry.mod_payloads.0.get().is_some();
+    if set {
+        error!("[ironpumpkin] the payload handlers are registered once");
+    }
+    set
+}
+
+/// Registers `registrations` on `server` and returns the ones it accepted.
+async fn set_payload_handlers(
+    server: &Arc<Server>,
+    registrations: Vec<PayloadRegistration>,
+) -> Vec<PayloadRegistration> {
+    if has_payload_handlers(server) {
+        return Vec::new();
+    }
     let mut by_protocol = ByProtocol::default();
+    let mut accepted = Vec::with_capacity(registrations.len());
     for registration in registrations {
         if let Err(err) = server
             .network_registry
@@ -150,6 +185,7 @@ pub async fn register_payload_handlers(server: &Arc<Server>) {
             continue;
         }
         add(&mut by_protocol, &registration);
+        accepted.push(registration);
     }
     if server
         .network_registry
@@ -159,7 +195,9 @@ pub async fn register_payload_handlers(server: &Arc<Server>) {
         .is_err()
     {
         error!("[ironpumpkin] the payload handlers are registered once");
+        accepted.clear();
     }
+    accepted
 }
 
 fn add(by_protocol: &mut ByProtocol, registration: &PayloadRegistration) {
