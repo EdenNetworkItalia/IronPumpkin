@@ -65,6 +65,10 @@ pub fn add_block(
 #[must_use]
 pub fn poi_type_for_state(state_id: BlockStateId) -> Option<PoiType> {
     PoiType::from_state_id(state_id.as_u16()).or_else(|| {
+        // Every block change and chunk scan comes here: skip the block lookup without a mod.
+        if !ANY.load(Ordering::Relaxed) {
+            return None;
+        }
         let profession = profession_for_block(Block::from_state_id(state_id))?;
         PoiType::from_name(profession.to_name())
     })
