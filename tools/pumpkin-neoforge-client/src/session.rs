@@ -49,7 +49,7 @@ use pumpkin_protocol::{
     ser::{NetworkReadExt, NetworkReadSliceExt, NetworkWriteExt},
 };
 use pumpkin_util::{identifier::Identifier, uuid::offline_player_uuid};
-use rsa::{Pkcs1v15Encrypt, RsaPublicKey, pkcs8::DecodePublicKey};
+use rsa::{Pkcs1v15Encrypt, PublicKey, pkcs8::DecodePublicKey};
 use tokio::{
     io::{BufReader, BufWriter},
     net::{
@@ -474,7 +474,7 @@ impl<'a> Session<'a> {
         if request.should_authenticate {
             return Err("the server is in online mode: only offline login is supported".into());
         }
-        let public_key = RsaPublicKey::from_public_key_der(request.public_key)
+        let public_key = PublicKey::from_public_key_der(request.public_key)
             .map_err(|e| format!("bad server public key: {e}"))?;
         let secret: [u8; 16] = rand::random();
         let mut rng = rand::rng();

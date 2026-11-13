@@ -409,13 +409,8 @@ impl HostEntity for PluginHostState {
         entity: Resource<Entity>,
     ) -> wasmtime::Result<Option<Resource<Entity>>> {
         let entity = self.get(&entity)?.clone();
-        let vehicle = entity
-            .get_entity()
-            .vehicle
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(v) = vehicle.as_ref() {
-            Ok(Some(self.add(Arc::clone(v)).map_err(|_| {
+        if let Some(v) = entity.get_entity().get_vehicle() {
+            Ok(Some(self.add(v).map_err(|_| {
                 wasmtime::Error::msg("failed to add entity resource")
             })?))
         } else {
@@ -472,7 +467,7 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&entity)?;
         Ok(entity
             .get_entity()
-            .age
+            .tick_count
             .load(std::sync::atomic::Ordering::Relaxed))
     }
 
@@ -480,7 +475,7 @@ impl HostEntity for PluginHostState {
         let entity = self.get(&entity)?;
         entity
             .get_entity()
-            .age
+            .tick_count
             .store(ticks, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     }
@@ -802,13 +797,7 @@ impl crate::pumpkin::plugin::world::HostEntityWithStore<PluginHostState>
         plugin
             .store
             .pump_blocking(&mut host, move || {
-                let current_vehicle = entity
-                    .get_entity()
-                    .vehicle
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .clone();
-                if let Some(current_vehicle) = current_vehicle {
+                if let Some(current_vehicle) = entity.get_entity().get_vehicle() {
                     current_vehicle
                         .get_entity()
                         .remove_passenger(entity.get_entity().entity_id);

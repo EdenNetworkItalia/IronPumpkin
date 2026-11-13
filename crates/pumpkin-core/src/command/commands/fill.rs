@@ -7,7 +7,6 @@ use pumpkin_util::math::vector3::Vector3;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 use pumpkin_util::text::TextComponent;
 use pumpkin_world::world::BlockFlags;
-use rustc_hash::FxHashSet;
 
 use crate::command::argument_builder::{
     ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
@@ -15,7 +14,6 @@ use crate::command::argument_builder::{
 use crate::command::argument_types::block::BlockArgumentType;
 use crate::command::argument_types::block_predicate::{BlockPredicate, BlockPredicateArgumentType};
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
-use crate::command::commands::test_block_predicate;
 use crate::command::context::command_context::CommandContext;
 use crate::command::context::command_source::CommandSource;
 use crate::command::errors::command_syntax_error::CommandSyntaxError;
@@ -87,24 +85,6 @@ fn fill_blocks(
         ));
     }
 
-    // `World::get_block_entity` can read the chunk map again, so a filter with NBT is tested
-    // before the chunk closure below.
-    let nbt_filter_matches: Option<FxHashSet<BlockPos>> =
-        filter.filter(|f| f.requires_nbt()).map(|f| {
-            let mut matches = FxHashSet::default();
-            for x in min_x..=max_x {
-                for y in min_y..=max_y {
-                    for z in min_z..=max_z {
-                        let pos = BlockPos(Vector3::new(x, y, z));
-                        if test_block_predicate(&world, f, &pos) {
-                            matches.insert(pos);
-                        }
-                    }
-                }
-            }
-            matches
-        });
-
     let mut changed_positions = Vec::new();
 
     let min_chunk_x = min_x >> 4;
@@ -162,10 +142,9 @@ fn fill_blocks(
                                     }
                                     _ => {
                                         if let Some(f) = filter
-                                            && !nbt_filter_matches.as_ref().map_or_else(
-                                                || f.test_state(current_state_id),
-                                                |matches| matches.contains(&pos),
-                                            )
+                                            && !f.test(current_state_id, || {
+                                                world.get_block_entity_nbt_in_chunk(chunk, &pos)
+                                            })
                                         {
                                             continue;
                                         }

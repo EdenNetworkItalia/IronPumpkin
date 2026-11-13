@@ -428,7 +428,7 @@ fn enderman_over_floor(center: BlockPos) -> (PlaceBlockGoal, Arc<EndermanEntity>
         &EntityType::ENDERMAN,
     ));
     enderman.set_carried_block(Some(Block::DIRT.default_state.id));
-    (PlaceBlockGoal::new(enderman.clone()), enderman)
+    (PlaceBlockGoal::new(Arc::downgrade(&enderman)), enderman)
 }
 
 /// The goal picks a random target: tick it until the enderman placed or tried to place.
@@ -556,7 +556,7 @@ fn item_at(pos: BlockPos) -> Arc<ItemEntity> {
 
 fn age(item: &ItemEntity) -> i32 {
     item.get_entity()
-        .age
+        .tick_count
         .load(std::sync::atomic::Ordering::Relaxed)
 }
 
@@ -578,7 +578,7 @@ fn one_event_per_fire_site_entity_tick_events() {
                     event
                         .entity
                         .get_entity()
-                        .age
+                        .tick_count
                         .load(std::sync::atomic::Ordering::Relaxed)
                 ),
             );
@@ -593,7 +593,7 @@ fn one_event_per_fire_site_entity_tick_events() {
                     event
                         .entity
                         .get_entity()
-                        .age
+                        .tick_count
                         .load(std::sync::atomic::Ordering::Relaxed)
                 ),
             );

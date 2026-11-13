@@ -37,7 +37,7 @@ use pumpkin_core::plugin::level::{
     ProjectileImpactEvent, SpawnClusterSizeEvent,
 };
 use pumpkin_wasm_host_common::{
-    concurrent_store::{LegacySyncReentry, TokioSpawner, start_legacy_store},
+    concurrent_store::{LegacySyncReentry, StoreMode, TokioSpawner, start_legacy_store},
     plugin::{PluginApiVersion, WasmPlugin},
     scheduler::TaskScheduler,
     state::PluginHostState,
@@ -64,6 +64,7 @@ fn handler() -> Arc<WasmPluginEventHandler> {
             Store::new(&engine, PluginHostState::new()),
             LegacySyncReentry::new(),
             Arc::new(TokioSpawner::new(tokio::runtime::Handle::current())),
+            StoreMode::Concurrent,
         )
         .await
         .expect("plugin store")
@@ -73,6 +74,7 @@ fn handler() -> Arc<WasmPluginEventHandler> {
         plugin: Arc::new(WasmPlugin {
             plugin_instance: Arc::new(()),
             api_version: PluginApiVersion::V0_2,
+            binding_language: None,
             store,
             task_scheduler: Arc::new(TaskScheduler::new()),
         }),

@@ -195,31 +195,8 @@ impl MobDespawnEvent {
     }
 }
 
-/// Why a mob spawns, as vanilla `EntitySpawnReason`. Pumpkin fires the spawn checks with
-/// `Natural`, `ChunkGeneration`, `Spawner` and `Triggered` (a warden that a sculk shrieker
-/// summons).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntitySpawnReason {
-    Natural,
-    ChunkGeneration,
-    Spawner,
-    Structure,
-    Breeding,
-    MobSummoned,
-    Jockey,
-    Event,
-    Conversion,
-    Reinforcement,
-    Triggered,
-    Bucket,
-    SpawnItemUse,
-    Command,
-    Dispenser,
-    Patrol,
-    TrialSpawner,
-    Load,
-    DimensionTravel,
-}
+/// Why a mob spawns, as vanilla `EntitySpawnReason`: the type that `finalize_spawn` takes.
+pub use crate::entity::mob::spawn::EntitySpawnReason;
 
 /// The result of a spawn check, as `MobSpawnEvent.PositionCheck.Result` and
 /// `MobSpawnEvent.SpawnPlacementCheck.Result`.

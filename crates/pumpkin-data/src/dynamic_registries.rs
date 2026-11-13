@@ -117,6 +117,16 @@ impl AttributeRange {
             }
         }
     }
+
+    /// The lowest and the highest value that [`Self::sanitize`] returns.
+    #[must_use]
+    pub const fn bounds(self) -> (f64, f64) {
+        match self {
+            Self::Unbounded => (f64::MIN, f64::MAX),
+            Self::Ranged { min, max } => (min, max),
+            Self::Boolean => (0.0, 1.0),
+        }
+    }
 }
 
 /// An attribute of a mod.
@@ -159,12 +169,18 @@ impl Attributes {
     pub const NEOFORGE_SWIM_SPEED: Self = Self {
         id: Self::COUNT,
         default_value: 1.0,
+        min_value: 0.0,
+        max_value: 1024.0,
+        client_syncable: true,
         name: "neoforge:swim_speed",
     };
     /// `NeoForgeMod.CREATIVE_FLIGHT`: a player with a value above 0 may fly.
     pub const NEOFORGE_CREATIVE_FLIGHT: Self = Self {
         id: Self::COUNT + 1,
         default_value: 0.0,
+        min_value: 0.0,
+        max_value: 1.0,
+        client_syncable: true,
         name: "neoforge:creative_flight",
     };
     /// `NeoForgeMod.GLIDING_FLIGHT`: a living entity with a value above 0 may glide. An equipped
@@ -172,6 +188,9 @@ impl Attributes {
     pub const NEOFORGE_GLIDING_FLIGHT: Self = Self {
         id: Self::COUNT + 2,
         default_value: 0.0,
+        min_value: 0.0,
+        max_value: 1.0,
+        client_syncable: true,
         name: "neoforge:gliding_flight",
     };
 }
@@ -255,6 +274,9 @@ impl Pending {
                 attribute: Box::leak(Box::new(Attributes {
                     id: first_mod_attribute_id() + index as u8,
                     default_value: definition.default_value,
+                    min_value: definition.range.bounds().0,
+                    max_value: definition.range.bounds().1,
+                    client_syncable: definition.syncable,
                     name: leak(definition.name),
                 })),
                 range: definition.range,
@@ -667,6 +689,12 @@ fn mob_effect_from(
         color: definition.color,
         translation_key: leak(translation_key),
         attribute_modifiers: Box::leak(modifiers.into_boxed_slice()),
+        // The defaults of the `MobEffect` constructor.
+        instantaneous: false,
+        apply_sound: None,
+        fade_in_ticks: 0,
+        fade_out_ticks: 0,
+        fade_out_threshold_ticks: 0,
     }
 }
 
@@ -760,13 +788,16 @@ pub const fn is_custom_attribute(attribute: &Attributes) -> bool {
     attribute.id >= Attributes::COUNT
 }
 
-/// The range of an attribute. Generated attributes are [`AttributeRange::Unbounded`]: the
-/// extracted data has no ranges.
+/// The range of an attribute. A generated attribute is [`AttributeRange::Ranged`] by its
+/// extracted bounds.
 #[cfg(feature = "attributes")]
 #[must_use]
 pub fn attribute_range(attribute: &Attributes) -> AttributeRange {
     let Some(index) = attribute.id.checked_sub(Attributes::COUNT) else {
-        return AttributeRange::Unbounded;
+        return AttributeRange::Ranged {
+            min: attribute.min_value,
+            max: attribute.max_value,
+        };
     };
     let index = usize::from(index);
     if let Some(&(_, range)) = NEOFORGE_ATTRIBUTES.get(index) {
@@ -778,13 +809,12 @@ pub fn attribute_range(attribute: &Attributes) -> AttributeRange {
         .map_or(AttributeRange::Unbounded, |entry| entry.range)
 }
 
-/// Whether clients get the value of the attribute. Generated attributes answer `true`: the server
-/// sends the ones it changes.
+/// Whether clients get the value of the attribute (`Attribute.isClientSyncable`).
 #[cfg(feature = "attributes")]
 #[must_use]
 pub fn is_attribute_syncable(attribute: &Attributes) -> bool {
     let Some(index) = attribute.id.checked_sub(Attributes::COUNT) else {
-        return true;
+        return attribute.client_syncable;
     };
     let index = usize::from(index);
     if index < NEOFORGE_ATTRIBUTES.len() {

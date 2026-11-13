@@ -105,6 +105,8 @@ fn set_waterlogged_keeps_the_custom_properties() {
     let id = old_blue();
     let wet = SPROUT.set_waterlogged(id, true).unwrap();
     assert_eq!(value(wet, "waterlogged"), "true");
+    assert!(wet.is_waterlogged());
+    assert!(!id.is_waterlogged());
     assert_eq!(value(wet, "age"), "30");
     assert_eq!(value(wet, "color"), "blue");
     assert_eq!(value(wet, "facing"), "north");

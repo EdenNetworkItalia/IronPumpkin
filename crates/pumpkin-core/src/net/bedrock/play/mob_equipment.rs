@@ -2,14 +2,14 @@
 use super::*;
 
 impl BedrockClient {
-    pub fn handle_mob_equipment(
+    pub fn select_hotbar_slot(
         &self,
         server: &Arc<Server>,
         player: &Arc<Player>,
-        packet: &SMobEquipment,
+        slot: u8,
+        container_id: u8,
     ) {
         player.update_last_action_time();
-        let slot = packet.selected_slot;
         if slot >= 9 {
             return;
         }
@@ -20,8 +20,8 @@ impl BedrockClient {
             server.plugin_manager.fire_blocking(server, &mut event);
             if event.cancelled {
                 self.try_enqueue_client_packet(&CPlayerHotbar {
-                    selected_slot: VarUInt(previous_slot as u32),
-                    container_id: 0,
+                    selected_slot: VarUInt(u32::from(previous_slot)),
+                    container_id,
                     should_select_slot: true,
                 });
                 return;
@@ -34,5 +34,15 @@ impl BedrockClient {
         let equipment = &[(EquipmentSlot::MAIN_HAND, stack)];
         player.living_entity.send_equipment_changes(equipment);
         crate::plugin::player_events::hotbar_post(player, previous_slot, slot);
+        player.update_bedrock_shield_sneaking();
+    }
+
+    pub fn handle_mob_equipment(
+        &self,
+        server: &Arc<Server>,
+        player: &Arc<Player>,
+        packet: &SMobEquipment,
+    ) {
+        self.select_hotbar_slot(server, player, packet.selected_slot, packet.container_id);
     }
 }

@@ -188,11 +188,7 @@ impl Goal for RangedCrossbowAttackGoal {
         }
         mob.get_mob_entity().living_entity.clear_active_hand();
         self.state = CrossbowState::Uncharged;
-        mob.get_mob_entity()
-            .navigator
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .stop();
+        mob.get_mob_entity().steered().navigator().stop();
     }
 
     #[expect(clippy::too_many_lines)]
@@ -225,9 +221,8 @@ impl Goal for RangedCrossbowAttackGoal {
                     self.speed * 0.5
                 };
                 mob.get_mob_entity()
-                    .navigator
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .steered()
+                    .navigator()
                     .set_progress(NavigatorGoal {
                         current_progress: mob_pos,
                         destination: target_pos,
@@ -237,11 +232,7 @@ impl Goal for RangedCrossbowAttackGoal {
             }
         } else {
             self.update_path_delay = 0;
-            mob.get_mob_entity()
-                .navigator
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .stop();
+            mob.get_mob_entity().steered().navigator().stop();
         }
 
         mob.get_mob_entity()

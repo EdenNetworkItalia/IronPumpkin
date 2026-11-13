@@ -25,6 +25,7 @@ use pumpkin_core::plugin::server::{
     server_tick_end::ServerTickEndEvent,
     server_tick_start::ServerTickStartEvent,
 };
+use pumpkin_protocol::ConnectionState;
 use pumpkin_protocol::java::neoforge::{
     ConnectionProtocol, ModdedNetworkQueryComponent, PacketFlow,
 };
@@ -42,6 +43,7 @@ impl ToFromWasmEvent for PacketReceivedEvent {
             // Typed view is 26.3
             // for older clients only valid after the multiversion plugin ran.
             ClientPlatform::Java(_) => generated_packets::deserialize_java_serverbound_packet(
+                ConnectionState::Play,
                 self.packet_id,
                 &self.payload,
                 pumpkin_data::packet::CURRENT_MC_VERSION,
@@ -438,6 +440,7 @@ impl ToFromWasmEvent for ConfigCustomPayloadEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_protocol::packet::MultiVersionJavaPacket;
     use pumpkin_util::text::TextComponent;
     use wasmtime::component::Resource;
 
@@ -547,5 +550,25 @@ mod tests {
                 ("guest:second".to_string(), Bytes::from_static(b"s")),
             ]
         );
+    }
+
+    const ACCEPT_TELEPORTATION_26_3: [u8; 33] = [
+        0x01, 0x3F, 0xE0, 0, 0, 0, 0, 0, 0, 0x40, 0x52, 0x40, 0, 0, 0, 0, 0, 0x3F, 0xE0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0xC2, 0xB4, 0, 0,
+    ];
+
+    #[test]
+    fn play_packet_is_not_decoded_as_config_packet_with_the_same_id() {
+        let version = pumpkin_data::packet::CURRENT_MC_VERSION;
+        let id = pumpkin_protocol::java::server::play::SConfirmTeleport::to_id(version);
+
+        let packet = generated_packets::deserialize_java_serverbound_packet(
+            ConnectionState::Play,
+            id,
+            &ACCEPT_TELEPORTATION_26_3,
+            version,
+        );
+
+        assert!(packet.is_none());
     }
 }

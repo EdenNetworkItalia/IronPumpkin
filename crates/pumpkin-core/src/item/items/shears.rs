@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
 use crate::entity::Entity;
-use crate::entity::EntityBase;
 use crate::entity::item::ItemEntity;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
@@ -14,6 +13,7 @@ use pumpkin_data::block_properties::BlockProperties;
 use pumpkin_data::block_properties::CaveVinesLikeProperties;
 use pumpkin_data::block_properties::KelpLikeProperties;
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -27,27 +27,6 @@ pub struct ShearsItem;
 impl ItemMetadata for ShearsItem {
     fn ids() -> Box<[u16]> {
         Box::new([Item::SHEARS.id])
-    }
-}
-
-const fn get_wool_item_for_color(color: u8) -> &'static Item {
-    match color {
-        0 => &Item::WHITE_WOOL,
-        1 => &Item::ORANGE_WOOL,
-        2 => &Item::MAGENTA_WOOL,
-        3 => &Item::LIGHT_BLUE_WOOL,
-        4 => &Item::YELLOW_WOOL,
-        5 => &Item::LIME_WOOL,
-        6 => &Item::PINK_WOOL,
-        7 => &Item::GRAY_WOOL,
-        8 => &Item::LIGHT_GRAY_WOOL,
-        9 => &Item::CYAN_WOOL,
-        10 => &Item::PURPLE_WOOL,
-        11 => &Item::BLUE_WOOL,
-        12 => &Item::BROWN_WOOL,
-        13 => &Item::GREEN_WOOL,
-        14 => &Item::RED_WOOL,
-        _ => &Item::BLACK_WOOL,
     }
 }
 
@@ -77,44 +56,6 @@ impl ItemBehaviour for ShearsItem {
             BlockActionResult::Success
         } else {
             BlockActionResult::Pass
-        }
-    }
-
-    fn use_on_entity(&self, item: &mut ItemStack, player: &Player, entity: Arc<dyn EntityBase>) {
-        if let Some(sheep) = entity
-            .cast_any()
-            .downcast_ref::<crate::entity::passive::sheep::SheepEntity>()
-            && !sheep.is_sheared()
-        {
-            if let Some(player_arc) = player.world().get_player_by_uuid(player.gameprofile.id)
-                && let Some(server) = player.world().server.upgrade()
-            {
-                let mut event = crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEvent {
-                    player: player_arc,
-                    entity_id: sheep.mob_entity.living_entity.entity.entity_id,
-                    hand: 0,
-                    cancelled: false,
-                };
-                server.plugin_manager.fire_blocking(&server, &mut event);
-                if event.cancelled {
-                    return;
-                }
-            }
-            sheep.set_sheared(true);
-            let world = player.world();
-            let pos = sheep.mob_entity.living_entity.entity.pos.load();
-            world.play_sound(Sound::EntitySheepShear, SoundCategory::Players, &pos);
-
-            let wool_count = (rand::random::<u8>() % 3 + 1) as u8;
-            let wool_item = get_wool_item_for_color(sheep.get_color());
-            let item_entity = Arc::new(ItemEntity::new(
-                Entity::new(world.clone(), pos, &EntityType::ITEM),
-                ItemStack::new(wool_count, wool_item),
-            ));
-            world.spawn_entity(item_entity);
-            if player.gamemode.load() != pumpkin_util::GameMode::Creative {
-                let _ = item.damage_item(1);
-            }
         }
     }
 
@@ -162,6 +103,7 @@ fn handle_growing_plant(
     };
 
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
+    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
     world.play_sound(
         Sound::BlockGrowingPlantCrop,
         SoundCategory::Blocks,
@@ -190,9 +132,26 @@ fn handle_beehive(
         return false;
     }
 
-    let mut drops = vec![ItemStack::new(3, &Item::HONEYCOMB)];
-    if let Some(player_arc) = player.world().get_player_by_uuid(player.gameprofile.id)
-        && let Some(server) = player.world().server.upgrade()
+    let world = player.world();
+    let drop_pos = location.to_centered_f64();
+    let mut drops = world
+        .get_loot_table("minecraft:harvest/beehive")
+        .map_or_else(
+            || vec![ItemStack::new(3, &Item::HONEYCOMB)],
+            |handle| {
+                let params = crate::world::loot::LootContextParameters {
+                    world: Some(&world),
+                    position: Some(drop_pos),
+                    block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
+                    this_entity: Some(player as &dyn crate::entity::EntityBase),
+                    tool: Some(item.clone()),
+                    ..Default::default()
+                };
+                crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+            },
+        );
+    if let Some(player_arc) = world.get_player_by_uuid(player.gameprofile.id)
+        && let Some(server) = world.server.upgrade()
     {
         let mut event =
             crate::plugin::api::events::player::player_harvest_block::PlayerHarvestBlockEvent {
@@ -211,7 +170,6 @@ fn handle_beehive(
     props.honey_level = 0;
     let new_state_id = props.to_state_id(block);
 
-    let world = player.world();
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
     world.play_sound(
         Sound::BlockBeehiveShear,
@@ -219,7 +177,6 @@ fn handle_beehive(
         &location.to_f64(),
     );
 
-    let drop_pos = location.to_centered_f64();
     for drop_item in drops {
         let item_entity = Arc::new(ItemEntity::new(
             Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
@@ -264,11 +221,26 @@ fn handle_pumpkin(
         );
 
         let drop_pos = location.to_centered_f64();
-        let item_entity = Arc::new(ItemEntity::new(
-            Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
-            ItemStack::new(4, &Item::PUMPKIN_SEEDS),
-        ));
-        world.spawn_entity(item_entity);
+        let drops = world.get_loot_table("minecraft:carve/pumpkin").map_or_else(
+            || vec![ItemStack::new(4, &Item::PUMPKIN_SEEDS)],
+            |handle| {
+                let params = crate::world::loot::LootContextParameters {
+                    world: Some(&world),
+                    position: Some(drop_pos),
+                    this_entity: Some(player as &dyn crate::entity::EntityBase),
+                    tool: Some(item.clone()),
+                    ..Default::default()
+                };
+                crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+            },
+        );
+        for drop_stack in drops {
+            let item_entity = Arc::new(ItemEntity::new(
+                Entity::new(world.clone(), drop_pos, &EntityType::ITEM),
+                drop_stack,
+            ));
+            world.spawn_entity(item_entity);
+        }
         if player.gamemode.load() != pumpkin_util::GameMode::Creative {
             let _ = item.damage_item(1);
         }

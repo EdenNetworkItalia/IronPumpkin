@@ -50,7 +50,9 @@ use pumpkin_data::{
     entity::{EntityType, MobCategory},
 };
 use pumpkin_nbt::compound::NbtCompound;
-use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
+use pumpkin_util::math::{
+    boundingbox::BoundingBox, position::BlockPos, vector2::Vector2, vector3::Vector3,
+};
 use pumpkin_world::{chunk::ChunkHeightmapType, world::BlockFlags};
 use uuid::Uuid;
 
@@ -225,11 +227,14 @@ fn one_event_per_fire_site_entity_join_level_event_on_load() {
         }
     });
 
-    let loaded = support::world().load_chunk_entity(&record).unwrap();
+    let loaded = support::world().load_chunk_entity(&record);
+    let [loaded] = loaded.as_slice() else {
+        panic!("one entity loads, got {}", loaded.len());
+    };
 
     assert_eq!(entries(&seen), ["true"]);
     assert_eq!(loaded.get_entity().entity_uuid, pig_uuid);
-    assert!(is_live(&loaded));
+    assert!(is_live(loaded));
 }
 
 /// A cancelled `EntitySpawnEvent` of a loaded entity keeps it out of the world.
@@ -246,7 +251,7 @@ fn cancel_entity_join_level_event_on_load() {
 
     let loaded = support::world().load_chunk_entity(&record);
 
-    assert!(loaded.is_none());
+    assert!(loaded.is_empty());
     assert!(!is_live(&pig));
 }
 
@@ -523,7 +528,8 @@ fn check_despawn(mob: &Arc<dyn EntityBase>) {
 #[test]
 fn deny_mob_despawn_event() {
     let _serial = support::serial();
-    let pos = spot(16);
+    // More than 128 blocks from the players of the other tests: the nearest player counts.
+    let pos = spot(30);
     load(pos);
     let denied = spawn(&EntityType::ZOMBIE, center(pos));
     let vanilla = spawn(&EntityType::ZOMBIE, center(pos));
@@ -747,7 +753,7 @@ fn change_a_settable_field_spawn_cluster_size_event() {
         }
     });
 
-    let spawned = natural_spawner::spawn_category_for_position(
+    natural_spawner::spawn_category_for_position(
         &MobCategory::CREATURE,
         &world,
         pos,
@@ -755,6 +761,16 @@ fn change_a_settable_field_spawn_cluster_size_event() {
         &SpawnState::empty(),
         false,
     );
+    let chunk = pos.chunk_position();
+    let chunk_box = BoundingBox::new(
+        Vector3::new(f64::from(chunk.x * 16), -64.0, f64::from(chunk.y * 16)),
+        Vector3::new(
+            f64::from(chunk.x * 16 + 16),
+            320.0,
+            f64::from(chunk.y * 16 + 16),
+        ),
+    );
+    let spawned = world.get_entities_of_type_at_box(&chunk_box, |kind| kind == &EntityType::PIG);
 
     assert_eq!(spawned.len(), 1);
     assert_eq!(

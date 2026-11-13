@@ -36,21 +36,20 @@
 {"ordinal":35,"name":"PlayerTickEvent.Pre","fields":{"step":3}}
 {"ordinal":36,"name":"PlayerTickEvent.Post","fields":{"step":3}}
 {"ordinal":37,"name":"ServerTickEvent.Post","fields":{"step":3}}
-{"ordinal":38,"name":"PlayerEvent.NameFormat","fields":{"step":3}}
-{"ordinal":39,"name":"ServerTickEvent.Pre","fields":{"step":4}}
-{"ordinal":40,"name":"PlayerTickEvent.Pre","fields":{"step":4}}
-{"ordinal":41,"name":"PlayerTickEvent.Post","fields":{"step":4}}
-{"ordinal":42,"name":"ServerTickEvent.Post","fields":{"step":4}}
-{"ordinal":43,"name":"PlayerInteractEvent.RightClickBlock","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","pos":"1 -2 0","step":4}}
-{"ordinal":44,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_before_block","pos":"1 -2 0","step":4}}
-{"ordinal":45,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"block","pos":"1 -2 0","step":4}}
-{"ordinal":46,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_after_block","pos":"1 -2 0","step":4}}
-{"ordinal":47,"name":"BlockEvent.EntityPlaceEvent","fields":{"block":"minecraft:stone","pos":"1 -1 0","step":4}}
-{"ordinal":48,"name":"ServerTickEvent.Pre","fields":{"step":5}}
-{"ordinal":49,"name":"PlayerTickEvent.Pre","fields":{"step":5}}
-{"ordinal":50,"name":"PlayerTickEvent.Post","fields":{"step":5}}
-{"ordinal":51,"name":"ServerTickEvent.Post","fields":{"step":5}}
-{"ordinal":52,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
-{"ordinal":53,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
-{"ordinal":54,"name":"ServerStoppingEvent","fields":{}}
-{"ordinal":55,"name":"ServerStoppedEvent","fields":{}}
+{"ordinal":38,"name":"ServerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":39,"name":"PlayerTickEvent.Pre","fields":{"step":4}}
+{"ordinal":40,"name":"PlayerTickEvent.Post","fields":{"step":4}}
+{"ordinal":41,"name":"ServerTickEvent.Post","fields":{"step":4}}
+{"ordinal":42,"name":"PlayerInteractEvent.RightClickBlock","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","pos":"1 -2 0","step":4}}
+{"ordinal":43,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_before_block","pos":"1 -2 0","step":4}}
+{"ordinal":44,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"block","pos":"1 -2 0","step":4}}
+{"ordinal":45,"name":"UseItemOnBlockEvent","fields":{"face":"up","hand":"main_hand","item":"minecraft:stone","phase":"item_after_block","pos":"1 -2 0","step":4}}
+{"ordinal":46,"name":"BlockEvent.EntityPlaceEvent","fields":{"block":"minecraft:stone","pos":"1 -1 0","step":4}}
+{"ordinal":47,"name":"ServerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":48,"name":"PlayerTickEvent.Pre","fields":{"step":5}}
+{"ordinal":49,"name":"PlayerTickEvent.Post","fields":{"step":5}}
+{"ordinal":50,"name":"ServerTickEvent.Post","fields":{"step":5}}
+{"ordinal":51,"name":"PlayerEvent.PlayerLoggedOutEvent","fields":{"step":5}}
+{"ordinal":52,"name":"PlayerEvent.SaveToFile","fields":{"step":5}}
+{"ordinal":53,"name":"ServerStoppingEvent","fields":{}}
+{"ordinal":54,"name":"ServerStoppedEvent","fields":{}}

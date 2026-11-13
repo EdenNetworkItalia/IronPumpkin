@@ -8,7 +8,7 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_world::world::BlockFlags;
 
 use crate::{
-    block::{BlockBehaviour, BlockMetadata, OnPlaceArgs, PlacedArgs},
+    block::{BlockBehaviour, BlockMetadata, OnPlaceArgs, PlacedArgs, PlayerPlacedArgs},
     entity::{
         Entity, EntityBase,
         passive::{iron_golem::IronGolemEntity, snow_golem::SnowGolemEntity},
@@ -44,9 +44,17 @@ pub fn find_golem_pattern(world: &Arc<World>, pos: &BlockPos) -> Option<GolemPat
     for dir in [BlockDirection::North, BlockDirection::West] {
         let arm1 = down_pos.offset(dir.to_offset());
         let arm2 = down_pos.offset(dir.opposite().to_offset());
+        let above_arm1 = arm1.up();
+        let above_arm2 = arm2.up();
+        let below_arm1 = arm1.down();
+        let below_arm2 = arm2.down();
 
         if world.get_block(&arm1) == &Block::IRON_BLOCK
             && world.get_block(&arm2) == &Block::IRON_BLOCK
+            && world.get_block_state(&above_arm1).is_air()
+            && world.get_block_state(&above_arm2).is_air()
+            && world.get_block_state(&below_arm1).is_air()
+            && world.get_block_state(&below_arm2).is_air()
         {
             return Some(GolemPattern {
                 entity_type: &EntityType::IRON_GOLEM,
@@ -59,10 +67,10 @@ pub fn find_golem_pattern(world: &Arc<World>, pos: &BlockPos) -> Option<GolemPat
     None
 }
 
-fn spawn_golem(world: &Arc<World>, pattern: GolemPattern) {
-    for pos in pattern.blocks {
-        // Like vanilla `clearPatternBlocks`: each block sends its own state.
-        let state_id = world.set_block_state(
+fn spawn_golem(world: &Arc<World>, pattern: &GolemPattern) {
+    for &pos in &pattern.blocks {
+        let state_id = world.get_block_state_id(&pos);
+        world.set_block_state(
             &pos,
             Block::AIR.default_state.id,
             BlockFlags::NOTIFY_LISTENERS,
@@ -70,21 +78,23 @@ fn spawn_golem(world: &Arc<World>, pattern: GolemPattern) {
         world.sync_world_event(
             WorldEvent::ParticlesAndSoundDestroyBlock,
             pos,
-            state_id.as_u16().into(),
+            i32::from(state_id.as_u16()),
         );
     }
 
-    let entity = Entity::new(
-        world.clone(),
-        pattern.base.to_centered_f64(),
-        pattern.entity_type,
-    );
+    let mut spawn_pos = pattern.base.to_centered_f64();
+    spawn_pos.y = f64::from(pattern.base.0.y) + 0.05;
+    let entity = Entity::new(world.clone(), spawn_pos, pattern.entity_type);
     let golem: Arc<dyn EntityBase> = if pattern.entity_type == &EntityType::SNOW_GOLEM {
         SnowGolemEntity::new(entity)
     } else {
         IronGolemEntity::new(entity)
     };
     world.spawn_entity(golem);
+
+    for &pos in &pattern.blocks {
+        world.update_neighbors(&pos, None);
+    }
 }
 
 pub struct CarvedPumpkinBlock;
@@ -108,8 +118,23 @@ impl BlockBehaviour for CarvedPumpkinBlock {
     }
 
     fn placed(&self, args: PlacedArgs<'_>) {
+        if Block::from_state_id(args.old_state_id) == args.block {
+            return;
+        }
         if let Some(pattern) = find_golem_pattern(args.world, args.position) {
-            spawn_golem(args.world, pattern);
+            spawn_golem(args.world, &pattern);
+        }
+    }
+
+    fn player_placed(&self, args: PlayerPlacedArgs<'_>) {
+        if let Some(pattern) = find_golem_pattern(args.world, args.position)
+            && pattern.entity_type == &EntityType::IRON_GOLEM
+        {
+            args.player.trigger_advancement(
+                crate::entity::player::advancement::trigger::AdvancementTrigger::SummonedEntity {
+                    entity_type: "minecraft:iron_golem".to_string(),
+                },
+            );
         }
     }
 }

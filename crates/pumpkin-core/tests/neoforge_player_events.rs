@@ -28,6 +28,7 @@ use pumpkin_core::{
         Entity, EntityBase,
         experience_orb::ExperienceOrbEntity,
         item::ItemEntity,
+        mob::Mob,
         passive::{
             villager::{GossipType, VillagerEntity},
             wandering_trader::WanderingTraderEntity,
@@ -157,7 +158,9 @@ fn named(player: &Player, name: &str) -> bool {
 }
 
 /// Moves `player` to its own spot, away from the players of the other tests.
+/// Puts `player` at `x`, with its client loaded: nothing hurts a player still loading in.
 fn place(player: &Player, x: f64) {
+    player.set_client_loaded(true);
     player
         .living_entity
         .entity
@@ -265,10 +268,8 @@ fn forced_critical_hit_keeps_the_sprint_knockback_and_the_mace_smash() {
     }
     on::<CriticalHitEvent, _>(|event| {
         if named(&event.player, "CritSprinter") || named(&event.player, "CritMacer") {
-            assert!(
-                !event.vanilla_critical,
-                "a sprint or mace hit is not critical"
-            );
+            // A falling mace hit is critical in vanilla `Player.attack`, a sprint hit is not.
+            assert_eq!(event.vanilla_critical, named(&event.player, "CritMacer"));
             event.critical_hit = true;
             event.damage_multiplier = 2.0;
         }
@@ -505,10 +506,11 @@ fn one_event_per_fire_site_item_entity_pickup_events() {
         }
     });
 
-    // Vanilla calls `playerTouch` only for a living player that is not a spectator.
+    // Vanilla calls `playerTouch` only for a living player that is not a spectator: the world
+    // tick touches nothing for a spectator.
     let item = spawn_item(&player, ItemStack::new(5, &Item::EMERALD));
     player.gamemode.store(GameMode::Spectator);
-    item.on_player_collision(&player);
+    support::world().tick(support::server());
     player.gamemode.store(GameMode::Survival);
     assert!(entries(&posts).is_empty());
 
@@ -1167,10 +1169,10 @@ fn one_event_per_fire_site_tracking_events() {
     let tracked = TrackedEntity::new(target_entity, 10, 3, true);
     let id = target.living_entity.entity.entity_id;
 
-    tracked.seen_by.insert(viewer.gameprofile.id);
+    tracked.mark_seen_by(&viewer);
     tracked.add_pairing(&viewer);
     tracked.remove_player(&viewer);
-    tracked.seen_by.insert(viewer.gameprofile.id);
+    tracked.mark_seen_by(&viewer);
     tracked.forget_player(&viewer);
 
     assert_eq!(
@@ -1204,8 +1206,7 @@ fn tracking_events_fire_after_the_entity_map_iteration() {
         .entity_tracker
         .get_tracked_entity(id)
         .unwrap()
-        .seen_by
-        .insert(viewer.gameprofile.id);
+        .mark_seen_by(&viewer);
 
     finish_within(&viewer, move |viewer| {
         world.entity_tracker.repair_respawned_player(viewer, &world);
@@ -1246,8 +1247,7 @@ fn one_event_per_fire_site_logout_save_and_stop_tracking() {
         .entity_tracker
         .get_tracked_entity(id)
         .unwrap()
-        .seen_by
-        .insert(leaver.gameprofile.id);
+        .mark_seen_by(&leaver);
 
     // The disconnect of `lib.rs`: the world drops the player, then the server saves its data.
     support::RUNTIME.block_on(world.remove_player(&leaver, false));
@@ -1596,13 +1596,18 @@ fn one_event_per_fire_site_trade_with_villager_event() {
     let (sync_id, villager) = open_trade(&player, true);
     let villager = villager.unwrap();
     click(&player, sync_id, 2);
-    // The villager refreshes the offers from its next tick, outside the click (issue #115).
-    // An age that is not a multiple of 20 skips the job site and bed searches.
-    villager.get_entity().age.store(1, Ordering::Relaxed);
+    // The villager refreshes the offers from its next server AI step, outside the click
+    // (issue #115).
     let ticked = villager.clone();
-    finish_within(&player, move |_| ticked.villager_mob_tick());
+    finish_within(&player, move |_| {
+        ticked.custom_server_ai_step(ticked.as_ref());
+    });
     assert_eq!(
-        villager.gossips.lock().unwrap()[&player.gameprofile.id][&GossipType::Trading],
+        villager
+            .gossips
+            .lock()
+            .unwrap()
+            .get_reputation(player.gameprofile.id, |kind| kind == GossipType::Trading),
         2
     );
     // The gossip of 2 makes the special price -floor(2 x 0.5), and only the resend of the

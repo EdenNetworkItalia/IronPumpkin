@@ -7,18 +7,21 @@ use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_nbt::compound::NbtCompound;
 
+use crate::entity::ai::behavior::hunting::{self, Hunt};
+use crate::entity::ai::target_match::TargetMatch;
 use crate::entity::{
     Entity, EntityBase,
     ai::goal::{
-        active_target::ActiveTargetGoal, look_around::RandomLookAroundGoal,
-        look_at_entity::LookAtEntityGoal, ranged_attack::RangedAttackGoal,
-        wander_around::WanderAroundGoal,
+        look_around::RandomLookAroundGoal, look_at_entity::LookAtEntityGoal,
+        ranged_attack::RangedAttackGoal, wander_around::WanderAroundGoal,
     },
     item::ItemEntity,
     mob::{Mob, MobEntity, RangedAttackMob},
     player::Player,
     projectile::snowball::SnowballEntity,
 };
+
+const SNOW_GOLEM_HUNTS: &[Hunt] = &[Hunt::new(1, TargetMatch::Enemy, true)];
 
 pub struct SnowGolemEntity {
     pub mob_entity: MobEntity,
@@ -43,16 +46,8 @@ impl SnowGolemEntity {
         };
 
         {
-            let mut goal_selector = mob_arc
-                .mob_entity
-                .goals_selector
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut target_selector = mob_arc
-                .mob_entity
-                .target_selector
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let goal_selector = &mob_arc.mob_entity.goals_selector;
+            let target_selector = &mob_arc.mob_entity.target_selector;
 
             goal_selector.add_goal(
                 1,
@@ -65,10 +60,7 @@ impl SnowGolemEntity {
             );
             goal_selector.add_goal(6, Box::new(RandomLookAroundGoal::default()));
 
-            target_selector.add_goal(
-                1,
-                ActiveTargetGoal::with_default(&mob_arc.mob_entity, &EntityType::ZOMBIE, true),
-            );
+            hunting::apply(target_selector, &mob_arc.mob_entity, SNOW_GOLEM_HUNTS);
         };
 
         mob_arc
@@ -161,11 +153,32 @@ impl Mob for SnowGolemEntity {
             self.set_has_pumpkin(false);
             let pos = entity.pos.load();
             world.play_sound(Sound::EntitySnowGolemShear, SoundCategory::Players, &pos);
-            let item_entity = Arc::new(ItemEntity::new(
-                Entity::new(world.clone(), pos, &EntityType::ITEM),
-                ItemStack::new(1, &Item::CARVED_PUMPKIN),
-            ));
-            world.spawn_entity(item_entity);
+            let drops = world
+                .get_loot_table("minecraft:shearing/snow_golem")
+                .map_or_else(
+                    || vec![ItemStack::new(1, &Item::CARVED_PUMPKIN)],
+                    |handle| {
+                        let params = crate::world::loot::LootContextParameters {
+                            world: Some(&world),
+                            position: Some(pos),
+                            this_entity: Some(self as &dyn EntityBase),
+                            tool: Some(item_stack.clone()),
+                            ..Default::default()
+                        };
+                        crate::world::loot::generate_loot_from_handle(
+                            &handle,
+                            rand::random(),
+                            &params,
+                        )
+                    },
+                );
+            for drop_stack in drops {
+                let item_entity = Arc::new(ItemEntity::new(
+                    Entity::new(world.clone(), pos, &EntityType::ITEM),
+                    drop_stack,
+                ));
+                world.spawn_entity(item_entity);
+            }
             if player.gamemode.load() != pumpkin_util::GameMode::Creative {
                 let _ = item_stack.damage_item(1);
             }

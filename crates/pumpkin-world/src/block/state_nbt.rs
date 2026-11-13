@@ -68,17 +68,21 @@ pub(crate) fn state_compound_parts(compound: &NbtCompound) -> (Option<&str>, Opt
 pub fn block_state_from_nbt(tag: &NbtTag) -> Option<BlockStateId> {
     match tag {
         NbtTag::String(name) => Some(known_block(name)?.default_state.id),
-        NbtTag::Compound(compound) => {
-            let (name, properties) = state_compound_parts(compound);
-            let block = known_block(name?)?;
-            let state = properties.map_or(block.default_state, |properties| {
-                state_with_properties(block, properties)
-            });
-            Some(state.id)
-        }
+        NbtTag::Compound(compound) => block_state_from_compound(compound),
         NbtTag::Int(id) => u16::try_from(*id).ok().and_then(BlockStateId::new),
         _ => None,
     }
+}
+
+/// Reads a block state compound of 26.2 or of 26.3, as [`block_state_from_nbt`] does.
+#[must_use]
+pub fn block_state_from_compound(compound: &NbtCompound) -> Option<BlockStateId> {
+    let (name, properties) = state_compound_parts(compound);
+    let block = known_block(name?)?;
+    let state = properties.map_or(block.default_state, |properties| {
+        state_with_properties(block, properties)
+    });
+    Some(state.id)
 }
 
 /// Block names the chunk palette reader has warned about. A world copied from another server

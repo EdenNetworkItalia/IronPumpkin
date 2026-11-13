@@ -144,6 +144,7 @@ fn hover_event_and_id_sets_name_the_display_item() {
     let diamond = HoverEvent::ShowItem {
         id: "diamond".into(),
         count: Some(2),
+        components: None,
     };
     assert_eq!(ruby.show_item_hover(Some(2)), diamond);
     assert_eq!(Item::DIAMOND.show_item_hover(Some(2)), diamond);

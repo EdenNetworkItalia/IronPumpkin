@@ -11,7 +11,6 @@
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use dashmap::DashSet;
 use pumpkin_data::{BlockState, item_stack::ItemStack};
 use pumpkin_inventory::{anvil::AnvilScreenHandler, screen_handler::ScreenHandler};
 use pumpkin_protocol::java::client::play::MerchantOffer;
@@ -372,22 +371,19 @@ pub fn stop_tracking(player: &Player, target: &Arc<dyn EntityBase>) {
     defer(move || fire_event(&server, PlayerEventStopTracking::new(player, target)));
 }
 
-/// Fires [`PlayerEventStopTracking`] for each player of `players` in `seen_by`.
-pub fn stop_tracking_all(
-    players: &[Arc<Player>],
-    seen_by: &DashSet<Uuid>,
+/// Fires [`PlayerEventStopTracking`] for each player of `players`.
+pub fn stop_tracking_all<'a>(
+    players: impl IntoIterator<Item = &'a Arc<Player>>,
     target: &Arc<dyn EntityBase>,
 ) {
-    let Some(first) = players.first() else {
+    let mut players = players.into_iter().peekable();
+    let Some(first) = players.peek() else {
         return;
     };
     if listening::<PlayerEventStopTracking>(first).is_none() {
         return;
     }
-    for player in players
-        .iter()
-        .filter(|p| seen_by.contains(&p.gameprofile.id))
-    {
+    for player in players {
         stop_tracking(player, target);
     }
 }

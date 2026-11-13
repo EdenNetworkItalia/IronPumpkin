@@ -288,13 +288,8 @@ pub fn attacking_player(
     killer
         .and_then(EntityBase::get_player)
         .map(Player::entity_id)
-        .or_else(|| {
-            let id = living
-                .last_hurt_by_player_id
-                .load(std::sync::atomic::Ordering::Relaxed);
-            (id != 0).then_some(id)
-        })
         .and_then(|id| world.get_player_by_id(id))
+        .or_else(|| living.get_last_hurt_by_player())
 }
 
 /// Fires `LivingExperienceDropEvent` and returns the experience to drop.

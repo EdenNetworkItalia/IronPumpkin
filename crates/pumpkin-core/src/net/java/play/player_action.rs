@@ -41,6 +41,7 @@ impl JavaClient {
                     let (block, state) = world.get_block_and_state(&position);
 
                     if let Some(server_arc) = world.server.upgrade() {
+                        // `LeftClickBlock` fired first, in `fire_left_click_block`.
                         let mut event =
                             crate::plugin::api::events::block::block_damage::BlockDamageEvent::new(
                                 player.clone(),

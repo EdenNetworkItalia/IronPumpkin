@@ -1,14 +1,17 @@
+use crate::damage::DamageType;
 use crate::data_component::DataComponent;
 use crate::data_component::DataComponent::Enchantments;
 use crate::data_component_impl::{
-    BlocksAttacksImpl, ConsumableImpl, CustomDataImpl, DamageImpl, DataComponentImpl,
-    EnchantmentsImpl, IDSet, MaxDamageImpl, MaxStackSizeImpl, Rarity, RarityImpl,
-    SwingAnimationImpl, ToolImpl, UnbreakableImpl, UseCooldownImpl, get, get_mut, read_data,
+    BlocksAttacksImpl, ConsumableImpl, CustomDataImpl, DamageImpl, DamageResistantImpl,
+    DataComponentImpl, EnchantmentsImpl, IDSet, MAX_ENCHANTMENT_LEVEL, MaxDamageImpl,
+    MaxStackSizeImpl, Rarity, RarityImpl, SwingAnimationImpl, ToolImpl, UnbreakableImpl,
+    UseCooldownImpl, get, get_mut, read_data,
 };
 
 use crate::dynamic::{DynamicTaggable, namespaced_name};
 use crate::item::Item;
 use crate::recipes::RecipeResultStruct;
+use crate::tag::Taggable;
 use crate::{Block, Enchantment};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -349,12 +352,18 @@ impl ItemStack {
         self.get_max_damage().unwrap_or(0) > 0
     }
 
-    /// Whether one more point of damage breaks the item. `ItemStack#nextDamageWillBreak`.
+    /// Vanilla `nextDamageWillBreak`
     #[must_use]
     pub fn next_damage_will_break(&self) -> bool {
         self.is_damageable()
             && !self.is_unbreakable()
             && self.get_damage() >= self.get_max_damage().unwrap_or(0) - 1
+    }
+
+    #[must_use]
+    pub fn can_be_hurt_by(&self, damage_type: DamageType) -> bool {
+        self.get_data_component::<DamageResistantImpl>()
+            .is_none_or(|res| damage_type.is_tagged_with(res.res_type.as_str()) != Some(true))
     }
 
     pub fn repair_item(&mut self, amount: i32) -> i32 {
@@ -695,7 +704,7 @@ impl ItemStack {
         if level <= 0 {
             return;
         }
-        let level = min(level, 255);
+        let level = min(level, MAX_ENCHANTMENT_LEVEL);
         if let Some(data) = self.get_data_component_mut::<EnchantmentsImpl>() {
             for (enc, old_level) in data.enchantment.to_mut() {
                 if *enc == enchantment {

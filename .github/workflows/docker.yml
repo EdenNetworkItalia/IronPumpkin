@@ -13,6 +13,10 @@ on:
       - "v*"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   docker-build-deploy:
     if: github.repository == 'EdenNetworkItalia/IronPumpkin'

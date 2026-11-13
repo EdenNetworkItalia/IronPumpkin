@@ -510,7 +510,7 @@ fn a_plugin_that_writes_back_a_nan_knockback_keeps_the_vanilla_knockback() {
             .damage_with_context(
                 zombie.as_ref(),
                 1.0,
-                DamageType::GENERIC,
+                DamageType::PLAYER_ATTACK,
                 None,
                 Some(attacker.as_ref()),
                 Some(attacker.as_ref()),

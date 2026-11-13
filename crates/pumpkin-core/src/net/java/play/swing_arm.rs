@@ -38,19 +38,18 @@ impl JavaClient {
 
         // A swing that hits a block fires nothing: `LeftClickBlock` fires at the dig start in
         // `handle_player_action`, as in `NeoForge` and Bukkit.
-        if !hit.is_miss {
+        if hit.is_miss {
+            let event =
+                PlayerInteractEvent::new(player, InteractAction::LeftClickAir, &Block::AIR, None);
+            send_cancellable_blocking! {{
+                &server;
+                event;
+                'after: {
+                    player.swing_hand(hand, false);
+                }
+            }}
+        } else {
             player.swing_hand(hand, false);
-            return;
         }
-        let event =
-            PlayerInteractEvent::new(player, InteractAction::LeftClickAir, &Block::AIR, None);
-
-        send_cancellable_blocking! {{
-            &server;
-            event;
-            'after: {
-                player.swing_hand(hand, false);
-            }
-        }}
     }
 }

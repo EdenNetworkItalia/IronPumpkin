@@ -201,7 +201,7 @@ breaks at once, and `hold` takes the item from the creative slot packet.
 | Path | Contents |
 |:--|:--|
 | `captures/neoforge-26.3.0.64-beta/probe-trace-slice2.jsonl` | The Java trace of a `play` run, recorded on 2026-10-15. |
-| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-10-17 on the merged wave 4 tree. |
+| `captures/ironpumpkin/probe-trace-slice2.jsonl` | The Rust trace, recorded on 2026-11-13 on the merge of upstream `e9dc12e9a`. |
 | `captures/ironpumpkin/diff-slice2.txt` | The output of `diff.py --slice2` for the two traces. |
 
 ### Steps
@@ -319,8 +319,8 @@ different steps, is one `step` difference. The exit codes are those of slice 1. 
 
 ### Result of slice 2
 
-`captures/ironpumpkin/diff-slice2.txt` has 1 difference (extra 1). Two
-recordings per server, each from an empty server directory, are byte-identical.
+`captures/ironpumpkin/diff-slice2.txt` reports no differences. Two recordings per server, each
+from an empty server directory, are byte-identical.
 
 | Event | NeoForge | IronPumpkin | Verdict | Cause |
 |:--|:--|:--|:--|:--|
@@ -331,7 +331,7 @@ recordings per server, each from an empty server directory, are byte-identical.
 | `PlayerInteractEvent.LeftClickBlock` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | step 2: `start`, `up`, `main_hand`, `1 -1 0` | same | It fires for each dig action, as NeoForge, not on the arm swing, and a cancel stops the action and re-syncs the block: tests `left_click_block_fires_at_the_dig_start` and `finished_digging_breaks_only_the_started_dig`. |
 | `BreakBlockEvent` | step 2: `1 -1 0` | step 2: `1 -1 0` | same | The dig also breaks the plant on the block (`1 0 0`), and Pumpkin fires `BlockBreakEvent` without a player for it, where NeoForge posts nothing (design.md row). |
 | `PlayerSwitchHotbarSlotEvent.Pre` | none: the slot does not change | none | same | Both fire it only when the slot changes: test `switch_hotbar_slot_event_pre_fires_only_on_a_change`. |
-| `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | step 3 | extra | Documented: Pumpkin does not cache the name and fires on every read (design.md row). |
+| `PlayerEvent.NameFormat` | none in the window: NeoForge caches the name from before the login | none in the window | same | Pumpkin does not cache the name and fires on every read (design.md row); no step of the script reads it. |
 | `PlayerInteractEvent.RightClickBlock` | step 4: `up`, `main_hand`, `minecraft:stone`, `1 -2 0` | step 4: `up`, `main_hand`, `minecraft:stone`, `1 -2 0` | same | Test `right_click_block_and_use_item_on_block_fire_each_phase`; the `use_block` and `use_item` denials and the cancellation result: tests `use_block_and_use_item_denials_follow_common_hooks` and `a_success_cancellation_result_swings_the_arm_without_the_action`. |
 | `UseItemOnBlockEvent` | step 4: three events, phases `item_before_block`, `block`, `item_after_block` | step 4: the same three events | same | One event per phase that runs, as NeoForge: test `right_click_block_and_use_item_on_block_fire_each_phase`. |
 | `BlockEvent.EntityPlaceEvent` | step 4: `minecraft:stone`, `1 -1 0` | step 4: `minecraft:stone`, `1 -1 0` | same | Pumpkin fires it before the block changes; NeoForge fires it after and restores the block on a cancel. |

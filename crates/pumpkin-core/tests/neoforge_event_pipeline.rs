@@ -34,7 +34,10 @@ use std::{
 
 use pumpkin_core::{
     entity::{
-        Entity, EntityBase, living::LivingEntity, player::Player, projectile::ProjectileHit,
+        Entity, EntityBase,
+        living::LivingEntity,
+        player::Player,
+        projectile::{ProjectileHit, owner::ProjectileOwner},
         r#type::from_type,
     },
     plugin::{
@@ -136,6 +139,7 @@ where
 struct MiningLaser {
     entity: Entity,
     owner_id: i32,
+    owner: ProjectileOwner,
 }
 
 impl EntityBase for MiningLaser {
@@ -151,8 +155,8 @@ impl EntityBase for MiningLaser {
         self
     }
 
-    fn get_owner_id(&self) -> Option<i32> {
-        Some(self.owner_id)
+    fn get_projectile_owner(&self) -> Option<&ProjectileOwner> {
+        Some(&self.owner)
     }
 
     fn on_hit(&self, hit: ProjectileHit) {
@@ -183,6 +187,7 @@ fn laser(world: &Arc<World>, shooter: &Player) -> MiningLaser {
     MiningLaser {
         entity: Entity::new(world.clone(), shooter.pos.load(), &EntityType::SNOWBALL),
         owner_id: shooter.entity_id,
+        owner: ProjectileOwner::new(Some(shooter)),
     }
 }
 
@@ -410,6 +415,7 @@ fn a_mod_places_a_block_through_the_world() {
             &EntityType::SNOWBALL,
         ),
         owner_id: pig_id,
+        owner: ProjectileOwner::new(Some(pig.get_entity())),
     };
     let at = BlockPos::new(3, 121, 1);
     set_loaded(at, &Block::AIR);

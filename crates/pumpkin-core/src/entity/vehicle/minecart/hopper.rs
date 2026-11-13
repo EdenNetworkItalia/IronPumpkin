@@ -53,12 +53,11 @@ impl HopperMinecart {
                 if stack.is_empty() || !source.can_transfer_to(inventory.as_ref(), slot, &stack) {
                     continue;
                 }
-                let backup = stack.clone();
                 let one = source.remove_stack_specific(slot, 1);
                 if HopperBlockEntity::add_one_item(source.as_ref(), inventory.as_ref(), &one) {
                     return;
                 }
-                source.set_stack(slot, backup);
+                source.set_stack(slot, stack);
             }
             return;
         }
@@ -114,13 +113,9 @@ impl HopperMinecart {
         false
     }
 
-    pub(super) fn interact(
-        &self,
-        custom_name: Option<TextComponent>,
-        player: &Arc<Player>,
-    ) -> bool {
+    pub(super) fn interact(&self, entity: &crate::entity::Entity, player: &Arc<Player>) -> bool {
         container::open(
-            custom_name,
+            entity,
             player,
             &self.inventory,
             TextComponent::translate_cross(

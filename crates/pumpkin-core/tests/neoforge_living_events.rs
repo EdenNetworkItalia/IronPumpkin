@@ -438,7 +438,7 @@ fn cancel_living_knock_back_event() {
     assert!(living(&zombie).damage_with_context(
         zombie.as_ref(),
         1.0,
-        DamageType::GENERIC,
+        DamageType::PLAYER_ATTACK,
         None,
         Some(attacker.as_ref()),
         Some(attacker.as_ref()),
@@ -643,7 +643,8 @@ fn cancel_living_destroy_block_event() {
     });
     wither.destroy_blocks_tick.store(1, Ordering::Relaxed);
 
-    wither.mob_tick(wither_dyn.as_ref());
+    // Vanilla `WitherBoss.customServerAiStep` destroys the blocks.
+    wither.custom_server_ai_step(wither_dyn.as_ref());
 
     assert_eq!(entries(&seen), ["true"]);
     assert_eq!(world.get_block_state_id(&kept), stone);
@@ -781,7 +782,7 @@ fn change_a_settable_field_living_shield_block_event_partly() {
         .inventory
         .set_stack_in_hand(Hand::Left, shield.clone());
     player.living_entity.set_active_hand(
-        Hand::Right,
+        Hand::Left,
         shield.clone(),
         shield.get_max_use_time() - 10,
     );
@@ -814,12 +815,13 @@ fn horizontal_speed(entity: &Arc<dyn EntityBase>) -> f64 {
     velocity.x.hypot(velocity.z)
 }
 
-/// Hits `zombie` with `attacker` as the source, which knocks it back.
+/// Hits `zombie` with `attacker` as the source, which knocks it back: `generic` is in the
+/// `no_knockback` tag.
 fn hit_with_knockback(zombie: &Arc<dyn EntityBase>, attacker: &Player) {
     assert!(living(zombie).damage_with_context(
         zombie.as_ref(),
         1.0,
-        DamageType::GENERIC,
+        DamageType::PLAYER_ATTACK,
         None,
         Some(attacker),
         Some(attacker),
@@ -1040,7 +1042,8 @@ fn one_event_per_fire_site_living_conversion_event_post_of_a_piglin() {
     assert_eq!(entries(&seen), ["zombified_piglin"]);
 }
 
-/// A mob on the ground that wants to jump fires `LivingEventLivingJumpEvent` in its tick.
+/// A mob on the ground that its jump control makes jump fires `LivingEventLivingJumpEvent` in its
+/// tick.
 #[test]
 fn one_event_per_fire_site_living_jump_event_of_a_mob() {
     let _serial = support::serial();
@@ -1054,7 +1057,15 @@ fn one_event_per_fire_site_living_jump_event_of_a_mob() {
         }
     });
     let living_zombie = living(&zombie);
-    living_zombie.jumping.store(true, Ordering::SeqCst);
+    // The jump control sets `jumping` in the server AI step of the tick, as vanilla.
+    zombie
+        .get_mob()
+        .unwrap()
+        .get_mob_entity()
+        .jump_control
+        .lock()
+        .unwrap()
+        .jump();
     living_zombie.entity.on_ground.store(true, Ordering::SeqCst);
 
     living_zombie.tick(zombie.as_ref(), support::server());

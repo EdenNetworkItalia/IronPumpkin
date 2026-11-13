@@ -170,5 +170,7 @@ impl EnchantingTableScreenHandler {
             CustomStatistic::EnchantItem as i32,
             1,
         );
+
+        player.on_enchanted_item(request.level_requirement);
     }
 }

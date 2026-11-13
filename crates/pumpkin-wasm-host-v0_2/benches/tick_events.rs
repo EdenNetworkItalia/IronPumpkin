@@ -25,7 +25,9 @@ use pumpkin_core::{
 use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::vector3::Vector3;
 use pumpkin_wasm_host_common::{
-    concurrent_store::{LegacyStore, LegacySyncReentry, TokioSpawner, start_legacy_store},
+    concurrent_store::{
+        LegacyStore, LegacySyncReentry, StoreMode, TokioSpawner, start_legacy_store,
+    },
     state::PluginHostState,
 };
 use pumpkin_wasm_host_v0_2::events::ToFromWasmEvent;
@@ -79,6 +81,7 @@ fn plugin_store() -> LegacyStore {
             Store::new(&engine, PluginHostState::new()),
             LegacySyncReentry::new(),
             Arc::new(TokioSpawner::new(tokio::runtime::Handle::current())),
+            StoreMode::Concurrent,
         )
         .await
         .expect("plugin store")

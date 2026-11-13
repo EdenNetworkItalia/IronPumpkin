@@ -52,6 +52,7 @@ mod enchantments;
 mod entity_pose;
 mod entity_status;
 mod entity_type;
+mod entity_variant;
 mod environment_attribute;
 mod flower_pot_transformations;
 mod fluid;
@@ -75,6 +76,7 @@ mod packet;
 mod painting_variant;
 mod particle;
 mod placed_feature;
+mod poi_type;
 mod potion;
 mod potion_brewing;
 mod processor_list;
@@ -90,6 +92,8 @@ mod statistic;
 mod structure_metadata;
 mod structure_template;
 mod structures;
+mod sulfur_cube_archetype;
+mod suspicious_effects;
 mod tag;
 mod template_pool;
 mod test_instance;
@@ -171,6 +175,7 @@ pub fn main() {
         (structure_template::build, "structure_template.rs"),
         (test_instance::build, "test_instance.rs"),
         (painting_variant::build, "painting_variant.rs"),
+        (poi_type::build, "poi_type.rs"),
         (context_provider::build, "context_provider.rs"),
         (material_rule::build, "material_rule.rs"),
         (noise_settings::build, "noise_settings.rs"),
@@ -183,6 +188,7 @@ pub fn main() {
             flower_pot_transformations::build,
             "flower_pot_transformations.rs",
         ),
+        (suspicious_effects::build, "suspicious_effects.rs"),
         (recipes::build, "recipes.rs"),
         (enchantments::build, "enchantment.rs"),
         (data_component::build, "data_component.rs"),
@@ -203,6 +209,7 @@ pub fn main() {
         (map_color::build, "map_color.rs"),
         (map_decoration::build, "map_decoration.rs"),
         (dye_color::build, "dye_color.rs"),
+        (entity_variant::build, "entity_variant.rs"),
         (block_transformer::build, "block_transformer.rs"),
         (trial_spawner::build, "trial_spawner.rs"),
         (banner_pattern::build, "banner_pattern.rs"),
@@ -210,6 +217,7 @@ pub fn main() {
         (chat_type::build, "chat_type.rs"),
         (decorated_pot_pattern::build, "decorated_pot_pattern.rs"),
         (frog_variant::build, "frog_variant.rs"),
+        (sulfur_cube_archetype::build, "sulfur_cube_archetype.rs"),
         (instrument::build, "instrument.rs"),
         (trim_material::build, "trim_material.rs"),
         (trim_pattern::build, "trim_pattern.rs"),

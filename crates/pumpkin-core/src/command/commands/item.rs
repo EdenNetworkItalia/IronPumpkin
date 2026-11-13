@@ -11,6 +11,8 @@ use pumpkin_util::text::TextComponent;
 use crate::command::argument_builder::{
     ArgumentBuilder, RequiredArgumentBuilder, argument, command, literal,
 };
+use crate::command::argument_types::argument_type::JavaClientArgumentType;
+use crate::command::argument_types::client_parsed::ClientParsed;
 use crate::command::argument_types::coordinates::block_pos::BlockPosArgumentType;
 use crate::command::argument_types::core::integer::IntegerArgumentType;
 use crate::command::argument_types::entity::EntityArgumentType;
@@ -41,8 +43,8 @@ struct BlockReplaceExecutor {
 impl CommandExecutor for BlockReplaceExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let world = context.source.world();
-        let pos = BlockPosArgumentType::get_loaded_block_pos(context, "pos")?;
-        let slot = SlotArgumentType::get(context, "slot")?;
+        let pos = BlockPosArgumentType::get_loaded_block_pos(context, "target")?;
+        let slot = SlotArgumentType::get(context, "slots")?;
         let parsed_stack = ItemStackArgumentType::get(context, "item")?;
         let item = parsed_stack.item;
         let count = if self.has_count {
@@ -103,8 +105,8 @@ struct EntityReplaceExecutor {
 impl CommandExecutor for EntityReplaceExecutor {
     #[expect(clippy::too_many_lines)]
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let targets = EntityArgumentType::get_entities(context, "targets")?;
-        let mojang_slot = SlotArgumentType::get(context, "slot")?;
+        let targets = EntityArgumentType::get_entities(context, "target")?;
+        let mojang_slot = SlotArgumentType::get(context, "slots")?;
         let parsed_stack = ItemStackArgumentType::get(context, "item")?;
         let item = parsed_stack.item;
         let count = if self.has_count {
@@ -278,15 +280,25 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
         PermissionDefault::Op(PermissionLvl::Two),
     ));
 
-    let block_node = literal("block")
-        .then(argument("pos", BlockPosArgumentType).then(
-            argument("slot", SlotArgumentType).then(literal("with").then(block_item_node())),
-        ));
+    let block_node = literal("block").then(
+        argument("target", BlockPosArgumentType).then(
+            argument(
+                "slots",
+                ClientParsed::new(SlotArgumentType, JavaClientArgumentType::SlotSource),
+            )
+            .then(literal("with").then(block_item_node())),
+        ),
+    );
 
-    let entity_node =
-        literal("entity").then(argument("targets", EntityArgumentType::Entities).then(
-            argument("slot", SlotArgumentType).then(literal("with").then(entity_item_node())),
-        ));
+    let entity_node = literal("entity").then(
+        argument("target", EntityArgumentType::Entities).then(
+            argument(
+                "slots",
+                ClientParsed::new(SlotArgumentType, JavaClientArgumentType::SlotSource),
+            )
+            .then(literal("with").then(entity_item_node())),
+        ),
+    );
 
     dispatcher.register(
         command("item", DESCRIPTION)

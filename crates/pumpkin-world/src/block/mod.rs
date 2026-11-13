@@ -3,6 +3,7 @@ pub mod state_nbt;
 use std::collections::HashMap;
 
 use pumpkin_data::{Block, BlockState, BlockStateId, Property};
+use pumpkin_nbt::compound::NbtCompound;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -61,6 +62,19 @@ impl BlockStateCodec {
         let block_properties = block.from_properties(&props_iter);
         block_properties.to_state_id(block)
     }
+
+    /// Writes `Name`, plus `Properties` when the state has any. A mod block keeps its namespace.
+    #[must_use]
+    pub fn state_to_nbt(state_id: BlockStateId) -> NbtCompound {
+        state_nbt::block_state_to_nbt(state_id)
+    }
+
+    /// Reads a state written by [`Self::state_to_nbt`], or the compound of 26.3. Unknown blocks give
+    /// `None`.
+    #[must_use]
+    pub fn state_from_nbt(nbt: &NbtCompound) -> Option<BlockStateId> {
+        state_nbt::block_state_from_compound(nbt)
+    }
 }
 
 #[cfg(test)]
@@ -68,6 +82,25 @@ mod test {
     use pumpkin_data::BlockStateId;
 
     use crate::chunk::palette::BLOCK_NETWORK_MAX_BITS;
+
+    #[test]
+    fn block_state_nbt_matches_vanilla_layout() {
+        use super::BlockStateCodec;
+        use pumpkin_data::Block;
+
+        let state = Block::GRASS_BLOCK.default_state.id;
+        let nbt = BlockStateCodec::state_to_nbt(state);
+        assert_eq!(nbt.get_string("Name"), Some("minecraft:grass_block"));
+        assert_eq!(
+            nbt.get_compound("Properties")
+                .and_then(|properties| properties.get_string("snowy")),
+            Some("false")
+        );
+        assert_eq!(BlockStateCodec::state_from_nbt(&nbt), Some(state));
+
+        let stone = BlockStateCodec::state_to_nbt(Block::STONE.default_state.id);
+        assert!(stone.get_compound("Properties").is_none());
+    }
 
     #[test]
     fn proper_network_bits_per_entry() {

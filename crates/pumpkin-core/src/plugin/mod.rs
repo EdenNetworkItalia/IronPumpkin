@@ -47,7 +47,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Bump this whenever the public plugin API or any event layout changes in a way
 /// that makes old binary plugins incompatible.
-pub const PLUGIN_API_VERSION: u32 = 6;
+pub const PLUGIN_API_VERSION: u32 = 7;
 
 const PLUGIN_DIR: &str = "./plugins";
 
@@ -205,10 +205,11 @@ pub enum PluginState {
 }
 
 /// Core plugin management system
+#[repr(C)]
 pub struct PluginManager {
     plugins: SyncRwLock<Vec<LoadedPlugin>>,
     loaders: RwLock<Vec<Arc<dyn PluginLoader>>>,
-    handlers: Arc<ArcSwap<HandlerMap>>,
+    pub handlers: Arc<ArcSwap<HandlerMap>>,
     unloaded_files: RwLock<HashSet<PathBuf>>,
     services: Arc<RwLock<HashMap<String, Arc<dyn Payload>>>>,
     // Plugin state tracking
@@ -1085,6 +1086,27 @@ impl PluginManager {
             .iter()
             .filter(|p| p.is_active && p.instance.is_some())
             .map(|p| p.metadata.clone())
+            .collect()
+    }
+
+    /// Get telemetry information for all active plugins.
+    #[must_use]
+    pub fn active_plugins_telemetry(&self) -> Vec<crate::telemetry::PluginInfo> {
+        let plugins = self
+            .plugins
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        plugins
+            .iter()
+            .filter(|p| p.is_active && p.instance.is_some())
+            .map(|p| crate::telemetry::PluginInfo {
+                name: p.metadata.name.clone(),
+                version: p.metadata.version.clone(),
+                language: p
+                    .loader_data
+                    .as_deref()
+                    .and_then(|data| p.loader.binding_language(data)),
+            })
             .collect()
     }
 

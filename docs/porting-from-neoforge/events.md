@@ -351,7 +351,7 @@ A NeoForge mod often acts through a `FakePlayer`: a machine breaks a block as a 
 The server resolves the cause of the event:
 
 - A player is its own cause.
-- Another entity resolves to its owner (`EntityBase::get_owner_id`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`. An owner that is not a player gives `player = None`.
+- Another entity resolves to its owner (`EntityBase::get_owner_entity`). A projectile resolves to the player that shot it. `BlockBreakEvent` carries that player in `player`. An owner that is not a player gives `player = None`.
 - A block entity has no entity. A machine calls the method without a cause, and the event has no player, as for a piston.
 
 | NeoForge call | IronPumpkin method | Event |

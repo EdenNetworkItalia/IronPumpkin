@@ -28,9 +28,9 @@ use ironpumpkin_mods::{
     math::{position::BlockPos, vector3::Vector3},
     pumpkin_core::{
         block::PathComputationType,
+        content::poi::profession_for_block,
         content::spawn_placements::spawn_restriction,
         plugin::{level::EntitySpawnReason, startup::STARTUP_HOOK},
-        world::villager_poi::profession_for_block,
     },
     pumpkin_data::{
         Block, BlockState, BlockStateId,
@@ -42,6 +42,7 @@ use ironpumpkin_mods::{
         entity::EntityType,
         item::Item,
         item_stack::ItemStack,
+        poi_type::PoiType,
         tag::{self, Taggable},
         villager::VillagerProfession,
     },
@@ -357,7 +358,7 @@ fn a_block_entity_type_accepts_the_mod_block() {
 }
 
 #[test]
-fn a_villager_finds_the_mod_poi() {
+fn the_poi_storage_records_the_mod_poi() {
     boot();
     let desk = block(DESK);
     assert_eq!(
@@ -368,12 +369,10 @@ fn a_villager_finds_the_mod_poi() {
     load_chunk(pos);
     let world = support::world();
     world.set_block_state(&pos, desk.default_state.id, BlockFlags::NOTIFY_ALL);
-    let sites = world.villager_poi.lock().unwrap().available_job_sites(
-        pos,
-        2,
-        Some(VillagerProfession::Librarian),
+    assert_eq!(
+        world.portal_poi.lock().unwrap().get_type(&pos),
+        Some(PoiType::Librarian)
     );
-    assert_eq!(sites, [pos]);
 }
 
 /// Places `placed` as a player facing north, clicking the top face of the block below `pos`.

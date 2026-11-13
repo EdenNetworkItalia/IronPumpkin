@@ -39,11 +39,11 @@ use pumpkin_protocol::{
     },
     ser::{NetworkReadExt, NetworkWriteExt, WritingError},
 };
+use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::version::JavaMinecraftVersion;
 use tokio::{
-    io::{BufReader, BufWriter},
-    net::tcp::{OwnedReadHalf, OwnedWriteHalf},
+    io::{AsyncRead, AsyncWrite, BufReader, BufWriter},
     sync::oneshot,
 };
 use tokio::{
@@ -53,6 +53,12 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, warn};
+
+/// The client-to-server half of a Java connection: a TCP socket, or an in-memory pipe when the
+/// server is embedded in a client.
+pub type JavaReadHalf = Box<dyn AsyncRead + Send + Sync + Unpin>;
+/// The server-to-client half of a Java connection.
+pub type JavaWriteHalf = Box<dyn AsyncWrite + Send + Sync + Unpin>;
 
 pub mod chunk_data;
 pub mod configuration_payloads;
@@ -75,6 +81,7 @@ use arc_swap::ArcSwap;
 use pending::PendingConnection;
 
 use crate::entity::player::Player;
+use crate::net::chunk_sender::{ChunkSendOutcome, DeliveryFailure};
 use crate::net::{
     ClientPlatform, GameProfile, MAX_PENDING_BYTES, PacketRateLimiter, PlayerConfig,
     decrement_pending_bytes, java::neoforge::NegotiatedState,
@@ -84,6 +91,7 @@ use crate::plugin::player::player_custom_payload::PlayerCustomPayloadEvent;
 use crate::plugin::server::packet::PacketSentEvent;
 use crate::{error::PumpkinError, server::Server};
 
+#[repr(C)]
 pub struct JavaClient {
     pub id: u64,
     /// The protocol the client speaks. Play packets are always encoded/decoded as
@@ -116,9 +124,9 @@ pub struct JavaClient {
     /// Tracks total buffered payload bytes in the outgoing queue.
     pub pending_bytes: Arc<AtomicUsize>,
     /// The packet encoder for outgoing packets.
-    network_writer: std::sync::Mutex<Option<TCPNetworkEncoder<BufWriter<OwnedWriteHalf>>>>,
+    network_writer: std::sync::Mutex<Option<TCPNetworkEncoder<BufWriter<JavaWriteHalf>>>>,
     /// The packet decoder for incoming packets.
-    network_reader: std::sync::Mutex<Option<TCPNetworkDecoder<BufReader<OwnedReadHalf>>>>,
+    network_reader: std::sync::Mutex<Option<TCPNetworkDecoder<BufReader<JavaReadHalf>>>>,
     /// Keep Alive:
     ///
     /// Whether we are waiting for a response after sending a keep alive packet.
@@ -386,70 +394,91 @@ impl JavaClient {
         if self.close_token.is_cancelled() {
             None
         } else {
-            let _guard = self.rt_handle.enter();
-            Some(self.tasks.spawn(task))
+            Some(self.tasks.spawn_on(task, &self.rt_handle))
         }
     }
 
-    pub async fn send_chunks(&self, chunks: &[SyncChunk]) {
+    /// Queues the chunks and reports which were sent and why the others were not.
+    pub async fn send_chunks(&self, chunks: &[SyncChunk]) -> ChunkSendOutcome {
+        let mut outcome = ChunkSendOutcome::default();
         let player = self.player.load_full();
         let Some(player) = player.as_ref() else {
-            return;
+            return outcome;
         };
         let Some(server) = player.world().server.upgrade() else {
-            return;
+            return outcome;
         };
 
-        let mut valid_chunks = Vec::with_capacity(chunks.len());
-        for chunk in chunks {
-            let mut event = ChunkSend::new(player.world(), chunk.clone());
-            server.plugin_manager.fire(&server, &mut event).await;
-            if !event.cancelled {
-                valid_chunks.push(chunk.clone());
-            }
-        }
-
+        let valid_chunks = ChunkSend::filter(&server, &player.world(), chunks).await;
+        outcome.record_cancelled(chunks, &valid_chunks);
         if valid_chunks.is_empty() {
-            return;
+            return outcome;
         }
+        let valid_positions: Vec<_> = valid_chunks
+            .iter()
+            .map(|chunk| Vector2::new(chunk.x, chunk.z))
+            .collect();
 
         let key = self.encoding_key();
         let (tx, rx) = oneshot::channel();
-        rayon::spawn(move || {
+        server.compute_pool.spawn(move || {
             let mut serialized = Vec::with_capacity(valid_chunks.len());
             for chunk in valid_chunks {
+                let pos = Vector2::new(chunk.x, chunk.z);
                 let mut buf = Vec::with_capacity(32 * 1024);
                 if let Err(err) = buf.write_var_int(&VarInt(CChunkData::to_id(CURRENT_MC_VERSION)))
                 {
                     error!("Failed to write chunk data id: {err:?}");
+                    serialized.push((pos, None));
                     continue;
                 }
                 if let Err(err) = CChunkData(&chunk).write_packet_data(&mut buf, &key) {
                     error!("Failed to write chunk data: {err:?}");
+                    serialized.push((pos, None));
                     continue;
                 }
-                serialized.push(Bytes::from(buf));
+                serialized.push((pos, Some(Bytes::from(buf))));
             }
             let _ = tx.send(serialized);
         });
 
         let Ok(serialized) = rx.await else {
-            return;
+            // Encoding task died -> counts as an encode failure for every chunk
+            outcome.failed.extend(
+                valid_positions
+                    .into_iter()
+                    .map(|pos| (pos, DeliveryFailure::Unencodable)),
+            );
+            return outcome;
         };
-        let sent_count = serialized.len();
-        if sent_count == 0 {
-            return;
+        if serialized.iter().all(|(_, data)| data.is_none()) {
+            outcome.failed.extend(
+                serialized
+                    .into_iter()
+                    .map(|(pos, _)| (pos, DeliveryFailure::Unencodable)),
+            );
+            return outcome;
         }
 
         self.send_packet(&CChunkBatchStart).await;
 
         // One FIFO per connection: batch start/data/end stay in enqueue order.
-        for chunk_data in serialized {
-            self.send_packet_now_data(chunk_data).await;
+        for (pos, chunk_data) in serialized {
+            let Some(chunk_data) = chunk_data else {
+                outcome.failed.push((pos, DeliveryFailure::Unencodable));
+                continue;
+            };
+            if self.send_packet_now_data(chunk_data).await {
+                outcome.sent.push(pos);
+            } else {
+                outcome.failed.push((pos, DeliveryFailure::Deferred));
+            }
         }
 
-        self.send_packet(&CChunkBatchEnd::new(sent_count as u16))
+        // Count only queued chunks -> a `PacketSentEvent` cancel drops one without closing.
+        self.send_packet(&CChunkBatchEnd::new(outcome.sent.len() as u16))
             .await;
+        outcome
     }
 
     pub async fn enqueue_packet(&self, packet_data: Bytes) {
@@ -462,11 +491,11 @@ impl JavaClient {
     }
 
     /// Outbound choke point of all enqueue/send paths. `None` when the packet must be dropped.
-    fn reserve_pending_bytes(&self, packet_data: Bytes) -> Option<(Bytes, usize)> {
+    fn reserve_pending_bytes(&self, packet_data: Bytes, observe: bool) -> Option<(Bytes, usize)> {
         if self.close_token.is_cancelled() {
             return None;
         }
-        let packet_data = self.translate_outgoing(packet_data)?;
+        let packet_data = self.translate_outgoing(packet_data, observe)?;
 
         // Reserve first, release again if it does not fit.
         let packet_len = packet_data.len();
@@ -491,8 +520,16 @@ impl JavaClient {
     /// `PacketSentEvent` for clients the multiversion plugin admitted below
     /// `CURRENT_MC_VERSION`: it gets the 26.3 id + payload and rewrites both.
     /// `None` when cancelled.
-    fn translate_outgoing(&self, packet_data: Bytes) -> Option<Bytes> {
-        if self.version.load() == CURRENT_MC_VERSION {
+    ///
+    /// For clients on `CURRENT_MC_VERSION` the event is fired as a read-only observation
+    /// (cancellable) for packets in the play state when `observe` is set, so packet-level
+    /// plugins (anti-cheats, protocol libraries) see every outbound packet. `observe` is
+    /// `false` for packets a plugin injected itself, to avoid echoing them back.
+    fn translate_outgoing(&self, packet_data: Bytes, observe: bool) -> Option<Bytes> {
+        let current_version = self.version.load() == CURRENT_MC_VERSION;
+        if current_version
+            && (!observe || !matches!(self.connection_state.load(), ConnectionState::Play))
+        {
             return Some(packet_data);
         }
         // TODO: packets sent before `set_player` (e.g. an `add_player` kick) go out untranslated.
@@ -517,6 +554,9 @@ impl JavaClient {
         if event.cancelled {
             return None;
         }
+        if current_version {
+            return Some(packet_data);
+        }
 
         let mut framed = Vec::with_capacity(5 + event.payload.len());
         framed.write_var_int(&VarInt(event.packet_id)).ok()?;
@@ -528,11 +568,21 @@ impl JavaClient {
         self.try_enqueue_packet_data(packet_data);
     }
 
-    pub fn try_enqueue_packet_data(&self, packet_data: Bytes) {
-        let Some((packet_data, packet_len)) = self.reserve_pending_bytes(packet_data) else {
-            return;
+    /// `false` when the packet was dropped instead (cancelled, closed, buffer full).
+    pub fn try_enqueue_packet_data(&self, packet_data: Bytes) -> bool {
+        let Some((packet_data, packet_len)) = self.reserve_pending_bytes(packet_data, true) else {
+            return false;
         };
-        self.queue_outgoing(OutgoingPacket::normal(packet_data), packet_len);
+        self.queue_outgoing(OutgoingPacket::normal(packet_data), packet_len)
+    }
+
+    /// Like [`Self::try_enqueue_packet_data`] but does not fire `PacketSentEvent` for
+    /// current-version clients. For packets that a plugin already observed itself.
+    pub fn try_enqueue_packet_data_unobserved(&self, packet_data: Bytes) -> bool {
+        let Some((packet_data, packet_len)) = self.reserve_pending_bytes(packet_data, false) else {
+            return false;
+        };
+        self.queue_outgoing(OutgoingPacket::normal(packet_data), packet_len)
     }
 
     /// `false` once the writer is gone. Then the connection is closed.
@@ -559,7 +609,7 @@ impl JavaClient {
 
     pub async fn get_packet_with_reader(
         &self,
-        network_reader: &mut TCPNetworkDecoder<BufReader<OwnedReadHalf>>,
+        network_reader: &mut TCPNetworkDecoder<BufReader<JavaReadHalf>>,
     ) -> Option<RawPacket> {
         tokio::select! {
             () = self.await_close_interrupt() => {
@@ -607,7 +657,7 @@ impl JavaClient {
     pub fn try_kick(&self, reason: &TextComponent) {
         if let Some(data) = self
             .serialize_disconnect(reason)
-            .and_then(|data| self.translate_outgoing(data))
+            .and_then(|data| self.translate_outgoing(data, false))
         {
             let packet_len = data.len();
             let _ = self.pending_bytes.fetch_add(packet_len, Ordering::AcqRel);
@@ -654,30 +704,33 @@ impl JavaClient {
 
     /// Enqueue on the per-connection FIFO and wait until the writer has
     /// `write_frame`d into the `BufWriter`. Never waits for a TCP flush.
-    pub async fn send_packet_now_data(&self, packet: Bytes) {
+    /// `false` when the packet was dropped instead (cancelled, closed, buffer full).
+    pub async fn send_packet_now_data(&self, packet: Bytes) -> bool {
         self.send_and_wait(packet, OutgoingPacket::high_priority)
-            .await;
+            .await
     }
 
     /// Enqueue and wait for the writer's completion, `Framed` or `Flushed` per `make`.
+    /// `false` when the packet was dropped instead of queued.
     async fn send_and_wait(
         &self,
         packet: Bytes,
         make: fn(Bytes, oneshot::Sender<()>) -> OutgoingPacket,
-    ) {
-        let Some((packet, packet_len)) = self.reserve_pending_bytes(packet) else {
-            return;
+    ) -> bool {
+        let Some((packet, packet_len)) = self.reserve_pending_bytes(packet, true) else {
+            return false;
         };
 
         let (completion_tx, completion_rx) = oneshot::channel();
         if !self.queue_outgoing(make(packet, completion_tx), packet_len) {
-            return;
+            return false;
         }
 
         if completion_rx.await.is_err() && !self.close_token.is_cancelled() {
             // The outgoing packet task dropped before confirming the write.
             self.close();
         }
+        true
     }
 
     /// A bare version encodes display ids.
@@ -707,10 +760,10 @@ impl JavaClient {
         Self::serialize_packet_for_version(packet, self.encoding_key())
     }
 
-    pub fn try_send_packet<P: ClientPacket>(&self, packet: &P) {
-        if let Ok(data) = self.serialize_packet(packet) {
-            self.try_enqueue_packet(data);
-        }
+    /// `false` when the packet was dropped instead (cancelled, closed, buffer full).
+    pub fn try_send_packet<P: ClientPacket>(&self, packet: &P) -> bool {
+        self.serialize_packet(packet)
+            .is_ok_and(|data| self.try_enqueue_packet_data(data))
     }
 
     pub async fn send_packet<P: ClientPacket>(&self, packet: &P) {
@@ -799,18 +852,27 @@ impl JavaClient {
         // The multiversion plugin has converted older clients' packets to 26.3 by now.
         let version = CURRENT_MC_VERSION;
 
-        let mut event = crate::plugin::server::packet::PacketReceivedEvent::new(
-            player.clone(),
-            packet.id,
-            packet.payload.clone(),
-        );
-        server.plugin_manager.fire_blocking(server, &mut event);
-        if event.cancelled {
-            return Ok(());
-        }
+        let event_payload;
+        let (packet_id, mut payload) = if server
+            .plugin_manager
+            .has_handlers::<crate::plugin::server::packet::PacketReceivedEvent>(
+        ) {
+            let mut event = crate::plugin::server::packet::PacketReceivedEvent::new(
+                player.clone(),
+                packet.id,
+                packet.payload.clone(),
+            );
+            server.plugin_manager.fire_blocking(server, &mut event);
+            if event.cancelled {
+                return Ok(());
+            }
+            event_payload = event.payload;
+            (event.packet_id, &event_payload[..])
+        } else {
+            (packet.id, &packet.payload[..])
+        };
 
-        let mut payload = &event.payload[..];
-        match event.packet_id {
+        match packet_id {
             id if id == SConfirmTeleport::to_id(version) => {
                 self.handle_confirm_teleport(
                     player,
@@ -983,10 +1045,18 @@ impl JavaClient {
                 );
             }
             id if id == SPlayerRotation::to_id(version) => {
-                self.handle_rotation(player, &SPlayerRotation::read(&mut payload, &version)?);
+                self.handle_rotation(
+                    player,
+                    server,
+                    &SPlayerRotation::read(&mut payload, &version)?,
+                );
             }
             id if id == SSetPlayerGround::to_id(version) => {
-                self.handle_player_ground(player, &SSetPlayerGround::read(&mut payload, &version)?);
+                self.handle_player_ground(
+                    player,
+                    server,
+                    &SSetPlayerGround::read(&mut payload, &version)?,
+                );
             }
             id if id == SPickItemFromBlock::to_id(version) => {
                 self.handle_pick_item_from_block(
@@ -1287,7 +1357,7 @@ impl JavaClient {
                 self.handle_configuration_acknowledged(player);
             }
             _ => {
-                warn!("Failed to handle player packet id {}", event.packet_id);
+                warn!("Failed to handle player packet id {}", packet_id);
             }
         }
         Ok(())

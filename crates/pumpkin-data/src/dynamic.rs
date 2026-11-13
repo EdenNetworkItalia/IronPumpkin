@@ -894,9 +894,16 @@ impl ContentBuilder {
                     next_real_state += 1;
                     real
                 });
+                // `is_waterlogged` reads a flag: set it from the custom properties of this state.
+                let waterlogged = state_has_value(&block.properties, index, "waterlogged", "true");
                 states.push(BlockState {
                     id: BlockStateId::new_unchecked(id),
-                    state_flags: source.state_flags,
+                    state_flags: (source.state_flags & !crate::block_state::IS_WATERLOGGED)
+                        | if waterlogged {
+                            crate::block_state::IS_WATERLOGGED
+                        } else {
+                            0
+                        },
                     side_flags: source.side_flags,
                     instrument: source.instrument,
                     luminance: source.luminance,
@@ -905,6 +912,7 @@ impl ContentBuilder {
                     collision_shapes: source.collision_shapes,
                     outline_shapes: source.outline_shapes,
                     opacity: source.opacity,
+                    sound_type: source.sound_type,
                     // Only a block that a mod adds to a block entity type has one.
                     block_entity_type,
                 });
@@ -1135,6 +1143,25 @@ fn real_ids(generated: u16, displays: &[u16], placeholders: &[bool]) -> Vec<u16>
 
 pub(crate) fn leak(name: String) -> &'static str {
     Box::leak(name.into_boxed_str())
+}
+
+/// Whether the property `name` of the state at `index` has `value`. The index orders the property
+/// values like [`DynamicProperties`]: the last property changes fastest.
+fn state_has_value(
+    properties: &[BlockPropertyDefinition],
+    index: usize,
+    name: &str,
+    value: &str,
+) -> bool {
+    let mut rest = index;
+    for property in properties.iter().rev() {
+        let len = property.values.len();
+        if property.name == name {
+            return property.values[rest % len] == value;
+        }
+        rest /= len;
+    }
+    false
 }
 
 fn leak_properties(properties: Vec<BlockPropertyDefinition>) -> &'static [BlockProperty] {
@@ -1996,6 +2023,7 @@ impl Item {
         HoverEvent::ShowItem {
             id: display.registry_key.into(),
             count,
+            components: None,
         }
     }
 }

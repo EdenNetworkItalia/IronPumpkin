@@ -10,7 +10,7 @@ ARG ALPINE_VERSION=3.24
 FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 ARG TARGETARCH
-# The defaults match the build_release_musl job of rust.yml: a fast build without LTO.
+# The defaults give a fast build without LTO.
 # Pass "true" and "1" to get the release profile of Cargo.toml (fat LTO, one codegen unit).
 ARG CARGO_PROFILE_RELEASE_LTO=off
 ARG CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16

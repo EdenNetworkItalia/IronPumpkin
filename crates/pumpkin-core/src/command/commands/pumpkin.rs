@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
 
-use crate::command::argument_builder::{ArgumentBuilder, command};
+use crate::command::argument_builder::{ArgumentBuilder, command, literal};
 use crate::command::context::command_context::CommandContext;
 use crate::command::node::dispatcher::CommandDispatcher;
 use crate::command::node::{CommandExecutor, CommandExecutorResult};
@@ -30,11 +30,10 @@ const DISCORD_URL: &str = "https://discord.eden.network";
 const CACHE_DURATION: Duration = Duration::from_hours(24);
 /// How long an empty result stays cached, so a server without network does not retry at each call.
 const EMPTY_CACHE_DURATION: Duration = Duration::from_mins(5);
-/// The limit of one request. `pumpkin_auth::client_builder` sets none, and the command blocks a
-/// runtime thread while the fetch runs.
-const FETCH_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 
 struct Executor;
+struct ContributorsExecutor;
 
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_HASH: &str = env!("GIT_HASH");
@@ -45,6 +44,7 @@ struct Contributor {
     login: String,
 }
 
+#[derive(Clone)]
 struct ContributorCache {
     fetched_at: Instant,
     /// How long the entry is valid after `fetched_at`.
@@ -76,6 +76,7 @@ fn cache_after_fetch(
     }
 }
 
+#[cfg(test)]
 fn fetch_all_contributors_cached() -> Vec<Contributor> {
     if let Ok(guard) = CONTRIBUTORS_CACHE.lock()
         && let Some(cache) = guard.as_ref()
@@ -84,28 +85,14 @@ fn fetch_all_contributors_cached() -> Vec<Contributor> {
         return cache.data.clone();
     }
 
-    let fetched = tokio::runtime::Handle::try_current().map_or_else(
-        |_| {
-            tokio::runtime::Runtime::new()
-                .map_or_else(|_| Vec::new(), |rt| rt.block_on(fetch_all_contributors()))
-        },
-        |handle| tokio::task::block_in_place(|| handle.block_on(fetch_all_contributors())),
-    );
-
-    let Ok(mut guard) = CONTRIBUTORS_CACHE.lock() else {
-        return fetched;
-    };
-    let cache = cache_after_fetch(guard.take(), fetched);
-    let data = cache.data.clone();
-    *guard = Some(cache);
-    data
+    Vec::new()
 }
 
 async fn fetch_all_contributors() -> Vec<Contributor> {
     // No fallback to a default client: it has no timeout.
     let Ok(client) = pumpkin_auth::client_builder()
         .user_agent("IronPumpkin")
-        .timeout(FETCH_TIMEOUT)
+        .timeout(HTTP_TIMEOUT)
         .build()
     else {
         return Vec::new();
@@ -158,25 +145,13 @@ fn extract_next_url(header: &str) -> Option<String> {
 #[expect(clippy::too_many_lines)]
 impl CommandExecutor for Executor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
-        let contributors = fetch_all_contributors_cached();
-        let contributor_names = contributors
-            .iter()
-            .map(|c| c.login.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
         let locale = context.source.output.get_locale();
         let profile = if cfg!(debug_assertions) {
             "debug"
         } else {
             "release"
         };
-        let version_string = format!(
-            "{} (Commit: {}/{}) - {} Contributors",
-            CARGO_PKG_VERSION,
-            GIT_HASH,
-            profile,
-            contributors.len()
-        );
+        let version_string = format!("{CARGO_PKG_VERSION} (Commit: {GIT_HASH}/{profile})");
         let mut msg = TextComponent::text("");
 
         let version_translation = get_translation_text(
@@ -186,14 +161,9 @@ impl CommandExecutor for Executor {
         );
         msg = msg.add_child(
             TextComponent::text(version_translation.clone())
-                .hover_event(HoverEvent::show_text(
-                    TextComponent::text(format!("Commit: {GIT_HASH_FULL}\n\nContributors:\n"))
-                        .add_child(
-                            TextComponent::text(contributor_names)
-                                .gradient_named(&[NamedColor::DarkGreen, NamedColor::Green])
-                                .new_line(),
-                        ),
-                ))
+                .hover_event(HoverEvent::show_text(TextComponent::text(format!(
+                    "Commit: {GIT_HASH_FULL}\n\nClick to copy version\nRun /pumpkin contributors to see all contributors"
+                ))))
                 .click_event(ClickEvent::CopyToClipboard {
                     value: Cow::from(version_translation.replace('\n', "")),
                 })
@@ -309,11 +279,101 @@ impl CommandExecutor for Executor {
                 .underlined(),
         );
 
+        msg = msg.add_child(TextComponent::text("  "));
+
+        msg = msg.add_child(
+            TextComponent::text("[Contributors]")
+                .click_event(ClickEvent::RunCommand {
+                    command: Cow::from("/pumpkin contributors"),
+                })
+                .hover_event(HoverEvent::show_text(TextComponent::text(
+                    "Click to run /pumpkin contributors",
+                )))
+                .color_named(NamedColor::Yellow)
+                .bold()
+                .underlined(),
+        );
+
         context.source.send_message(msg);
 
-        // It makes total sense to return the number of
-        // contributors as the i32 result for this command.
-        Ok(contributors.len() as i32)
+        Ok(1)
+    }
+}
+
+fn format_contributors_message(contributors: &[Contributor]) -> TextComponent {
+    if contributors.is_empty() {
+        return TextComponent::text("Unable to load contributors.").color_named(NamedColor::Red);
+    }
+
+    let count = contributors.len();
+    let contributor_names = contributors
+        .iter()
+        .map(|c| c.login.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    TextComponent::text(format!("IronPumpkin Contributors ({count}):\n"))
+        .color_named(NamedColor::Green)
+        .bold()
+        .add_child(
+            TextComponent::text(contributor_names)
+                .gradient_named(&[NamedColor::DarkGreen, NamedColor::Green]),
+        )
+}
+
+impl CommandExecutor for ContributorsExecutor {
+    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        let cached = CONTRIBUTORS_CACHE.lock().ok().and_then(|g| g.clone());
+
+        if let Some(cache) = &cached
+            && cache.fetched_at.elapsed() < cache.ttl
+        {
+            context
+                .source
+                .send_message(format_contributors_message(&cache.data));
+            return Ok(cache.data.len() as i32);
+        }
+
+        if let Some(cache) = &cached {
+            context
+                .source
+                .send_message(format_contributors_message(&cache.data));
+        } else {
+            context.source.send_message(
+                TextComponent::text("Fetching IronPumpkin contributors...")
+                    .color_named(NamedColor::Gray),
+            );
+        }
+
+        let rt_handle = context
+            .source
+            .server
+            .as_ref()
+            .map(|s| s.runtime.clone())
+            .or_else(|| tokio::runtime::Handle::try_current().ok());
+
+        if let Some(handle) = rt_handle {
+            let source = context.source.clone();
+            let has_stale = cached.is_some();
+            handle.spawn(async move {
+                let fetched = fetch_all_contributors().await;
+                let contributors = match CONTRIBUTORS_CACHE.lock() {
+                    Ok(mut guard) => {
+                        let cache = cache_after_fetch(guard.take(), fetched);
+                        let data = cache.data.clone();
+                        *guard = Some(cache);
+                        data
+                    }
+                    Err(_) => fetched,
+                };
+
+                if !has_stale {
+                    source.send_message(format_contributors_message(&contributors));
+                }
+            });
+        }
+
+        Ok(cached.map_or(0, |c| c.data.len() as i32))
     }
 }
 
@@ -327,6 +387,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
     dispatcher.register_with_aliases(
         command("pumpkin", DESCRIPTION)
             .requires(PERMISSION)
+            .then(literal("contributors").executes(ContributorsExecutor))
             .executes(Executor),
         &["version"],
     );

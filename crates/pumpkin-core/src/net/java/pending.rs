@@ -34,10 +34,7 @@ use pumpkin_util::{
 };
 use tokio::{
     io::{BufReader, BufWriter},
-    net::{
-        TcpStream,
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
-    },
+    net::TcpStream,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, warn};
@@ -56,7 +53,7 @@ use crate::{
 };
 
 use super::{
-    JavaClient,
+    JavaClient, JavaReadHalf, JavaWriteHalf,
     configuration_tasks::{ConfigurationTasks, TaskReply, is_terminal_resource_pack_response},
     neoforge::{self, ClientChannels},
 };
@@ -87,8 +84,8 @@ pub struct PendingConnection {
     pub version: AtomicCell<JavaMinecraftVersion>,
     pub connection_state: AtomicCell<ConnectionState>,
     pub close_token: CancellationToken,
-    pub network_writer: TCPNetworkEncoder<BufWriter<OwnedWriteHalf>>,
-    pub network_reader: TCPNetworkDecoder<BufReader<OwnedReadHalf>>,
+    pub network_writer: TCPNetworkEncoder<BufWriter<JavaWriteHalf>>,
+    pub network_reader: TCPNetworkDecoder<BufReader<JavaReadHalf>>,
     pub gameprofile: Option<GameProfile>,
     pub config: Option<PlayerConfig>,
     pub brand: Option<String>,
@@ -112,6 +109,7 @@ pub struct PendingConnection {
     /// Whether the packet in hand was joined from `neoforge:split` parts, so its payload can end
     /// with padding.
     pub(super) packet_joined: bool,
+    pub velocity_message_id: Option<i32>,
     /// Whether a login was started. Used to reject a second `SLoginStart`, which
     /// would otherwise replace an already authenticated profile.
     pub login_started: bool,
@@ -132,6 +130,26 @@ impl PendingConnection {
         server: Weak<Server>,
     ) -> Self {
         let (read, write) = tcp_stream.into_split();
+        Self::from_transport(
+            Box::new(read),
+            Box::new(write),
+            address,
+            id,
+            packet_limiter,
+            server,
+        )
+    }
+
+    /// A connection over any byte stream, such as the in-memory pipe of an integrated server.
+    #[must_use]
+    pub fn from_transport(
+        read: JavaReadHalf,
+        write: JavaWriteHalf,
+        address: SocketAddr,
+        id: u64,
+        packet_limiter: PacketRateLimiter,
+        server: Weak<Server>,
+    ) -> Self {
         Self {
             id,
             address,
@@ -156,6 +174,7 @@ impl PendingConnection {
             configuration_tasks: ConfigurationTasks::default(),
             split_reassembler: SplitPacketReassembler::default(),
             packet_joined: false,
+            velocity_message_id: None,
             server,
         }
     }
@@ -351,7 +370,52 @@ impl PendingConnection {
         self.close();
     }
 
+    async fn read_haproxy_header(&mut self) -> bool {
+        let Some(reader) = self.network_reader.reader_mut() else {
+            return false;
+        };
+        let close_token = self.close_token.clone();
+        let result = tokio::select! {
+            () = close_token.cancelled() => {
+                debug!("Canceling pending connection HAProxy header read");
+                return false;
+            },
+            () = tokio::time::sleep(HANDSHAKE_IDLE_TIMEOUT) => {
+                debug!(
+                    "Client {} sent no HAProxy header for {}s, dropping it",
+                    self.id,
+                    HANDSHAKE_IDLE_TIMEOUT.as_secs()
+                );
+                return false;
+            },
+            res = crate::net::proxy::haproxy::read_header(reader) => res,
+        };
+
+        match result {
+            Ok(Some(address)) => {
+                debug!("Updated address from HAProxy header for client {}", self.id);
+                self.address = address;
+                true
+            }
+            Ok(None) => true,
+            Err(err) => {
+                debug!(
+                    "Failed to read HAProxy header from client {}: {}",
+                    self.id, err
+                );
+                false
+            }
+        }
+    }
+
     pub async fn handle_login_sequence(&mut self, server: &Arc<Server>) -> PacketHandlerResult {
+        if server.advanced_config.networking.proxy.enabled
+            && server.advanced_config.networking.proxy.haproxy.enabled
+            && !self.read_haproxy_header().await
+        {
+            return PacketHandlerResult::Stop;
+        }
+
         // Like vanilla `Connection.channelRead0`, a closed connection handles nothing more,
         // including packets that were already buffered when the kick closed it.
         while let Some(packet) = self.get_packet().await

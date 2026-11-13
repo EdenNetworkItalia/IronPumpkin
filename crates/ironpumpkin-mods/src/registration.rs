@@ -61,7 +61,7 @@ use pumpkin_data::{
     dynamic::{self, ContentKind},
     dynamic_types,
     entity::EntityType,
-    tag::{self, Taggable},
+    poi_type::PoiType,
 };
 use pumpkin_util::{identifier::Identifier, math::position::BlockPos};
 use tracing::warn;
@@ -566,7 +566,7 @@ fn add_block_to_poi(poi_type: &str, block_name: &str) -> Result<(), Registration
     };
     // `PoiTypeExtender.register` throws for a state of any POI type, with a profession or not.
     if let Some(previous) = vanilla.and_then(vanilla_poi_type) {
-        return Err(duplicate(previous));
+        return Err(duplicate(&previous));
     }
     let Some(profession) = profession else {
         warn!(
@@ -581,24 +581,13 @@ fn add_block_to_poi(poi_type: &str, block_name: &str) -> Result<(), Registration
         })
 }
 
-/// The POI type of a vanilla block, from `PoiTypes.bootstrap`. The generated tags `beds` and
-/// `lightning_rods` list the blocks of `Blocks.BED` and `Blocks.LIGHTNING_ROD`.
-fn vanilla_poi_type(block: &'static Block) -> Option<&'static str> {
-    if let Some(poi_type) = pumpkin_core::world::villager_poi::poi_type_for_block(block) {
-        return Some(poi_type);
-    }
-    Some(match block {
-        // `home` takes the head states of a bed, so the whole block overlaps it.
-        block if block.has_tag(&tag::Block::MINECRAFT_BEDS) => "minecraft:home",
-        block if block == &Block::BELL => "minecraft:meeting",
-        block if block == &Block::BEEHIVE => "minecraft:beehive",
-        block if block == &Block::BEE_NEST => "minecraft:bee_nest",
-        block if block == &Block::NETHER_PORTAL => "minecraft:nether_portal",
-        block if block == &Block::LODESTONE => "minecraft:lodestone",
-        block if block.has_tag(&tag::Block::MINECRAFT_LIGHTNING_RODS) => "minecraft:lightning_rod",
-        block if block == &Block::TEST_INSTANCE_BLOCK => "minecraft:test_instance",
-        _ => return None,
-    })
+/// The POI type of a vanilla block, from the states of `PoiTypes.bootstrap`.
+fn vanilla_poi_type(block: &'static Block) -> Option<String> {
+    block
+        .states
+        .iter()
+        .find_map(|state| PoiType::from_state_id(state.id.as_u16()))
+        .map(|poi_type| format!("minecraft:{}", poi_type.name()))
 }
 
 #[cfg(test)]

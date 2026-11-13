@@ -1,17 +1,18 @@
 //! Blocks that native mods add to the job site POI types, the backing of `NeoForge`
 //! `ExtendPoiTypesEvent`.
 //!
-//! The server knows the POI types of villager job sites through
-//! [`profession_for_block`](crate::world::villager_poi::profession_for_block), which reads this
-//! table for a block it does not know. Mods add blocks by name before the freeze. On the first
-//! lookup after it the names become a table by block id.
+//! The server finds the POI type of a block state through [`poi_type_for_state`], which reads this
+//! table for a state without a vanilla POI type. Mods add blocks by name before the freeze. On the
+//! first lookup after it the names become a table by block id.
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use pumpkin_data::Block;
+use pumpkin_data::block_state::BlockStateId;
 use pumpkin_data::dynamic::{self, RegistryError};
+use pumpkin_data::poi_type::PoiType;
 use pumpkin_data::villager::VillagerProfession;
 use rustc_hash::FxHashMap;
 
@@ -57,6 +58,16 @@ pub fn add_block(
     pending.insert(name.to_owned(), profession);
     ANY.store(true, Ordering::Relaxed);
     Ok(None)
+}
+
+/// The POI type of a block state: its vanilla type, or the job site type that a mod added its
+/// block to.
+#[must_use]
+pub fn poi_type_for_state(state_id: BlockStateId) -> Option<PoiType> {
+    PoiType::from_state_id(state_id.as_u16()).or_else(|| {
+        let profession = profession_for_block(Block::from_state_id(state_id))?;
+        PoiType::from_name(profession.to_name())
+    })
 }
 
 /// The profession of a block that a mod added to a job site POI type.
