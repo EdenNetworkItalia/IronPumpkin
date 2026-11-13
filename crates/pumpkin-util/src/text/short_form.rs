@@ -22,6 +22,31 @@ fn text(text: String) -> TextComponentBase {
     }
 }
 
+/// Java `Float.toString` and `Double.toString`, as `TranslatableContents.getArgument` renders a
+/// float or double argument of NBT or SNBT: `6.0`, `1.0E21`. A JSON datapack file differs in
+/// vanilla: `JsonOps` turns an integral number such as `6.0` into an integer first.
+fn java_decimal<F: std::fmt::Display + std::fmt::LowerExp>(v: F, value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".to_owned();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_owned();
+    }
+    let magnitude = value.abs();
+    if magnitude == 0.0 || (1e-3..1e7).contains(&magnitude) {
+        let plain = v.to_string();
+        return if plain.contains('.') {
+            plain
+        } else {
+            plain + ".0"
+        };
+    }
+    let scientific = format!("{v:e}");
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let point = if mantissa.contains('.') { "" } else { ".0" };
+    format!("{mantissa}{point}E{exponent}")
+}
+
 impl<'de> Visitor<'de> for ComponentVisitor {
     type Value = TextComponentBase;
 
@@ -59,7 +84,7 @@ impl<'de> Visitor<'de> for ComponentVisitor {
 
     fn visit_f32<E: Error>(self, v: f32) -> Result<Self::Value, E> {
         if self.with_primitives {
-            Ok(text(v.to_string()))
+            Ok(text(java_decimal(v, v.into())))
         } else {
             Err(E::invalid_type(
                 serde::de::Unexpected::Float(v.into()),
@@ -70,7 +95,7 @@ impl<'de> Visitor<'de> for ComponentVisitor {
 
     fn visit_f64<E: Error>(self, v: f64) -> Result<Self::Value, E> {
         if self.with_primitives {
-            Ok(text(v.to_string()))
+            Ok(text(java_decimal(v, v)))
         } else {
             Err(E::invalid_type(serde::de::Unexpected::Float(v), &self))
         }

@@ -2631,6 +2631,55 @@ mod custom_name_nbt_tests {
     }
 
     #[test]
+    fn translation_arguments_format_floats_like_java() {
+        let mut name = pumpkin_nbt::compound::NbtCompound::new();
+        name.put_string("translate", "chat.type.text".to_string());
+        name.put(
+            "with",
+            NbtTag::List(vec![
+                NbtTag::Float(6.0),
+                NbtTag::Double(6.0),
+                NbtTag::Double(1e21),
+                NbtTag::Float(1.5e-7),
+                NbtTag::Double(-0.0),
+                NbtTag::Double(1e7),
+                NbtTag::Double(0.001),
+                NbtTag::Double(9_999_999.0),
+                NbtTag::Float(0.1),
+                NbtTag::Double(f64::NAN),
+                NbtTag::Float(f32::NEG_INFINITY),
+                NbtTag::Double(9.999e-4),
+            ]),
+        );
+        let component = TextComponent::from_nbt(&NbtTag::Compound(name));
+        let super::TextContent::Translate { with, .. } = *component.0.content else {
+            panic!("not a translation");
+        };
+        let texts: Vec<String> = with
+            .into_iter()
+            .map(|arg| super::TextComponent(arg).get_text())
+            .collect();
+        // `Float.toString` and `Double.toString` of the same values, printed by Java 27.
+        assert_eq!(
+            texts,
+            [
+                "6.0",
+                "6.0",
+                "1.0E21",
+                "1.5E-7",
+                "-0.0",
+                "1.0E7",
+                "0.001",
+                "9999999.0",
+                "0.1",
+                "NaN",
+                "-Infinity",
+                "9.999E-4"
+            ]
+        );
+    }
+
+    #[test]
     fn an_empty_list_is_not_a_component() {
         assert!(serde_json::from_str::<TextComponent>("[]").is_err());
     }
