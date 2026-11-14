@@ -213,6 +213,11 @@ fn the_shape_getters_of_a_mod_block() {
     let open = state_of("shapemod:step", &[("facing", "east"), ("open", "true")]);
     assert!(get_state_shape(open, ShapeKind::Collision).is_empty());
     assert!(!open.is_solid() && !open.is_side_solid(BlockDirection::Up));
+    // Light opacity follows the shapes: a slab outline on a stone display lets the light
+    // through, as the vanilla slab.
+    let half = Block::from_name("shapemod:half").unwrap().default_state;
+    assert_eq!(half.opacity, Block::STONE_SLAB.default_state.opacity);
+    assert_eq!(half.opacity, 0);
 
     let stairs = Block::from_name("shapemod:stairs").unwrap();
     let oak = Block::OAK_STAIRS;

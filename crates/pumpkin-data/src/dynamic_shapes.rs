@@ -7,9 +7,9 @@
 //! entity.
 //!
 //! A custom block without declared shapes is a full cube, or takes the shapes of its block type
-//! when it has one. The flags that vanilla derives from the shapes (the sturdy faces, the full
-//! cube, the legacy solid flag, the solid render and the redstone conductor) follow the shapes of
-//! the state.
+//! when it has one. The data that vanilla derives from the shapes (the sturdy faces, the full
+//! cube, the legacy solid flag, the solid render, the redstone conductor and the light opacity)
+//! follow the shapes of the state.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -24,7 +24,7 @@ use crate::block_state::{
     UP_SIDE_SOLID, WEST_SIDE_SOLID,
 };
 use crate::dynamic::{self, BlockPropertyDefinition, RegistryError};
-use crate::voxel_shape::{SupportType, VoxelShape};
+use crate::voxel_shape::{ShapeKind, SupportType, VoxelShape};
 use crate::{BlockDirection, BlockState};
 
 /// A function that gives the shape of one state from its property values.
@@ -201,13 +201,34 @@ pub(crate) fn evaluate(
     (outline, collision)
 }
 
-/// The state and side flags of `source` with the flags that vanilla derives from the shapes
-/// recomputed for `outline` and `collision`.
+/// The derived data of a state with declared shapes.
+pub(crate) struct ShapeFlags {
+    pub(crate) state_flags: u16,
+    pub(crate) side_flags: u8,
+    pub(crate) opacity: u8,
+}
+
+/// Vanilla `BlockBehaviour.getLightDampening` with `propagatesSkylightDown`: 15 for a solid
+/// render, else 0 when the outline is not a full block and the state has no fluid, else 1.
+const fn default_light_dampening(solid_render: bool, full_outline: bool, has_fluid: bool) -> u8 {
+    if solid_render {
+        15
+    } else if !full_outline && !has_fluid {
+        0
+    } else {
+        1
+    }
+}
+
+/// The state flags, side flags and light opacity of `source` with the data that vanilla
+/// derives from the shapes recomputed for `outline` and `collision`. `has_fluid` tells whether
+/// the state holds a fluid, as a waterlogged state.
 pub(crate) fn shape_flags(
     source: &BlockState,
     outline: &VoxelShape,
     collision: &VoxelShape,
-) -> (u16, u8) {
+    has_fluid: bool,
+) -> ShapeFlags {
     let full_cube = collision.is_full_block();
     let mut state_flags = source.state_flags & !(IS_SOLID | IS_FULL_CUBE | IS_SOLID_RENDER);
     if collision.is_legacy_solid() {
@@ -247,5 +268,25 @@ pub(crate) fn shape_flags(
     if collision.is_supporting(BlockDirection::Up, SupportType::Center) {
         side_flags |= UP_CENTER_SOLID;
     }
-    (state_flags, side_flags)
+    // A source whose opacity is not the default of its own shapes overrides
+    // `getLightDampening` (leaves, glass): keep its value.
+    let source_default = default_light_dampening(
+        source.state_flags & IS_SOLID_RENDER != 0,
+        source.shape(ShapeKind::Outline).is_full_block(),
+        source.is_waterlogged() || source.is_liquid(),
+    );
+    let opacity = if source.opacity == source_default {
+        default_light_dampening(
+            state_flags & IS_SOLID_RENDER != 0,
+            outline.is_full_block(),
+            has_fluid,
+        )
+    } else {
+        source.opacity
+    };
+    ShapeFlags {
+        state_flags,
+        side_flags,
+        opacity,
+    }
 }

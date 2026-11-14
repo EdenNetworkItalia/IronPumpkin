@@ -929,42 +929,48 @@ impl ContentBuilder {
                 });
                 // `is_waterlogged` reads a flag: set it from the custom properties of this state.
                 let waterlogged = state_has_value(&block.properties, index, "waterlogged", "true");
-                let (state_flags, side_flags, collision_shapes, outline_shapes) = match &declared {
+                let (flags, collision_shapes, outline_shapes) = match &declared {
                     Some(declared) => {
                         let (outline, collision) =
                             dynamic_shapes::evaluate(declared, &block.properties, index);
-                        let (state_flags, side_flags) =
-                            dynamic_shapes::shape_flags(source, &outline, &collision);
+                        let flags = dynamic_shapes::shape_flags(
+                            source,
+                            &outline,
+                            &collision,
+                            waterlogged || source.is_liquid(),
+                        );
                         (
-                            state_flags,
-                            side_flags,
+                            flags,
                             shape_table.intern(&collision)?,
                             shape_table.intern(&outline)?,
                         )
                     }
                     None => (
-                        source.state_flags,
-                        source.side_flags,
+                        dynamic_shapes::ShapeFlags {
+                            state_flags: source.state_flags,
+                            side_flags: source.side_flags,
+                            opacity: source.opacity,
+                        },
                         source.collision_shapes,
                         source.outline_shapes,
                     ),
                 };
                 states.push(BlockState {
                     id: BlockStateId::new_unchecked(id),
-                    state_flags: (state_flags & !crate::block_state::IS_WATERLOGGED)
+                    state_flags: (flags.state_flags & !crate::block_state::IS_WATERLOGGED)
                         | if waterlogged {
                             crate::block_state::IS_WATERLOGGED
                         } else {
                             0
                         },
-                    side_flags,
+                    side_flags: flags.side_flags,
                     instrument: source.instrument,
                     luminance: source.luminance,
                     piston_behavior: source.piston_behavior.clone(),
                     hardness: source.hardness,
                     collision_shapes,
                     outline_shapes,
-                    opacity: source.opacity,
+                    opacity: flags.opacity,
                     sound_type: source.sound_type,
                     // Only a block that a mod adds to a block entity type has one.
                     block_entity_type,
