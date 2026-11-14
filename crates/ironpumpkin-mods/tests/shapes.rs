@@ -210,6 +210,7 @@ fn the_shape_getters_of_a_mod_block() {
 fn free_space_for_a_spawn(world: &Arc<World>) {
     let pos = BlockPos::new(24, 100, 24);
     load(world, &pos);
+    clear_above(world, &pos);
     world.set_block_state(&pos, Block::STONE.default_state.id, BlockFlags::empty());
     let zombie = Entity::new(
         world.clone(),
