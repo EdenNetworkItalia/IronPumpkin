@@ -80,6 +80,18 @@ impl NativeMod for ShapeMod {
                 }),
         )
         .unwrap();
+        // A collision shape taller than one block, as a fence.
+        cx.register_block(
+            BlockBuilder::new("shapemod:tall", Block::STONE.default_state.id)
+                .shape(|_| VoxelShape::pixels(0.0, 0.0, 0.0, 16.0, 24.0, 16.0)),
+        )
+        .unwrap();
+        // One pixel high, as a carpet: not legacy solid, and it still collides.
+        cx.register_block(
+            BlockBuilder::new("shapemod:thin", Block::STONE.default_state.id)
+                .shape(|_| VoxelShape::pixels(0.0, 0.0, 0.0, 16.0, 1.0, 16.0)),
+        )
+        .unwrap();
         // A stair by type, with no declared shape: the stair shapes.
         cx.register_block(
             BlockBuilder::new("shapemod:stairs", Block::OAK_STAIRS.default_state.id)
@@ -156,6 +168,7 @@ fn shapes_of_vanilla_and_mod_blocks() {
     the_shape_getters_of_a_mod_block();
     free_space_for_a_spawn(&world);
     a_half_height_mod_block(&world);
+    shapes_that_leave_their_block(&world);
 }
 
 /// Scenario "A vanilla slab".
@@ -318,4 +331,46 @@ fn a_half_height_mod_block(world: &Arc<World>) {
         SupportType::Center
     ));
     assert!(!half.is_full_cube());
+}
+
+/// A box `[min, max]` given relative to `pos`.
+fn around(pos: &BlockPos, min: [f64; 3], max: [f64; 3]) -> BoundingBox {
+    let base = Vector3::new(f64::from(pos.0.x), f64::from(pos.0.y), f64::from(pos.0.z));
+    BoundingBox::new(
+        Vector3::new(base.x + min[0], base.y + min[1], base.z + min[2]),
+        Vector3::new(base.x + max[0], base.y + max[1], base.z + max[2]),
+    )
+}
+
+/// The block scan of `BlockCollisions` reaches the shapes that leave their block, and a shape
+/// that is not legacy solid collides.
+fn shapes_that_leave_their_block(world: &Arc<World>) {
+    let above = |pos: &BlockPos| around(pos, [0.2, 1.2, 0.2], [0.8, 2.0, 0.8]);
+
+    let fence = BlockPos::new(56, 100, 56);
+    load(world, &fence);
+    clear_above(world, &fence);
+    world.set_block_state(
+        &fence,
+        Block::OAK_FENCE.default_state.id,
+        BlockFlags::empty(),
+    );
+    assert!(!world.is_space_empty(above(&fence)));
+
+    let tall = BlockPos::new(72, 100, 72);
+    load(world, &tall);
+    clear_above(world, &tall);
+    let tall_state = Block::from_name("shapemod:tall").unwrap().default_state;
+    world.set_block_state(&tall, tall_state.id, BlockFlags::empty());
+    assert!(!world.is_space_empty(above(&tall)));
+    assert!(world.is_space_empty(around(&tall, [0.2, 1.6, 0.2], [0.8, 2.0, 0.8])));
+
+    let thin = BlockPos::new(88, 100, 88);
+    load(world, &thin);
+    clear_above(world, &thin);
+    let thin_state = Block::from_name("shapemod:thin").unwrap().default_state;
+    assert!(!thin_state.is_solid());
+    world.set_block_state(&thin, thin_state.id, BlockFlags::empty());
+    assert!(!world.is_space_empty(around(&thin, [0.2, 0.0, 0.2], [0.8, 0.5, 0.8])));
+    assert!(world.is_space_empty(around(&thin, [0.2, 0.1, 0.2], [0.8, 0.5, 0.8])));
 }

@@ -27,6 +27,7 @@ use tracing::{debug, error, info, trace, warn};
 mod active_chunks;
 pub mod brightness;
 pub mod chunker;
+pub mod collision_context;
 mod entity_index;
 mod ironpumpkin;
 pub(crate) use entity_index::EntityIndex;
@@ -2669,19 +2670,9 @@ impl World {
             })
     }
 
+    /// `CollisionGetter#noBlockCollision(null, box)`: the empty collision context.
     pub fn is_space_empty(&self, bounding_box: BoundingBox) -> bool {
-        let min = bounding_box.min_block_pos();
-        let max = bounding_box.max_block_pos();
-
-        for pos in BlockPos::iterate(min, max) {
-            let state = self.get_block_state(&pos);
-            let collided = Self::check_collision(&bounding_box, pos, state, false, |_| ());
-
-            if collided {
-                return false;
-            }
-        }
-        true
+        self.no_block_collision(bounding_box)
     }
 
     /// No other entity that blocks building overlaps `entity`, ignoring its own vehicle group.
