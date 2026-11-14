@@ -682,6 +682,7 @@ fn plain_block(at: BlockPos, stack: Option<ItemStack>) -> Arc<ItemStacksResource
             )
             .unwrap();
     });
+    vanilla_providers();
     LazyLock::force(&REGISTERED);
     let handler = Arc::new(ItemStacksResourceHandler::new(1, 64));
     if let Some(stack) = stack {
