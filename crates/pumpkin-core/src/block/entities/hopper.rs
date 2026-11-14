@@ -5,7 +5,7 @@ use pumpkin_data::block_properties::{FacingHopper, HopperLikeProperties};
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_data::{BlockDirection, BlockId, BlockStateId};
+use pumpkin_data::{BlockId, BlockStateId};
 use pumpkin_inventory::{Clearable, Inventory, sync_write_items_to_nbt};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -38,16 +38,6 @@ pub fn to_offset(facing: &FacingHopper) -> Vector3<i32> {
         FacingHopper::East => (1, 0, 0),
     }
     .into()
-}
-
-const fn facing_direction(facing: FacingHopper) -> BlockDirection {
-    match facing {
-        FacingHopper::Down => BlockDirection::Down,
-        FacingHopper::North => BlockDirection::North,
-        FacingHopper::South => BlockDirection::South,
-        FacingHopper::West => BlockDirection::West,
-        FacingHopper::East => BlockDirection::East,
-    }
 }
 
 /// Properties of one state snapshot, `None` for any other block. `from_state_id` parses whatever
@@ -276,7 +266,7 @@ impl HopperBlockEntity {
             }
             return false;
         }
-        if let Some(moved) = crate::plugin::capabilities::hopper_extract(world, self, pos_up) {
+        if let Some(moved) = self.extract_from_capability(world, pos_up) {
             return moved;
         }
         let (block, state) = world.get_block_and_state(pos_up);
@@ -448,12 +438,7 @@ impl HopperBlockEntity {
                     world.scatter_stack(pos.x, pos.y, pos.z, leftover);
                 }
             }
-        } else if let Some(moved) = crate::plugin::capabilities::hopper_insert(
-            world,
-            self,
-            &self.position.offset(to_offset(&self.facing)),
-            facing_direction(self.facing).opposite(),
-        ) {
+        } else if let Some(moved) = self.insert_into_capability(world) {
             return moved;
         }
         false

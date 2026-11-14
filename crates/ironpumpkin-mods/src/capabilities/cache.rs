@@ -4,10 +4,13 @@
 use std::{
     collections::HashMap,
     fmt,
-    sync::{Arc, LazyLock, Mutex, PoisonError, Weak},
+    sync::{
+        Arc, LazyLock, Mutex, PoisonError, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
-use pumpkin_core::world::World;
+use pumpkin_core::{plugin::capabilities::CAPABILITY_LISTENERS, world::World};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
 use super::{BlockCapability, CapabilityError};
@@ -19,7 +22,8 @@ pub trait CapabilityInvalidationListener: Send + Sync {
     fn on_invalidate(&self) -> bool;
 }
 
-type ChunkListeners = HashMap<BlockPos, Vec<Weak<dyn CapabilityInvalidationListener>>>;
+type Listeners = Vec<Weak<dyn CapabilityInvalidationListener>>;
+type ChunkListeners = HashMap<BlockPos, Listeners>;
 /// The listeners by world, chunk and position. The world is the address of its `World`.
 type Holder = Mutex<HashMap<usize, HashMap<Vector2<i32>, ChunkListeners>>>;
 
@@ -27,6 +31,10 @@ static LISTENERS: LazyLock<Holder> = LazyLock::new(Holder::default);
 
 fn world_key(world: &World) -> usize {
     std::ptr::from_ref(world) as usize
+}
+
+fn lock() -> std::sync::MutexGuard<'static, HashMap<usize, HashMap<Vector2<i32>, ChunkListeners>>> {
+    LISTENERS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// `ServerLevel.registerCapabilityListener`: calls `listener` when the capabilities at `pos`
@@ -37,16 +45,20 @@ pub fn register_capability_listener(
     pos: BlockPos,
     listener: &Arc<dyn CapabilityInvalidationListener>,
 ) {
-    let mut holder = LISTENERS.lock().unwrap_or_else(PoisonError::into_inner);
-    let listeners = holder
+    CAPABILITY_LISTENERS.store(true, Ordering::Relaxed);
+    let listener = Arc::downgrade(listener);
+    let mut holder = lock();
+    let chunk = holder
         .entry(world_key(world))
         .or_default()
         .entry(pos.chunk_position())
-        .or_default()
-        .entry(pos)
         .or_default();
-    let listener = Arc::downgrade(listener);
-    listeners.retain(|existing| existing.strong_count() > 0);
+    // `cleanCapabilityListenerReferences`: drop the listeners of the chunk that nobody holds.
+    chunk.retain(|_, listeners| {
+        listeners.retain(|existing| existing.strong_count() > 0);
+        !listeners.is_empty()
+    });
+    let listeners = chunk.entry(pos).or_default();
     if !listeners
         .iter()
         .any(|existing| Weak::ptr_eq(existing, &listener))
@@ -61,69 +73,68 @@ pub fn register_capability_listener(
 /// when the capabilities of a block without a block entity change; the host calls it when a
 /// block entity is placed or removed and when a chest changes its type.
 pub fn invalidate_capabilities(world: &World, pos: &BlockPos) {
-    let listeners = {
-        let mut holder = LISTENERS.lock().unwrap_or_else(PoisonError::into_inner);
-        holder
-            .get_mut(&world_key(world))
-            .and_then(|chunks| chunks.get_mut(&pos.chunk_position()))
-            .and_then(|positions| positions.remove(pos))
-    };
+    let listeners = lock()
+        .get(&world_key(world))
+        .and_then(|chunks| chunks.get(&pos.chunk_position()))
+        .and_then(|positions| positions.get(pos))
+        .cloned();
     if let Some(listeners) = listeners {
         notify(world, vec![(*pos, listeners)]);
     }
 }
 
 /// `ServerLevel.invalidateCapabilities(ChunkPos)`: calls the listeners in the chunk. The host
-/// calls it when the chunk loads or unloads.
+/// calls it when the chunk loads or unloads, at the next tick of the world.
 pub fn invalidate_capabilities_in_chunk(world: &World, chunk: Vector2<i32>) {
-    let positions = {
-        let mut holder = LISTENERS.lock().unwrap_or_else(PoisonError::into_inner);
-        holder
-            .get_mut(&world_key(world))
-            .and_then(|chunks| chunks.remove(&chunk))
-    };
+    let positions: Option<Vec<_>> = lock()
+        .get(&world_key(world))
+        .and_then(|chunks| chunks.get(&chunk))
+        .map(|positions| {
+            positions
+                .iter()
+                .map(|(pos, listeners)| (*pos, listeners.clone()))
+                .collect()
+        });
     if let Some(positions) = positions {
-        notify(world, positions.into_iter().collect());
+        notify(world, positions);
     }
 }
 
-/// Calls the listeners outside the lock, then keeps those that returned `true`.
-fn notify(
-    world: &World,
-    positions: Vec<(BlockPos, Vec<Weak<dyn CapabilityInvalidationListener>>)>,
-) {
-    let mut kept = Vec::new();
+/// Calls the listeners outside the lock. The entries stay registered meanwhile, so an
+/// invalidation that lands during the calls reaches them too. Then it drops the listeners that
+/// returned `false` or that nobody holds.
+fn notify(world: &World, positions: Vec<(BlockPos, Listeners)>) {
+    let mut stopped = Vec::new();
     for (pos, listeners) in positions {
-        let alive: Vec<_> = listeners
-            .into_iter()
-            .filter(|listener| {
-                listener
-                    .upgrade()
-                    .is_some_and(|listener| listener.on_invalidate())
-            })
-            .collect();
-        if !alive.is_empty() {
-            kept.push((pos, alive));
+        for listener in listeners {
+            let keep = listener
+                .upgrade()
+                .is_some_and(|listener| listener.on_invalidate());
+            if !keep {
+                stopped.push((pos, listener));
+            }
         }
     }
-    if kept.is_empty() {
+    if stopped.is_empty() {
         return;
     }
-    let mut holder = LISTENERS.lock().unwrap_or_else(PoisonError::into_inner);
-    let chunks = holder.entry(world_key(world)).or_default();
-    for (pos, alive) in kept {
-        let listeners = chunks
-            .entry(pos.chunk_position())
-            .or_default()
-            .entry(pos)
-            .or_default();
-        for listener in alive {
-            if !listeners
-                .iter()
-                .any(|existing| Weak::ptr_eq(existing, &listener))
-            {
-                listeners.push(listener);
+    let mut holder = lock();
+    let Some(chunks) = holder.get_mut(&world_key(world)) else {
+        return;
+    };
+    for (pos, listener) in stopped {
+        let chunk_pos = pos.chunk_position();
+        let Some(positions) = chunks.get_mut(&chunk_pos) else {
+            continue;
+        };
+        if let Some(listeners) = positions.get_mut(&pos) {
+            listeners.retain(|existing| !Weak::ptr_eq(existing, &listener));
+            if listeners.is_empty() {
+                positions.remove(&pos);
             }
+        }
+        if positions.is_empty() {
+            chunks.remove(&chunk_pos);
         }
     }
 }
@@ -136,12 +147,16 @@ struct CacheState<T: ?Sized> {
 
 struct Listener<T: ?Sized> {
     state: Mutex<CacheState<T>>,
+    /// Counts the invalidations, so a lookup that an invalidation overtook does not keep its
+    /// result.
+    generation: AtomicU64,
     is_valid: Box<dyn Fn() -> bool + Send + Sync>,
     on_invalidate: Box<dyn Fn() + Send + Sync>,
 }
 
 impl<T: ?Sized + Send + Sync> CapabilityInvalidationListener for Listener<T> {
     fn on_invalidate(&self) -> bool {
+        self.generation.fetch_add(1, Ordering::AcqRel);
         let mut state = self.state.lock().unwrap_or_else(PoisonError::into_inner);
         if !state.cache_valid {
             drop(state);
@@ -206,6 +221,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static>
                 cached: None,
                 can_query: true,
             }),
+            generation: AtomicU64::new(0),
             is_valid: Box::new(is_valid),
             on_invalidate: Box::new(invalidation_listener),
         });
@@ -246,6 +262,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static>
     /// [`CapabilityError::InvalidCache`] after `is_valid` returned `false`, or from the
     /// invalidation listener.
     pub fn get_capability(&self) -> Result<Option<Arc<T>>, CapabilityError> {
+        let generation = self.listener.generation.load(Ordering::Acquire);
         {
             let state = self
                 .listener
@@ -259,7 +276,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static>
                 return Ok(state.cached.clone());
             }
         }
-        let cached = if self.world.level.is_chunk_loaded(&self.pos.chunk_position()) {
+        let found = if self.world.level.is_chunk_loaded(&self.pos.chunk_position()) {
             self.capability
                 .get_capability(&self.world, &self.pos, self.context.clone())
         } else {
@@ -270,9 +287,13 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static>
             .state
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        state.cached.clone_from(&cached);
-        state.cache_valid = true;
-        Ok(cached)
+        // An invalidation during the lookup makes the result stale: return it, but do not keep
+        // it, so the next call looks up again.
+        if self.listener.generation.load(Ordering::Acquire) == generation {
+            state.cached.clone_from(&found);
+            state.cache_valid = true;
+        }
+        Ok(found)
     }
 }
 

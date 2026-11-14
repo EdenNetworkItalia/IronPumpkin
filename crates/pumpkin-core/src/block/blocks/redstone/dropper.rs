@@ -178,13 +178,13 @@ impl BlockBehaviour for DropperBlock {
                     dropper.set_stack(slot_index, backup);
                     return;
                 }
-                if let Some(inserted) = crate::plugin::capabilities::insert_stack(
+                if let Some(target) = crate::plugin::capabilities::item_target(
                     args.world,
                     &target_pos,
                     props.facing.to_block_direction().opposite(),
-                    &item.copy_with_count(1),
                 ) {
-                    if inserted > 0 {
+                    // `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
+                    if target.insert(&item.copy_with_count(1)) > 0 {
                         item.decrement(1);
                         dropper.set_stack(slot_index, item);
                     }

@@ -7,7 +7,9 @@ use std::sync::{
 };
 
 use pumpkin_core::{
-    block::entities::BlockEntity, plugin::capabilities::CapabilityHooks, world::World,
+    block::entities::BlockEntity,
+    plugin::capabilities::{CapabilityHooks, ItemTarget},
+    world::World,
 };
 use pumpkin_data::{
     BlockDirection, BlockState,
@@ -56,16 +58,19 @@ const SIDED: [(&str, ContainerKind); 5] = [
 
 /// The other container block entity types of `registerVanillaProviders`. Pumpkin's decorated
 /// pot has no inventory yet, so its provider finds none.
-const UNSIDED: [&str; 9] = [
-    "minecraft:barrel",
-    "minecraft:chiseled_bookshelf",
-    "minecraft:dispenser",
-    "minecraft:dropper",
-    "minecraft:hopper",
-    "minecraft:jukebox",
-    "minecraft:crafter",
-    "minecraft:decorated_pot",
-    "minecraft:shelf",
+const UNSIDED: [(&str, ContainerKind); 9] = [
+    ("minecraft:barrel", ContainerKind::Plain),
+    (
+        "minecraft:chiseled_bookshelf",
+        ContainerKind::ChiseledBookshelf,
+    ),
+    ("minecraft:dispenser", ContainerKind::Plain),
+    ("minecraft:dropper", ContainerKind::Plain),
+    ("minecraft:hopper", ContainerKind::Hopper),
+    ("minecraft:jukebox", ContainerKind::Jukebox),
+    ("minecraft:crafter", ContainerKind::Crafter),
+    ("minecraft:decorated_pot", ContainerKind::Plain),
+    ("minecraft:shelf", ContainerKind::Plain),
 ];
 
 static HOST_CLAIMED: AtomicBool = AtomicBool::new(false);
@@ -85,6 +90,7 @@ pub(super) fn register(event: &mut RegisterCapabilitiesEvent) {
 }
 
 /// `CapabilityHooks.markProxyableCapabilities`.
+/// A failed call stays in the event, so the server does not start.
 fn mark_proxyable_capabilities(event: &mut RegisterCapabilitiesEvent) {
     let _ = event.set_proxyable(&energy::BLOCK);
     let _ = event.set_proxyable(&fluid::BLOCK);
@@ -112,12 +118,13 @@ fn register_vanilla_providers(event: &mut RegisterCapabilitiesEvent) {
             },
         );
     }
-    for block_entity_type in UNSIDED {
-        let _ = event.register_block_entity(&item::BLOCK, block_entity_type, |block_entity, _| {
-            let handler: Arc<ItemHandler> =
-                InventoryWrapper::of(block_entity.clone().get_inventory()?);
-            Some(handler)
-        });
+    for (block_entity_type, kind) in UNSIDED {
+        let _ =
+            event.register_block_entity(&item::BLOCK, block_entity_type, move |block_entity, _| {
+                let handler: Arc<ItemHandler> =
+                    InventoryWrapper::of_kind(block_entity.clone().get_inventory()?, kind);
+                Some(handler)
+            });
     }
     let _ = event.register_entity(&item::ENTITY, "minecraft:player", |entity, ()| {
         let inventory: Arc<dyn Inventory> = entity.get_player()?.inventory().clone();
@@ -188,95 +195,57 @@ impl CapabilityHooks for Hooks {
         super::invalidate_capabilities_in_chunk(world, chunk);
     }
 
-    /// `VanillaInventoryCodeHooks.insertHook`.
-    fn hopper_insert(
+    fn item_target(
         &self,
         world: &Arc<World>,
-        hopper: &dyn Inventory,
-        target: &BlockPos,
+        pos: &BlockPos,
         side: BlockDirection,
-    ) -> Option<bool> {
-        let handler = item::BLOCK.get_capability(world, target, Some(side))?;
-        if is_full(handler.as_ref()) {
-            return Some(false);
-        }
-        let Ok(mut transaction) = Transaction::open_root() else {
-            return Some(false);
+    ) -> Option<Box<dyn ItemTarget>> {
+        let handler = item::BLOCK.get_capability(world, pos, Some(side))?;
+        Some(Box::new(Target(handler)))
+    }
+}
+
+/// An item handler as the hoppers and droppers of the engine use it.
+struct Target(Arc<ItemHandler>);
+
+impl ItemTarget for Target {
+    fn is_full(&self) -> bool {
+        is_full(self.0.as_ref())
+    }
+
+    /// `insertHook` and the dropper: `insertItemReturnRemaining` in a root transaction.
+    fn insert(&self, stack: &ItemStack) -> u8 {
+        let Ok(remaining) = insert_item_return_remaining(self.0.as_ref(), stack, false, None)
+        else {
+            return 0;
         };
-        for slot in 0..hopper.size() {
-            let original = hopper.get_stack(slot);
-            if original.is_empty() {
-                continue;
-            }
-            let one = hopper.remove_stack_specific(slot, 1);
-            if handler.insert(&ItemResource::of(&one), 1, &mut transaction) == 1 {
-                transaction.commit();
-                return Some(true);
-            }
-            // The item left the hopper but did not fit, so it goes back.
-            hopper.set_stack(slot, original);
-        }
-        Some(false)
-    }
-
-    /// `VanillaInventoryCodeHooks.extractHook`.
-    fn hopper_extract(
-        &self,
-        world: &Arc<World>,
-        hopper: &dyn Inventory,
-        source: &BlockPos,
-    ) -> Option<bool> {
-        let handler = item::BLOCK.get_capability(world, source, Some(BlockDirection::Down))?;
-        for index in 0..handler.size() {
-            let resource = handler.get_resource(index);
-            if resource.is_empty() {
-                continue;
-            }
-            let Ok(mut transaction) = Transaction::open_root() else {
-                return Some(false);
-            };
-            if handler.extract_at(index, &resource, 1, &mut transaction) == 0 {
-                continue;
-            }
-            let extracted = resource.to_stack(1);
-            for slot in 0..hopper.size() {
-                let mut destination = hopper.get_stack(slot);
-                let fits = destination.is_empty()
-                    || (destination.item_count < destination.get_max_stack_size()
-                        && destination.item_count < hopper.get_max_count_per_stack()
-                        && resource.matches(&destination));
-                if hopper.is_valid_slot_for(slot, &extracted) && fits {
-                    if destination.is_empty() {
-                        hopper.set_stack(slot, extracted);
-                    } else {
-                        destination.increment(1);
-                        hopper.set_stack(slot, destination);
-                    }
-                    hopper.mark_dirty();
-                    transaction.commit();
-                    return Some(true);
-                }
-            }
-        }
-        Some(false)
-    }
-
-    /// `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
-    fn insert_stack(
-        &self,
-        world: &Arc<World>,
-        target: &BlockPos,
-        side: BlockDirection,
-        stack: &ItemStack,
-    ) -> Option<u8> {
-        let handler = item::BLOCK.get_capability(world, target, Some(side))?;
-        let remaining = insert_item_return_remaining(handler.as_ref(), stack, false, None)
-            .unwrap_or_else(|_| stack.clone());
         let left = if remaining.is_empty() {
             0
         } else {
             remaining.item_count
         };
-        Some(stack.item_count.saturating_sub(left))
+        stack.item_count.saturating_sub(left)
+    }
+
+    /// `VanillaInventoryCodeHooks.extractHook`.
+    fn extract_one(&self, accept: &mut dyn FnMut(&ItemStack) -> bool) -> bool {
+        for index in 0..self.0.size() {
+            let resource = self.0.get_resource(index);
+            if resource.is_empty() {
+                continue;
+            }
+            let Ok(mut transaction) = Transaction::open_root() else {
+                return false;
+            };
+            if self.0.extract_at(index, &resource, 1, &mut transaction) == 0 {
+                continue;
+            }
+            if accept(&resource.to_stack(1)) {
+                transaction.commit();
+                return true;
+            }
+        }
+        false
     }
 }

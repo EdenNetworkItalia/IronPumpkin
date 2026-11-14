@@ -459,7 +459,7 @@ pub fn listens_to_chunk_changes(world: &World) -> bool {
     world.server.upgrade().is_some_and(|server| {
         server.plugin_manager.has_handlers::<ChunkLoad>()
             || server.plugin_manager.has_handlers::<ChunkUnloadEvent>()
-            || super::capabilities::CAPABILITY_HOOKS.get().is_some()
+            || super::capabilities::has_listeners()
     })
 }
 

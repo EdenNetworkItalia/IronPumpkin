@@ -7,13 +7,27 @@
 //! inventory (`VanillaInventoryCodeHooks`). Without installed hooks every function does
 //! nothing.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::{
+    Arc, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
-use pumpkin_data::{BlockDirection, item_stack::ItemStack};
-use pumpkin_inventory::Inventory;
+use pumpkin_data::{BlockDirection, block_properties::FacingHopper, item_stack::ItemStack};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
 use crate::world::World;
+
+/// The item handler of a block, as hoppers and droppers use it. Each call runs in its own root
+/// transaction.
+pub trait ItemTarget {
+    /// `ResourceHandlerUtil.isFull`.
+    fn is_full(&self) -> bool;
+    /// Inserts `stack` and returns the inserted count.
+    fn insert(&self, stack: &ItemStack) -> u8;
+    /// `VanillaInventoryCodeHooks.extractHook`: extracts one item from the first index that
+    /// gives one and that `accept` takes, and commits only when `accept` returns `true`.
+    fn extract_one(&self, accept: &mut dyn FnMut(&ItemStack) -> bool) -> bool;
+}
 
 /// The capability host of `ironpumpkin-mods`.
 pub trait CapabilityHooks: Send + Sync {
@@ -21,80 +35,62 @@ pub trait CapabilityHooks: Send + Sync {
     fn invalidate_block(&self, world: &World, pos: &BlockPos);
     /// `ServerLevel.invalidateCapabilities(ChunkPos)`.
     fn invalidate_chunk(&self, world: &World, chunk: Vector2<i32>);
-    /// `VanillaInventoryCodeHooks.insertHook`: moves one item of `hopper` into the item
-    /// capability of the block at `target`, looked up from `side`. `None` when the block has no
-    /// item capability.
-    fn hopper_insert(
+    /// `Capabilities.Item.BLOCK` of the block at `pos`, looked up from `side`.
+    fn item_target(
         &self,
         world: &Arc<World>,
-        hopper: &dyn Inventory,
-        target: &BlockPos,
+        pos: &BlockPos,
         side: BlockDirection,
-    ) -> Option<bool>;
-    /// `VanillaInventoryCodeHooks.extractHook`: moves one item from the item capability of the
-    /// block at `source`, looked up from below, into `hopper`. `None` when the block has no item
-    /// capability.
-    fn hopper_extract(
-        &self,
-        world: &Arc<World>,
-        hopper: &dyn Inventory,
-        source: &BlockPos,
-    ) -> Option<bool>;
-    /// The dropper branch of `DropperBlock.dispenseFrom`: inserts `stack` into the item
-    /// capability of the block at `target`, looked up from `side`, and returns the inserted
-    /// count. `None` when the block has no item capability.
-    fn insert_stack(
-        &self,
-        world: &Arc<World>,
-        target: &BlockPos,
-        side: BlockDirection,
-        stack: &ItemStack,
-    ) -> Option<u8>;
+    ) -> Option<Box<dyn ItemTarget>>;
 }
 
 /// Set once by `ironpumpkin-mods` before the first world loads.
 pub static CAPABILITY_HOOKS: OnceLock<&'static dyn CapabilityHooks> = OnceLock::new();
 
+/// Set when a mod registers the first capability invalidation listener, so the worlds collect
+/// their chunk changes for the listeners and the engine skips the invalidation calls before.
+pub static CAPABILITY_LISTENERS: AtomicBool = AtomicBool::new(false);
+
+/// Whether a capability invalidation listener exists.
+pub fn has_listeners() -> bool {
+    CAPABILITY_LISTENERS.load(Ordering::Relaxed)
+}
+
+fn hooks_with_listeners() -> Option<&'static dyn CapabilityHooks> {
+    if has_listeners() {
+        CAPABILITY_HOOKS.get().copied()
+    } else {
+        None
+    }
+}
+
 pub(crate) fn invalidate_block(world: &World, pos: &BlockPos) {
-    if let Some(hooks) = CAPABILITY_HOOKS.get() {
+    if let Some(hooks) = hooks_with_listeners() {
         hooks.invalidate_block(world, pos);
     }
 }
 
 pub(crate) fn invalidate_chunk(world: &World, chunk: Vector2<i32>) {
-    if let Some(hooks) = CAPABILITY_HOOKS.get() {
+    if let Some(hooks) = hooks_with_listeners() {
         hooks.invalidate_chunk(world, chunk);
     }
 }
 
-pub(crate) fn hopper_insert(
+pub(crate) fn item_target(
     world: &Arc<World>,
-    hopper: &dyn Inventory,
-    target: &BlockPos,
+    pos: &BlockPos,
     side: BlockDirection,
-) -> Option<bool> {
-    CAPABILITY_HOOKS
-        .get()?
-        .hopper_insert(world, hopper, target, side)
+) -> Option<Box<dyn ItemTarget>> {
+    CAPABILITY_HOOKS.get()?.item_target(world, pos, side)
 }
 
-pub(crate) fn hopper_extract(
-    world: &Arc<World>,
-    hopper: &dyn Inventory,
-    source: &BlockPos,
-) -> Option<bool> {
-    CAPABILITY_HOOKS
-        .get()?
-        .hopper_extract(world, hopper, source)
-}
-
-pub(crate) fn insert_stack(
-    world: &Arc<World>,
-    target: &BlockPos,
-    side: BlockDirection,
-    stack: &ItemStack,
-) -> Option<u8> {
-    CAPABILITY_HOOKS
-        .get()?
-        .insert_stack(world, target, side, stack)
+/// The side a hopper facing `facing` pushes into.
+pub(crate) const fn hopper_direction(facing: FacingHopper) -> BlockDirection {
+    match facing {
+        FacingHopper::Down => BlockDirection::Down,
+        FacingHopper::North => BlockDirection::North,
+        FacingHopper::South => BlockDirection::South,
+        FacingHopper::West => BlockDirection::West,
+        FacingHopper::East => BlockDirection::East,
+    }
 }
