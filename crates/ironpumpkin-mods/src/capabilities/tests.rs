@@ -59,12 +59,20 @@ fn open_event() -> RegisterCapabilitiesEvent {
     RegisterCapabilitiesEvent::new(EventPriority::Normal, &OPEN)
 }
 
-/// Runs the host part of the event once, as at startup.
+/// Runs the host part of the event once and installs the engine hooks, as at startup, without
+/// freezing the providers, so the tests can register more.
 fn vanilla_providers() {
+    static HOST: AtomicBool = AtomicBool::new(false);
     static DONE: LazyLock<()> = LazyLock::new(|| {
-        let _ = post(&[]);
+        vanilla::install_hooks();
+        assert_eq!(post_with(&[], &HOST, true), Ok(()));
     });
     LazyLock::force(&DONE);
+}
+
+/// A fresh registration flag for one call of [`post_with`].
+fn fresh_flag() -> &'static AtomicBool {
+    Box::leak(Box::new(AtomicBool::new(false)))
 }
 
 struct TestWorld {
@@ -417,8 +425,9 @@ fn a_chunk_unload_invalidates_its_caches() {
 
 #[test]
 fn registration_closes_after_the_event() {
-    let _ = post(&[]);
-    let mut late = RegisterCapabilitiesEvent::new(EventPriority::Normal, &CLOSED);
+    let closed = fresh_flag();
+    assert_eq!(post_with(&[], closed, false), Ok(()));
+    let mut late = RegisterCapabilitiesEvent::new(EventPriority::Normal, closed);
     let result = late.register_block(&item::BLOCK, |_, _, _, _, _| None, &["minecraft:stone"]);
     assert_eq!(result, Err(CapabilityError::RegistrationClosed));
     assert_eq!(
@@ -488,10 +497,14 @@ impl NativeMod for PhaseMod {
 fn every_mod_gets_each_phase_in_order_after_the_host() {
     static MOD: PhaseMod = PhaseMod;
     vanilla_providers();
-    let _ = post(&[LoadedMod {
-        native_mod: &MOD,
-        mod_id: "phasemod",
-    }]);
+    let _ = post_with(
+        &[LoadedMod {
+            native_mod: &MOD,
+            mod_id: "phasemod",
+        }],
+        fresh_flag(),
+        false,
+    );
     let seen = PHASES_SEEN.lock().unwrap().clone();
     assert_eq!(
         seen,
@@ -504,6 +517,151 @@ fn every_mod_gets_each_phase_in_order_after_the_host() {
         ]
     );
     assert!(item::BLOCK.is_proxyable());
+}
+
+/// A mod that registers a provider for `block` at `Normal`, and records at `Low` whether it sees
+/// the provider of the other mod.
+struct OrderMod {
+    id: &'static str,
+    block: &'static str,
+    other_block: &'static str,
+    saw_other: AtomicBool,
+}
+
+static ORDER_CAP: LazyLock<BlockCapability<dyn EnergyHandler, ()>> =
+    LazyLock::new(|| BlockCapability::create_void("test:load_order").unwrap());
+
+impl NativeMod for OrderMod {
+    fn id(&self) -> &'static str {
+        self.id
+    }
+
+    fn display_name(&self) -> &'static str {
+        self.id
+    }
+
+    fn version(&self) -> &'static str {
+        "1.0.0"
+    }
+
+    fn init(&self, _cx: &mut crate::ModInit) {}
+
+    fn register_capabilities(&self, event: &mut RegisterCapabilitiesEvent) {
+        match event.phase() {
+            EventPriority::Normal => {
+                event
+                    .register_block(&ORDER_CAP, |_, _, _, _, ()| None, &[self.block])
+                    .unwrap();
+            }
+            EventPriority::Low => self.saw_other.store(
+                event.is_block_registered(&ORDER_CAP, self.other_block),
+                Ordering::Relaxed,
+            ),
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn a_fallback_at_low_sees_the_normal_providers_of_every_mod_in_either_load_order() {
+    let make = |id, block, other_block| -> &'static OrderMod {
+        Box::leak(Box::new(OrderMod {
+            id,
+            block,
+            other_block,
+            saw_other: AtomicBool::new(false),
+        }))
+    };
+    let first = make("first", "minecraft:end_rod", "minecraft:lightning_rod");
+    let second = make("second", "minecraft:lightning_rod", "minecraft:end_rod");
+    let loaded = |native_mod: &'static OrderMod| LoadedMod {
+        native_mod,
+        mod_id: native_mod.id,
+    };
+    assert_eq!(
+        post_with(&[loaded(first), loaded(second)], fresh_flag(), false),
+        Ok(())
+    );
+    assert!(first.saw_other.load(Ordering::Relaxed));
+    assert!(second.saw_other.load(Ordering::Relaxed));
+    let third = make("third", "minecraft:target", "minecraft:sculk_vein");
+    let fourth = make("fourth", "minecraft:sculk_vein", "minecraft:target");
+    assert_eq!(
+        post_with(&[loaded(fourth), loaded(third)], fresh_flag(), false),
+        Ok(())
+    );
+    assert!(third.saw_other.load(Ordering::Relaxed));
+    assert!(fourth.saw_other.load(Ordering::Relaxed));
+}
+
+#[test]
+fn a_lookup_that_an_invalidation_overtakes_is_not_cached() {
+    let test = TestWorld::new();
+    let at = pos(3, 64, 14);
+    test.place(at, Block::LODESTONE.default_state.id);
+    let capability =
+        BlockCapability::<dyn EnergyHandler, ()>::create_void("test:overtaken").unwrap();
+    let lookups = Arc::new(AtomicUsize::new(0));
+    let counter = lookups.clone();
+    let world = test.world.clone();
+    let mut event = open_event();
+    event
+        .register_block(
+            &capability,
+            move |_, pos, _, _, ()| {
+                // A parallel tick changes the block while this lookup runs.
+                if counter.fetch_add(1, Ordering::Relaxed) == 0 {
+                    invalidate_capabilities(&world, pos);
+                }
+                let handler: Arc<dyn EnergyHandler> =
+                    Arc::new(crate::transfer::SimpleEnergyHandler::new(10, 10, 10));
+                Some(handler)
+            },
+            &["minecraft:lodestone"],
+        )
+        .unwrap();
+    let cache = BlockCapabilityCache::create(capability, &test.world, at, ());
+    assert!(cache.get_capability().unwrap().is_some());
+    assert!(cache.get_capability().unwrap().is_some());
+    assert_eq!(lookups.load(Ordering::Relaxed), 2);
+    assert!(cache.get_capability().unwrap().is_some());
+    assert_eq!(lookups.load(Ordering::Relaxed), 2);
+}
+
+#[test]
+fn an_invalidation_during_the_listener_calls_reaches_every_listener() {
+    let test = TestWorld::new();
+    let at = pos(5, 64, 14);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counter = calls.clone();
+    let refilled = Arc::new(BlockCapabilityCache::create_with_listener(
+        *item::BLOCK,
+        &test.world,
+        at,
+        None,
+        || true,
+        move || {
+            counter.fetch_add(1, Ordering::Relaxed);
+        },
+    ));
+    refilled.get_capability().unwrap();
+    let other = refilled.clone();
+    let world = test.world.clone();
+    let second = BlockCapabilityCache::create_with_listener(
+        *item::BLOCK,
+        &test.world,
+        at,
+        None,
+        || true,
+        move || {
+            // The first cache was told and read again; another change of the block follows.
+            other.get_capability().unwrap();
+            invalidate_capabilities(&world, &at);
+        },
+    );
+    second.get_capability().unwrap();
+    invalidate_capabilities(&test.world, &at);
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
 }
 
 /// Handlers of the plain blocks that the hopper and dropper tests feed.

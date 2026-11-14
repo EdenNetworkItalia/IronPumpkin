@@ -33,10 +33,12 @@ use std::{
     fmt,
     marker::PhantomData,
     sync::{
-        Arc, LazyLock, Mutex, PoisonError, RwLock,
+        Arc, LazyLock, Mutex, OnceLock, PoisonError, RwLock,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
+
+use rustc_hash::FxHashMap;
 
 use pumpkin_core::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::{
@@ -140,6 +142,7 @@ enum Kind {
 /// A registered capability, whatever its types.
 struct Entry {
     data: &'static (dyn Any + Send + Sync),
+    freeze: &'static dyn Freeze,
     types: TypeId,
     type_names: String,
     proxyable: Option<&'static Mutex<Option<bool>>>,
@@ -205,8 +208,91 @@ pub type EntityProvider<T, C> = dyn Fn(&Arc<dyn EntityBase>, C) -> Option<Arc<T>
 /// `ICapabilityProvider` of an item.
 pub type ItemProvider<T, C> = dyn Fn(&ItemStack, C) -> Option<Arc<T>> + Send + Sync;
 
-/// Providers by block, block entity type, entity type or item name.
-type ByName<P> = RwLock<HashMap<String, Vec<P>>>;
+type Providers<P> = FxHashMap<Box<str>, Vec<P>>;
+
+/// Providers by block, block entity type, entity type or item name, without the `minecraft`
+/// namespace, which `Block::name` and the other generated names also leave out. Registration
+/// writes `building`; the end of the `RegisterCapabilitiesEvent` copies it into `frozen`, and a
+/// lookup reads the frozen copy without a lock, so the parallel world ticks do not share a lock.
+struct ByName<P> {
+    building: RwLock<Providers<P>>,
+    frozen: OnceLock<Providers<P>>,
+}
+
+impl<P> Default for ByName<P> {
+    fn default() -> Self {
+        Self {
+            building: RwLock::default(),
+            frozen: OnceLock::new(),
+        }
+    }
+}
+
+/// The key of a registry name in a [`ByName`].
+fn key(name: &str) -> &str {
+    name.strip_prefix("minecraft:").unwrap_or(name)
+}
+
+impl<P: Clone> ByName<P> {
+    fn push(&self, name: &str, provider: P) {
+        self.building
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(key(name).into())
+            .or_default()
+            .push(provider);
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.building
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains_key(key(name))
+    }
+
+    /// Whether no provider is registered, which a lookup checks before it reads the world.
+    fn is_empty(&self) -> bool {
+        self.frozen.get().map_or_else(
+            || {
+                self.building
+                    .read()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .is_empty()
+            },
+            HashMap::is_empty,
+        )
+    }
+
+    /// Runs `f` on the providers of `name`. Before the freeze it runs on a copy, so a provider
+    /// that looks up a capability does not take the lock twice.
+    fn with<R>(&self, name: &str, f: impl FnOnce(&[P]) -> R) -> R {
+        if let Some(frozen) = self.frozen.get() {
+            return f(frozen.get(key(name)).map_or(&[], Vec::as_slice));
+        }
+        let providers = self
+            .building
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(key(name))
+            .cloned()
+            .unwrap_or_default();
+        f(&providers)
+    }
+
+    fn freeze(&self) {
+        let providers = self
+            .building
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let _ = self.frozen.set(providers);
+    }
+}
+
+/// Copies the providers of a capability into its frozen maps.
+trait Freeze: Send + Sync {
+    fn freeze(&self);
+}
 
 struct BlockData<T: ?Sized + 'static, C: 'static> {
     name: String,
@@ -234,7 +320,7 @@ fn type_names<T: ?Sized, C>() -> String {
 }
 
 /// What a capability kind stores, built from its name.
-trait CapabilityData: Any + Send + Sync + Sized {
+trait CapabilityData: Any + Freeze + Sized {
     const KIND: Kind;
 
     fn new(name: String) -> Self;
@@ -269,16 +355,39 @@ fn insert<D: CapabilityData, T: ?Sized + 'static, C: 'static>(
     name: String,
 ) -> &'static D {
     let data: &'static D = Box::leak(Box::new(D::new(name.clone())));
+    if CLOSED.load(Ordering::Acquire) {
+        data.freeze();
+    }
     entries.insert(
         (D::KIND, name),
         Entry {
             data,
+            freeze: data,
             types: TypeId::of::<(PhantomData<T>, C)>(),
             type_names: type_names::<T, C>(),
             proxyable: data.proxyable(),
         },
     );
     data
+}
+
+impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> Freeze for BlockData<T, C> {
+    fn freeze(&self) {
+        self.blocks.freeze();
+        self.block_entities.freeze();
+    }
+}
+
+impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> Freeze for EntityData<T, C> {
+    fn freeze(&self) {
+        self.providers.freeze();
+    }
+}
+
+impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> Freeze for ItemData<T, C> {
+    fn freeze(&self) {
+        self.providers.freeze();
+    }
 }
 
 impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> CapabilityData
@@ -289,8 +398,8 @@ impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> CapabilityData
     fn new(name: String) -> Self {
         Self {
             name,
-            blocks: RwLock::default(),
-            block_entities: RwLock::default(),
+            blocks: ByName::default(),
+            block_entities: ByName::default(),
             proxyable: Mutex::new(None),
         }
     }
@@ -308,7 +417,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> CapabilityData
     fn new(name: String) -> Self {
         Self {
             name,
-            providers: RwLock::default(),
+            providers: ByName::default(),
         }
     }
 }
@@ -321,7 +430,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> CapabilityData
     fn new(name: String) -> Self {
         Self {
             name,
-            providers: RwLock::default(),
+            providers: ByName::default(),
         }
     }
 }
@@ -388,57 +497,60 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static> BlockC
         block_entity: Option<Arc<dyn BlockEntity>>,
         context: C,
     ) -> Option<Arc<T>> {
-        let (block, state) = world.get_block_and_state(pos);
-        let block_name = dynamic::namespaced_name(block.name);
-        let block_entity = block_entity.or_else(|| world.get_block_entity(pos));
-        let block_providers: Vec<_> = self
-            .data
-            .blocks
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(block_name.as_ref())
-            .cloned()
-            .unwrap_or_default();
-        let entity_providers: Vec<_> = block_entity
-            .as_ref()
-            .and_then(|block_entity| {
-                self.data
-                    .block_entities
-                    .read()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .get(block_entity.resource_location())
-                    .cloned()
-            })
-            .unwrap_or_default();
-        let (mut blocks, mut entities) = (
-            block_providers.iter().peekable(),
-            entity_providers.iter().peekable(),
-        );
-        loop {
-            let next_block = blocks.peek().map(|ordered| ordered.seq);
-            let next_entity = entities.peek().map(|ordered| ordered.seq);
-            let handler = match (next_block, next_entity) {
-                (None, None) => return None,
-                (Some(block_seq), Some(entity_seq)) if entity_seq < block_seq => {
-                    entities.next().and_then(|ordered| {
-                        block_entity
-                            .as_ref()
-                            .and_then(|be| (ordered.provider)(be, context.clone()))
-                    })
-                }
-                (None, Some(_)) => entities.next().and_then(|ordered| {
-                    block_entity
-                        .as_ref()
-                        .and_then(|be| (ordered.provider)(be, context.clone()))
-                }),
-                _ => blocks.next().and_then(|ordered| {
-                    (ordered.provider)(world, pos, state, block_entity.as_ref(), context.clone())
-                }),
-            };
-            if handler.is_some() {
-                return handler;
-            }
+        let data = self.data;
+        if data.blocks.is_empty() && data.block_entities.is_empty() {
+            return None;
         }
+        let (block, state) = world.get_block_and_state(pos);
+        // `BlockCapability.getCapability` reads the block entity only for a block with one.
+        let block_entity = if state.block_entity_type == u16::MAX || data.block_entities.is_empty()
+        {
+            None
+        } else {
+            block_entity.or_else(|| world.get_block_entity(pos))
+        };
+        data.blocks.with(block.name, |block_providers| {
+            let entity_type = block_entity
+                .as_ref()
+                .map_or("", |block_entity| block_entity.resource_location());
+            data.block_entities.with(entity_type, |entity_providers| {
+                let (mut blocks, mut entities) = (
+                    block_providers.iter().peekable(),
+                    entity_providers.iter().peekable(),
+                );
+                loop {
+                    let next_block = blocks.peek().map(|ordered| ordered.seq);
+                    let next_entity = entities.peek().map(|ordered| ordered.seq);
+                    let handler = match (next_block, next_entity) {
+                        (None, None) => return None,
+                        (Some(block_seq), Some(entity_seq)) if entity_seq < block_seq => {
+                            entities.next().and_then(|ordered| {
+                                block_entity
+                                    .as_ref()
+                                    .and_then(|be| (ordered.provider)(be, context.clone()))
+                            })
+                        }
+                        (None, Some(_)) => entities.next().and_then(|ordered| {
+                            block_entity
+                                .as_ref()
+                                .and_then(|be| (ordered.provider)(be, context.clone()))
+                        }),
+                        _ => blocks.next().and_then(|ordered| {
+                            (ordered.provider)(
+                                world,
+                                pos,
+                                state,
+                                block_entity.as_ref(),
+                                context.clone(),
+                            )
+                        }),
+                    };
+                    if handler.is_some() {
+                        return handler;
+                    }
+                }
+            })
+        })
     }
 }
 
@@ -522,18 +634,13 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static> Entity
 
     /// `getCapability` (`Entity.getCapability`).
     pub fn get_capability(&self, entity: &Arc<dyn EntityBase>, context: C) -> Option<Arc<T>> {
-        let entity_type = dynamic::namespaced_name(entity.get_entity().entity_type.resource_name);
-        let providers = self
-            .data
+        self.data
             .providers
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(entity_type.as_ref())
-            .cloned()
-            .unwrap_or_default();
-        providers
-            .iter()
-            .find_map(|provider| provider(entity, context.clone()))
+            .with(entity.get_entity().entity_type.resource_name, |providers| {
+                providers
+                    .iter()
+                    .find_map(|provider| provider(entity, context.clone()))
+            })
     }
 }
 
@@ -600,18 +707,13 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static> ItemCa
         if stack.is_empty() {
             return None;
         }
-        let item = dynamic::namespaced_name(stack.item.registry_key);
-        let providers = self
-            .data
+        self.data
             .providers
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(item.as_ref())
-            .cloned()
-            .unwrap_or_default();
-        providers
-            .iter()
-            .find_map(|provider| provider(stack, context.clone()))
+            .with(stack.item.registry_key, |providers| {
+                providers
+                    .iter()
+                    .find_map(|provider| provider(stack, context.clone()))
+            })
     }
 }
 
@@ -880,13 +982,11 @@ impl RegisterCapabilitiesEvent {
                 .map(|block| registration::block(block).map(|(name, _)| name))
                 .collect::<Result<Vec<_>, _>>()?;
             let provider: Arc<BlockProvider<T, C>> = Arc::new(provider);
-            let mut map = capability
-                .data
-                .blocks
-                .write()
-                .unwrap_or_else(PoisonError::into_inner);
             for name in names {
-                map.entry(name).or_default().push(ordered(provider.clone()));
+                capability
+                    .data
+                    .blocks
+                    .push(&name, ordered(provider.clone()));
             }
             Ok(())
         });
@@ -922,11 +1022,7 @@ impl RegisterCapabilitiesEvent {
             capability
                 .data
                 .block_entities
-                .write()
-                .unwrap_or_else(PoisonError::into_inner)
-                .entry(name)
-                .or_default()
-                .push(ordered(provider));
+                .push(&name, ordered(provider));
             Ok(())
         });
         self.keep(result)
@@ -943,27 +1039,14 @@ impl RegisterCapabilitiesEvent {
         let Ok((name, vanilla)) = registration::block(block) else {
             return false;
         };
-        if capability
-            .data
-            .blocks
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains_key(&name)
-        {
+        if capability.data.blocks.contains(&name) {
             return true;
         }
         vanilla
             .and_then(|block| {
                 BLOCK_ENTITY_TYPES.get(usize::from(block.default_state.block_entity_type))
             })
-            .is_some_and(|path| {
-                capability
-                    .data
-                    .block_entities
-                    .read()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .contains_key(&format!("minecraft:{path}"))
-            })
+            .is_some_and(|path| capability.data.block_entities.contains(path))
     }
 
     fn set_proxyable_state<T: ?Sized, C>(
@@ -1037,14 +1120,7 @@ impl RegisterCapabilitiesEvent {
         let result = self.open().and_then(|()| {
             let (name, _) = registration::entity_type(entity_type)?;
             let provider: Arc<EntityProvider<T, C>> = Arc::new(provider);
-            capability
-                .data
-                .providers
-                .write()
-                .unwrap_or_else(PoisonError::into_inner)
-                .entry(name)
-                .or_default()
-                .push(provider);
+            capability.data.providers.push(&name, provider);
             Ok(())
         });
         self.keep(result)
@@ -1061,12 +1137,7 @@ impl RegisterCapabilitiesEvent {
         T: ?Sized + Send + Sync + 'static,
         C: Clone + Send + Sync + 'static,
     {
-        capability
-            .data
-            .providers
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains_key(&registration::namespaced(entity_type))
+        capability.data.providers.contains(entity_type)
     }
 
     /// `registerItem`: `provider` answers lookups of `capability` on stacks of `items`.
@@ -1094,13 +1165,8 @@ impl RegisterCapabilitiesEvent {
                 .map(|item| item_name(item))
                 .collect::<Result<Vec<_>, _>>()?;
             let provider: Arc<ItemProvider<T, C>> = Arc::new(provider);
-            let mut map = capability
-                .data
-                .providers
-                .write()
-                .unwrap_or_else(PoisonError::into_inner);
             for name in names {
-                map.entry(name).or_default().push(provider.clone());
+                capability.data.providers.push(&name, provider.clone());
             }
             Ok(())
         });
@@ -1114,12 +1180,7 @@ impl RegisterCapabilitiesEvent {
         T: ?Sized + Send + Sync + 'static,
         C: Clone + Send + Sync + 'static,
     {
-        capability
-            .data
-            .providers
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .contains_key(&registration::namespaced(item))
+        capability.data.providers.contains(item)
     }
 }
 
@@ -1139,20 +1200,49 @@ fn item_name(item: &str) -> Result<String, CapabilityError> {
 }
 
 /// Posts the `RegisterCapabilitiesEvent` phase by phase to the host and every mod in load
-/// order, then closes the registration. Returns the first error of a mod after the last phase.
+/// order, then closes the registration and freezes the providers. Returns the first error after
+/// the last phase.
 pub(crate) fn post(mods: &[LoadedMod<'_>]) -> Result<(), String> {
     static POSTING: Mutex<()> = Mutex::new(());
     let _posting = POSTING.lock().unwrap_or_else(PoisonError::into_inner);
     vanilla::install_hooks();
-    let host = vanilla::claim_host();
+    let result = post_with(mods, &CLOSED, vanilla::claim_host());
+    let entries = STATE
+        .registry
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    for entry in entries.values() {
+        entry.freeze.freeze();
+    }
+    result
+}
+
+/// [`post`] without the host, the engine hooks and the freeze, for the lifecycle tests.
+#[cfg(test)]
+pub(crate) fn post_unfrozen(mods: &[LoadedMod<'_>]) -> Result<(), String> {
+    post_with(mods, Box::leak(Box::new(AtomicBool::new(false))), false)
+}
+
+/// The phases of [`post`] with the registration flag `closed`, and with the host part when
+/// `host` is set.
+fn post_with(
+    mods: &[LoadedMod<'_>],
+    closed: &'static AtomicBool,
+    host: bool,
+) -> Result<(), String> {
     let mut first_error = None;
     for phase in PHASES {
         if host {
-            let mut event = RegisterCapabilitiesEvent::new(phase.clone(), &CLOSED);
+            let mut event = RegisterCapabilitiesEvent::new(phase.clone(), closed);
             vanilla::register(&mut event);
+            if let Some(error) = event.error {
+                first_error.get_or_insert_with(|| {
+                    format!("the RegisterCapabilitiesEvent of the host: {error}")
+                });
+            }
         }
         for loaded in mods {
-            let mut event = RegisterCapabilitiesEvent::new(phase.clone(), &CLOSED);
+            let mut event = RegisterCapabilitiesEvent::new(phase.clone(), closed);
             loaded.native_mod.register_capabilities(&mut event);
             if let Some(error) = event.error {
                 first_error.get_or_insert_with(|| {
@@ -1164,7 +1254,7 @@ pub(crate) fn post(mods: &[LoadedMod<'_>]) -> Result<(), String> {
             }
         }
     }
-    CLOSED.store(true, Ordering::Release);
+    closed.store(true, Ordering::Release);
     first_error.map_or(Ok(()), Err)
 }
 

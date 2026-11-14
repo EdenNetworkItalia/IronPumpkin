@@ -2052,6 +2052,7 @@ dependencies = [
  "pumpkin-protocol",
  "pumpkin-util",
  "pumpkin-world",
+ "rustc-hash",
  "serde_json",
  "tempfile",
  "tokio",

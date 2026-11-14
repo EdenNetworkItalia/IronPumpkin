@@ -15,6 +15,7 @@ pumpkin-macros.workspace = true
 pumpkin-nbt.workspace = true
 pumpkin-util.workspace = true
 pumpkin-world.workspace = true
+rustc-hash.workspace = true
 futures = { workspace = true, features = ["executor"] }
 inventory.workspace = true
 serde_json.workspace = true

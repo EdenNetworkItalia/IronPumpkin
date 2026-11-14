@@ -90,7 +90,12 @@ pub(crate) fn run(
     }
     // `RegistrationEvents.init`, the "Registration events" task after the sided setup:
     // `CapabilityHooks.init`, then `PoiTypeExtender.extendPoiTypes`.
+    #[cfg(not(test))]
     crate::capabilities::post(mods)?;
+    // The unit tests of `capabilities` register providers after this step in the same process,
+    // so the lifecycle tests do not close and freeze the shared registry.
+    #[cfg(test)]
+    crate::capabilities::post_unfrozen(mods)?;
     post(mods, |m, event| m.extend_poi_types(event))?;
     let mut queue = ImcQueue::default();
     for loaded in mods {
