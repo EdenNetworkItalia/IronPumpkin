@@ -11,9 +11,9 @@
 //! cube, the legacy solid flag, the solid render and the redstone conductor) follow the shapes of
 //! the state.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
 use pumpkin_util::math::boundingbox::BoundingBox;
 
@@ -48,28 +48,15 @@ impl fmt::Debug for DeclaredShapes {
     }
 }
 
-static DECLARED: Mutex<BTreeMap<String, DeclaredShapes>> = Mutex::new(BTreeMap::new());
-
-/// Declares the shapes of the custom block `block`. A second call replaces the first.
+/// Declares the shapes of the registered custom block `block`. A second call replaces the first.
 ///
 /// # Errors
 ///
-/// [`RegistryError::RegistryFrozen`] after the freeze.
+/// [`RegistryError::RegistryFrozen`] when [`dynamic::register_block`] fails with it: after the
+/// freeze, and after a failed freeze. [`RegistryError::InvalidDefinition`] when no block
+/// `block` is registered.
 pub fn declare(block: &str, shapes: DeclaredShapes) -> Result<(), RegistryError> {
-    let mut declared = DECLARED.lock().unwrap_or_else(PoisonError::into_inner);
-    if dynamic::tables().is_some() {
-        return Err(RegistryError::RegistryFrozen);
-    }
-    declared.insert(block.to_owned(), shapes);
-    Ok(())
-}
-
-pub(crate) fn declared(block: &str) -> Option<DeclaredShapes> {
-    DECLARED
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(block)
-        .cloned()
+    dynamic::with_builder(|builder| builder.declare_shapes(block, shapes))
 }
 
 /// The property values of one state of a custom block, as a shape function sees them.

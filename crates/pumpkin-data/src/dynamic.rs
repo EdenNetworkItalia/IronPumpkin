@@ -536,6 +536,8 @@ struct PendingBlock {
     properties: Vec<BlockPropertyDefinition>,
     state_count: usize,
     default_index: usize,
+    /// The shapes that the block declares: see [`dynamic_shapes::declare`].
+    shapes: Option<dynamic_shapes::DeclaredShapes>,
 }
 
 impl PendingBlock {
@@ -589,6 +591,7 @@ impl PendingBlock {
             properties,
             state_count,
             default_index,
+            shapes: None,
         })
     }
 }
@@ -601,7 +604,7 @@ fn is_valid_property_word(word: &str) -> bool {
 }
 
 #[derive(Debug)]
-struct ContentBuilder {
+pub(crate) struct ContentBuilder {
     blocks: BTreeMap<String, PendingBlock>,
     #[cfg(feature = "item")]
     items: BTreeMap<String, (&'static Item, Option<String>)>,
@@ -627,6 +630,24 @@ impl ContentBuilder {
             tags: BTreeMap::new(),
             mod_tags: BTreeMap::new(),
         }
+    }
+
+    /// Sets the declared shapes of the registered block `name`.
+    pub(crate) fn declare_shapes(
+        &mut self,
+        name: &str,
+        shapes: dynamic_shapes::DeclaredShapes,
+    ) -> Result<(), RegistryError> {
+        let block = self
+            .blocks
+            .get_mut(name)
+            .ok_or_else(|| RegistryError::InvalidDefinition {
+                kind: ContentKind::Block,
+                name: name.to_owned(),
+                reason: "declares shapes but is not registered",
+            })?;
+        block.shapes = Some(shapes);
+        Ok(())
     }
 
     fn contains(&self, kind: ContentKind, name: &str) -> bool {
@@ -889,7 +910,7 @@ impl ContentBuilder {
                 dynamic_types::pending_block_entity_type(name).unwrap_or(u16::MAX);
             // A block without declared shapes is a full cube, unless its block type gives the
             // shapes.
-            let declared = dynamic_shapes::declared(name).or_else(|| {
+            let declared = block.shapes.clone().or_else(|| {
                 block_type
                     .is_none()
                     .then(dynamic_shapes::DeclaredShapes::default)
@@ -1425,7 +1446,7 @@ fn sorted_ids(mut ids: Vec<u16>) -> Box<[u16]> {
 static PENDING: Mutex<Option<ContentBuilder>> = Mutex::new(Some(ContentBuilder::new()));
 static TABLES: OnceLock<ContentTables> = OnceLock::new();
 
-fn with_builder(
+pub(crate) fn with_builder(
     register: impl FnOnce(&mut ContentBuilder) -> Result<(), RegistryError>,
 ) -> Result<(), RegistryError> {
     let mut pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner);

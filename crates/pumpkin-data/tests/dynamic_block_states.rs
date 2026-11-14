@@ -38,6 +38,14 @@ fn custom_state_ids_resolve_to_their_block_and_values() {
         vec![BlockPropertyDefinition::bool("lit", false)],
     );
     dynamic::freeze().unwrap();
+    assert_eq!(
+        pumpkin_data::dynamic_shapes::declare(
+            "test:plain",
+            pumpkin_data::dynamic_shapes::DeclaredShapes::default()
+        )
+        .unwrap_err(),
+        dynamic::RegistryError::RegistryFrozen
+    );
 
     // Name order: crop, lamp, plain.
     let base = BlockStateId::COUNT;

@@ -5,7 +5,9 @@
     reason = "a test fails on the first missing value"
 )]
 
-use pumpkin_data::dynamic::{self, ItemDefinition, RegistryError};
+use pumpkin_data::Block;
+use pumpkin_data::dynamic::{self, BlockDefinition, ContentKind, ItemDefinition, RegistryError};
+use pumpkin_data::dynamic_shapes::{self, DeclaredShapes};
 use pumpkin_data::item::Item;
 
 #[test]
@@ -17,6 +19,23 @@ fn failed_freeze_leaves_no_tables() {
         tags: Vec::new(),
     })
     .unwrap();
+    dynamic::register_block(BlockDefinition {
+        name: "test:shaped".to_string(),
+        display: Block::STONE.default_state.id,
+        properties: Vec::new(),
+        tags: Vec::new(),
+    })
+    .unwrap();
+    dynamic_shapes::declare("test:shaped", DeclaredShapes::default()).unwrap();
+    // Shapes need a registered block.
+    assert_eq!(
+        dynamic_shapes::declare("test:unregistered", DeclaredShapes::default()).unwrap_err(),
+        RegistryError::InvalidDefinition {
+            kind: ContentKind::Block,
+            name: "test:unregistered".to_string(),
+            reason: "declares shapes but is not registered",
+        }
+    );
     assert!(dynamic::tables().is_none());
     assert_eq!(
         dynamic::freeze().unwrap_err(),
@@ -31,4 +50,9 @@ fn failed_freeze_leaves_no_tables() {
         RegistryError::RegistryFrozen
     );
     assert!(dynamic::tables().is_none());
+    // Shapes fail like blocks after a failed freeze, although no tables exist.
+    assert_eq!(
+        dynamic_shapes::declare("test:shaped", DeclaredShapes::default()).unwrap_err(),
+        RegistryError::RegistryFrozen
+    );
 }
