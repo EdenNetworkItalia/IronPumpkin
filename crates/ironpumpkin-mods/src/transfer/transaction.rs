@@ -11,14 +11,23 @@
 //! is unusable while a nested transaction is open, and a handler gets the
 //! [`TransactionContext`] only for the length of its call, so it never sees a closed
 //! transaction.
+//!
+//! Worlds tick in parallel, so roots of two threads can reach one journal. A journal belongs to
+//! the root that touched it first until that root closes, and a transaction of another thread
+//! changes nothing in it meanwhile: see [`SnapshotJournal`].
 
 use std::{
+    any::Any,
     cell::RefCell,
     collections::VecDeque,
     fmt,
     marker::PhantomData,
     ops::{Deref, DerefMut},
-    sync::{Arc, Mutex, PoisonError, Weak},
+    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    sync::{
+        Arc, Mutex, PoisonError, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use tracing::error;
@@ -187,6 +196,8 @@ impl fmt::Debug for Transaction<'_> {
 trait JournalClose: Send + Sync {
     fn on_close(&self, depth: usize, aborted: bool);
     fn call_on_root_commit(&self);
+    /// Gives the journal back after the root of its owner closed.
+    fn release(&self);
 }
 
 #[derive(Default)]
@@ -202,6 +213,8 @@ struct Manager {
     frames: Vec<Frame>,
     root_commit_queue: VecDeque<Arc<dyn JournalClose>>,
     processing_root_commit: bool,
+    /// The journals that the open root of this thread owns.
+    owned: Vec<Arc<dyn JournalClose>>,
 }
 
 impl Manager {
@@ -216,8 +229,25 @@ impl Manager {
     }
 }
 
+impl Drop for Manager {
+    fn drop(&mut self) {
+        // A thread that exits with a leaked root gives its journals back.
+        for journal in self.owned.drain(..) {
+            journal.release();
+        }
+    }
+}
+
+/// The owner id of the journals that the transactions of this thread touch. 0 is no owner.
+static NEXT_THREAD: AtomicU64 = AtomicU64::new(1);
+
 thread_local! {
     static MANAGER: RefCell<Manager> = RefCell::default();
+    static THREAD: u64 = NEXT_THREAD.fetch_add(1, Ordering::Relaxed);
+}
+
+fn thread_id() -> u64 {
+    THREAD.with(|id| *id)
 }
 
 fn open_root_depth() -> Result<usize, TransactionError> {
@@ -235,8 +265,19 @@ fn with_manager<R>(f: impl FnOnce(&mut Manager) -> R) -> R {
     MANAGER.with(|manager| f(&mut manager.borrow_mut()))
 }
 
-/// `Transaction.close(wasAborted)`: closes the journals of the transaction at `depth`, and after
-/// the root runs the root commit callbacks.
+type Panic = Box<dyn Any + Send>;
+
+/// Runs `f` and keeps its panic in `first` when `first` has none yet, as `Transaction.close`
+/// collects the exceptions of its callbacks.
+fn guarded(first: &mut Option<Panic>, f: impl FnOnce()) {
+    if let Err(panic) = catch_unwind(AssertUnwindSafe(f)) {
+        first.get_or_insert(panic);
+    }
+}
+
+/// `Transaction.close(wasAborted)`: closes the journals of the transaction at `depth`. After the
+/// root it runs the root commit callbacks and gives the owned journals back. Every callback runs
+/// even when one panics; the first panic goes on after the state of the thread is consistent.
 fn close(depth: usize, aborted: bool) {
     let journals = with_manager(|manager| {
         if manager.current != Some(depth) || !manager.frames[depth].open {
@@ -249,35 +290,32 @@ fn close(depth: usize, aborted: bool) {
         error!("transaction of depth {depth} closed out of order; it was leaked or closed twice");
         return;
     };
-    // The depth goes down even when a journal callback panics, as `close` does on an exception.
-    let _restore = CloseGuard(depth);
+    let mut panic = None;
     for journal in journals {
-        journal.on_close(depth, aborted);
+        guarded(&mut panic, || journal.on_close(depth, aborted));
     }
-}
-
-struct CloseGuard(usize);
-
-impl Drop for CloseGuard {
-    fn drop(&mut self) {
-        let depth = self.0;
-        let panicking = std::thread::panicking();
-        let root = with_manager(|manager| {
-            manager.current = depth.checked_sub(1);
-            if depth == 0 && panicking {
-                manager.root_commit_queue.clear();
-            }
-            depth == 0
-                && !panicking
-                && !std::mem::replace(&mut manager.processing_root_commit, true)
-        });
-        if !root {
-            return;
-        }
+    let root = with_manager(|manager| {
+        manager.current = depth.checked_sub(1);
+        depth == 0 && !std::mem::replace(&mut manager.processing_root_commit, true)
+    });
+    if root {
         while let Some(journal) = with_manager(|manager| manager.root_commit_queue.pop_front()) {
-            journal.call_on_root_commit();
+            guarded(&mut panic, || journal.call_on_root_commit());
         }
-        with_manager(|manager| manager.processing_root_commit = false);
+        let owned = with_manager(|manager| {
+            manager.processing_root_commit = false;
+            std::mem::take(&mut manager.owned)
+        });
+        for journal in owned {
+            journal.release();
+        }
+    }
+    if let Some(panic) = panic {
+        if std::thread::panicking() {
+            error!("a transaction callback panicked while the thread unwinds");
+        } else {
+            resume_unwind(panic);
+        }
     }
 }
 
@@ -312,9 +350,14 @@ struct JournalState<S> {
 /// [`update_snapshots`](Self::update_snapshots) before each change, and the journal rolls the
 /// change back when the transaction aborts.
 ///
-/// A journal joins the transactions of one thread at a time, as in `NeoForge`.
+/// Worlds tick in parallel, so two threads can reach one journal. The first transaction that
+/// touches a journal claims it for its root: until that root closes, a transaction of another
+/// thread fails to claim it, and its handler transfers nothing (insert and extract return 0).
+/// A handler claims the journal with [`claim`](Self::claim) before it reads the state it changes.
 pub struct SnapshotJournal<J: Journal> {
     journal: J,
+    /// The thread whose root owns the journal, 0 for none.
+    owner: AtomicU64,
     state: Mutex<JournalState<J::Snapshot>>,
     this: Weak<Self>,
 }
@@ -324,6 +367,7 @@ impl<J: Journal> SnapshotJournal<J> {
     pub fn new(journal: J) -> Arc<Self> {
         Arc::new_cyclic(|this| Self {
             journal,
+            owner: AtomicU64::new(0),
             state: Mutex::new(JournalState {
                 snapshots: Vec::new(),
                 snapshot_count: 0,
@@ -333,25 +377,60 @@ impl<J: Journal> SnapshotJournal<J> {
         })
     }
 
-    /// `updateSnapshots`: saves the state for `transaction` unless it already has a snapshot.
-    /// Call it before each change.
-    pub fn update_snapshots(&self, transaction: &TransactionContext) {
-        let depth = transaction.depth;
-        {
-            let mut state = self.lock();
-            if state.snapshots.len() <= depth {
-                state.snapshots.resize_with(depth + 1, || None);
+    /// Claims the journal for the root of `transaction`. Returns `false` while a root of another
+    /// thread owns it: the handler then changes nothing. Call it before reading the state that a
+    /// change depends on, so no other thread changes that state in between.
+    #[must_use]
+    pub fn claim(&self, _transaction: &TransactionContext) -> bool {
+        let me = thread_id();
+        match self.owner.load(Ordering::Acquire) {
+            owner if owner == me => true,
+            0 => {
+                if self
+                    .owner
+                    .compare_exchange(0, me, Ordering::AcqRel, Ordering::Acquire)
+                    .is_err()
+                {
+                    return false;
+                }
+                if let Some(this) = self.this.upgrade() {
+                    with_manager(|manager| manager.owned.push(this));
+                }
+                true
             }
-            if state.snapshots[depth].is_some() {
-                return;
-            }
+            _ => false,
         }
-        let snapshot = self.journal.create_snapshot();
+    }
+
+    /// `updateSnapshots`: claims the journal and saves the state for `transaction` unless it
+    /// already has a snapshot. Call it before each change, and change nothing when it returns
+    /// `false`: a root of another thread owns the journal.
+    #[must_use]
+    pub fn update_snapshots(&self, transaction: &TransactionContext) -> bool {
+        if !self.claim(transaction) {
+            return false;
+        }
+        let depth = transaction.depth;
         let mut state = self.lock();
+        if state.snapshots.len() <= depth {
+            state.snapshots.resize_with(depth + 1, || None);
+        }
+        if state.snapshots[depth].is_some() {
+            return true;
+        }
+        // `isInTransaction` is true inside `createSnapshot`, as in NeoForge.
         state.snapshot_count += 1;
-        state.snapshots[depth] = Some(snapshot);
         drop(state);
+        let snapshot = match catch_unwind(AssertUnwindSafe(|| self.journal.create_snapshot())) {
+            Ok(snapshot) => snapshot,
+            Err(panic) => {
+                self.lock().snapshot_count -= 1;
+                resume_unwind(panic);
+            }
+        };
+        self.lock().snapshots[depth] = Some(snapshot);
         self.join(depth);
+        true
     }
 
     /// `isInTransaction`: whether a transaction holds a snapshot of this journal.
@@ -434,6 +513,10 @@ impl<J: Journal> JournalClose for SnapshotJournal<J> {
             self.journal.on_root_commit(original);
         }
     }
+
+    fn release(&self) {
+        self.owner.store(0, Ordering::Release);
+    }
 }
 
 /// `RootCommitJournal`: runs a callback once after each root commit of a transaction that it
@@ -465,9 +548,11 @@ impl RootCommitJournal {
         }
     }
 
-    /// Joins `transaction`, so the callback runs when its root commits.
-    pub fn update_snapshots(&self, transaction: &TransactionContext) {
-        self.journal.update_snapshots(transaction);
+    /// Joins `transaction`, so the callback runs when its root commits. Returns `false` while a
+    /// root of another thread owns the journal.
+    #[must_use]
+    pub fn update_snapshots(&self, transaction: &TransactionContext) -> bool {
+        self.journal.update_snapshots(transaction)
     }
 }
 
@@ -502,7 +587,7 @@ mod tests {
     }
 
     fn set(journal: &SnapshotJournal<Cell>, value: i32, transaction: &TransactionContext) {
-        journal.update_snapshots(transaction);
+        assert!(journal.update_snapshots(transaction));
         *journal.0.lock().unwrap_or_else(PoisonError::into_inner) = value;
     }
 
@@ -592,16 +677,16 @@ mod tests {
             counter.fetch_add(1, Ordering::Relaxed);
         });
         let mut root = Transaction::open_root()?;
-        journal.update_snapshots(&root);
+        assert!(journal.update_snapshots(&root));
         let nested = Transaction::open(Some(&mut root))?;
-        journal.update_snapshots(&nested);
+        assert!(journal.update_snapshots(&nested));
         nested.commit();
         assert_eq!(calls.load(Ordering::Relaxed), 0);
         root.commit();
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         {
             let aborted = Transaction::open_root()?;
-            journal.update_snapshots(&aborted);
+            assert!(journal.update_snapshots(&aborted));
         }
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         Ok(())
@@ -618,7 +703,7 @@ mod tests {
             }
         });
         let root = Transaction::open_root()?;
-        journal.update_snapshots(&root);
+        assert!(journal.update_snapshots(&root));
         root.commit();
         assert_eq!(opened.load(Ordering::Relaxed), 1);
         assert_eq!(Transaction::lifecycle(), Lifecycle::None);

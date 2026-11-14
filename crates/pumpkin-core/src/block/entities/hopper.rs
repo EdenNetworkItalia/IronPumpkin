@@ -576,6 +576,9 @@ impl Clearable for HopperBlockEntity {
     }
 }
 
+#[path = "hopper_ironpumpkin.rs"]
+mod ironpumpkin;
+
 #[cfg(test)]
 mod tests {
     use super::*;

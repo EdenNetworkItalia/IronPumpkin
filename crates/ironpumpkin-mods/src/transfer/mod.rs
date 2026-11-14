@@ -9,6 +9,8 @@
 //! and an empty resource inserts and extracts nothing where `NeoForge` throws.
 
 pub mod inventory;
+#[cfg(test)]
+mod tests;
 pub mod transaction;
 
 use std::{
@@ -343,64 +345,94 @@ pub struct ResourceStack<T> {
     pub amount: u32,
 }
 
-struct Stacks<T: Resource> {
-    stacks: Mutex<Vec<ResourceStack<T>>>,
-    on_root_commit: Box<dyn Fn() + Send + Sync>,
+/// The journal of one index of a [`ResourceStacksResourceHandler`].
+struct IndexStack<T: Resource> {
+    index: usize,
+    stack: Mutex<ResourceStack<T>>,
+    on_contents_changed: Arc<ContentsChanged<T>>,
 }
 
-impl<T: Resource> Journal for Stacks<T> {
-    type Snapshot = Vec<ResourceStack<T>>;
+/// `onContentsChanged` of a [`ResourceStacksResourceHandler`].
+type ContentsChanged<T> = dyn Fn(usize, &ResourceStack<T>) + Send + Sync;
 
-    fn create_snapshot(&self) -> Self::Snapshot {
-        self.stacks
+/// `isValid` of a [`ResourceStacksResourceHandler`].
+type Validator<T> = dyn Fn(usize, &T) -> bool + Send + Sync;
+
+impl<T: Resource> IndexStack<T> {
+    fn get(&self) -> ResourceStack<T> {
+        self.stack
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
     }
 
-    fn revert_to_snapshot(&self, snapshot: Self::Snapshot) {
-        *self.stacks.lock().unwrap_or_else(PoisonError::into_inner) = snapshot;
+    fn set(&self, stack: ResourceStack<T>) {
+        *self.stack.lock().unwrap_or_else(PoisonError::into_inner) = stack;
+    }
+}
+
+impl<T: Resource> Journal for IndexStack<T> {
+    type Snapshot = ResourceStack<T>;
+
+    fn create_snapshot(&self) -> ResourceStack<T> {
+        self.get()
     }
 
-    fn on_root_commit(&self, _original_state: Self::Snapshot) {
-        (self.on_root_commit)();
+    fn revert_to_snapshot(&self, snapshot: ResourceStack<T>) {
+        self.set(snapshot);
+    }
+
+    fn on_root_commit(&self, original_state: ResourceStack<T>) {
+        (self.on_contents_changed)(self.index, &original_state);
     }
 }
 
 /// `ResourceStacksResourceHandler<T>` (`ItemStacksResourceHandler` and
 /// `FluidStacksResourceHandler` for items and fluids).
 ///
-/// A transactional handler that owns its stacks, for the storage of a mod block or entity.
+/// A transactional handler that owns its stacks, for the storage of a mod block or entity. Each
+/// index has its own journal, so transactions of two threads on two indices do not wait on each
+/// other.
 pub struct ResourceStacksResourceHandler<T: Resource> {
-    journal: Arc<SnapshotJournal<Stacks<T>>>,
+    stacks: Vec<Arc<SnapshotJournal<IndexStack<T>>>>,
     capacity: u32,
     valid: Box<Validator<T>>,
 }
-
-/// `isValid` of a [`ResourceStacksResourceHandler`].
-type Validator<T> = dyn Fn(usize, &T) -> bool + Send + Sync;
 
 /// `ItemStacksResourceHandler`.
 pub type ItemStacksResourceHandler = ResourceStacksResourceHandler<ItemResource>;
 /// `FluidStacksResourceHandler`.
 pub type FluidStacksResourceHandler = ResourceStacksResourceHandler<FluidResource>;
 
+fn index_stacks<T: Resource>(
+    stacks: Vec<ResourceStack<T>>,
+    on_contents_changed: &Arc<ContentsChanged<T>>,
+) -> Vec<Arc<SnapshotJournal<IndexStack<T>>>> {
+    stacks
+        .into_iter()
+        .enumerate()
+        .map(|(index, stack)| {
+            SnapshotJournal::new(IndexStack {
+                index,
+                stack: Mutex::new(stack),
+                on_contents_changed: on_contents_changed.clone(),
+            })
+        })
+        .collect()
+}
+
 impl<T: Resource> ResourceStacksResourceHandler<T> {
     /// `size` empty indices that each hold up to `capacity`, and up to the max stack size of an
     /// item.
     #[must_use]
     pub fn new(size: usize, capacity: u32) -> Self {
+        let empty = ResourceStack {
+            resource: T::empty(),
+            amount: 0,
+        };
+        let on_contents_changed: Arc<ContentsChanged<T>> = Arc::new(|_, _| {});
         Self {
-            journal: SnapshotJournal::new(Stacks {
-                stacks: Mutex::new(vec![
-                    ResourceStack {
-                        resource: T::empty(),
-                        amount: 0,
-                    };
-                    size
-                ]),
-                on_root_commit: Box::new(|| {}),
-            }),
+            stacks: index_stacks(vec![empty; size], &on_contents_changed),
             capacity,
             valid: Box::new(|_, _| true),
         }
@@ -416,19 +448,16 @@ impl<T: Resource> ResourceStacksResourceHandler<T> {
         self
     }
 
-    /// Runs `on_content_changed` after each root commit that changed a stack, as
-    /// `onContentsChanged` does, such as to mark a block dirty.
+    /// `onContentsChanged(index, previousContents)`: runs after each root commit that touched an
+    /// index, with the stack of the index before the transaction, such as to mark a block dirty.
     #[must_use]
-    pub fn with_on_root_commit(
+    pub fn with_on_contents_changed(
         self,
-        on_content_changed: impl Fn() + Send + Sync + 'static,
+        on_contents_changed: impl Fn(usize, &ResourceStack<T>) + Send + Sync + 'static,
     ) -> Self {
-        let stacks = self.snapshot();
+        let on_contents_changed: Arc<ContentsChanged<T>> = Arc::new(on_contents_changed);
         Self {
-            journal: SnapshotJournal::new(Stacks {
-                stacks: Mutex::new(stacks),
-                on_root_commit: Box::new(on_content_changed),
-            }),
+            stacks: index_stacks(self.snapshot(), &on_contents_changed),
             capacity: self.capacity,
             valid: self.valid,
         }
@@ -437,63 +466,38 @@ impl<T: Resource> ResourceStacksResourceHandler<T> {
     /// A copy of the stacks.
     #[must_use]
     pub fn snapshot(&self) -> Vec<ResourceStack<T>> {
-        self.journal.create_snapshot()
+        self.stacks.iter().map(|stack| stack.get()).collect()
     }
 
     /// Sets the stacks outside a transaction, such as when loading from NBT. The length stays.
     pub fn set_stacks(&self, stacks: impl IntoIterator<Item = ResourceStack<T>>) {
-        let mut current = self
-            .journal
-            .stacks
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        for (slot, stack) in current.iter_mut().zip(stacks) {
-            *slot = stack;
-        }
-    }
-
-    fn stack(&self, index: usize) -> Option<ResourceStack<T>> {
-        self.journal
-            .stacks
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(index)
-            .cloned()
-    }
-
-    fn write(&self, index: usize, stack: ResourceStack<T>, transaction: &TransactionContext) {
-        self.journal.update_snapshots(transaction);
-        if let Some(slot) = self
-            .journal
-            .stacks
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get_mut(index)
-        {
-            *slot = stack;
+        for (slot, stack) in self.stacks.iter().zip(stacks) {
+            slot.set(stack);
         }
     }
 }
 
 impl<T: Resource> ResourceHandler<T> for ResourceStacksResourceHandler<T> {
     fn size(&self) -> usize {
-        self.journal
-            .stacks
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .len()
+        self.stacks.len()
     }
 
     fn get_resource(&self, index: usize) -> T {
-        self.stack(index)
-            .map_or_else(T::empty, |stack| stack.resource)
+        self.stacks
+            .get(index)
+            .map_or_else(T::empty, |stack| stack.get().resource)
     }
 
     fn get_amount_as_long(&self, index: usize) -> u64 {
-        self.stack(index).map_or(0, |stack| u64::from(stack.amount))
+        self.stacks
+            .get(index)
+            .map_or(0, |stack| u64::from(stack.get().amount))
     }
 
-    fn get_capacity_as_long(&self, _index: usize, resource: &T) -> u64 {
+    fn get_capacity_as_long(&self, index: usize, resource: &T) -> u64 {
+        if !resource.is_empty() && !self.is_valid(index, resource) {
+            return 0;
+        }
         u64::from(
             resource
                 .max_stack_size()
@@ -502,7 +506,7 @@ impl<T: Resource> ResourceHandler<T> for ResourceStacksResourceHandler<T> {
     }
 
     fn is_valid(&self, index: usize, resource: &T) -> bool {
-        index < self.size() && (self.valid)(index, resource)
+        index < self.stacks.len() && (self.valid)(index, resource)
     }
 
     fn insert_at(
@@ -515,24 +519,23 @@ impl<T: Resource> ResourceHandler<T> for ResourceStacksResourceHandler<T> {
         if resource.is_empty() || amount == 0 || !self.is_valid(index, resource) {
             return 0;
         }
-        let Some(stack) = self.stack(index) else {
+        let journal = &self.stacks[index];
+        if !journal.claim(transaction) {
             return 0;
-        };
+        }
+        let stack = journal.get();
         if stack.amount > 0 && stack.resource != *resource {
             return 0;
         }
         let capacity = self.get_capacity_as_int(index, resource);
         let inserted = amount.min(capacity.saturating_sub(stack.amount));
-        if inserted > 0 {
-            self.write(
-                index,
-                ResourceStack {
-                    resource: resource.clone(),
-                    amount: stack.amount + inserted,
-                },
-                transaction,
-            );
+        if inserted == 0 || !journal.update_snapshots(transaction) {
+            return 0;
         }
+        journal.set(ResourceStack {
+            resource: resource.clone(),
+            amount: stack.amount + inserted,
+        });
         inserted
     }
 
@@ -543,30 +546,30 @@ impl<T: Resource> ResourceHandler<T> for ResourceStacksResourceHandler<T> {
         amount: u32,
         transaction: &mut TransactionContext,
     ) -> u32 {
-        if resource.is_empty() || amount == 0 {
+        if resource.is_empty() || amount == 0 || index >= self.stacks.len() {
             return 0;
         }
-        let Some(stack) = self.stack(index) else {
+        let journal = &self.stacks[index];
+        if !journal.claim(transaction) {
             return 0;
-        };
+        }
+        let stack = journal.get();
         if stack.amount == 0 || stack.resource != *resource {
             return 0;
         }
         let extracted = amount.min(stack.amount);
+        if !journal.update_snapshots(transaction) {
+            return 0;
+        }
         let left = stack.amount - extracted;
-        let resource = if left == 0 {
-            T::empty()
-        } else {
-            stack.resource
-        };
-        self.write(
-            index,
-            ResourceStack {
-                resource,
-                amount: left,
+        journal.set(ResourceStack {
+            resource: if left == 0 {
+                T::empty()
+            } else {
+                stack.resource
             },
-            transaction,
-        );
+            amount: left,
+        });
         extracted
     }
 }
@@ -695,13 +698,16 @@ impl SimpleEnergyHandler {
             .unwrap_or_else(PoisonError::into_inner) = amount.min(self.capacity);
     }
 
-    fn change(&self, amount: u64, transaction: &TransactionContext) {
-        self.journal.update_snapshots(transaction);
+    fn change(&self, amount: u64, transaction: &TransactionContext) -> bool {
+        if !self.journal.update_snapshots(transaction) {
+            return false;
+        }
         *self
             .journal
             .amount
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = amount;
+        true
     }
 }
 
@@ -715,19 +721,25 @@ impl EnergyHandler for SimpleEnergyHandler {
     }
 
     fn insert(&self, amount: u32, transaction: &mut TransactionContext) -> u32 {
+        if !self.journal.claim(transaction) {
+            return 0;
+        }
         let current = self.get_amount_as_long();
         let inserted = u64::from(amount.min(self.max_insert)).min(self.capacity - current);
-        if inserted > 0 {
-            self.change(current + inserted, transaction);
+        if inserted == 0 || !self.change(current + inserted, transaction) {
+            return 0;
         }
         saturate(inserted)
     }
 
     fn extract(&self, amount: u32, transaction: &mut TransactionContext) -> u32 {
+        if !self.journal.claim(transaction) {
+            return 0;
+        }
         let current = self.get_amount_as_long();
         let extracted = u64::from(amount.min(self.max_extract)).min(current);
-        if extracted > 0 {
-            self.change(current - extracted, transaction);
+        if extracted == 0 || !self.change(current - extracted, transaction) {
+            return 0;
         }
         saturate(extracted)
     }
@@ -798,13 +810,16 @@ impl StackItemAccess {
         self.journal.create_snapshot()
     }
 
-    fn set(&self, stack: ItemStack, transaction: &TransactionContext) {
-        self.journal.update_snapshots(transaction);
+    fn set(&self, stack: ItemStack, transaction: &TransactionContext) -> bool {
+        if !self.journal.update_snapshots(transaction) {
+            return false;
+        }
         *self
             .journal
             .0
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = stack;
+        true
     }
 }
 
@@ -823,6 +838,9 @@ impl ItemAccess for StackItemAccess {
         amount: u32,
         transaction: &mut TransactionContext,
     ) -> u32 {
+        if !self.journal.claim(transaction) {
+            return 0;
+        }
         let stack = self.stack();
         if resource.is_empty() || (!stack.is_empty() && !resource.matches(&stack)) {
             return 0;
@@ -836,8 +854,8 @@ impl ItemAccess for StackItemAccess {
         let inserted = u8::try_from(amount)
             .unwrap_or(u8::MAX)
             .min(max.saturating_sub(current));
-        if inserted > 0 {
-            self.set(resource.to_stack(current + inserted), transaction);
+        if inserted == 0 || !self.set(resource.to_stack(current + inserted), transaction) {
+            return 0;
         }
         u32::from(inserted)
     }
@@ -848,6 +866,9 @@ impl ItemAccess for StackItemAccess {
         amount: u32,
         transaction: &mut TransactionContext,
     ) -> u32 {
+        if !self.journal.claim(transaction) {
+            return 0;
+        }
         let stack = self.stack();
         if resource.is_empty() || stack.is_empty() || !resource.matches(&stack) {
             return 0;
@@ -855,8 +876,9 @@ impl ItemAccess for StackItemAccess {
         let extracted = u8::try_from(amount)
             .unwrap_or(u8::MAX)
             .min(stack.item_count);
-        if extracted > 0 {
-            self.set(resource.to_stack(stack.item_count - extracted), transaction);
+        if extracted == 0 || !self.set(resource.to_stack(stack.item_count - extracted), transaction)
+        {
+            return 0;
         }
         u32::from(extracted)
     }
