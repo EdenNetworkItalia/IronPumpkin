@@ -148,7 +148,8 @@ impl Inventory for HandlerInventory {
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
         let old = self.0.get_resource(slot);
-        let old_amount = self.0.get_amount_as_int(slot);
+        // The amount that `get_stack` showed: the click code computed its moves from it.
+        let old_amount = u32::from(self.amount(slot));
         let new = ItemResource::of(&stack);
         let new_amount = if new.is_empty() {
             0

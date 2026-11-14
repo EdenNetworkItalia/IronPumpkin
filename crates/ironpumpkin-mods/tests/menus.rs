@@ -34,7 +34,8 @@ use ironpumpkin_mods::{
     },
     pumpkin_util::text::TextComponent,
     transfer::{
-        ItemResource, ItemStacksResourceHandler, ResourceHandler, Transaction, TransactionContext,
+        EnergyHandler, ItemResource, ItemStacksResourceHandler, ResourceHandler,
+        SimpleEnergyHandler, Transaction, TransactionContext,
     },
 };
 use pumpkin_inventory::{Inventory, SimpleInventory};
@@ -830,4 +831,89 @@ fn a_callback_moves_resources_in_the_click_root() {
     assert!(entries(&log).contains(&"own root false".to_owned()));
     assert_eq!(handler.get_amount_as_long(0), 16);
     assert_eq!(player.inventory.get_stack(0).item_count, 4);
+}
+
+/// One index of cobblestone past the 255 that a stack shows: its amount lives in an energy
+/// store, which is transactional.
+struct Hoard(SimpleEnergyHandler);
+
+impl ResourceHandler<ItemResource> for Hoard {
+    fn size(&self) -> usize {
+        1
+    }
+
+    fn get_resource(&self, _index: usize) -> ItemResource {
+        if self.0.get_amount_as_long() == 0 {
+            ItemResource::empty()
+        } else {
+            ItemResource::of_item(&Item::COBBLESTONE)
+        }
+    }
+
+    fn get_amount_as_long(&self, _index: usize) -> u64 {
+        self.0.get_amount_as_long()
+    }
+
+    fn get_capacity_as_long(&self, _index: usize, _resource: &ItemResource) -> u64 {
+        self.0.get_capacity_as_long()
+    }
+
+    fn is_valid(&self, _index: usize, resource: &ItemResource) -> bool {
+        *resource == ItemResource::of_item(&Item::COBBLESTONE)
+    }
+
+    fn insert_at(
+        &self,
+        _index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &mut TransactionContext,
+    ) -> u32 {
+        if self.is_valid(0, resource) {
+            self.0.insert(amount, transaction)
+        } else {
+            0
+        }
+    }
+
+    fn extract_at(
+        &self,
+        _index: usize,
+        resource: &ItemResource,
+        amount: u32,
+        transaction: &mut TransactionContext,
+    ) -> u32 {
+        if self.is_valid(0, resource) {
+            self.0.extract(amount, transaction)
+        } else {
+            0
+        }
+    }
+}
+
+/// A number key swap of an index with 300 items moves the 255 that the slot shows and keeps the
+/// rest in the handler.
+#[test]
+fn a_swap_from_a_large_index_keeps_the_rest() {
+    let _serial = support::serial();
+    let player = support::player("HoardSwapper");
+    let hoard = Arc::new(Hoard(SimpleEnergyHandler::new(1000, u32::MAX, u32::MAX)));
+    hoard.0.set(300);
+    let source: Arc<dyn ResourceHandler<ItemResource>> = hoard.clone();
+    let mut definition = MenuDefinition::new(WindowType::Hopper, title())
+        .with_container(4)
+        .slot(SlotDefinition::new(SlotSource::Handler(source), 0));
+    for index in 0..4 {
+        definition = definition.slot(SlotDefinition::new(SlotSource::MenuContainer, index));
+    }
+    let menu = open_menu(
+        &player,
+        definition.player_inventory(),
+        Arc::new(VanillaMenuLogic),
+    )
+    .unwrap();
+    click(&player, menu.sync_id(), 0, 0, SlotActionType::Swap);
+    let moved = player_count(&player, &Item::COBBLESTONE);
+    assert!(moved > 0, "the swap moved nothing");
+    assert_eq!(u64::from(moved) + hoard.get_amount_as_long(0), 300);
 }
