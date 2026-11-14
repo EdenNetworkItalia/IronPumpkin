@@ -660,6 +660,14 @@ pub trait ScreenHandler: Send + Sync {
     /// where items go when shift-clicked from specific slots.
     fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack;
 
+    /// Whether a double click on the cursor stack collects from the slot at `slot_index`.
+    /// Menus with a result slot exclude it.
+    ///
+    /// Mojang name: `canTakeItemForPickAll`
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, _slot_index: usize) -> bool {
+        true
+    }
+
     /// Handles a button click event (e.g., enchantment selection, beacon effects).
     fn on_button_click(&mut self, _player: &dyn InventoryPlayer, _button_id: i32) -> bool {
         false
@@ -799,36 +807,60 @@ pub trait ScreenHandler: Send + Sync {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
-        if action_type == SlotActionType::PickupAll && button == 0 {
-            let behavior = self.get_behaviour_mut();
-            let mut cursor_stack = behavior
+        if action_type == SlotActionType::PickupAll {
+            // Vanilla `AbstractContainerMenu#doClick`, `PICKUP_ALL`: two passes from the start
+            // (button 0) or the end (button 1); the first pass skips full stacks.
+            let Ok(clicked_index) = usize::try_from(slot_index) else {
+                return;
+            };
+            let Some(clicked) = self.get_behaviour().slots.get(clicked_index).cloned() else {
+                return;
+            };
+            let mut carried = self
+                .get_behaviour()
                 .cursor_stack
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let mut to_pick_up = cursor_stack.get_max_stack_size() - cursor_stack.item_count;
-
-            for (index, slot) in behavior.slots.iter().enumerate() {
-                if to_pick_up == 0 {
-                    break;
-                }
-
-                let item_stack = slot.get_cloned_stack();
-                if !item_stack.are_items_and_components_equal(&cursor_stack) {
-                    continue;
-                }
-
-                if !behavior.can_grab_from_slot(index) || !slot.allow_modification(player) {
-                    continue;
-                }
-
-                let taken_stack = slot.safe_take(
-                    item_stack.item_count.min(to_pick_up),
-                    cursor_stack.get_max_stack_size() - cursor_stack.item_count,
-                    player,
-                );
-                to_pick_up -= taken_stack.item_count;
-                cursor_stack.increment(taken_stack.item_count);
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            if carried.is_empty() || (clicked.has_stack() && clicked.can_take_items(player)) {
+                return;
             }
+            let slot_count = self.get_behaviour().slots.len();
+            for pass in 0..2 {
+                for step in 0..slot_count {
+                    if carried.item_count >= carried.get_max_stack_size() {
+                        break;
+                    }
+                    let index = if button == 0 {
+                        step
+                    } else {
+                        slot_count - 1 - step
+                    };
+                    let target = self.get_behaviour().slots[index].clone();
+                    let stack = target.get_cloned_stack();
+                    if stack.is_empty()
+                        || !stack.are_items_and_components_equal(&carried)
+                        || stack.item_count > carried.get_max_stack_size()
+                        || !self.get_behaviour().can_grab_from_slot(index)
+                        || !target.can_take_items(player)
+                        || !self.can_take_item_for_pick_all(&carried, index)
+                        || (pass == 0 && stack.item_count == stack.get_max_stack_size())
+                    {
+                        continue;
+                    }
+                    let taken = target.safe_take(
+                        stack.item_count,
+                        carried.get_max_stack_size() - carried.item_count,
+                        player,
+                    );
+                    carried.increment(taken.item_count);
+                }
+            }
+            *self
+                .get_behaviour()
+                .cursor_stack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = carried;
         } else if action_type == SlotActionType::QuickCraft {
             let drag_type = button & 3;
             let drag_button = (button >> 2) & 3;
@@ -944,13 +976,15 @@ pub trait ScreenHandler: Send + Sync {
                             .are_items_and_components_equal(&prev_stack)
                         {
                             let drop_stack = slot.safe_take(prev_stack.item_count, u8::MAX, player);
+                            if drop_stack.is_empty() {
+                                break;
+                            }
                             player.drop_item(drop_stack, true);
                             // player.handleCreativeModeItemDrop(itemStack);
                         }
                     } else {
                         let drop_stack = slot.safe_take(1, u8::MAX, player);
                         if !drop_stack.is_empty() {
-                            slot.on_take_item(player, &drop_stack);
                             player.drop_item(drop_stack, true);
                         }
                     }

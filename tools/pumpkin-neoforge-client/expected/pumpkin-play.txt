@@ -4,4 +4,5 @@
 join: login player_position pong_response
 chat: disguised_chat pong_response # IronPumpkin echoes unsigned chat as disguised chat; NeoForge sends player_chat
 break: block_update block_changed_ack pong_response
+command: open_screen container_set_content pong_response
 leave:

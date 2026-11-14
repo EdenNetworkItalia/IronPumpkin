@@ -316,6 +316,9 @@ impl MerchantScreenHandler {
 }
 
 impl ScreenHandler for MerchantScreenHandler {
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, _slot_index: usize) -> bool {
+        false
+    }
     fn as_any(&self) -> &dyn Any {
         self
     }

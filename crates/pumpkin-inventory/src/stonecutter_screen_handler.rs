@@ -125,6 +125,9 @@ impl StonecutterScreenHandler {
 }
 
 impl ScreenHandler for StonecutterScreenHandler {
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot_index: usize) -> bool {
+        slot_index != 1
+    }
     fn get_behaviour(&self) -> &ScreenHandlerBehaviour {
         &self.behaviour
     }

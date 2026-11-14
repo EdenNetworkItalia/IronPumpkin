@@ -37,6 +37,7 @@ pub mod network_events;
 /// host features.
 pub mod permissions;
 pub(crate) mod player_events;
+pub use player_events::{Deferral, defer_if_active};
 pub mod startup;
 pub(crate) mod stat_events;
 

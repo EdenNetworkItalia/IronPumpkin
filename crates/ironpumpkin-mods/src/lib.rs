@@ -83,6 +83,7 @@ pub mod data_components;
 pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
+pub mod menus;
 pub mod mob_effects;
 pub mod mod_list;
 pub mod mods_toml;
@@ -154,6 +155,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/network.md")]
     struct Network;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/menus.md")]
+    struct Menus;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;

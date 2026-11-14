@@ -1,6 +1,6 @@
 //! Boots a server with the test mod in a child process, and runs the play script
 //! `scripts/boot.toml` of the headless client as a `NeoForge` client: join, one chat message, one
-//! block break in creative mode, leave. The steps must receive the packets of
+//! block break in creative mode, the command that opens the storage menu of the test mod, leave. The steps must receive the packets of
 //! `expected/pumpkin-play.txt`, and the server log must show the join, the chat message and the
 //! leave. The child reruns this test binary with `SERVER_DIR` set and starts the server from that
 //! directory. The test stops the server with the `stop` console command written to its piped
