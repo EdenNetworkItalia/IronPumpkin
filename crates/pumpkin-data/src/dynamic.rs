@@ -32,17 +32,18 @@ use std::fmt;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use pumpkin_util::identifier::{Identifier, VANILLA_NAMESPACE};
+use pumpkin_util::math::{boundingbox::BoundingBox, vector3::Vector3};
 #[cfg(feature = "item")]
 use pumpkin_util::text::hover::HoverEvent;
 
-use crate::block_properties::{BlockProperties, BlockProperty, Property};
-use crate::dynamic_types;
+use crate::block_properties::{BlockProperties, BlockProperty, COLLISION_SHAPES, Property};
 #[cfg(feature = "entity_type")]
 use crate::entity_type::EntityType;
 #[cfg(feature = "item")]
 use crate::item::Item;
 use crate::tag::{RegistryKey, Taggable, get_latest_map};
 use crate::{Block, BlockId, BlockState, BlockStateId};
+use crate::{dynamic_shapes, dynamic_types};
 
 /// The highest id the registry allocates. `u16::MAX` is the "none" value of u16 ids.
 const MAX_ID: u16 = u16::MAX - 1;
@@ -52,7 +53,8 @@ const MAX_ID: u16 = u16::MAX - 1;
 pub struct BlockDefinition {
     /// Namespaced name, for example `mymod:copper_lamp`.
     pub name: String,
-    /// Vanilla state that vanilla clients see. Every state of the block copies its physical data.
+    /// Vanilla state that vanilla clients see. Every state copies its physical data except the
+    /// shapes: see [`crate::dynamic_shapes`].
     pub display: BlockStateId,
     /// Block state properties, in any order. The registry sorts them by name.
     pub properties: Vec<BlockPropertyDefinition>,
@@ -366,6 +368,8 @@ pub struct ContentTables {
     block_names: HashMap<&'static str, usize>,
     block_properties: Vec<&'static [BlockProperty]>,
     states: &'static [BlockState],
+    /// The boxes of the declared shapes, numbered after the generated boxes.
+    shapes: Vec<BoundingBox>,
     state_blocks: Vec<BlockId>,
     state_displays: Vec<BlockStateId>,
     block_displays: Vec<u16>,
@@ -870,6 +874,7 @@ impl ContentBuilder {
         // A NeoForge client numbers block states itself, appending each synced block's states in
         // block id order. Placeholders are not synced, so live blocks after one shift down.
         let mut next_real_state = BlockStateId::STATE_COUNT;
+        let mut shape_table = dynamic_shapes::ShapeTable::new();
         for (((name, block), &block_id), &placeholder) in
             blocks.iter().zip(&block_ids).zip(&block_placeholders)
         {
@@ -882,6 +887,13 @@ impl ContentBuilder {
                 .map(|_| display_block.states);
             let block_entity_type =
                 dynamic_types::pending_block_entity_type(name).unwrap_or(u16::MAX);
+            // A block without declared shapes is a full cube, unless its block type gives the
+            // shapes.
+            let declared = dynamic_shapes::declared(name).or_else(|| {
+                block_type
+                    .is_none()
+                    .then(dynamic_shapes::DeclaredShapes::default)
+            });
             for index in 0..block.state_count {
                 let id = BlockStateId::STATE_COUNT + states.len() as u16;
                 let display_id = display_states.map_or(block.display, |states| states[index].id);
@@ -896,21 +908,41 @@ impl ContentBuilder {
                 });
                 // `is_waterlogged` reads a flag: set it from the custom properties of this state.
                 let waterlogged = state_has_value(&block.properties, index, "waterlogged", "true");
+                let (state_flags, side_flags, collision_shapes, outline_shapes) = match &declared {
+                    Some(declared) => {
+                        let (outline, collision) =
+                            dynamic_shapes::evaluate(declared, &block.properties, index);
+                        let (state_flags, side_flags) =
+                            dynamic_shapes::shape_flags(source, &outline, &collision);
+                        (
+                            state_flags,
+                            side_flags,
+                            shape_table.intern(&collision)?,
+                            shape_table.intern(&outline)?,
+                        )
+                    }
+                    None => (
+                        source.state_flags,
+                        source.side_flags,
+                        source.collision_shapes,
+                        source.outline_shapes,
+                    ),
+                };
                 states.push(BlockState {
                     id: BlockStateId::new_unchecked(id),
-                    state_flags: (source.state_flags & !crate::block_state::IS_WATERLOGGED)
+                    state_flags: (state_flags & !crate::block_state::IS_WATERLOGGED)
                         | if waterlogged {
                             crate::block_state::IS_WATERLOGGED
                         } else {
                             0
                         },
-                    side_flags: source.side_flags,
+                    side_flags,
                     instrument: source.instrument,
                     luminance: source.luminance,
                     piston_behavior: source.piston_behavior.clone(),
                     hardness: source.hardness,
-                    collision_shapes: source.collision_shapes,
-                    outline_shapes: source.outline_shapes,
+                    collision_shapes,
+                    outline_shapes,
                     opacity: source.opacity,
                     sound_type: source.sound_type,
                     // Only a block that a mod adds to a block entity type has one.
@@ -921,6 +953,7 @@ impl ContentBuilder {
             }
         }
         let states: &'static [BlockState] = Box::leak(states.into_boxed_slice());
+        let shapes = shape_table.into_boxes();
 
         let mut first_state = 0;
         let custom_blocks = blocks
@@ -1039,6 +1072,7 @@ impl ContentBuilder {
             block_names,
             block_properties,
             states,
+            shapes,
             state_displays,
             block_displays,
             state_blocks,
@@ -1599,6 +1633,23 @@ pub(crate) fn is_custom_state(raw: u16) -> bool {
         custom_index(raw, BlockStateId::STATE_COUNT)
             .is_some_and(|index| index < tables.states.len())
     })
+}
+
+/// The box `id` of the shape table above the generated boxes. Only the shapes of custom states
+/// name such an id, and they exist only after the freeze.
+#[cold]
+#[inline(never)]
+pub(crate) fn custom_shape_box(id: u16) -> &'static BoundingBox {
+    static NO_BOX: BoundingBox =
+        BoundingBox::new(Vector3::new(0.0, 0.0, 0.0), Vector3::new(0.0, 0.0, 0.0));
+    TABLES
+        .get()
+        .and_then(|tables| {
+            tables
+                .shapes
+                .get(custom_index(id, COLLISION_SHAPES.len() as u16)?)
+        })
+        .unwrap_or(&NO_BOX)
 }
 
 #[cold]
