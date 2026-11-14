@@ -79,8 +79,14 @@ use pumpkin_core::{
     world::ExplosionInteraction,
 };
 use pumpkin_data::{
-    Block, BlockStateId, damage::DamageType, effect::StatusEffect, entity::EntityType, item::Item,
-    item_stack::ItemStack, potion::Effect,
+    Block, BlockStateId,
+    damage::DamageType,
+    effect::StatusEffect,
+    entity::EntityType,
+    game_rules::{GameRule, GameRuleValue},
+    item::Item,
+    item_stack::ItemStack,
+    potion::Effect,
 };
 use pumpkin_inventory::inventory::Inventory;
 use pumpkin_util::{
@@ -453,6 +459,8 @@ fn component(dir: &Path, name: &str, module: &Path) -> PathBuf {
 static SETUP: LazyLock<()> = LazyLock::new(|| {
     STARTUP_HOOK.set(ironpumpkin_mods::init_mods).unwrap();
     let server = support::server();
+    // A chunk that ends its generation late would spawn animals into the log of a later run.
+    support::world().set_game_rule(&GameRule::SpawnMobs, GameRuleValue::Bool(false));
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("wasm-dispatch");
     std::fs::create_dir_all(&dir).unwrap();
     let lock = File::create(dir.join("load.lock")).unwrap();
