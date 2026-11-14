@@ -2552,7 +2552,9 @@ impl World {
     where
         F: FnMut(&BoundingBox),
     {
-        if state.is_air() || !state.is_solid() {
+        // Vanilla `BlockCollisions` reads the collision shape of every state, not only the
+        // legacy solid ones: a carpet or a repeater blocks a box too.
+        if state.is_air() {
             return false;
         }
 
@@ -8478,6 +8480,33 @@ mod tests {
             assert!(state.is_empty);
             assert_eq!(state.height, 0.0);
         }
+    }
+
+    #[test]
+    fn a_block_that_is_not_legacy_solid_still_collides() {
+        let pos = BlockPos::new(3, 64, 3);
+        let on_carpet = pumpkin_util::math::boundingbox::BoundingBox::new(
+            pumpkin_util::math::vector3::Vector3::new(3.2, 64.0, 3.2),
+            pumpkin_util::math::vector3::Vector3::new(3.8, 64.5, 3.8),
+        );
+        let carpet = Block::WHITE_CARPET.default_state;
+        assert!(!carpet.is_solid());
+        assert!(super::World::check_collision(
+            &on_carpet,
+            pos,
+            carpet,
+            false,
+            |_| ()
+        ));
+        let above_carpet =
+            on_carpet.shift(pumpkin_util::math::vector3::Vector3::new(0.0, 0.1, 0.0));
+        assert!(!super::World::check_collision(
+            &above_carpet,
+            pos,
+            carpet,
+            false,
+            |_| ()
+        ));
     }
 
     #[test]
