@@ -155,6 +155,9 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/network.md")]
     struct Network;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/menus.md")]
+    struct Menus;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;
 
