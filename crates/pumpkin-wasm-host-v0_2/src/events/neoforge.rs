@@ -1,7 +1,8 @@
 //! The v0.2 conversions of the `NeoForge` 26.3 events at fire sites where Pumpkin has no event.
 //!
-//! These are the events of `pumpkin_core::plugin::level` and `UseItemOnBlockEvent`, and the
-//! `NeoForge` result types that the player interact event shares with them.
+//! These are the events of `pumpkin_core::plugin::level`, `UseItemOnBlockEvent`,
+//! `PotionBrewEventPost` and the level tick events, and the `NeoForge` result types that the
+//! player interact event shares with them.
 //!
 //! A blocking handler writes back only the settable fields; the other fields keep the native
 //! values, as `NeoForge` has no setter for them.
@@ -14,6 +15,7 @@ use std::sync::{
 use pumpkin_core::plugin::{
     Context, EventPriority,
     api::events::results::{InteractionResult, TriState},
+    inventory::potion_brew_post::PotionBrewEventPost,
     level::{
         BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch,
         CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
@@ -25,6 +27,7 @@ use pumpkin_core::plugin::{
         player_interact_event::LeftClickBlockAction,
         use_item_on_block::{UseItemOnBlockEvent, UsePhase},
     },
+    world::{LevelTickEventPost, LevelTickEventPre},
 };
 use pumpkin_data::{
     BlockState, BlockStateId, biome::Spawner, entity::EntityType, entity::MobCategory,
@@ -48,9 +51,10 @@ use crate::{
             ExplosionKnockbackEventData, GameRuleChangedEventData,
             InteractionResult as WitInteractionResult,
             LeftClickBlockAction as WitLeftClickBlockAction, LevelEventPotentialSpawnsData,
-            MobCategory as WitMobCategory, NoteBlockEventChangeData, PistonEventPostData,
-            PistonMoveType as WitPistonMoveType, PlayerTickEventPostData, PlayerTickEventPreData,
-            SpawnerData, TriState as WitTriState, UseItemOnBlockEventData, UsePhase as WitUsePhase,
+            LevelTickEventPostData, LevelTickEventPreData, MobCategory as WitMobCategory,
+            NoteBlockEventChangeData, PistonEventPostData, PistonMoveType as WitPistonMoveType,
+            PlayerTickEventPostData, PlayerTickEventPreData, PotionBrewEventPostData, SpawnerData,
+            TriState as WitTriState, UseItemOnBlockEventData, UsePhase as WitUsePhase,
         },
     },
     world::{to_wit_game_rule, to_wit_game_rule_value},
@@ -152,11 +156,20 @@ pub(super) fn add<T: FromResource>(state: &mut PluginHostState, item: T::Interna
     state.add(item).expect("failed to add resource")
 }
 
-fn add_item_stack(
+pub(super) fn add_item_stack(
     state: &mut PluginHostState,
     item: &pumpkin_data::item_stack::ItemStack,
 ) -> Resource<crate::pumpkin::plugin::item_stack::ItemStack> {
     add(state, Arc::new(Mutex::new(item.clone())))
+}
+
+/// The stack of an item-stack resource that the guest hands back, its own or a new one.
+pub(super) fn take_item_stack(
+    state: &mut PluginHostState,
+    res: Resource<crate::pumpkin::plugin::item_stack::ItemStack>,
+) -> Option<pumpkin_data::item_stack::ItemStack> {
+    let stack = state.take(res).ok()?;
+    stack.try_lock().ok().map(|stack| stack.clone())
 }
 
 pub(super) fn discard<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
@@ -619,6 +632,73 @@ impl ToFromWasmEvent for PlayerTickEventPost {
     }
 }
 
+impl ToFromWasmEvent for PotionBrewEventPost {
+    fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
+        Event::PotionBrewEventPost(PotionBrewEventPostData {
+            block_pos: to_wasm_block_position(self.block_pos),
+            stacks: self
+                .stacks
+                .iter()
+                .map(|stack| add_item_stack(state, stack))
+                .collect(),
+        })
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        let Event::PotionBrewEventPost(data) = event else {
+            cleanup_neoforge_event(&event, state);
+            return;
+        };
+        let mut returned = data.stacks.into_iter();
+        for stack in &mut self.stacks {
+            if let Some(changed) = returned.next().and_then(|res| take_item_stack(state, res)) {
+                *stack = changed;
+            }
+        }
+        for extra in returned {
+            discard(state, &extra);
+        }
+    }
+
+    fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
+        panic!("Cannot construct PotionBrewEventPost from WASM")
+    }
+}
+
+impl ToFromWasmEvent for LevelTickEventPre {
+    fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
+        Event::LevelTickEventPre(LevelTickEventPreData {
+            target_world: add(state, self.world.clone()),
+            has_time: self.has_time(),
+        })
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        cleanup_neoforge_event(&event, state);
+    }
+
+    fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
+        panic!("Cannot construct LevelTickEventPre from WASM")
+    }
+}
+
+impl ToFromWasmEvent for LevelTickEventPost {
+    fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
+        Event::LevelTickEventPost(LevelTickEventPostData {
+            target_world: add(state, self.world.clone()),
+            has_time: self.has_time(),
+        })
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        cleanup_neoforge_event(&event, state);
+    }
+
+    fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
+        panic!("Cannot construct LevelTickEventPost from WASM")
+    }
+}
+
 /// Discards the resources of a returned event of this module.
 pub(super) fn cleanup_neoforge_event(event: &Event, state: &mut PluginHostState) {
     match event {
@@ -662,6 +742,15 @@ pub(super) fn cleanup_neoforge_event(event: &Event, state: &mut PluginHostState)
         | Event::EntityTickEventPost(EntityTickEventPostData { entity }) => discard(state, entity),
         Event::PlayerTickEventPre(PlayerTickEventPreData { player })
         | Event::PlayerTickEventPost(PlayerTickEventPostData { player }) => discard(state, player),
+        Event::PotionBrewEventPost(data) => {
+            for stack in &data.stacks {
+                discard(state, stack);
+            }
+        }
+        Event::LevelTickEventPre(LevelTickEventPreData { target_world, .. })
+        | Event::LevelTickEventPost(LevelTickEventPostData { target_world, .. }) => {
+            discard(state, target_world);
+        }
         _ => {}
     }
 }
@@ -727,6 +816,13 @@ pub fn register_neoforge_event(
         }
         EventType::PlayerTickEventPost => {
             on::<PlayerTickEventPost>(ctx, handler, priority, blocking);
+        }
+        EventType::PotionBrewEventPost => {
+            on::<PotionBrewEventPost>(ctx, handler, priority, blocking);
+        }
+        EventType::LevelTickEventPre => on::<LevelTickEventPre>(ctx, handler, priority, blocking),
+        EventType::LevelTickEventPost => {
+            on::<LevelTickEventPost>(ctx, handler, priority, blocking);
         }
         _ => tracing::error!("non-NeoForge event should not be routed to register_neoforge_event"),
     }

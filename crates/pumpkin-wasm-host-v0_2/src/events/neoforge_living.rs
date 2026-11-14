@@ -121,33 +121,9 @@ const fn from_wasm_applicable_result(
     }
 }
 
-/// Implements [`ToFromWasmEvent`] for an event of this module: `to` builds the record, `apply`
-/// writes the settable fields of the returned record back.
 macro_rules! living_event {
-    ($event:ty, $variant:ident, |$this:ident, $state:ident| $to:expr, |$target:ident, $data:ident| $apply:block) => {
-        impl ToFromWasmEvent for $event {
-            fn to_wasm_event(&self, $state: &mut PluginHostState) -> Event {
-                let $this = self;
-                Event::$variant($to)
-            }
-
-            #[allow(unused_variables)]
-            fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
-                cleanup_neoforge_living_event(&event, state);
-                if let Event::$variant($data) = event {
-                    let $target = self;
-                    $apply
-                }
-            }
-
-            fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
-                panic!(concat!(
-                    "Cannot construct ",
-                    stringify!($event),
-                    " from WASM"
-                ))
-            }
-        }
+    ($($event:tt)*) => {
+        neoforge_event!(cleanup_neoforge_living_event; $($event)*);
     };
 }
 

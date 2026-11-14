@@ -18,6 +18,46 @@ use pumpkin_core::{
 };
 use pumpkin_wasm_host_common::{plugin::WasmPlugin, state::PluginHostState};
 
+/// Implements [`ToFromWasmEvent`] for a `NeoForge` event whose record `cleanup` releases: `to`
+/// builds the record, `apply` writes the settable fields of the returned record back.
+macro_rules! neoforge_event {
+    ($cleanup:path; $event:ty, $variant:ident, |$this:ident, $state:ident| $to:expr, |$target:ident, $data:ident| $apply:block) => {
+        impl $crate::events::ToFromWasmEvent for $event {
+            fn to_wasm_event(
+                &self,
+                $state: &mut pumpkin_wasm_host_common::state::PluginHostState,
+            ) -> $crate::pumpkin::plugin::event::Event {
+                let $this = self;
+                $crate::pumpkin::plugin::event::Event::$variant($to)
+            }
+
+            #[allow(unused_variables)]
+            fn apply_wasm_event(
+                &mut self,
+                event: $crate::pumpkin::plugin::event::Event,
+                state: &mut pumpkin_wasm_host_common::state::PluginHostState,
+            ) {
+                $cleanup(&event, state);
+                if let $crate::pumpkin::plugin::event::Event::$variant($data) = event {
+                    let $target = self;
+                    $apply
+                }
+            }
+
+            fn from_wasm_event(
+                _event: $crate::pumpkin::plugin::event::Event,
+                _state: &mut pumpkin_wasm_host_common::state::PluginHostState,
+            ) -> Self {
+                panic!(concat!(
+                    "Cannot construct ",
+                    stringify!($event),
+                    " from WASM"
+                ))
+            }
+        }
+    };
+}
+
 pub mod block;
 pub mod cleanup;
 pub mod dialog;
@@ -28,6 +68,7 @@ pub mod inventory;
 pub mod neoforge;
 pub mod neoforge_entity;
 pub mod neoforge_living;
+pub mod neoforge_player;
 pub mod player;
 pub mod raid;
 pub mod server;
