@@ -841,6 +841,8 @@ interface neoforge-events {
     }
 
     /// NeoForge `PlayerEnchantItemEvent`: an enchanting table applied enchantments to an item.
+    /// The host takes back `enchanted-item`; the table takes it only when its slot did not change
+    /// while the event fired.
     record player-enchant-item-event-data {
         player: player,
         enchanted-item: item-stack,

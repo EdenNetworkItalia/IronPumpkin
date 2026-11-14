@@ -157,6 +157,7 @@ fn a_plugin_sets_the_action_of_a_nock_and_the_charge_of_a_loose() {
         assert!(data.action.is_none());
         data.has_ammo = false;
         data.action = Some(WitInteractionResult::Fail);
+        data.cancelled = true;
     });
     let event = fire(
         &nock,
@@ -170,6 +171,7 @@ fn a_plugin_sets_the_action_of_a_nock_and_the_charge_of_a_loose() {
     );
     assert_eq!(event.action, Some(InteractionResult::Fail));
     assert!(event.has_ammo);
+    assert!(event.cancelled);
 
     let loose = plugin::<ArrowLooseEvent, _>(|event, _state| {
         let Event::ArrowLooseEvent(data) = event else {
@@ -542,7 +544,7 @@ fn a_plugin_reads_a_trade_and_the_client_information() {
 }
 
 #[test]
-fn a_plugin_changes_the_stacks_of_a_brew_and_reads_an_enchant() {
+fn a_plugin_changes_the_stacks_of_a_brew_and_the_item_of_an_enchant() {
     let brew = plugin::<PotionBrewEventPost, _>(|event, state| {
         let Event::PotionBrewEventPost(data) = event else {
             panic!("expected brew post");
@@ -594,8 +596,9 @@ fn a_plugin_changes_the_stacks_of_a_brew_and_reads_an_enchant() {
         assert_eq!(data.enchantments.len(), 1);
         assert_eq!(data.enchantments[0].enchantment, WitEnchantment::Sharpness);
         assert_eq!(data.enchantments[0].level, 3);
+        replace_stack(state, &mut data.enchanted_item, &Item::NETHERITE_SWORD);
     });
-    fire(
+    let event = fire(
         &enchant,
         PlayerEnchantItemEvent::new(
             support::player("WasmEnchant"),
@@ -603,6 +606,7 @@ fn a_plugin_changes_the_stacks_of_a_brew_and_reads_an_enchant() {
             vec![(&Enchantment::SHARPNESS, 3)],
         ),
     );
+    assert_eq!(event.enchanted_item.item.id, Item::NETHERITE_SWORD.id);
 }
 
 #[test]

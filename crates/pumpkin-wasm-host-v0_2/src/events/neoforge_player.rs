@@ -424,23 +424,38 @@ player_event!(
     |target, data| {}
 );
 
-player_event!(
-    PlayerEnchantItemEvent,
-    PlayerEnchantItemEvent,
-    |this, state| PlayerEnchantItemEventData {
-        player: add(state, this.player.clone()),
-        enchanted_item: add_item_stack(state, &this.enchanted_item),
-        enchantments: this
-            .enchantments
-            .iter()
-            .map(|(enchantment, level)| EnchantmentValue {
-                enchantment: to_wit_enchantment(enchantment),
-                level: level.cast_unsigned(),
-            })
-            .collect(),
-    },
-    |target, data| {}
-);
+impl ToFromWasmEvent for PlayerEnchantItemEvent {
+    fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
+        Event::PlayerEnchantItemEvent(PlayerEnchantItemEventData {
+            player: add(state, self.player.clone()),
+            enchanted_item: add_item_stack(state, &self.enchanted_item),
+            enchantments: self
+                .enchantments
+                .iter()
+                .map(|(enchantment, level)| EnchantmentValue {
+                    enchantment: to_wit_enchantment(enchantment),
+                    level: level.cast_unsigned(),
+                })
+                .collect(),
+        })
+    }
+
+    fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {
+        let Event::PlayerEnchantItemEvent(data) = event else {
+            cleanup_neoforge_player_event(&event, state);
+            return;
+        };
+        discard(state, &data.player);
+        // NeoForge `getEnchantedItem` returns the live stack: a guest edit reaches the table.
+        if let Some(stack) = take_item_stack(state, data.enchanted_item) {
+            self.enchanted_item = stack;
+        }
+    }
+
+    fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
+        panic!("Cannot construct PlayerEnchantItemEvent from WASM")
+    }
+}
 
 impl ToFromWasmEvent for GrindstoneEventOnTakeItem {
     fn to_wasm_event(&self, state: &mut PluginHostState) -> Event {
