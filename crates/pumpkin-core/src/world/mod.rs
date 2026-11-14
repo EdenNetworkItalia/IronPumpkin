@@ -2573,6 +2573,10 @@ impl World {
             }
             None => {}
         }
+        // Short grass and flowers have no collision box: skip the position offset hash.
+        if state.collision_shapes.is_empty() {
+            return false;
+        }
 
         let mut shapes = state
             .get_block_collision_shapes_at(&pos)
