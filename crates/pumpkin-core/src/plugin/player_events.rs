@@ -101,9 +101,10 @@ thread_local! {
     static PENDING: RefCell<Option<Pending>> = const { RefCell::new(None) };
 }
 
-/// Holds back the tracking and trade events while it lives. The outermost deferral of a thread
-/// fires them when it drops, after the locks of its scope: create it before the lock (the screen
-/// handler of a click, a shard of the entity map).
+/// Holds back the tracking and trade events and the menu closes while it lives.
+///
+/// The outermost deferral of a thread fires them when it drops, after the locks of its scope:
+/// create it before the lock (the screen handler of a click, a shard of the entity map).
 #[must_use]
 pub struct Deferral {
     outermost: bool,
@@ -152,6 +153,17 @@ fn defer(fire: impl FnOnce() + 'static) {
     if let Some(fire) = now {
         fire();
     }
+}
+
+/// Runs `fire` after the active deferral of this thread and returns `true`. Returns `false` and
+/// drops `fire` when no deferral is active.
+pub fn defer_if_active(fire: impl FnOnce() + 'static) -> bool {
+    PENDING.with_borrow_mut(|pending| {
+        pending
+            .as_mut()
+            .map(|pending| pending.events.push(Box::new(fire)))
+            .is_some()
+    })
 }
 
 fn leaving(player: &Player) -> Option<Arc<Player>> {

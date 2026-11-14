@@ -7171,6 +7171,7 @@ impl Player {
 
     /// Handles when the player clicks a button in a container (e.g. Enchantment Table)
     pub fn on_container_button_click(self: &Arc<Self>, packet: &SContainerButtonClick) {
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let screen_handler_arc = self
             .current_screen_handler
             .lock()
