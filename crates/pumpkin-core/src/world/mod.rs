@@ -2543,10 +2543,13 @@ impl World {
         inside
     }
 
+    /// Whether the collision shape of `state` at `pos`, for the collision context of `entity`
+    /// (`None`: the empty context), intersects `bounding_box`.
     pub fn check_collision<F>(
         bounding_box: &BoundingBox,
         pos: BlockPos,
         state: &BlockState,
+        entity: Option<&dyn EntityBase>,
         use_collision_shape: bool,
         mut on_collision: F,
     ) -> bool
@@ -2557,6 +2560,18 @@ impl World {
         // legacy solid ones: a carpet or a repeater blocks a box too.
         if state.is_air() {
             return false;
+        }
+        match collision_context::context_collision_shape(state, &pos, entity) {
+            Some(collision_context::ContextShape::Empty) => return false,
+            Some(collision_context::ContextShape::Box(shape)) => {
+                let shape = shape.at_pos(pos);
+                let collided = shape.intersects(bounding_box);
+                if collided && use_collision_shape {
+                    on_collision(&shape);
+                }
+                return collided;
+            }
+            None => {}
         }
 
         let mut shapes = state
@@ -2672,7 +2687,7 @@ impl World {
 
     /// `CollisionGetter#noBlockCollision(null, box)`: the empty collision context.
     pub fn is_space_empty(&self, bounding_box: BoundingBox) -> bool {
-        self.no_block_collision(bounding_box)
+        self.no_block_collision(None, bounding_box)
     }
 
     /// No other entity that blocks building overlaps `entity`, ignoring its own vehicle group.
@@ -2703,7 +2718,7 @@ impl World {
     }
 
     pub fn no_collision(&self, source: &dyn EntityBase, bounding_box: BoundingBox) -> bool {
-        self.is_space_empty(bounding_box)
+        self.no_block_collision(Some(source), bounding_box)
             && self.no_entity_collision(source, bounding_box)
             && self.no_border_collision(source, bounding_box)
     }
@@ -8486,6 +8501,7 @@ mod tests {
             &on_carpet,
             pos,
             carpet,
+            None,
             false,
             |_| ()
         ));
@@ -8495,6 +8511,7 @@ mod tests {
             &above_carpet,
             pos,
             carpet,
+            None,
             false,
             |_| ()
         ));

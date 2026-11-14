@@ -16,11 +16,13 @@ use ironpumpkin_mods::{
     ModInit, NativeMod,
     content::BlockBuilder,
     pumpkin_core::{
-        entity::{Entity, EntityBase},
+        entity::{Entity, EntityBase, item::ItemEntity, living::LivingEntity},
         plugin::startup::STARTUP_HOOK,
         world::World,
     },
-    pumpkin_data::{Block, BlockDirection, BlockState, entity::EntityType},
+    pumpkin_data::{
+        Block, BlockDirection, BlockState, entity::EntityType, item::Item, item_stack::ItemStack,
+    },
     pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3},
     pumpkin_world::world::BlockFlags,
     register_mod,
@@ -169,6 +171,7 @@ fn shapes_of_vanilla_and_mod_blocks() {
     free_space_for_a_spawn(&world);
     a_half_height_mod_block(&world);
     shapes_that_leave_their_block(&world);
+    collision_for_the_context_of_an_entity(&world);
 }
 
 /// Scenario "A vanilla slab".
@@ -373,4 +376,74 @@ fn shapes_that_leave_their_block(world: &Arc<World>) {
     world.set_block_state(&thin, thin_state.id, BlockFlags::empty());
     assert!(!world.is_space_empty(around(&thin, [0.2, 0.0, 0.2], [0.8, 0.5, 0.8])));
     assert!(world.is_space_empty(around(&thin, [0.2, 0.1, 0.2], [0.8, 0.5, 0.8])));
+}
+
+/// Powder snow and scaffolding collide for the context of the entity.
+fn collision_for_the_context_of_an_entity(world: &Arc<World>) {
+    let snow = BlockPos::new(104, 100, 104);
+    load(world, &snow);
+    clear_above(world, &snow);
+    world.set_block_state(
+        &snow,
+        Block::POWDER_SNOW.default_state.id,
+        BlockFlags::empty(),
+    );
+    let falling = LivingEntity::new(Entity::new(
+        world.clone(),
+        Vector3::new(104.5, 100.5, 104.5),
+        &EntityType::ZOMBIE,
+    ));
+    falling.fall_distance.store(3.0);
+    let inside = around(&snow, [0.2, 0.1, 0.2], [0.8, 0.8, 0.8]);
+    // The empty context sees no collision shape; a falling zombie lands on 0.9.
+    assert!(world.is_space_empty(inside));
+    assert!(!no_collision(world, &falling, inside));
+    assert_eq!(
+        corners(&get_block_shape(
+            world,
+            &snow,
+            ShapeKind::Collision,
+            Some(&falling as &dyn EntityBase)
+        )),
+        [[0.0, 0.0, 0.0, 1.0, 0.9, 1.0]]
+    );
+    assert!(get_block_shape(world, &snow, ShapeKind::Collision, None).is_empty());
+
+    let scaffold = BlockPos::new(120, 100, 120);
+    load(world, &scaffold);
+    clear_above(world, &scaffold);
+    let state = state_of(
+        "minecraft:scaffolding",
+        &[
+            ("distance", "0"),
+            ("bottom", "false"),
+            ("waterlogged", "false"),
+        ],
+    );
+    world.set_block_state(&scaffold, state.id, BlockFlags::empty());
+    // An item inside the scaffolding is below its top: its context has no collision shape.
+    let item = ItemEntity::new(
+        Entity::new(
+            world.clone(),
+            Vector3::new(120.2, 100.3, 120.2),
+            &EntityType::ITEM,
+        ),
+        ItemStack::new(1, &Item::STONE),
+    );
+    let in_the_leg = around(&scaffold, [0.075, 0.3, 0.075], [0.325, 0.55, 0.325]);
+    assert!(world.no_block_collision(Some(&item as &dyn EntityBase), in_the_leg));
+    assert!(no_collision(world, &item, in_the_leg));
+    // The empty context sees the stable shape, as vanilla `noCollision(AABB)`.
+    assert!(!world.is_space_empty(in_the_leg));
+    // A zombie that stands on top sees the stable shape.
+    let standing = Entity::new(
+        world.clone(),
+        Vector3::new(120.5, 101.0, 120.5),
+        &EntityType::ZOMBIE,
+    );
+    assert!(!no_collision(
+        world,
+        &standing,
+        around(&scaffold, [0.2, 0.9, 0.2], [0.8, 1.5, 0.8])
+    ));
 }

@@ -2847,6 +2847,7 @@ impl Entity {
                 &bounding_box,
                 pos,
                 state,
+                None,
                 check_suffocation,
                 |collision_shape: &BoundingBox| {
                     if collision_shape.intersects(&eye_level_box) {
