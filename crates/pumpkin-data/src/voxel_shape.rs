@@ -52,9 +52,9 @@ pub enum ShapeKind {
     /// `getInteractionShape`: empty for every block except the vanilla cauldrons, composter,
     /// hopper and scaffolding, which Pumpkin answers with the default too.
     Interaction,
-    /// `getBlockSupportShape`: the collision shape. The vanilla leaves, snow layer, fence gate,
-    /// shulker box, soul sand, mud and hanging signs override it; Pumpkin answers with the
-    /// default.
+    /// `getBlockSupportShape`: the collision shape, or the shape of the vanilla override for
+    /// the leaves (empty), the snow layer, the fence gates, the shulker boxes (full, as closed),
+    /// soul sand and mud (full), the chorus flower and the hanging signs (the outline).
     BlockSupport,
     /// `getOcclusionShape` as the state caches it: the outline when the state can occlude, else
     /// empty. The vanilla fences, fence gates, lectern and sculk shrieker override it; Pumpkin
@@ -358,6 +358,51 @@ fn shape_of(ids: &[u16]) -> VoxelShape {
     VoxelShape::from_boxes(ids.iter().map(|&id| shape_box(id)))
 }
 
+/// The shape of the vanilla `getBlockSupportShape` overrides, or `None` for the default.
+fn vanilla_support_shape(state: &BlockState) -> Option<VoxelShape> {
+    use crate::block_properties::{
+        HorizontalFacing, OakFenceGateLikeProperties, SnowLikeProperties,
+    };
+    use crate::tag::{self, Taggable};
+
+    let block = Block::from_state_id(state.id);
+    if block.has_tag(&tag::Block::MINECRAFT_LEAVES) {
+        return Some(VoxelShape::empty());
+    }
+    if block.has_tag(&tag::Block::MINECRAFT_ALL_HANGING_SIGNS) {
+        return Some(shape_of(state.outline_shapes));
+    }
+    if block.has_tag(&tag::Block::MINECRAFT_FENCE_GATES) {
+        let gate = OakFenceGateLikeProperties::from_state_id(state.id);
+        if gate.open {
+            return Some(VoxelShape::empty());
+        }
+        // `Block.column(16, 4, 5, 24)` for a gate along the x axis, rotated for the z axis.
+        return Some(match gate.facing {
+            HorizontalFacing::North | HorizontalFacing::South => {
+                VoxelShape::pixels(0.0, 5.0, 6.0, 16.0, 24.0, 10.0)
+            }
+            HorizontalFacing::West | HorizontalFacing::East => {
+                VoxelShape::pixels(6.0, 5.0, 0.0, 10.0, 24.0, 16.0)
+            }
+        });
+    }
+    if block.has_tag(&tag::Block::MINECRAFT_SHULKER_BOXES)
+        || block == &Block::SOUL_SAND
+        || block == &Block::MUD
+    {
+        return Some(VoxelShape::block());
+    }
+    if block == &Block::SNOW {
+        let layers = SnowLikeProperties::from_state_id(state.id).layers;
+        return Some(VoxelShape::column(16.0, 0.0, f64::from(layers) * 2.0));
+    }
+    if block == &Block::CHORUS_FLOWER {
+        return Some(VoxelShape::column(14.0, 0.0, 15.0));
+    }
+    None
+}
+
 impl BlockState {
     /// The shape `kind` of this state, block-local, as vanilla reads it at `BlockPos.ZERO` in an
     /// empty level with the empty collision context. See [`ShapeKind`] for the getters that
@@ -366,9 +411,10 @@ impl BlockState {
     pub fn shape(&self, kind: ShapeKind) -> VoxelShape {
         match kind {
             ShapeKind::Outline => shape_of(self.outline_shapes),
-            ShapeKind::Collision | ShapeKind::BlockSupport | ShapeKind::Visual => {
-                shape_of(self.collision_shapes)
+            ShapeKind::BlockSupport => {
+                vanilla_support_shape(self).unwrap_or_else(|| shape_of(self.collision_shapes))
             }
+            ShapeKind::Collision | ShapeKind::Visual => shape_of(self.collision_shapes),
             ShapeKind::Interaction => VoxelShape::empty(),
             ShapeKind::Occlusion if self.can_occlude() => shape_of(self.outline_shapes),
             ShapeKind::Occlusion => VoxelShape::empty(),
@@ -385,7 +431,7 @@ impl BlockState {
 
     /// Vanilla `BlockState.isFaceSturdy` for `support`. The full face and the center of the top
     /// and bottom faces read the extracted flags; the center of a side face and the rigid
-    /// support read the block support shape.
+    /// support read the block support shape, with the vanilla overrides.
     #[must_use]
     pub fn is_face_sturdy(&self, direction: BlockDirection, support: SupportType) -> bool {
         match (support, direction) {
@@ -482,21 +528,47 @@ mod tests {
         let wall = Block::COBBLESTONE_WALL.default_state;
         assert!(wall.is_face_sturdy(BlockDirection::Up, SupportType::Center));
         assert!(!wall.is_face_sturdy(BlockDirection::Up, SupportType::Rigid));
-        // The computed center agrees with the extracted flag on every top face, except on the
-        // blocks whose class overrides `getBlockSupportShape`.
+        // With the vanilla overrides of `getBlockSupportShape`, the computed center agrees
+        // with the extracted flag on every top and bottom face.
         let mut differ: Vec<&str> = (0..crate::BlockStateId::STATE_COUNT)
             .map(|raw| crate::BlockStateId::new(raw).unwrap().to_state())
             .filter(|state| {
-                state.is_center_solid(BlockDirection::Up)
-                    != state
-                        .shape(ShapeKind::BlockSupport)
-                        .is_supporting(BlockDirection::Up, SupportType::Center)
+                [BlockDirection::Up, BlockDirection::Down]
+                    .into_iter()
+                    .any(|face| {
+                        state.is_center_solid(face)
+                            != state
+                                .shape(ShapeKind::BlockSupport)
+                                .is_supporting(face, SupportType::Center)
+                    })
             })
             .map(|state| Block::from_state_id(state.id).name)
-            .filter(|name| !name.ends_with("_leaves") && !name.ends_with("_hanging_sign"))
             .collect();
         differ.dedup();
-        assert_eq!(differ, ["snow", "soul_sand", "chorus_flower", "mud"]);
+        assert_eq!(differ, Vec::<&str>::new());
+    }
+
+    #[test]
+    fn the_overrides_of_the_support_shape_answer_rigid_and_side_center() {
+        let up_rigid =
+            |state: &BlockState| state.is_face_sturdy(BlockDirection::Up, SupportType::Rigid);
+        assert!(up_rigid(Block::SOUL_SAND.default_state));
+        assert!(up_rigid(Block::MUD.default_state));
+        let snow8 = Block::SNOW
+            .states
+            .iter()
+            .find(|state| {
+                crate::block_properties::SnowLikeProperties::from_state_id(state.id).layers == 8
+            })
+            .unwrap();
+        assert!(up_rigid(snow8));
+        let leaves = Block::OAK_LEAVES.default_state;
+        assert!(!up_rigid(leaves));
+        assert!(!leaves.is_face_sturdy(BlockDirection::North, SupportType::Center));
+        // The default gate faces north and is closed: its support shape starts 5 pixels up.
+        let gate = Block::OAK_FENCE_GATE.default_state;
+        assert!(!gate.shape(ShapeKind::BlockSupport).is_empty());
+        assert!(!gate.is_face_sturdy(BlockDirection::East, SupportType::Center));
     }
 
     #[test]
