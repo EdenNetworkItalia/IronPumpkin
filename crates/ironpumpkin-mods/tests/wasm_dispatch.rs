@@ -14,7 +14,8 @@
 //! cargo test -p ironpumpkin-mods --test wasm_dispatch
 //! ```
 //!
-//! Each event has four blocking handlers with receive-canceled: the mod `dispatch` at `High` (N1),
+//! Each event has four blocking handlers that receive cancelled events (native ones with
+//! receive-canceled, Wasm ones always, see `Context::register_event`): the mod `dispatch` at `High` (N1),
 //! `dispatch-guest` at `High` (W1, registered after the mod) and at `Normal` (W2), and the mod
 //! `dispatch` at `Low` (N2). Each handler logs the field of the event that the test changes and
 //! the cancel flag, and then runs the action that the test gave it. `dispatch-peer` registers the
@@ -399,6 +400,7 @@ fn build_guests(target: &Path) -> PathBuf {
             "--target",
             "wasm32-wasip1",
             "--release",
+            "--locked",
             "--lib",
             "--examples",
         ])
@@ -1132,6 +1134,8 @@ fn entity_invulnerability_check_event_of_damage() {
     let pig = spawn(&EntityType::PIG, 1080.5);
     let health = health(&pig);
 
+    // A bool cannot give three handlers three distinct values, so this chain does not prove the
+    // order; the rows with numeric or enum fields do.
     chain(
         "EntityInvulnerabilityCheckEvent",
         ["true", "false", "true"],
@@ -1545,7 +1549,7 @@ fn mob_effect_event_applicable_of_add_effect() {
 
     chain(
         "MobEffectEventApplicable",
-        ["do-not-apply", "apply", "do-not-apply"],
+        ["apply", "default", "do-not-apply"],
         false,
         || living(&zombie).add_effect(speed()),
     );
