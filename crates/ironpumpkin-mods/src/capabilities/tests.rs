@@ -682,6 +682,8 @@ fn plain_block(at: BlockPos, stack: Option<ItemStack>) -> Arc<ItemStacksResource
             )
             .unwrap();
     });
+    // The hopper and the dropper find a capability through the engine hooks.
+    vanilla_providers();
     LazyLock::force(&REGISTERED);
     let handler = Arc::new(ItemStacksResourceHandler::new(1, 64));
     if let Some(stack) = stack {
