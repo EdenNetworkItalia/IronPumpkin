@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 292 | 292 | 0 | 0 | 0 | 255 | 60 |
-| Inventory, planned | 443 | 398 | 43 | 2 | 0 | 298 | 63 |
+| Inventory, supported | 327 | 327 | 0 | 0 | 0 | 287 | 73 |
+| Inventory, planned | 408 | 363 | 43 | 2 | 0 | 266 | 50 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
