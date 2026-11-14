@@ -12,6 +12,13 @@
 //! The callbacks run while the host holds the screen handler lock. Inside a callback, act on the
 //! menu through its [`MenuAccess`]. [`Menu::with`], [`get_open_menu`] and [`open_menu`] lock the
 //! screen handler, so a callback that calls them deadlocks.
+//! The `on_contents_changed` callback of a resource handler behind a [`SlotSource::Handler`] runs
+//! when the root transaction of the click commits, still under that lock: it must not call them
+//! either.
+//!
+//! A click, a button, a close and a [`Menu::with`] call each run in one root transaction. A
+//! handler slot writes in a nested transaction of it, and a handler that moves less than a write
+//! needs rolls the whole action back ([`MenuAccess::transaction`]).
 
 mod handler;
 pub mod layout;

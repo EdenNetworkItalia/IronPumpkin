@@ -327,9 +327,11 @@ impl PropertyDelegate for DataDelegate {
     }
 }
 
-/// Sends a changed data slot, as the Pumpkin furnace and brewing stand screens do:
-/// `ScreenHandler::check_property_updates` compares against the value that
-/// `update_tracked_properties` already stored, so it never sends.
+/// Sends a changed data slot, as the Pumpkin furnace and brewing stand screens do. It works around
+/// an upstream Pumpkin bug in `pumpkin-inventory/src/screen_handler.rs`:
+/// `send_content_updates` runs `update_tracked_properties`, which stores the new value, before
+/// `check_property_updates` compares against it, so the sync handler never gets a change. The
+/// compare also writes with `Vec::insert` instead of an assignment, so the tracked values shift.
 struct DataSlotSync;
 
 impl ScreenHandlerListener for DataSlotSync {
