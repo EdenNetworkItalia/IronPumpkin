@@ -25,6 +25,10 @@
 //! [`DynamicTaggable::has_tag_dynamic`] and [`pumpkin_data::dynamic::tag_ids`] answer for
 //! generated and mod tags. Clients and data packs do not see mod tags.
 //!
+//! Shapes: a block is a full cube unless it declares its shapes per state with
+//! [`BlockBuilder::shape`] and [`BlockBuilder::collision_shape`] or takes the shapes of its
+//! block type. See [`crate::shapes`].
+//!
 //! Behaviour: `.behaviour(..)` gives a block a [`BlockBehaviour`] and an item an [`ItemBehaviour`],
 //! the traits of the vanilla blocks and items. The server calls it through the same hooks as for
 //! vanilla content: placing, breaking, using, scheduled ticks, neighbour updates and redstone for
@@ -118,9 +122,12 @@ use pumpkin_data::{
         BlockDefinition, BlockPropertyDefinition, EntityTypeDefinition, ItemDefinition,
         TagDefinition,
     },
+    dynamic_shapes::{self, DeclaredShapes},
     entity::EntityType,
     item::Item,
 };
+
+use crate::shapes::{StateProperties, VoxelShape};
 
 pub use pumpkin_core::block::BlockBehaviour;
 pub use pumpkin_core::entity::custom::EntityFactory;
@@ -130,12 +137,15 @@ pub use pumpkin_data::dynamic::{ContentKind, DynamicTaggable, RegistryError};
 /// A custom block. It has one state per combination of its property values.
 ///
 /// `name` is `namespace:path` with a namespace other than `minecraft`. `display` is the vanilla
-/// state that vanilla clients see: every state of the block copies its physical data.
+/// state that vanilla clients see: every state of the block copies its physical data, except the
+/// shapes. The block is a full cube unless it declares its shapes with [`Self::shape`] and
+/// [`Self::collision_shape`] or takes the shapes of a [block type](Self::block_type).
 #[derive(Clone)]
 pub struct BlockBuilder {
     definition: BlockDefinition,
     behaviour: Option<Arc<dyn BlockBehaviour>>,
     block_type: Option<String>,
+    shapes: DeclaredShapes,
 }
 
 impl BlockBuilder {
@@ -150,6 +160,7 @@ impl BlockBuilder {
             },
             behaviour: None,
             block_type: None,
+            shapes: DeclaredShapes::default(),
         }
     }
 
@@ -189,6 +200,35 @@ impl BlockBuilder {
         self
     }
 
+    /// Sets the outline of each state (`Block#getShape`): `shape` gets the property values of
+    /// one state and returns its shape. The server calls it once per state when the registry
+    /// freezes, so the shape can depend on the state only. The collision shape is the outline
+    /// unless [`Self::collision_shape`] sets it. A second call replaces the first.
+    ///
+    /// The shapes replace those of the block type, and the flags that vanilla derives from the
+    /// shapes follow them: the sturdy faces, the full cube, the legacy solid flag, the solid
+    /// render and the redstone conductor. See [`crate::shapes`].
+    #[must_use]
+    pub fn shape(
+        mut self,
+        shape: impl Fn(&StateProperties<'_>) -> VoxelShape + Send + Sync + 'static,
+    ) -> Self {
+        self.shapes.shape = Some(Arc::new(shape));
+        self
+    }
+
+    /// Sets the collision shape of each state (`Block#getCollisionShape`), as [`Self::shape`]
+    /// sets the outline. Return [`VoxelShape::empty`] for a block that entities pass through. A
+    /// second call replaces the first.
+    #[must_use]
+    pub fn collision_shape(
+        mut self,
+        shape: impl Fn(&StateProperties<'_>) -> VoxelShape + Send + Sync + 'static,
+    ) -> Self {
+        self.shapes.collision_shape = Some(Arc::new(shape));
+        self
+    }
+
     fn property(mut self, property: BlockPropertyDefinition) -> Self {
         self.definition.properties.push(property);
         self
@@ -199,12 +239,17 @@ impl BlockBuilder {
     }
 
     pub(crate) fn register(self) -> Result<(), RegistryError> {
+        let name = self.definition.name.clone();
         match self.block_type {
             Some(block_type) => {
                 behaviour::register_typed_block(self.definition, self.behaviour, &block_type)
             }
             None => behaviour::register_block(self.definition, self.behaviour),
+        }?;
+        if self.shapes.shape.is_some() || self.shapes.collision_shape.is_some() {
+            dynamic_shapes::declare(&name, self.shapes)?;
         }
+        Ok(())
     }
 }
 
@@ -214,6 +259,7 @@ impl fmt::Debug for BlockBuilder {
             .field("definition", &self.definition)
             .field("behaviour", &self.behaviour.is_some())
             .field("block_type", &self.block_type)
+            .field("shapes", &self.shapes)
             .finish()
     }
 }

@@ -46,7 +46,8 @@ fn is_entity_above_block(entity: &crate::entity::Entity, position: &BlockPos) ->
     bb.min.y >= block_top - WALK_ON_EPSILON
 }
 
-pub(crate) fn collision_shape_for_entity(
+/// Vanilla `PowderSnowBlock.getCollisionShape` for the collision context of `entity`.
+pub fn collision_shape_for_entity(
     entity: &dyn EntityBase,
     position: &BlockPos,
 ) -> Option<BoundingBox> {

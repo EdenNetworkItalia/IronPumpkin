@@ -89,6 +89,7 @@ pub mod mods_toml;
 pub mod network;
 pub mod registration;
 pub mod registry;
+pub mod shapes;
 pub mod sound_events;
 pub mod transfer;
 pub mod version;
