@@ -42,7 +42,7 @@ use ironpumpkin_mods::{
         SimpleEnergyHandler, Transaction, TransactionContext,
     },
 };
-use pumpkin_inventory::{Inventory, SimpleInventory};
+use pumpkin_inventory::{Inventory, SimpleInventory, screen_handler::ScreenHandler};
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
     java::{
@@ -956,4 +956,26 @@ fn a_button_needs_a_valid_menu_and_no_spectator() {
     player.gamemode.store(GameMode::Survival);
     press_button(&player, menu.sync_id(), 3);
     assert_eq!(entries(&gate.log), ["button 3"]);
+}
+
+/// A second close of the same menu runs nothing: `removed` and `stopOpen` run once.
+#[test]
+fn a_second_close_runs_nothing() {
+    struct Removals(Log);
+    impl MenuLogic for Removals {
+        fn removed(&self, _menu: &mut MenuAccess<'_>, _player: &Player) {
+            push(&self.0, "removed");
+        }
+    }
+    let _serial = support::serial();
+    let player = support::player("TwiceCloser");
+    let log: Log = Arc::default();
+    let definition =
+        MenuDefinition::vanilla(WindowType::Hopper, title(), SlotSource::MenuContainer).unwrap();
+    open_menu(&player, definition, Arc::new(Removals(log.clone()))).unwrap();
+    let handler = player.current_screen_handler.lock().unwrap().clone();
+    let mut handler = handler.lock().unwrap();
+    handler.on_closed(player.as_ref());
+    handler.on_closed(player.as_ref());
+    assert_eq!(entries(&log), ["removed"]);
 }

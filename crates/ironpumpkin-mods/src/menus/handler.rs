@@ -558,6 +558,10 @@ impl ScreenHandler for ModMenu {
     }
 
     fn on_closed(&mut self, player: &dyn InventoryPlayer) {
+        // The tick close and a deferred close can both reach a menu.
+        if self.closing {
+            return;
+        }
         self.closing = true;
         self.default_on_closed(player);
         if let Some(player) = as_player(player) {
