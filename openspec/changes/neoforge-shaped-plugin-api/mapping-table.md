@@ -621,7 +621,7 @@ How to read it:
 | `PayloadRegistrar#playToClient` | 125 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_client` | supported |
 | `PayloadRegistrar#playToServer` | 123 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_server` | supported |
 | `PacketDistributor#sendToPlayer` | 121 | Payload registration and sending | `ironpumpkin_mods::network::send_to_player` | supported |
-| `IContainerFactory` | 84 | Configuration tasks and other network types | `registration.menu-type-definition.extra-data`, `menus.menu-definition.extra-data` | planned |
+| `IContainerFactory` | 84 | Configuration tasks and other network types | `registration.menu-type-definition.extra-data` and the extra data of `menus::open_menu`, both M5 (`neoforge:advanced_open_screen`) | planned |
 | `PayloadRegistrar#versioned` | 54 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::versioned` | supported |
 | `PacketDistributor#sendToPlayersTrackingChunk` | 43 | Payload registration and sending | `network.send-to-players-tracking-chunk` | planned |
 | `PayloadRegistrar#optional` | 42 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::optional` | supported |
@@ -823,8 +823,8 @@ How to read it:
 | `IDataComponentHolderExtension` | 90 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `data_components` (mod component types) and the typed components of Pumpkin's `ItemStack`; overriding hooks is a gap (documented in `types`) | planned |
 | `IEntityExtension` | 87 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world` `entity`; overriding hooks is a gap (documented in `types`) | planned |
 | `IBlockEntityExtension` | 85 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/block-entity`; overriding hooks is a gap (documented in `types`) | planned |
-| `IPlayerExtension` | 85 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/player` and `menus.open-menu` (`openMenu`); overriding hooks is a gap (documented in `types`) | planned |
-| `IMenuTypeExtension` | 70 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.menu-type-definition.extra-data` and `menus.menu-definition.extra-data`; overriding hooks is a gap (documented in `types`) | planned |
+| `IPlayerExtension` | 85 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/player` and `menus::open_menu` (`openMenu(provider)`; `openMenu(provider, extraDataWriter)` and `openMenu(provider, pos)` wait for M5, `neoforge:advanced_open_screen`); overriding hooks is a gap (documented in `types`) | planned |
+| `IMenuTypeExtension` | 70 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.menu-type-definition.extra-data` and the extra data of `menus::open_menu`, which wait for M5 (`neoforge:advanced_open_screen` carries the extra data); overriding hooks is a gap (documented in `types`) | planned |
 | `IItemExtension` | 65 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.item-definition.behaviour`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderExtension` | 60 | Extension interfaces NeoForge adds to `net.minecraft` | partial: IronPumpkin has no holder object; `registry::key_of`, `registry::id_of` and `registry::is_in_tag` of `ironpumpkin_mods` answer by name; the other holder methods have no counterpart yet; overriding hooks is a gap (documented in `types`) | planned |
 | `IFluidExtension` | 49 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registration.fluid-definition`; overriding hooks is a gap (documented in `types`) | planned |
@@ -860,7 +860,7 @@ How to read it:
 | `IFallableExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `content::BlockBuilder::block_type`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderSetExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
 | `IHolderSetExtension.SerializationType` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `registry::tag_entries`; overriding hooks is a gap (documented in `types`) | planned |
-| `IMenuProviderExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `menus.menu-definition` (`writeClientSideData` is `extra-data`); overriding hooks is a gap (documented in `types`) | planned |
+| `IMenuProviderExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `menus::MenuDefinition`; `writeClientSideData` waits for M5 (`neoforge:advanced_open_screen` carries the extra data); overriding hooks is a gap (documented in `types`) | planned |
 | `IPlayerListExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/server`; overriding hooks is a gap (documented in `types`) | planned |
 | `IRecipeOutputExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | `types` doc (extension interfaces), not supported | not supported |
 | `IServerChunkCacheExtension` | 0 | Extension interfaces NeoForge adds to `net.minecraft` | partial: calls through `pumpkin:plugin/world` `chunk`; overriding hooks is a gap (documented in `types`) | planned |
@@ -1119,7 +1119,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | `net.neoforged.neoforge.network.registration.PayloadRegistrar` | 167 | same | `ironpumpkin_mods::network::PayloadRegistrar` |
 | `net.neoforged.neoforge.network.handling.IPayloadHandler` | 166 | same | `ironpumpkin_mods::network::PayloadHandler` |
 | `net.neoforged.neoforge.network.PacketDistributor` | 157 | same | `network.send-to-*` |
-| `net.neoforged.neoforge.network.IContainerFactory` | 84 | same | `menus.menu-definition.extra-data` |
+| `net.neoforged.neoforge.network.IContainerFactory` | 84 | same | the extra data of `menus::open_menu`, M5 (`neoforge:advanced_open_screen`) |
 | `net.neoforged.neoforge.network.configuration.ICustomConfigurationTask` | 5 | same | `ironpumpkin_mods::network::CustomConfigurationTask` |
 
 #### NeoForge fluids
@@ -1138,7 +1138,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
 | `net.neoforged.neoforge.common.Tags` | 77 | same | `registry::tag_entries`, `registry::is_in_tag` |
-| `net.neoforged.neoforge.common.extensions.IMenuTypeExtension` | 70 | same | `registration.menu-type-definition.extra-data`, `menus.menu-definition.extra-data` |
+| `net.neoforged.neoforge.common.extensions.IMenuTypeExtension` | 70 | same | `registration.menu-type-definition.extra-data` and the extra data of `menus::open_menu`, both M5 (`neoforge:advanced_open_screen`) |
 | `net.neoforged.neoforge.common.util.FakePlayer` | 63 | same | gap: not supported (Pumpkin has no fake players); documented in `types` |
 | `net.neoforged.neoforge.common.Tags$Items` | 51 | same | `registry::tag_entries`, `registry::is_in_tag` |
 | `net.neoforged.neoforge.common.ItemAbility` | 45 | same | gap: not supported; `item_ability` name on `BlockEventBlockToolModificationEvent` |
