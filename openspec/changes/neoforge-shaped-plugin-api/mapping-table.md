@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 292 | 292 | 0 | 0 | 0 | 255 | 60 |
-| Inventory, planned | 443 | 398 | 43 | 2 | 0 | 298 | 63 |
+| Inventory, supported | 327 | 327 | 0 | 0 | 0 | 287 | 73 |
+| Inventory, planned | 408 | 363 | 43 | 2 | 0 | 266 | 50 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -1405,18 +1405,18 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.minecraft.world.inventory.AbstractContainerMenu` | 172 | same | `menus.menu`, `menus.menu-definition`, `menus.open-menu` and the `callbacks.menu-*` functions (task 2.9) |
-| `net.minecraft.world.inventory.MenuType` | 157 | same | `registration.menu-type-definition`; `menus.menu-definition.menu-type` |
-| `net.minecraft.world.inventory.Slot` | 139 | same | `menus.slot-definition` (task 2.9); `pumpkin:plugin/inventory` for vanilla screens |
-| `net.minecraft.world.Container` | 135 | same | `pumpkin:plugin/inventory`; menu slots through `menus.slot-source` |
-| `net.minecraft.world.MenuProvider` | 121 | same | `menus.menu-definition` and `menus.open-menu` (task 2.9) |
-| `net.minecraft.world.inventory.InventoryMenu` | 68 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); custom menus `menus` (task 2.9) |
-| `net.neoforged.neoforge.transfer.item.ResourceHandlerSlot` | 55 (21.1 `SlotItemHandler`) | new in 26.3 | `menus.slot-source::handler` (task 2.9) |
-| `net.minecraft.world.SimpleContainer` | 52 | same | `menus.slot-source::menu-container`; `pumpkin:plugin/inventory` |
-| `net.minecraft.world.inventory.ContainerLevelAccess` | 52 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); custom menus `menus` (task 2.9) |
-| `net.minecraft.world.inventory.MenuConstructor` | 51 | same | `menus.menu-definition` (task 2.9) |
-| `net.minecraft.world.SimpleMenuProvider` | 45 | same | `menus.menu-definition` and `menus.open-menu` (task 2.9) |
-| `net.minecraft.world.inventory.EnchantmentMenu` | 2 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); custom menus `menus` (task 2.9) |
+| `net.minecraft.world.inventory.AbstractContainerMenu` | 172 | same | `menus::MenuDefinition`, the `menus::MenuLogic` trait (the overridable methods), `menus::MenuAccess` (the protected methods), `menus::Menu`; mod menu types wait for M5 (`neoforge:advanced_open_screen`) |
+| `net.minecraft.world.inventory.MenuType` | 157 | same | vanilla types: the `WindowType` of `menus::MenuDefinition::new`, checked against `menus::layout::vanilla_layout`; mod types `registration.menu-type-definition` (M5) |
+| `net.minecraft.world.inventory.Slot` | 139 | same | `menus::SlotDefinition` (`with_place_filter`, `with_take_callback`); `pumpkin:plugin/inventory` for vanilla screens |
+| `net.minecraft.world.Container` | 135 | same | `pumpkin:plugin/inventory`; menu slots through `menus::SlotSource::Container` |
+| `net.minecraft.world.MenuProvider` | 121 | same | `menus::MenuDefinition` (with the title) and `menus::open_menu` |
+| `net.minecraft.world.inventory.InventoryMenu` | 68 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); player inventory slots of a mod menu `menus::MenuDefinition::player_inventory` |
+| `net.neoforged.neoforge.transfer.item.ResourceHandlerSlot` | 55 (21.1 `SlotItemHandler`) | new in 26.3 | `menus::SlotSource::Handler`: a take extracts and a place inserts in a root transaction, with no `IndexModifier` |
+| `net.minecraft.world.SimpleContainer` | 52 | same | `menus::MenuDefinition::with_container` and `menus::SlotSource::MenuContainer` (`menus::MenuContainer`); `pumpkin:plugin/inventory` |
+| `net.minecraft.world.inventory.ContainerLevelAccess` | 52 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); `stillValid(access, player, block)` is `menus::still_valid_at` |
+| `net.minecraft.world.inventory.MenuConstructor` | 51 | same | `menus::MenuDefinition` and the `menus::MenuLogic` of `menus::open_menu` |
+| `net.minecraft.world.SimpleMenuProvider` | 45 | same | `menus::MenuDefinition` and `menus::open_menu` |
+| `net.minecraft.world.inventory.EnchantmentMenu` | 2 | same | `pumpkin:plugin/inventory`, `pumpkin:plugin/gui` (vanilla screens); a mod menu of the `enchantment` type with `menus::MenuDefinition` |
 
 #### Minecraft level and world
 
