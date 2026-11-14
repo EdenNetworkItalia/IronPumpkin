@@ -5,7 +5,8 @@
 //! [`STARTUP_CONFIG`], the local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and
 //! a handler for each server lifecycle and tick event, the command [`COMMAND`] and the service
 //! [`SERVICE`]. Its block exposes an item handler through `Capabilities.Item.BLOCK`
-//! ([`block_storage`]). Its `init`, mod lifecycle methods, config loading hook and event handlers log
+//! ([`block_storage`]), and the command [`MENU_COMMAND`] opens a hopper menu over it
+//! ([`open_storage_menu`]). Its `init`, mod lifecycle methods, config loading hook and event handlers log
 //! [`EVENT_LOG_PREFIX`] and the `NeoForge` event name, an event handler only the first time its
 //! event fires, and count each call ([`event_count`]). A test binary links it by using one of its items, such as
 //! `use ironpumpkin_test_mod::BLOCK;`, and starts the server with `pumpkin::run`.
@@ -36,7 +37,7 @@ use ironpumpkin_mods::{
     config::{ConfigError, ConfigSpec, ConfigType, ModConfig},
     content::{BlockBuilder, EntityTypeBuilder, ItemBuilder, RegistryError},
     data_components::DataComponentTypeBuilder,
-    entity::{Entity, EntityBase},
+    entity::{Entity, EntityBase, player::Player},
     entity_attributes::AttributeBuilder,
     event::{
         BoxFuture, EventHandler, EventPriority, Payload,
@@ -48,13 +49,21 @@ use ironpumpkin_mods::{
         world::{LevelTickEventPost, LevelTickEventPre},
     },
     math::position::BlockPos,
+    menus::{
+        Menu, MenuAccess, MenuDefinition, MenuError, MenuLogic, SlotDefinition, SlotSource,
+        open_menu,
+    },
     mob_effects::{MobEffectBuilder, MobEffectCategory},
     network::{
         CustomConfigurationTask, PayloadContext, RegisterConfigurationTasksEvent,
         RegisterPayloadHandlersEvent, TaskContext, send_to_player,
     },
     permission::{Permission, PermissionDefault},
-    pumpkin_data::{Block, attributes::Attributes, entity::EntityType, item::Item},
+    pumpkin_data::{
+        Block, attributes::Attributes, entity::EntityType, item::Item, item_stack::ItemStack,
+        screen::WindowType,
+    },
+    pumpkin_util::text::TextComponent,
     register_mod,
     registration::{AttributeSupplier, EntityAttributeCreationEvent},
     server::Server,
@@ -90,6 +99,10 @@ pub const EVENT_LOG_PREFIX: &str = "[test-mod] event ";
 pub const COMMAND: &str = "testmod";
 /// The permission of [`COMMAND`].
 pub const COMMAND_PERMISSION: &str = "test-mod:command.testmod";
+/// The command that opens [`open_storage_menu`] at the block below the player.
+pub const MENU_COMMAND: &str = "testmod_menu";
+/// The permission of [`MENU_COMMAND`].
+pub const MENU_COMMAND_PERMISSION: &str = "test-mod:command.testmod_menu";
 /// The name of [`TestModService`].
 pub const SERVICE: &str = "test-mod:service";
 
@@ -386,6 +399,88 @@ fn register_command(cx: &mut ModInit) {
         command(COMMAND, description).executes(CountRuns),
         format!("command.{COMMAND}"),
     );
+    let description = "Opens the storage menu of the block below the player.";
+    cx.register_permission(Permission::new(
+        MENU_COMMAND_PERMISSION,
+        description,
+        PermissionDefault::Allow,
+    ));
+    cx.register_command(
+        command(MENU_COMMAND, description).executes(OpenStorageMenu),
+        format!("command.{MENU_COMMAND}"),
+    );
+}
+
+struct OpenStorageMenu;
+
+impl CommandExecutor for OpenStorageMenu {
+    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        let Some(player) = context.source.as_player() else {
+            return Ok(0);
+        };
+        let below = player.get_entity().block_pos.load().down();
+        match open_storage_menu(&player, below) {
+            Ok(_) => Ok(1),
+            Err(err) => {
+                error!("{ID}: {err}");
+                Ok(0)
+            }
+        }
+    }
+}
+
+/// The slots of the storage menu before the player inventory: the block storage, then four
+/// slots of the menu container.
+const STORAGE_MENU_SLOTS: usize = 5;
+
+/// Opens a `minecraft:hopper` menu for `player`: slot 0 is the [`block_storage`] at `pos`, slots
+/// 1 to 4 are a container of the menu that goes back to the player on close.
+///
+/// # Errors
+///
+/// The [`MenuError`] of `open_menu`.
+pub fn open_storage_menu(player: &Arc<Player>, pos: BlockPos) -> Result<Menu, MenuError> {
+    let storage: Arc<dyn ResourceHandler<ItemResource>> = block_storage(&player.world(), pos);
+    let mut definition =
+        MenuDefinition::new(WindowType::Hopper, TextComponent::text("Test storage"))
+            .with_container(STORAGE_MENU_SLOTS - 1)
+            .slot(SlotDefinition::new(SlotSource::Handler(storage), 0));
+    for index in 0..STORAGE_MENU_SLOTS - 1 {
+        definition = definition.slot(SlotDefinition::new(SlotSource::MenuContainer, index));
+    }
+    open_menu(player, definition.player_inventory(), Arc::new(StorageMenu))
+}
+
+/// The menu logic of [`open_storage_menu`].
+struct StorageMenu;
+
+impl MenuLogic for StorageMenu {
+    fn quick_move_stack(
+        &self,
+        menu: &mut MenuAccess<'_>,
+        _player: &Player,
+        slot: usize,
+    ) -> ItemStack {
+        let mut stack = menu.get_item(slot);
+        if stack.is_empty() {
+            return ItemStack::EMPTY.clone();
+        }
+        let clicked = stack.clone();
+        let moved = if slot < STORAGE_MENU_SLOTS {
+            menu.move_item_stack_to(&mut stack, STORAGE_MENU_SLOTS, menu.slot_count(), true)
+        } else {
+            menu.move_item_stack_to(&mut stack, 0, STORAGE_MENU_SLOTS, false)
+        };
+        if !moved {
+            return ItemStack::EMPTY.clone();
+        }
+        menu.set_item(slot, stack);
+        clicked
+    }
+
+    fn removed(&self, menu: &mut MenuAccess<'_>, player: &Player) {
+        menu.clear_container(player);
+    }
 }
 
 struct CountRuns;
