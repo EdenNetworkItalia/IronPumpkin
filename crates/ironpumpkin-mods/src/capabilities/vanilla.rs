@@ -12,14 +12,14 @@ use pumpkin_core::{
     world::World,
 };
 use pumpkin_data::{
-    BlockDirection, BlockState,
+    Block, BlockDirection, BlockState,
     block_properties::{ChestLikeProperties, ChestType},
     item_stack::ItemStack,
 };
 use pumpkin_inventory::Inventory;
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
-use super::{RegisterCapabilitiesEvent, energy, fluid, invalidate_capabilities, item};
+use super::{EntityHint, RegisterCapabilitiesEvent, energy, fluid, invalidate_capabilities, item};
 use crate::{
     event::EventPriority,
     transfer::{
@@ -200,8 +200,16 @@ impl CapabilityHooks for Hooks {
         world: &Arc<World>,
         pos: &BlockPos,
         side: BlockDirection,
+        block_entity: Option<&Arc<dyn BlockEntity>>,
+        state: Option<(&'static Block, &'static BlockState)>,
     ) -> Option<Box<dyn ItemTarget>> {
-        let handler = item::BLOCK.get_capability(world, pos, Some(side))?;
+        let handler = item::BLOCK.lookup(
+            world,
+            pos,
+            state,
+            EntityHint::Known(block_entity),
+            Some(side),
+        )?;
         Some(Box::new(Target(handler)))
     }
 }

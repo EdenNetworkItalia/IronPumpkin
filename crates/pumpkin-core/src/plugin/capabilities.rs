@@ -12,10 +12,12 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use pumpkin_data::{BlockDirection, block_properties::FacingHopper, item_stack::ItemStack};
+use pumpkin_data::{
+    Block, BlockDirection, BlockState, block_properties::FacingHopper, item_stack::ItemStack,
+};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
-use crate::world::World;
+use crate::{block::entities::BlockEntity, world::World};
 
 /// The item handler of a block, as hoppers and droppers use it. Each call runs in its own root
 /// transaction.
@@ -35,12 +37,16 @@ pub trait CapabilityHooks: Send + Sync {
     fn invalidate_block(&self, world: &World, pos: &BlockPos);
     /// `ServerLevel.invalidateCapabilities(ChunkPos)`.
     fn invalidate_chunk(&self, world: &World, chunk: Vector2<i32>);
-    /// `Capabilities.Item.BLOCK` of the block at `pos`, looked up from `side`.
+    /// `Capabilities.Item.BLOCK` of the block at `pos`, looked up from `side`. The caller
+    /// already looked up the block entity at `pos`, and passes the block and state when it read
+    /// them, so the lookup reads the world only when it must.
     fn item_target(
         &self,
         world: &Arc<World>,
         pos: &BlockPos,
         side: BlockDirection,
+        block_entity: Option<&Arc<dyn BlockEntity>>,
+        state: Option<(&'static Block, &'static BlockState)>,
     ) -> Option<Box<dyn ItemTarget>>;
 }
 
@@ -80,8 +86,12 @@ pub(crate) fn item_target(
     world: &Arc<World>,
     pos: &BlockPos,
     side: BlockDirection,
+    block_entity: Option<&Arc<dyn BlockEntity>>,
+    state: Option<(&'static Block, &'static BlockState)>,
 ) -> Option<Box<dyn ItemTarget>> {
-    CAPABILITY_HOOKS.get()?.item_target(world, pos, side)
+    CAPABILITY_HOOKS
+        .get()?
+        .item_target(world, pos, side, block_entity, state)
 }
 
 /// The side a hopper facing `facing` pushes into.

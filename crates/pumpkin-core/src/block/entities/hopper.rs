@@ -236,7 +236,8 @@ impl HopperBlockEntity {
             return false;
         }
 
-        if let Some(entity) = world.get_block_entity(pos_up)
+        let entity_up = world.get_block_entity(pos_up);
+        if let Some(entity) = entity_up.clone()
             && let Some(container) = entity.clone().get_inventory()
         {
             // TODO check WorldlyContainer
@@ -266,10 +267,12 @@ impl HopperBlockEntity {
             }
             return false;
         }
-        if let Some(moved) = self.extract_from_capability(world, pos_up) {
+        let (block, state) = world.get_block_and_state(pos_up);
+        if let Some(moved) =
+            self.extract_from_capability(world, pos_up, entity_up.as_ref(), (block, state))
+        {
             return moved;
         }
-        let (block, state) = world.get_block_and_state(pos_up);
         if !(state.is_solid() && block.has_tag(&tag::Block::MINECRAFT_DOES_NOT_BLOCK_HOPPERS)) {
             let pos_up_f = pos_up.to_f64();
             let search_box = pumpkin_util::math::boundingbox::BoundingBox::new(
@@ -385,7 +388,8 @@ impl HopperBlockEntity {
     fn eject_items(&self, world: &Arc<World>) -> bool {
         // TODO getEntityContainer
 
-        if let Some(entity) = world.get_block_entity(&self.position.offset(to_offset(&self.facing)))
+        let target_entity = world.get_block_entity(&self.position.offset(to_offset(&self.facing)));
+        if let Some(entity) = target_entity.clone()
             && let Some(container) = entity.get_inventory()
         {
             // TODO check WorldlyContainer
@@ -438,7 +442,7 @@ impl HopperBlockEntity {
                     world.scatter_stack(pos.x, pos.y, pos.z, leftover);
                 }
             }
-        } else if let Some(moved) = self.insert_into_capability(world) {
+        } else if let Some(moved) = self.insert_into_capability(world, target_entity.as_ref()) {
             return moved;
         }
         false

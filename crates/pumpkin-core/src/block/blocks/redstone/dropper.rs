@@ -164,7 +164,8 @@ impl BlockBehaviour for DropperBlock {
                     .position
                     .offset(props.facing.to_block_direction().to_offset());
 
-                if let Some(entity) = args.world.get_block_entity(&target_pos)
+                let target_entity = args.world.get_block_entity(&target_pos);
+                if let Some(entity) = target_entity.clone()
                     && let Some(container) = entity.get_inventory()
                 {
                     let backup = item.clone();
@@ -182,6 +183,8 @@ impl BlockBehaviour for DropperBlock {
                     args.world,
                     &target_pos,
                     props.facing.to_block_direction().opposite(),
+                    target_entity.as_ref(),
+                    None,
                 ) {
                     // `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
                     if target.insert(&item.copy_with_count(1)) > 0 {

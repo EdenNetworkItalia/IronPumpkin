@@ -4,11 +4,13 @@
 
 use std::sync::{Arc, atomic::Ordering};
 
+use pumpkin_data::{Block, BlockDirection, BlockState};
 use pumpkin_inventory::Inventory;
 use pumpkin_util::math::position::BlockPos;
 
 use super::{HopperBlockEntity, to_offset};
 use crate::{
+    block::entities::BlockEntity,
     plugin::{
         api::events::inventory::inventory_move_item::InventoryMoveItemEvent,
         capabilities::{hopper_direction, item_target},
@@ -30,9 +32,19 @@ impl HopperBlockEntity {
 
     /// `VanillaInventoryCodeHooks.insertHook`: pushes one item into the item capability of the
     /// block the hopper faces. `None` when that block has none.
-    pub(super) fn insert_into_capability(&self, world: &Arc<World>) -> Option<bool> {
+    pub(super) fn insert_into_capability(
+        &self,
+        world: &Arc<World>,
+        block_entity: Option<&Arc<dyn BlockEntity>>,
+    ) -> Option<bool> {
         let target_pos = self.position.offset(to_offset(&self.facing));
-        let target = item_target(world, &target_pos, hopper_direction(self.facing).opposite())?;
+        let target = item_target(
+            world,
+            &target_pos,
+            hopper_direction(self.facing).opposite(),
+            block_entity,
+            None,
+        )?;
         if target.is_full() {
             return Some(false);
         }
@@ -75,8 +87,16 @@ impl HopperBlockEntity {
         &self,
         world: &Arc<World>,
         source: &BlockPos,
+        block_entity: Option<&Arc<dyn BlockEntity>>,
+        state: (&'static Block, &'static BlockState),
     ) -> Option<bool> {
-        let source = item_target(world, source, pumpkin_data::BlockDirection::Down)?;
+        let source = item_target(
+            world,
+            source,
+            BlockDirection::Down,
+            block_entity,
+            Some(state),
+        )?;
         Some(source.extract_one(&mut |item| Self::add_one_item(self, self, item)))
     }
 }

@@ -42,7 +42,7 @@ use rustc_hash::FxHashMap;
 
 use pumpkin_core::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::{
-    BlockDirection, BlockState,
+    Block, BlockDirection, BlockId, BlockState,
     block_properties::BLOCK_ENTITY_TYPES,
     dynamic::{self, ContentKind},
     item::Item,
@@ -299,6 +299,24 @@ struct BlockData<T: ?Sized + 'static, C: 'static> {
     blocks: ByName<Ordered<BlockProvider<T, C>>>,
     block_entities: ByName<Ordered<BlockEntityProvider<T, C>>>,
     proxyable: Mutex<Option<bool>>,
+    /// Set at the freeze: whether a block provider is registered for a block without a block
+    /// entity type, so a lookup at a position without a block entity can find a handler.
+    plain: OnceLock<bool>,
+}
+
+impl<T: ?Sized + 'static, C: 'static> BlockData<T, C> {
+    fn answers_without_block_entity(&self) -> bool {
+        self.plain.get().copied().unwrap_or(true)
+    }
+}
+
+/// What a block lookup knows of the block entity at the position.
+#[derive(Clone, Copy)]
+pub(crate) enum EntityHint<'a> {
+    /// The lookup reads the block entity when a provider needs it.
+    Unknown,
+    /// The caller looked it up: `None` for no block entity.
+    Known(Option<&'a Arc<dyn BlockEntity>>),
 }
 
 struct EntityData<T: ?Sized + 'static, C: 'static> {
@@ -375,6 +393,14 @@ impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> Freeze for Blo
     fn freeze(&self) {
         self.blocks.freeze();
         self.block_entities.freeze();
+        let plain = self.blocks.frozen.get().is_some_and(|providers| {
+            providers.keys().any(|name| {
+                Block::from_name(name)
+                    .filter(|block| block.id.as_u16() < BlockId::COUNT)
+                    .is_none_or(|block| block.default_state.block_entity_type == u16::MAX)
+            })
+        });
+        let _ = self.plain.set(plain);
     }
 }
 
@@ -401,6 +427,7 @@ impl<T: ?Sized + Send + Sync + 'static, C: Send + Sync + 'static> CapabilityData
             blocks: ByName::default(),
             block_entities: ByName::default(),
             proxyable: Mutex::new(None),
+            plain: OnceLock::new(),
         }
     }
 
@@ -494,25 +521,49 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static> BlockC
         &self,
         world: &Arc<World>,
         pos: &BlockPos,
-        block_entity: Option<Arc<dyn BlockEntity>>,
+        block_entity: Option<&Arc<dyn BlockEntity>>,
+        context: C,
+    ) -> Option<Arc<T>> {
+        let hint = block_entity.map_or(EntityHint::Unknown, |block_entity| {
+            EntityHint::Known(Some(block_entity))
+        });
+        self.lookup(world, pos, None, hint, context)
+    }
+
+    /// `getCapability` with what the caller already read of the position.
+    pub(crate) fn lookup(
+        self,
+        world: &Arc<World>,
+        pos: &BlockPos,
+        state: Option<(&'static Block, &'static BlockState)>,
+        entity: EntityHint<'_>,
         context: C,
     ) -> Option<Arc<T>> {
         let data = self.data;
         if data.blocks.is_empty() && data.block_entities.is_empty() {
             return None;
         }
-        let (block, state) = world.get_block_and_state(pos);
+        if matches!(entity, EntityHint::Known(None)) && !data.answers_without_block_entity() {
+            return None;
+        }
+        let (block, state) = state.unwrap_or_else(|| world.get_block_and_state(pos));
+        let read;
         // `BlockCapability.getCapability` reads the block entity only for a block with one.
-        let block_entity = if state.block_entity_type == u16::MAX || data.block_entities.is_empty()
-        {
-            None
-        } else {
-            block_entity.or_else(|| world.get_block_entity(pos))
+        let block_entity = match entity {
+            EntityHint::Known(block_entity) => block_entity,
+            EntityHint::Unknown
+                if state.block_entity_type == u16::MAX || data.block_entities.is_empty() =>
+            {
+                None
+            }
+            EntityHint::Unknown => {
+                read = world.get_block_entity(pos);
+                read.as_ref()
+            }
         };
         data.blocks.with(block.name, |block_providers| {
-            let entity_type = block_entity
-                .as_ref()
-                .map_or("", |block_entity| block_entity.resource_location());
+            let entity_type =
+                block_entity.map_or("", |block_entity| block_entity.resource_location());
             data.block_entities.with(entity_type, |entity_providers| {
                 let (mut blocks, mut entities) = (
                     block_providers.iter().peekable(),
@@ -525,24 +576,14 @@ impl<T: ?Sized + Send + Sync + 'static, C: Clone + Send + Sync + 'static> BlockC
                         (None, None) => return None,
                         (Some(block_seq), Some(entity_seq)) if entity_seq < block_seq => {
                             entities.next().and_then(|ordered| {
-                                block_entity
-                                    .as_ref()
-                                    .and_then(|be| (ordered.provider)(be, context.clone()))
+                                block_entity.and_then(|be| (ordered.provider)(be, context.clone()))
                             })
                         }
                         (None, Some(_)) => entities.next().and_then(|ordered| {
-                            block_entity
-                                .as_ref()
-                                .and_then(|be| (ordered.provider)(be, context.clone()))
+                            block_entity.and_then(|be| (ordered.provider)(be, context.clone()))
                         }),
                         _ => blocks.next().and_then(|ordered| {
-                            (ordered.provider)(
-                                world,
-                                pos,
-                                state,
-                                block_entity.as_ref(),
-                                context.clone(),
-                            )
+                            (ordered.provider)(world, pos, state, block_entity, context.clone())
                         }),
                     };
                     if handler.is_some() {
