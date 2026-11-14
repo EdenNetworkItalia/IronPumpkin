@@ -3,7 +3,9 @@
 //! mod sees the provider in a later phase of `RegisterCapabilitiesEvent`, and reaches the
 //! storage through the capability with transactions that commit and roll back. A hopper pushes
 //! into the block and pulls from it, a dropper drops into it, and a capability cache on the block
-//! hears when the test mod drops the storage.
+//! hears when the test mod drops the storage. `cap-reader` also records what it sees in each
+//! phase, which shows where the host marks the proxyable capabilities and registers the vanilla
+//! providers, and registers chest providers before and after the vanilla one.
 #![expect(
     clippy::unwrap_used,
     clippy::panic,
@@ -14,7 +16,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     path::Path,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
@@ -28,7 +30,10 @@ use ironpumpkin_mods::{
         PumpkinServer,
         block::{
             OnScheduledTickArgs,
-            entities::{BlockEntity, dropper::DropperBlockEntity, hopper::HopperBlockEntity},
+            entities::{
+                BlockEntity, chest::ChestBlockEntity, dropper::DropperBlockEntity,
+                hopper::HopperBlockEntity, trapped_chest::TrappedChestBlockEntity,
+            },
         },
         data::VanillaData,
         plugin::startup,
@@ -42,7 +47,7 @@ use ironpumpkin_mods::{
     },
     pumpkin_world::{chunk::ChunkData, world::BlockFlags},
     register_mod,
-    transfer::{ItemResource, ResourceHandler, Transaction},
+    transfer::{ItemResource, ItemStacksResourceHandler, ResourceHandler, Transaction},
 };
 use ironpumpkin_test_mod::{BLOCK, block_storage, remove_block_storage};
 use pumpkin_config::{AdvancedConfiguration, BasicConfiguration, TelemetryConfig};
@@ -50,6 +55,15 @@ use pumpkin_inventory::Inventory;
 
 /// Whether `cap-reader` saw the provider of the test mod in the `Low` phase.
 static SAW_PROVIDER: AtomicBool = AtomicBool::new(false);
+
+/// What `cap-reader` saw at the start of each phase: whether `Capabilities.Item.BLOCK` is
+/// proxyable, and whether the chest has a provider.
+static PHASES: Mutex<Vec<(EventPriority, bool, bool)>> = Mutex::new(Vec::new());
+
+/// The handler of `cap-reader` for chests: one slot.
+fn reader_handler() -> Arc<dyn ResourceHandler<ItemResource>> {
+    Arc::new(ItemStacksResourceHandler::new(1, 64))
+}
 
 struct CapReader;
 
@@ -69,13 +83,35 @@ impl NativeMod for CapReader {
     fn init(&self, _cx: &mut ModInit) {}
 
     fn register_capabilities(&self, event: &mut RegisterCapabilitiesEvent) {
-        // A fallback provider registers at `Low` only where no other mod registered one, which
-        // works whatever the load order of the two mods is.
-        if *event.phase() == EventPriority::Low {
-            SAW_PROVIDER.store(
+        PHASES.lock().unwrap().push((
+            event.phase().clone(),
+            item::BLOCK.is_proxyable(),
+            event.is_block_registered(&item::BLOCK, "minecraft:chest"),
+        ));
+        match event.phase() {
+            // Before the vanilla providers of the host: this provider answers first.
+            EventPriority::High => event
+                .register_block(
+                    &item::BLOCK,
+                    |_, _, _, _, _| Some(reader_handler()),
+                    &["minecraft:trapped_chest"],
+                )
+                .unwrap(),
+            // After them: the vanilla provider answers, as on NeoForge.
+            EventPriority::Normal => event
+                .register_block(
+                    &item::BLOCK,
+                    |_, _, _, _, _| Some(reader_handler()),
+                    &["minecraft:chest"],
+                )
+                .unwrap(),
+            // A fallback provider registers at `Low` only where no other mod registered one,
+            // which works whatever the load order of the two mods is.
+            EventPriority::Low => SAW_PROVIDER.store(
                 event.is_block_registered(&item::BLOCK, BLOCK),
                 Ordering::Relaxed,
-            );
+            ),
+            _ => {}
         }
     }
 }
@@ -115,8 +151,37 @@ fn diamonds(count: u8) -> ItemStack {
     ItemStack::new(count, &Item::DIAMOND)
 }
 
+/// A `High` provider answers before the vanilla chest provider, a `Normal` one after it.
+fn check_chest_order(world: &Arc<World>) {
+    let chest = BlockPos::new(1601, 64, 1605);
+    place(world, chest, Block::CHEST.default_state.id);
+    world.add_block_entity(Arc::new(ChestBlockEntity::new(chest)));
+    let trapped = BlockPos::new(1603, 64, 1605);
+    place(world, trapped, Block::TRAPPED_CHEST.default_state.id);
+    world.add_block_entity(Arc::new(TrappedChestBlockEntity::new(trapped)));
+    let size = |pos| {
+        item::BLOCK
+            .get_capability(world, &pos, None)
+            .unwrap()
+            .size()
+    };
+    assert_eq!((size(chest), size(trapped)), (27, 1));
+}
+
 fn check(world: &Arc<World>) {
     assert!(SAW_PROVIDER.load(Ordering::Relaxed));
+    // The host marks the proxyable capabilities first in `High` and registers the vanilla
+    // providers first in `Normal`.
+    assert_eq!(
+        *PHASES.lock().unwrap(),
+        vec![
+            (EventPriority::Highest, false, false),
+            (EventPriority::High, true, false),
+            (EventPriority::Normal, true, true),
+            (EventPriority::Low, true, true),
+            (EventPriority::Lowest, true, true),
+        ]
+    );
     world
         .level
         .loaded_chunks
@@ -135,7 +200,7 @@ fn check(world: &Arc<World>) {
     let mut transaction = Transaction::open_root().unwrap();
     assert_eq!(handler.extract(&diamond, 2, &mut transaction), 2);
     drop(transaction);
-    assert_eq!(block_storage(block).get_amount_as_long(0), 5);
+    assert_eq!(block_storage(world, block).get_amount_as_long(0), 5);
 
     // A hopper above pushes one item into the block.
     let hopper_pos = block.up();
@@ -144,21 +209,21 @@ fn check(world: &Arc<World>) {
     hopper.set_stack(0, diamonds(3));
     world.add_block_entity(hopper.clone());
     hopper.tick(world);
-    assert_eq!(block_storage(block).get_amount_as_long(0), 6);
+    assert_eq!(block_storage(world, block).get_amount_as_long(0), 6);
     assert_eq!(hopper.get_stack(0).item_count, 2);
 
     // A hopper below pulls one item out of the block.
     let source = BlockPos::new(1605, 66, 1601);
     test_block(world, source);
     let mut transaction = Transaction::open_root().unwrap();
-    block_storage(source).insert(&diamond, 4, &mut transaction);
+    block_storage(world, source).insert(&diamond, 4, &mut transaction);
     transaction.commit();
     let below = source.down();
     place(world, below, Block::HOPPER.default_state.id);
     let puller = Arc::new(HopperBlockEntity::new(below, FacingHopper::Down));
     world.add_block_entity(puller.clone());
     puller.tick(world);
-    assert_eq!(block_storage(source).get_amount_as_long(0), 3);
+    assert_eq!(block_storage(world, source).get_amount_as_long(0), 3);
     assert_eq!(puller.get_stack(0).item_count, 1);
 
     // A dropper drops one item into the block in front of it.
@@ -179,8 +244,10 @@ fn check(world: &Arc<World>) {
         block: &Block::DROPPER,
         position: &dropper_pos,
     });
-    assert_eq!(block_storage(target).get_amount_as_long(0), 1);
+    assert_eq!(block_storage(world, target).get_amount_as_long(0), 1);
     assert_eq!(dropper.get_stack(0).item_count, 1);
+
+    check_chest_order(world);
 
     // A cache on the block hears when the test mod drops the storage.
     let calls = Arc::new(AtomicUsize::new(0));

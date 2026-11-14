@@ -224,8 +224,8 @@ impl NativeMod for TestMod {
         // The handle keeps an error, and the server stops on it after the event.
         let _ = event.register_block(
             &capabilities::item::BLOCK,
-            |_, pos, _, _, _| {
-                let handler: Arc<dyn ResourceHandler<ItemResource>> = block_storage(*pos);
+            |world, pos, _, _, _| {
+                let handler: Arc<dyn ResourceHandler<ItemResource>> = block_storage(world, *pos);
                 Some(handler)
             },
             &[BLOCK],
@@ -233,19 +233,29 @@ impl NativeMod for TestMod {
     }
 }
 
-type Storage = Mutex<BTreeMap<(i32, i32, i32), Arc<ItemStacksResourceHandler>>>;
+/// The storages by world (the address of its `World`) and position.
+type Storage = Mutex<BTreeMap<(usize, i32, i32, i32), Arc<ItemStacksResourceHandler>>>;
 
 static BLOCK_STORAGE: Storage = Mutex::new(BTreeMap::new());
 
-/// The item storage of the [`BLOCK`] at `pos`: one slot of up to 64 items.
+fn storage_key(world: &World, pos: BlockPos) -> (usize, i32, i32, i32) {
+    (
+        std::ptr::from_ref(world) as usize,
+        pos.0.x,
+        pos.0.y,
+        pos.0.z,
+    )
+}
+
+/// The item storage of the [`BLOCK`] at `pos` in `world`: one slot of up to 64 items.
 ///
 /// The block exposes it through `Capabilities.Item.BLOCK` from every side. The block has no block
-/// entity, so the storage lives here, keyed by position.
-pub fn block_storage(pos: BlockPos) -> Arc<ItemStacksResourceHandler> {
+/// entity, so the storage lives here, keyed by world and position.
+pub fn block_storage(world: &World, pos: BlockPos) -> Arc<ItemStacksResourceHandler> {
     BLOCK_STORAGE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .entry((pos.0.x, pos.0.y, pos.0.z))
+        .entry(storage_key(world, pos))
         .or_insert_with(|| Arc::new(ItemStacksResourceHandler::new(1, 64)))
         .clone()
 }
@@ -257,7 +267,7 @@ pub fn remove_block_storage(world: &World, pos: BlockPos) {
     BLOCK_STORAGE
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .remove(&(pos.0.x, pos.0.y, pos.0.z));
+        .remove(&storage_key(world, pos));
     capabilities::invalidate_capabilities(world, &pos);
 }
 
