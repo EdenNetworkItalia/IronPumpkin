@@ -5,8 +5,9 @@
 /// record names as settable; the host keeps the other fields.
 interface neoforge-events {
     use common.{block-pos, hand, position};
-    use item-stack.{item-stack};
+    use item-stack.{item-stack, enchantment-value};
     use player.{player};
+    use text.{text-component};
     use %world.{%world, entity, block-direction};
     use game-rules.{game-rule, game-rule-value};
     use damage-types.{damage-type};
@@ -594,5 +595,287 @@ interface neoforge-events {
         effect: mob-effect-data,
         effect-source: option<entity>,
         %result: mob-effect-event-applicable-result,
+    }
+
+    // The player events (`event.entity.player`) and the container and level events that only
+    // native mods saw before.
+
+    /// NeoForge `AnvilCraftEvent.Pre`: a player takes the result of an anvil, before the cost is
+    /// paid and the inputs are used. A cancel skips the end of the take: the player keeps the
+    /// output, pays no levels and the inputs stay.
+    record anvil-craft-event-pre-data {
+        player: player,
+        left: item-stack,
+        right: item-stack,
+        output: item-stack,
+        cancelled: bool,
+    }
+
+    /// NeoForge `AnvilCraftEvent.Post`: a player took the result of an anvil. `left` and `right`
+    /// are the inputs before the take.
+    record anvil-craft-event-post-data {
+        player: player,
+        left: item-stack,
+        right: item-stack,
+        output: item-stack,
+    }
+
+    /// NeoForge `ArrowNockEvent`: a player starts to draw a bow. Settable: `action`. A cancel, or
+    /// a set `action`, stops the draw.
+    record arrow-nock-event-data {
+        player: player,
+        bow: item-stack,
+        hand: hand,
+        target-world: %world,
+        /// Whether the player has an arrow, or needs none.
+        has-ammo: bool,
+        action: option<interaction-result>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `ArrowLooseEvent`: a player releases a drawn bow. Settable: `charge`, the ticks
+    /// the bow was drawn. A cancel shoots nothing.
+    record arrow-loose-event-data {
+        player: player,
+        bow: item-stack,
+        target-world: %world,
+        has-ammo: bool,
+        charge: s32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `CriticalHitEvent`: decides whether a player attack is a critical hit. Settable:
+    /// `damage-multiplier` (a negative value counts as 0), `critical-hit` and `disable-sweep`.
+    record critical-hit-event-data {
+        player: player,
+        target: entity,
+        /// 1.5 for a vanilla critical hit, 1.0 otherwise.
+        vanilla-multiplier: f32,
+        vanilla-critical: bool,
+        damage-multiplier: f32,
+        critical-hit: bool,
+        /// Whether a critical hit stops the sweep.
+        disable-sweep: bool,
+    }
+
+    /// NeoForge `SweepAttackEvent`: decides whether a player attack sweeps. Settable: `sweeping`,
+    /// also on a cancel.
+    record sweep-attack-event-data {
+        player: player,
+        target: entity,
+        vanilla-sweep: bool,
+        sweeping: bool,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PlayerEvent.BreakSpeed`: the mining speed of a player on a block, on every mining
+    /// step. Settable: `new-speed`. A cancel makes the block unbreakable for this step.
+    record player-event-break-speed-data {
+        player: player,
+        state-id: u16,
+        original-speed: f32,
+        new-speed: f32,
+        block-pos: option<block-pos>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PlayerEvent.HarvestCheck`: whether a player gets the drops of a block. Settable:
+    /// `can-harvest`.
+    record player-event-harvest-check-data {
+        player: player,
+        state-id: u16,
+        block-pos: block-pos,
+        can-harvest: bool,
+    }
+
+    /// NeoForge `PlayerEvent.NameFormat`: the display name of a player. Settable: `display-name`.
+    record player-event-name-format-data {
+        player: player,
+        username: text-component,
+        display-name: text-component,
+    }
+
+    /// NeoForge `PlayerEvent.TabListNameFormat`: the name of a player in the tab list. Settable:
+    /// `display-name`, where `none` shows the player name.
+    record player-event-tab-list-name-format-data {
+        player: player,
+        display-name: option<text-component>,
+    }
+
+    /// NeoForge `PlayerEvent.StartTracking`: an entity became visible to a player.
+    record player-event-start-tracking-data {
+        player: player,
+        target: entity,
+    }
+
+    /// NeoForge `PlayerEvent.StopTracking`: an entity is no longer visible to a player.
+    record player-event-stop-tracking-data {
+        player: player,
+        target: entity,
+    }
+
+    /// NeoForge `PlayerEvent.LoadFromFile`: the server loaded the data of a joining player.
+    record player-event-load-from-file-data {
+        player: player,
+        /// The directory of the player data files.
+        player-directory: string,
+        player-uuid: string,
+    }
+
+    /// NeoForge `PlayerEvent.SaveToFile`: the server saves the data of a player.
+    record player-event-save-to-file-data {
+        player: player,
+        /// The directory of the player data files.
+        player-directory: string,
+        player-uuid: string,
+    }
+
+    /// NeoForge `PlayerFlyableFallEvent`: a player that may fly lands and takes no fall damage.
+    record player-flyable-fall-event-data {
+        player: player,
+        distance: f32,
+        multiplier: f32,
+    }
+
+    /// NeoForge `PlayerXpEvent.PickupXp`: a player picks up an experience orb. A cancel leaves the
+    /// orb.
+    record player-xp-event-pickup-xp-data {
+        player: player,
+        orb: entity,
+        /// The experience of the orb.
+        amount: u32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `ItemEntityPickupEvent.Pre`: a player touches an item entity. Settable:
+    /// `can-pickup`: `false` stops the pickup, `true` ignores the pickup delay, `default` lets
+    /// the server decide.
+    record item-entity-pickup-event-pre-data {
+        player: player,
+        item-entity: entity,
+        can-pickup: tri-state,
+    }
+
+    /// NeoForge `ItemEntityPickupEvent.Post`: a player picked up some or all of an item entity.
+    record item-entity-pickup-event-post-data {
+        player: player,
+        item-entity: entity,
+        /// The stack of the item entity before the pickup.
+        original-stack: item-stack,
+        /// The stack left in the item entity, empty when the player took all of it.
+        current-stack: item-stack,
+    }
+
+    /// NeoForge `PlayerSwitchHotbarSlotEvent.Post`: a player selected another hotbar slot.
+    record player-switch-hotbar-slot-event-post-data {
+        player: player,
+        old-slot-index: u8,
+        new-slot-index: u8,
+    }
+
+    /// A trade of a villager or a wandering trader (vanilla `MerchantOffer`).
+    record merchant-offer {
+        base-cost-a: item-stack,
+        cost-b: option<item-stack>,
+        output: item-stack,
+        reward-exp: bool,
+        uses: s32,
+        max-uses: s32,
+        xp: s32,
+        special-price: s32,
+        price-multiplier: f32,
+        demand: s32,
+    }
+
+    /// NeoForge `TradeWithVillagerEvent`: a player completed a trade with a villager or a
+    /// wandering trader. `offer` is a copy made when the merchant counted the use.
+    record trade-with-villager-event-data {
+        player: player,
+        offer: merchant-offer,
+        villager: entity,
+    }
+
+    /// Vanilla `ChatVisiblity`.
+    enum chat-mode {
+        enabled,
+        commands-only,
+        hidden,
+    }
+
+    /// Vanilla `ParticleStatus`.
+    enum particle-status {
+        all,
+        decreased,
+        minimal,
+    }
+
+    /// The client settings of a player (vanilla `ClientInformation`).
+    record client-information {
+        locale: string,
+        view-distance: u8,
+        chat-mode: chat-mode,
+        chat-colors: bool,
+        /// The shown skin parts, one bit per part.
+        skin-parts: u8,
+        main-hand: hand,
+        text-filtering: bool,
+        server-listing: bool,
+        particle-status: particle-status,
+    }
+
+    /// NeoForge `ClientInformationUpdatedEvent`: a player in play sent its client settings, also
+    /// when nothing changed.
+    record client-information-updated-event-data {
+        player: player,
+        old-information: client-information,
+        updated-information: client-information,
+    }
+
+    /// NeoForge `PotionBrewEvent.Post`: a brewing stand brewed. Settable: `stacks`, the three
+    /// bottles, the ingredient and the fuel; the host takes back the stack at each index and keeps
+    /// its own stack for a missing entry. The stand takes changed stacks only when its inventory
+    /// did not change while the event fired.
+    record potion-brew-event-post-data {
+        block-pos: block-pos,
+        stacks: list<item-stack>,
+    }
+
+    /// NeoForge `PlayerEnchantItemEvent`: an enchanting table applied enchantments to an item.
+    /// The host takes back `enchanted-item`; the table takes it only when its slot did not change
+    /// while the event fired.
+    record player-enchant-item-event-data {
+        player: player,
+        enchanted-item: item-stack,
+        enchantments: list<enchantment-value>,
+    }
+
+    /// NeoForge `GrindstoneEvent.OnTakeItem`: a player takes the result of a grindstone.
+    /// Settable: `xp`, `new-top` and `new-bottom`. A cancel gives no experience and puts `top`
+    /// and `bottom` back.
+    record grindstone-event-on-take-item-data {
+        player: player,
+        /// The zero position when the player has no open container.
+        block-pos: block-pos,
+        top: item-stack,
+        bottom: item-stack,
+        xp: s32,
+        /// The item of the top input slot after the take.
+        new-top: item-stack,
+        /// The item of the bottom input slot after the take.
+        new-bottom: item-stack,
+        cancelled: bool,
+    }
+
+    /// NeoForge `LevelTickEvent.Pre`: a world is about to tick, once per world and tick.
+    record level-tick-event-pre-data {
+        target-world: %world,
+        /// Whether the tick has time left before its deadline.
+        has-time: bool,
+    }
+
+    /// NeoForge `LevelTickEvent.Post`: a world ticked.
+    record level-tick-event-post-data {
+        target-world: %world,
+        has-time: bool,
     }
 }

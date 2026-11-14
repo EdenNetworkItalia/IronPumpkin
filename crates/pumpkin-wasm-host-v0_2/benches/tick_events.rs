@@ -1,8 +1,8 @@
-//! The cost of one tick event fire with a v0.2 listener, per entity or player and tick: with no
-//! handler, with a v0.2 handler that converts the event to its WIT record and back, and with that
-//! conversion inside a guest call of the plugin `StoreExecutor`, as `WasmPluginEventHandler`
-//! does it. The store has no component, so the last case leaves out only the lowering of the
-//! record into the guest and the code of the guest.
+//! The cost of one tick event fire with a v0.2 listener, per entity, player or world and tick:
+//! with no handler, with a v0.2 handler that converts the event to its WIT record and back, and
+//! with that conversion inside a guest call of the plugin `StoreExecutor`, as
+//! `WasmPluginEventHandler` does it. The store has no component, so the last case leaves out only
+//! the lowering of the record into the guest and the code of the guest.
 #![expect(clippy::expect_used, reason = "the bench stops on a setup error")]
 
 #[path = "../../pumpkin-core/tests/support/mod.rs"]
@@ -19,6 +19,7 @@ use pumpkin_core::{
     plugin::{
         BoxFuture, EventHandler, EventPriority, Payload, PluginManager,
         level::{EntityTickEventPre, PlayerTickEventPre},
+        world::LevelTickEventPre,
     },
     server::Server,
 };
@@ -145,6 +146,21 @@ fn bench_tick_events(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 player_store.fire_blocking_with(server, || PlayerTickEventPre::new(player.clone())),
+            )
+        });
+    });
+
+    group.bench_function("level_tick_pre_zero_handlers", |b| {
+        b.iter(|| {
+            black_box(none.fire_blocking_with(server, || LevelTickEventPre::new(world.clone())))
+        });
+    });
+
+    let level_store = store_plugin::<LevelTickEventPre>();
+    group.bench_function("level_tick_pre_v0_2_store_round_trip", |b| {
+        b.iter(|| {
+            black_box(
+                level_store.fire_blocking_with(server, || LevelTickEventPre::new(world.clone())),
             )
         });
     });

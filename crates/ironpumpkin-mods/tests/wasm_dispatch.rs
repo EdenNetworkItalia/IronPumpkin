@@ -71,6 +71,7 @@ use pumpkin_core::{
             LivingEntityUseItemEventStop, LivingExperienceDropEvent, LivingKnockBackEvent,
             LivingShieldBlockEvent, MobEffectEventApplicable, MobEffectEventApplicableResult,
         },
+        player::ArrowLooseEvent,
         startup::STARTUP_HOOK,
         world::lightning_strike::LightningStrikeEvent,
     },
@@ -315,6 +316,7 @@ impl NativeMod for DispatchMod {
             EntityLeaveLevelEvent => |_e| (None, None),
             LivingEntityUseItemEventStart => |e| (Some(&mut e.duration), Some(&mut e.cancelled)),
             LivingEntityUseItemEventStop => |e| (None, Some(&mut e.cancelled)),
+            ArrowLooseEvent => |e| (Some(&mut e.charge), Some(&mut e.cancelled)),
             MobEffectEventApplicable => |e| (Some(&mut e.result), None),
             EntityPotionEffectEvent => |e| (Some(&mut e.amplifier), Some(&mut e.cancelled)),
         );
@@ -1525,6 +1527,34 @@ fn living_entity_use_item_event_stop_of_release_using_item() {
     assert_eq!(wasm_cancels("LivingEntityUseItemEventStop", shoot), 4);
     next_run();
     assert_eq!(native_cancels("LivingEntityUseItemEventStop", shoot), 4);
+}
+
+/// The table row `Player::release_using_item`: the release of a bow fires `ArrowLooseEvent`
+/// after `LivingEntityUseItemEventStop`. Each handler sees the charge of the handler before it,
+/// and a cancel shoots nothing.
+#[test]
+fn arrow_loose_event_of_release_using_item() {
+    let _serial = setup();
+    let player = player_at("LooseArcher", 1600.5);
+    let shoot = || {
+        let inventory = player.inventory();
+        inventory.set_selected_slot(0);
+        inventory.set_stack(0, ItemStack::new(1, &Item::BOW));
+        inventory.set_stack(1, ItemStack::new(4, &Item::ARROW));
+        player.living_entity.set_active_hand(
+            Hand::Right,
+            ItemStack::new(1, &Item::BOW),
+            BowItem::USE_DURATION - 20,
+        );
+        player.release_using_item();
+        player.inventory().get_stack(1).item_count
+    };
+
+    assert_eq!(chain("ArrowLooseEvent", ["5", "10", "15"], true, shoot), 3);
+    next_run();
+    assert_eq!(wasm_cancels("ArrowLooseEvent", shoot), 4);
+    next_run();
+    assert_eq!(native_cancels("ArrowLooseEvent", shoot), 4);
 }
 
 const fn speed() -> Effect {

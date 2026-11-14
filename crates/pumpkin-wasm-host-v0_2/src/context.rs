@@ -1699,7 +1699,10 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
             | EventType::EntityTickEventPre
             | EventType::EntityTickEventPost
             | EventType::PlayerTickEventPre
-            | EventType::PlayerTickEventPost) => {
+            | EventType::PlayerTickEventPost
+            | EventType::PotionBrewEventPost
+            | EventType::LevelTickEventPre
+            | EventType::LevelTickEventPost) => {
                 crate::events::neoforge::register_neoforge_event(
                     ctx, &handler, priority, blocking, event_type,
                 );
@@ -1722,6 +1725,33 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
             | EventType::EffectParticleModificationEvent
             | EventType::MobEffectEventApplicable) => {
                 crate::events::neoforge_living::register_neoforge_living_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
+            event_type @ (EventType::AnvilCraftEventPre
+            | EventType::AnvilCraftEventPost
+            | EventType::ArrowNockEvent
+            | EventType::ArrowLooseEvent
+            | EventType::CriticalHitEvent
+            | EventType::SweepAttackEvent
+            | EventType::PlayerEventBreakSpeed
+            | EventType::PlayerEventHarvestCheck
+            | EventType::PlayerEventNameFormat
+            | EventType::PlayerEventTabListNameFormat
+            | EventType::PlayerEventStartTracking
+            | EventType::PlayerEventStopTracking
+            | EventType::PlayerEventLoadFromFile
+            | EventType::PlayerEventSaveToFile
+            | EventType::PlayerFlyableFallEvent
+            | EventType::PlayerXpEventPickupXp
+            | EventType::ItemEntityPickupEventPre
+            | EventType::ItemEntityPickupEventPost
+            | EventType::PlayerSwitchHotbarSlotEventPost
+            | EventType::TradeWithVillagerEvent
+            | EventType::ClientInformationUpdatedEvent
+            | EventType::PlayerEnchantItemEvent
+            | EventType::GrindstoneEventOnTakeItem) => {
+                crate::events::neoforge_player::register_neoforge_player_event(
                     ctx, &handler, priority, blocking, event_type,
                 );
             }

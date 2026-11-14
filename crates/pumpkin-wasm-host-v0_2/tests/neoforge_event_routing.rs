@@ -1,7 +1,7 @@
-//! `register_neoforge_event`, `register_neoforge_living_event` and `register_neoforge_entity_event`
-//! register a v0.2 handler for the native event that each `EventType` names, and for no other
-//! (#131, #137, #138). This file is its own test binary, so no other test registers handlers on the
-//! shared server.
+//! `register_neoforge_event`, `register_neoforge_living_event`, `register_neoforge_entity_event`
+//! and `register_neoforge_player_event` register a v0.2 handler for the native event that each
+//! `EventType` names, and for no other (#131, #136, #137, #138). This file is its own test binary,
+//! so no other test registers handlers on the shared server.
 #![expect(clippy::expect_used, reason = "a test fails on the first setup error")]
 
 #[path = "../../pumpkin-core/tests/support/mod.rs"]
@@ -11,6 +11,10 @@ use std::sync::Arc;
 
 use pumpkin_core::plugin::{
     Context, EventPriority, Payload, PluginManager, PluginMetadata,
+    enchantment::PlayerEnchantItemEvent,
+    inventory::{
+        grindstone_take::GrindstoneEventOnTakeItem, potion_brew_post::PotionBrewEventPost,
+    },
     level::{
         BlockEventBlockToolModificationEvent, BlockEventEntityPlaceEvent, ChunkWatchEventUnWatch,
         CreateFluidSourceEvent, CropGrowEventPost, EntityTickEventPost, EntityTickEventPre,
@@ -26,8 +30,17 @@ use pumpkin_core::plugin::{
         LivingFallEvent, LivingGetProjectileEvent, LivingKnockBackEvent, LivingShieldBlockEvent,
         MobEffectEventApplicable,
     },
-    player::use_item_on_block::UseItemOnBlockEvent,
+    player::{
+        AnvilCraftEventPost, AnvilCraftEventPre, ArrowLooseEvent, ArrowNockEvent,
+        ClientInformationUpdatedEvent, CriticalHitEvent, ItemEntityPickupEventPost,
+        ItemEntityPickupEventPre, PlayerEventBreakSpeed, PlayerEventHarvestCheck,
+        PlayerEventLoadFromFile, PlayerEventNameFormat, PlayerEventSaveToFile,
+        PlayerEventStartTracking, PlayerEventStopTracking, PlayerEventTabListNameFormat,
+        PlayerFlyableFallEvent, PlayerSwitchHotbarSlotEventPost, PlayerXpEventPickupXp,
+        SweepAttackEvent, TradeWithVillagerEvent, use_item_on_block::UseItemOnBlockEvent,
+    },
     startup::create_context,
+    world::{LevelTickEventPost, LevelTickEventPre},
 };
 
 use pumpkin_core::plugin::level::{
@@ -47,6 +60,7 @@ use pumpkin_wasm_host_v0_2::{
         WasmPluginEventHandler, neoforge::register_neoforge_event,
         neoforge_entity::register_neoforge_entity_event,
         neoforge_living::register_neoforge_living_event,
+        neoforge_player::register_neoforge_player_event,
     },
     pumpkin::plugin::event::EventType,
 };
@@ -128,7 +142,7 @@ fn assert_each_registers_its_own_event(
 
 #[test]
 fn each_event_type_registers_its_own_event() {
-    let cases: [(EventType, Listens); 16] = [
+    let cases: [(EventType, Listens); 19] = [
         (
             EventType::UseItemOnBlockEvent,
             listens::<UseItemOnBlockEvent>,
@@ -181,8 +195,104 @@ fn each_event_type_registers_its_own_event() {
             EventType::PlayerTickEventPost,
             listens::<PlayerTickEventPost>,
         ),
+        (
+            EventType::PotionBrewEventPost,
+            listens::<PotionBrewEventPost>,
+        ),
+        (EventType::LevelTickEventPre, listens::<LevelTickEventPre>),
+        (EventType::LevelTickEventPost, listens::<LevelTickEventPost>),
     ];
     assert_each_registers_its_own_event("v0.2-routing-plugin", &cases, register_neoforge_event);
+}
+
+/// The player, enchanting and grindstone events of #136 route through
+/// `register_neoforge_player_event` the same way.
+#[test]
+fn each_player_event_type_registers_its_own_event() {
+    let cases: [(EventType, Listens); 23] = [
+        (EventType::AnvilCraftEventPre, listens::<AnvilCraftEventPre>),
+        (
+            EventType::AnvilCraftEventPost,
+            listens::<AnvilCraftEventPost>,
+        ),
+        (EventType::ArrowNockEvent, listens::<ArrowNockEvent>),
+        (EventType::ArrowLooseEvent, listens::<ArrowLooseEvent>),
+        (EventType::CriticalHitEvent, listens::<CriticalHitEvent>),
+        (EventType::SweepAttackEvent, listens::<SweepAttackEvent>),
+        (
+            EventType::PlayerEventBreakSpeed,
+            listens::<PlayerEventBreakSpeed>,
+        ),
+        (
+            EventType::PlayerEventHarvestCheck,
+            listens::<PlayerEventHarvestCheck>,
+        ),
+        (
+            EventType::PlayerEventNameFormat,
+            listens::<PlayerEventNameFormat>,
+        ),
+        (
+            EventType::PlayerEventTabListNameFormat,
+            listens::<PlayerEventTabListNameFormat>,
+        ),
+        (
+            EventType::PlayerEventStartTracking,
+            listens::<PlayerEventStartTracking>,
+        ),
+        (
+            EventType::PlayerEventStopTracking,
+            listens::<PlayerEventStopTracking>,
+        ),
+        (
+            EventType::PlayerEventLoadFromFile,
+            listens::<PlayerEventLoadFromFile>,
+        ),
+        (
+            EventType::PlayerEventSaveToFile,
+            listens::<PlayerEventSaveToFile>,
+        ),
+        (
+            EventType::PlayerFlyableFallEvent,
+            listens::<PlayerFlyableFallEvent>,
+        ),
+        (
+            EventType::PlayerXpEventPickupXp,
+            listens::<PlayerXpEventPickupXp>,
+        ),
+        (
+            EventType::ItemEntityPickupEventPre,
+            listens::<ItemEntityPickupEventPre>,
+        ),
+        (
+            EventType::ItemEntityPickupEventPost,
+            listens::<ItemEntityPickupEventPost>,
+        ),
+        (
+            EventType::PlayerSwitchHotbarSlotEventPost,
+            listens::<PlayerSwitchHotbarSlotEventPost>,
+        ),
+        (
+            EventType::TradeWithVillagerEvent,
+            listens::<TradeWithVillagerEvent>,
+        ),
+        (
+            EventType::ClientInformationUpdatedEvent,
+            listens::<ClientInformationUpdatedEvent>,
+        ),
+        (
+            EventType::PlayerEnchantItemEvent,
+            listens::<PlayerEnchantItemEvent>,
+        ),
+        (
+            EventType::GrindstoneEventOnTakeItem,
+            listens::<GrindstoneEventOnTakeItem>,
+        ),
+    ];
+    assert_each_registers_its_own_event(
+        "v0.2-player-routing-plugin",
+        &cases,
+        register_neoforge_player_event,
+    );
 }
 
 #[test]

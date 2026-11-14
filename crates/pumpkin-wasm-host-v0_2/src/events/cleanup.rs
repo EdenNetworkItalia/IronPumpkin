@@ -741,7 +741,10 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::EntityTickEventPre(_)
         | Event::EntityTickEventPost(_)
         | Event::PlayerTickEventPre(_)
-        | Event::PlayerTickEventPost(_)) => {
+        | Event::PlayerTickEventPost(_)
+        | Event::PotionBrewEventPost(_)
+        | Event::LevelTickEventPre(_)
+        | Event::LevelTickEventPost(_)) => {
             super::neoforge::cleanup_neoforge_event(event, state);
         }
         event @ (Event::LivingDamageEventPre(_)
@@ -762,6 +765,31 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::EffectParticleModificationEvent(_)
         | Event::MobEffectEventApplicable(_)) => {
             super::neoforge_living::cleanup_neoforge_living_event(event, state);
+        }
+        event @ (Event::AnvilCraftEventPre(_)
+        | Event::AnvilCraftEventPost(_)
+        | Event::ArrowNockEvent(_)
+        | Event::ArrowLooseEvent(_)
+        | Event::CriticalHitEvent(_)
+        | Event::SweepAttackEvent(_)
+        | Event::PlayerEventBreakSpeed(_)
+        | Event::PlayerEventHarvestCheck(_)
+        | Event::PlayerEventNameFormat(_)
+        | Event::PlayerEventTabListNameFormat(_)
+        | Event::PlayerEventStartTracking(_)
+        | Event::PlayerEventStopTracking(_)
+        | Event::PlayerEventLoadFromFile(_)
+        | Event::PlayerEventSaveToFile(_)
+        | Event::PlayerFlyableFallEvent(_)
+        | Event::PlayerXpEventPickupXp(_)
+        | Event::ItemEntityPickupEventPre(_)
+        | Event::ItemEntityPickupEventPost(_)
+        | Event::PlayerSwitchHotbarSlotEventPost(_)
+        | Event::TradeWithVillagerEvent(_)
+        | Event::ClientInformationUpdatedEvent(_)
+        | Event::PlayerEnchantItemEvent(_)
+        | Event::GrindstoneEventOnTakeItem(_)) => {
+            super::neoforge_player::cleanup_neoforge_player_event(event, state);
         }
     }
 }

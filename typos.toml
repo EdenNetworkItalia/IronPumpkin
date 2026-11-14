@@ -19,6 +19,8 @@ shs = "shs"
 areMergable = "areMergable"
 isMergable = "isMergable"
 noCollission = "noCollission"
+# Vanilla class name (`net.minecraft.world.entity.player.ChatVisiblity`)
+ChatVisiblity = "ChatVisiblity"
 # Mod ids and jar names of the FTB StoneBlock 4 pack (modpack-usage.md)
 aci = "aci"
 compatability = "compatability"
