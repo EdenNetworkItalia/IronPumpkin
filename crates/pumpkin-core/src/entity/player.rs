@@ -7181,7 +7181,11 @@ impl Player {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        if i32::from(screen_handler.sync_id()) != packet.window_id.0 {
+        // Vanilla `handleContainerButtonClick`: no spectator, and a menu that is still valid.
+        if i32::from(screen_handler.sync_id()) != packet.window_id.0
+            || self.is_spectator()
+            || !screen_handler.can_use(self.as_ref())
+        {
             return;
         }
 

@@ -12,7 +12,11 @@ mod support;
 
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex, mpsc},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     time::Duration,
 };
 
@@ -32,7 +36,7 @@ use ironpumpkin_mods::{
     pumpkin_data::{
         item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION, screen::WindowType,
     },
-    pumpkin_util::text::TextComponent,
+    pumpkin_util::{GameMode, text::TextComponent},
     transfer::{
         EnergyHandler, ItemResource, ItemStacksResourceHandler, ResourceHandler,
         SimpleEnergyHandler, Transaction, TransactionContext,
@@ -916,4 +920,40 @@ fn a_swap_from_a_large_index_keeps_the_rest() {
     let moved = player_count(&player, &Item::COBBLESTONE);
     assert!(moved > 0, "the swap moved nothing");
     assert_eq!(u64::from(moved) + hoard.get_amount_as_long(0), 300);
+}
+
+/// Vanilla `handleContainerButtonClick` ignores a button of a spectator, and of a menu that is
+/// no longer valid.
+#[test]
+fn a_button_needs_a_valid_menu_and_no_spectator() {
+    struct Gate {
+        valid: AtomicBool,
+        log: Log,
+    }
+    impl MenuLogic for Gate {
+        fn still_valid(&self, _player: &Player) -> bool {
+            self.valid.load(Ordering::Relaxed)
+        }
+
+        fn click_button(&self, _menu: &mut MenuAccess<'_>, _player: &Player, button: i32) -> bool {
+            push(&self.log, format!("button {button}"));
+            true
+        }
+    }
+    let _serial = support::serial();
+    let player = support::player("GatedPresser");
+    let gate = Arc::new(Gate {
+        valid: AtomicBool::new(false),
+        log: Arc::default(),
+    });
+    let definition =
+        MenuDefinition::vanilla(WindowType::Hopper, title(), SlotSource::MenuContainer).unwrap();
+    let menu = open_menu(&player, definition, gate.clone()).unwrap();
+    press_button(&player, menu.sync_id(), 1);
+    gate.valid.store(true, Ordering::Relaxed);
+    player.gamemode.store(GameMode::Spectator);
+    press_button(&player, menu.sync_id(), 2);
+    player.gamemode.store(GameMode::Survival);
+    press_button(&player, menu.sync_id(), 3);
+    assert_eq!(entries(&gate.log), ["button 3"]);
 }
