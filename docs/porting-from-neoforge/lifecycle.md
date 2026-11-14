@@ -199,7 +199,7 @@ Steps 1 to 10 are the mod loading. They run once per process, with the first ser
 3. It fires `RegisterEvent` for `minecraft:block`, `minecraft:entity_type` and `minecraft:item`, in that order. A registration error stops the server after the last fire.
 4. It loads the Local configs and calls `config_loading` for each.
 5. It calls `common_setup`.
-6. It calls `dedicated_server_setup`.
+6. It calls `dedicated_server_setup`, then `register_capabilities` once per listener priority (`RegisterCapabilitiesEvent`, see [Capabilities](./capabilities.md)) and `extend_poi_types`, as `RegistrationEvents.init` does.
 7. It calls `inter_mod_enqueue`.
 8. It calls `inter_mod_process`.
 9. It calls `load_complete`.

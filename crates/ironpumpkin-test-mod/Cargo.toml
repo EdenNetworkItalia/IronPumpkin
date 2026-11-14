@@ -13,6 +13,7 @@ ironpumpkin-mods.workspace = true
 [dev-dependencies]
 pumpkin = { path = "../pumpkin" }
 pumpkin-config.workspace = true
+pumpkin-inventory.workspace = true
 pumpkin-neoforge-client = { path = "../../tools/pumpkin-neoforge-client" }
 pumpkin-protocol.workspace = true
 hex.workspace = true

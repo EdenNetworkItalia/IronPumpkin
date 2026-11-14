@@ -76,6 +76,7 @@ pub use tracing;
 pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
 
+pub mod capabilities;
 pub mod config;
 pub mod content;
 pub mod data_components;
@@ -89,6 +90,7 @@ pub mod network;
 pub mod registration;
 pub mod registry;
 pub mod sound_events;
+pub mod transfer;
 pub mod version;
 
 /// The events a mod can listen to, and the traits to handle them.
@@ -235,6 +237,12 @@ pub trait NativeMod: Sync {
     /// `ExtendPoiTypesEvent`: adds blocks to POI types. Runs after `dedicated_server_setup` of
     /// every mod and before `inter_mod_enqueue`. See [`registration`].
     fn extend_poi_types(&self, _event: &mut registration::ExtendPoiTypesEvent) {}
+    /// `RegisterCapabilitiesEvent`: registers capability providers. The host calls it once per
+    /// listener priority, from `EventPriority::Highest` to `Lowest`, for every mod in load order
+    /// before the next priority; [`phase`](capabilities::RegisterCapabilitiesEvent::phase) tells
+    /// which. Runs after `dedicated_server_setup` of every mod, before `ExtendPoiTypesEvent`. See
+    /// [`capabilities`].
+    fn register_capabilities(&self, _event: &mut capabilities::RegisterCapabilitiesEvent) {}
 }
 
 #[doc(hidden)]

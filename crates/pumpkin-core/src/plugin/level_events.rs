@@ -459,6 +459,7 @@ pub fn listens_to_chunk_changes(world: &World) -> bool {
     world.server.upgrade().is_some_and(|server| {
         server.plugin_manager.has_handlers::<ChunkLoad>()
             || server.plugin_manager.has_handlers::<ChunkUnloadEvent>()
+            || super::capabilities::has_listeners()
     })
 }
 
@@ -478,6 +479,7 @@ pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
                     unloaded_again.push(pos);
                     continue;
                 };
+                super::capabilities::invalidate_chunk(world, pos);
                 if listens_to_load {
                     let mut event = ChunkLoad::new(world.clone(), chunk);
                     server.plugin_manager.fire_blocking(&server, &mut event);
@@ -489,6 +491,7 @@ pub fn chunk_changes(world: &Arc<World>, changes: &[LoadedChunkChange]) {
                 } else {
                     world.unload_chunk(pos);
                 }
+                super::capabilities::invalidate_chunk(world, pos);
             }
         }
     }

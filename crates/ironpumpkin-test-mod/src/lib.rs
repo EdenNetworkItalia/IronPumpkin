@@ -4,7 +4,8 @@
 //! default attributes of its entity type through `EntityAttributeCreationEvent`, the startup config
 //! [`STARTUP_CONFIG`], the local config [`LOCAL_CONFIG`], the synced config [`SYNCED_CONFIG`], and
 //! a handler for each server lifecycle and tick event, the command [`COMMAND`] and the service
-//! [`SERVICE`]. Its `init`, mod lifecycle methods, config loading hook and event handlers log
+//! [`SERVICE`]. Its block exposes an item handler through `Capabilities.Item.BLOCK`
+//! ([`block_storage`]). Its `init`, mod lifecycle methods, config loading hook and event handlers log
 //! [`EVENT_LOG_PREFIX`] and the `NeoForge` event name, an event handler only the first time its
 //! event fires, and count each call ([`event_count`]). A test binary links it by using one of its items, such as
 //! `use ironpumpkin_test_mod::BLOCK;`, and starts the server with `pumpkin::run`.
@@ -26,6 +27,7 @@ use std::{
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
+    capabilities::{self, RegisterCapabilitiesEvent},
     command::{
         argument_builder::{ArgumentBuilder, command},
         context::command_context::CommandContext,
@@ -45,6 +47,7 @@ use ironpumpkin_mods::{
         },
         world::{LevelTickEventPost, LevelTickEventPre},
     },
+    math::position::BlockPos,
     mob_effects::{MobEffectBuilder, MobEffectCategory},
     network::{
         CustomConfigurationTask, PayloadContext, RegisterConfigurationTasksEvent,
@@ -57,6 +60,8 @@ use ironpumpkin_mods::{
     server::Server,
     sound_events::SoundEventBuilder,
     tracing::{error, info},
+    transfer::{ItemResource, ItemStacksResourceHandler, ResourceHandler},
+    world::World,
 };
 
 pub const ID: &str = "test-mod";
@@ -210,6 +215,60 @@ impl NativeMod for TestMod {
             AttributeSupplier::of(&EntityType::PIG).add(Attributes::MAX_HEALTH, 20.0),
         );
     }
+
+    fn register_capabilities(&self, event: &mut RegisterCapabilitiesEvent) {
+        if *event.phase() != EventPriority::Normal {
+            return;
+        }
+        log_event("RegisterCapabilitiesEvent");
+        // The handle keeps an error, and the server stops on it after the event.
+        let _ = event.register_block(
+            &capabilities::item::BLOCK,
+            |world, pos, _, _, _| {
+                let handler: Arc<dyn ResourceHandler<ItemResource>> = block_storage(world, *pos);
+                Some(handler)
+            },
+            &[BLOCK],
+        );
+    }
+}
+
+/// The storages by world (the address of its `World`) and position.
+type Storage = Mutex<BTreeMap<(usize, i32, i32, i32), Arc<ItemStacksResourceHandler>>>;
+
+static BLOCK_STORAGE: Storage = Mutex::new(BTreeMap::new());
+
+fn storage_key(world: &World, pos: BlockPos) -> (usize, i32, i32, i32) {
+    (
+        std::ptr::from_ref(world) as usize,
+        pos.0.x,
+        pos.0.y,
+        pos.0.z,
+    )
+}
+
+/// The item storage of the [`BLOCK`] at `pos` in `world`: one slot of up to 64 items.
+///
+/// The block exposes it through `Capabilities.Item.BLOCK` from every side. The block has no block
+/// entity, so the storage lives here, keyed by world and position.
+pub fn block_storage(world: &World, pos: BlockPos) -> Arc<ItemStacksResourceHandler> {
+    BLOCK_STORAGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry(storage_key(world, pos))
+        .or_insert_with(|| Arc::new(ItemStacksResourceHandler::new(1, 64)))
+        .clone()
+}
+
+/// Drops the storage of the [`BLOCK`] at `pos`, as when the block breaks, and tells the
+/// capability caches there, since a block without a block entity invalidates its capabilities
+/// itself.
+pub fn remove_block_storage(world: &World, pos: BlockPos) {
+    BLOCK_STORAGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&storage_key(world, pos));
+    capabilities::invalidate_capabilities(world, &pos);
 }
 
 fn register_configs(cx: &mut ModInit) -> Result<(), ConfigError> {

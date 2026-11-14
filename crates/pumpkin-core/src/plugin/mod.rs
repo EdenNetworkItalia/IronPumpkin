@@ -21,6 +21,7 @@ use tracing::{debug, error, info, warn};
 pub mod api;
 pub(crate) mod brewing_events;
 pub mod cache;
+pub mod capabilities;
 pub(crate) mod container_events;
 mod context_events;
 pub mod dispatch;

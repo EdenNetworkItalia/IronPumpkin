@@ -34,7 +34,7 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `RegisterPayloadHandlersEvent` | 170 | event class | `ironpumpkin_mods::network::RegisterPayloadHandlersEvent` (a Pumpkin event; `registrar` gives a `PayloadRegistrar`) | supported |
 | `FMLCommonSetupEvent` | 148 | event class | `NativeMod::common_setup` (runs after the last `init`, with the Local configs loaded) | supported |
-| `RegisterCapabilitiesEvent` | 131 | event class | `event-bus.event::register-capabilities-event` (resource `capabilities.register-capabilities-event`) | planned |
+| `RegisterCapabilitiesEvent` | 131 | event class | `NativeMod::register_capabilities` with `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent` (once per `EventPriority` phase) | supported |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `ModInit::register_command` (API call, no event) | supported |
 | `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` (two hooks, no parent handler) | planned |
@@ -474,41 +474,41 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `BlockCapability` | 153 | Capability API | `capabilities.block-capability` | planned |
-| `Capabilities` | 138 | Capability API | `capabilities` doc (built-in capability names) | planned |
-| `ICapabilityProvider` | 119 | Capability API | `callbacks.get-entity-capability`, `get-item-capability` | planned |
-| `Capabilities.Item` | 112 | Capability API | `capabilities` doc (`neoforge:item_handler`) | planned |
-| `Capabilities.Item.BLOCK` | 107 | Built-in capabilities | `capabilities` doc (Capabilities.Item.BLOCK) | planned |
-| `RegisterCapabilitiesEvent#registerBlockEntity` | 95 | Capability API | `capabilities.register-capabilities-event.register-block-entity` | planned |
-| `ItemCapability` | 88 | Capability API | `capabilities.item-capability` | planned |
-| `Capabilities.Fluid` | 78 | Capability API | `capabilities` doc (`neoforge:fluid_handler`) | planned |
-| `Capabilities.Energy` | 73 | Capability API | `capabilities` doc (`neoforge:energy_handler`) | planned |
-| `Capabilities.Fluid.BLOCK` | 70 | Built-in capabilities | `capabilities` doc (Capabilities.Fluid.BLOCK) | planned |
-| `Capabilities.Energy.BLOCK` | 60 | Built-in capabilities | `capabilities` doc (Capabilities.Energy.BLOCK) | planned |
-| `RegisterCapabilitiesEvent#registerItem` | 53 | Capability API | `capabilities.register-capabilities-event.register-item` | planned |
-| `Capabilities.Energy.ITEM` | 47 | Built-in capabilities | `capabilities` doc (Capabilities.Energy.ITEM) | planned |
-| `EntityCapability` | 44 | Capability API | `capabilities.entity-capability` | planned |
-| `Capabilities.Fluid.ITEM` | 42 | Built-in capabilities | `capabilities` doc (Capabilities.Fluid.ITEM) | planned |
-| `IBlockCapabilityProvider` | 41 | Capability API | `callbacks.get-block-capability` | planned |
-| `RegisterCapabilitiesEvent#registerBlock` | 37 | Capability API | `capabilities.register-capabilities-event.register-block` | planned |
-| `BlockCapabilityCache` | 35 | Capability API | `capabilities.block-capability-cache` | planned |
-| `Capabilities.Item.ITEM` | 22 | Built-in capabilities | `capabilities` doc (Capabilities.Item.ITEM) | planned |
-| `Capabilities.Item.ENTITY` | 18 | Built-in capabilities | `capabilities` doc (Capabilities.Item.ENTITY) | planned |
-| `RegisterCapabilitiesEvent#registerEntity` | 16 | Capability API | `capabilities.register-capabilities-event.register-entity` | planned |
-| `ICapabilityInvalidationListener` | 8 | Capability API | `callbacks.capability-invalidated` | planned |
-| `Capabilities.Item.ENTITY_AUTOMATION` | 7 | Built-in capabilities | `capabilities` doc (Capabilities.Item.ENTITY_AUTOMATION) | planned |
-| `Capabilities.Energy.ENTITY` | 5 | Built-in capabilities | `capabilities` doc (Capabilities.Energy.ENTITY) | planned |
-| `RegisterCapabilitiesEvent#isBlockRegistered` | 5 | Capability API | `capabilities.register-capabilities-event.is-block-registered` | planned |
-| `Capabilities.Fluid.ENTITY` | 4 | Built-in capabilities | `capabilities` doc (Capabilities.Fluid.ENTITY) | planned |
-| `BaseCapability` | 4 | Capability API | `capabilities.block-capability`, `entity-capability`, `item-capability` | planned |
-| `RegisterCapabilitiesEvent#setProxyable` | 3 | Capability API | `capabilities.register-capabilities-event.set-proxyable` | planned |
-| `CapabilityRegistry` | 1 | Capability API | `capabilities.*-capability.create` (name registry) | planned |
-| `CapabilityRegistry.CapabilityConstructor` | 1 | Capability API | `capabilities.*-capability.create` | planned |
-| `RegisterCapabilitiesEvent#setNonProxyable` | 1 | Capability API | `capabilities.register-capabilities-event.set-non-proxyable` | planned |
+| `BlockCapability` | 153 | Capability API | `ironpumpkin_mods::capabilities::BlockCapability` | supported |
+| `Capabilities` | 138 | Capability API | `ironpumpkin_mods::capabilities::item`, `fluid`, `energy` | supported |
+| `ICapabilityProvider` | 119 | Capability API | closures `ironpumpkin_mods::capabilities::BlockEntityProvider`, `EntityProvider`, `ItemProvider` | supported |
+| `Capabilities.Item` | 112 | Capability API | `ironpumpkin_mods::capabilities::item` | supported |
+| `Capabilities.Item.BLOCK` | 107 | Built-in capabilities | `ironpumpkin_mods::capabilities::item::BLOCK` | supported |
+| `RegisterCapabilitiesEvent#registerBlockEntity` | 95 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::register_block_entity` | supported |
+| `ItemCapability` | 88 | Capability API | `ironpumpkin_mods::capabilities::ItemCapability` | supported |
+| `Capabilities.Fluid` | 78 | Capability API | `ironpumpkin_mods::capabilities::fluid` | supported |
+| `Capabilities.Energy` | 73 | Capability API | `ironpumpkin_mods::capabilities::energy` | supported |
+| `Capabilities.Fluid.BLOCK` | 70 | Built-in capabilities | `ironpumpkin_mods::capabilities::fluid::BLOCK` | supported |
+| `Capabilities.Energy.BLOCK` | 60 | Built-in capabilities | `ironpumpkin_mods::capabilities::energy::BLOCK` | supported |
+| `RegisterCapabilitiesEvent#registerItem` | 53 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::register_item` | supported |
+| `Capabilities.Energy.ITEM` | 47 | Built-in capabilities | `ironpumpkin_mods::capabilities::energy::ITEM` | supported |
+| `EntityCapability` | 44 | Capability API | `ironpumpkin_mods::capabilities::EntityCapability` | supported |
+| `Capabilities.Fluid.ITEM` | 42 | Built-in capabilities | `ironpumpkin_mods::capabilities::fluid::ITEM` | supported |
+| `IBlockCapabilityProvider` | 41 | Capability API | closure `ironpumpkin_mods::capabilities::BlockProvider` | supported |
+| `RegisterCapabilitiesEvent#registerBlock` | 37 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::register_block` | supported |
+| `BlockCapabilityCache` | 35 | Capability API | `ironpumpkin_mods::capabilities::BlockCapabilityCache` | supported |
+| `Capabilities.Item.ITEM` | 22 | Built-in capabilities | `ironpumpkin_mods::capabilities::item::ITEM` | supported |
+| `Capabilities.Item.ENTITY` | 18 | Built-in capabilities | `ironpumpkin_mods::capabilities::item::ENTITY` | supported |
+| `RegisterCapabilitiesEvent#registerEntity` | 16 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::register_entity` | supported |
+| `ICapabilityInvalidationListener` | 8 | Capability API | `ironpumpkin_mods::capabilities::CapabilityInvalidationListener` | supported |
+| `Capabilities.Item.ENTITY_AUTOMATION` | 7 | Built-in capabilities | `ironpumpkin_mods::capabilities::item::ENTITY_AUTOMATION` | supported |
+| `Capabilities.Energy.ENTITY` | 5 | Built-in capabilities | `ironpumpkin_mods::capabilities::energy::ENTITY` | supported |
+| `RegisterCapabilitiesEvent#isBlockRegistered` | 5 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::is_block_registered` | supported |
+| `Capabilities.Fluid.ENTITY` | 4 | Built-in capabilities | `ironpumpkin_mods::capabilities::fluid::ENTITY` | supported |
+| `BaseCapability` | 4 | Capability API | `name` of the capability keys | supported |
+| `RegisterCapabilitiesEvent#setProxyable` | 3 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::set_proxyable` | supported |
+| `CapabilityRegistry` | 1 | Capability API | the `create` functions of the capability keys | supported |
+| `CapabilityRegistry.CapabilityConstructor` | 1 | Capability API | the `create` functions of the capability keys | supported |
+| `RegisterCapabilitiesEvent#setNonProxyable` | 1 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::set_non_proxyable` | supported |
 | `CapabilityHooks` | 0 | Capability API | `capabilities` doc, not supported | not supported |
 | `CapabilityListenerHolder` | 0 | Capability API | `capabilities` doc, not supported | not supported |
-| `RegisterCapabilitiesEvent#isEntityRegistered` | 0 | Capability API | `capabilities.register-capabilities-event.is-entity-registered` | planned |
-| `RegisterCapabilitiesEvent#isItemRegistered` | 0 | Capability API | `capabilities.register-capabilities-event.is-item-registered` | planned |
+| `RegisterCapabilitiesEvent#isEntityRegistered` | 0 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::is_entity_registered` | supported |
+| `RegisterCapabilitiesEvent#isItemRegistered` | 0 | Capability API | `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent::is_item_registered` | supported |
 
 ### Attachments
 
@@ -879,13 +879,13 @@ How to read it:
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
 | `NeoForge` | 219 | Types in the root `common` package | `event-bus.bus::game` | planned |
-| `transfer` | 189 | Packages outside the families above | `capabilities.capability-handle` | planned |
+| `transfer` | 189 | Packages outside the families above | `ironpumpkin_mods::transfer::ResourceHandler`, `CombinedResourceHandler`, `ResourceStacksResourceHandler` | planned |
 | `ModConfigSpec` | 182 | Types in the root `common` package | `ironpumpkin_mods::config::ConfigSpec` | supported |
-| `transfer.item` | 149 | Packages outside the families above | `capabilities.handler-type::item-resource-handler`, `types.item-resource` | planned |
+| `transfer.item` | 149 | Packages outside the families above | `ironpumpkin_mods::transfer::ItemResource`, `ItemStacksResourceHandler`, `transfer::inventory` | planned |
 | `common.util` | 133 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `transfer.fluid` | 130 | Packages outside the families above | `capabilities.handler-type::fluid-resource-handler`, `types.fluid-resource` | planned |
+| `transfer.fluid` | 130 | Packages outside the families above | `ironpumpkin_mods::transfer::FluidResource`, `FluidStacksResourceHandler` | planned |
 | `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
-| `transfer.energy` | 78 | Packages outside the families above | `capabilities.handler-type::energy-handler` | planned |
+| `transfer.energy` | 78 | Packages outside the families above | `ironpumpkin_mods::transfer::EnergyHandler`, `SimpleEnergyHandler` | planned |
 | `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
@@ -949,9 +949,9 @@ How to read it:
 | `server.permission.exceptions` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `server.permission.handler` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `server.timings` | 0 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `transfer.access` | 0 | Packages outside the families above | `capabilities.item-access` | planned |
-| `transfer.resource` | 0 | Packages outside the families above | `types.item-resource`, `fluid-resource`, `capabilities.transfer-resource` | planned |
-| `transfer.transaction` | 0 | Packages outside the families above | `capabilities.transaction`, `callbacks.transaction-closed` | planned |
+| `transfer.access` | 0 | Packages outside the families above | `ironpumpkin_mods::transfer::ItemAccess`, `StackItemAccess` | planned |
+| `transfer.resource` | 0 | Packages outside the families above | `ironpumpkin_mods::transfer::Resource`, `ResourceStack` | planned |
+| `transfer.transaction` | 0 | Packages outside the families above | `ironpumpkin_mods::transfer::Transaction`, `TransactionContext`, `SnapshotJournal`, `RootCommitJournal` | supported |
 | `world.inventory` | 0 | Packages outside the families above | gap: custom menu slots are M5 (`registration.menu-type-definition`) | planned |
 | `CommonHooks.BiomeCallbackFunction` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `DataMapHooks` | 0 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
