@@ -2039,6 +2039,7 @@ name = "ironpumpkin-mods"
 version = "0.2.2+26.3-26.60"
 dependencies = [
  "arc-swap",
+ "criterion",
  "futures",
  "inventory",
  "pumpkin-codecs",
