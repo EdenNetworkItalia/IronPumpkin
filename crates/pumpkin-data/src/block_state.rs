@@ -1,9 +1,10 @@
 use pumpkin_util::math::{boundingbox::BoundingBox, position::BlockPos, vector3::Vector3};
 
-use crate::block_properties::{COLLISION_SHAPES, NoteblockInstrument, SOUND_TYPES};
+use crate::block_properties::{NoteblockInstrument, SOUND_TYPES};
 use crate::blocks::SuffocationPredicate;
 use crate::sound::Sound;
 use crate::tag::{self, Taggable};
+use crate::voxel_shape::shape_box;
 use crate::{Block, BlockDirection, BlockId};
 
 /// Represents a specific state of a block, including its properties and physical behaviors.
@@ -227,9 +228,7 @@ impl BlockState {
     }
 
     pub fn get_block_collision_shapes(&self) -> impl Iterator<Item = BoundingBox> + '_ {
-        self.collision_shapes
-            .iter()
-            .map(|&id| COLLISION_SHAPES[id as usize])
+        self.collision_shapes.iter().map(|&id| shape_box(id))
     }
 
     /// Returns block-local collision shapes with vanilla's coordinate-derived offset applied.
@@ -243,10 +242,7 @@ impl BlockState {
     }
 
     pub fn get_block_outline_shapes(&self) -> impl Iterator<Item = BoundingBox> + '_ {
-        let base_shapes = self
-            .outline_shapes
-            .iter()
-            .map(|&id| COLLISION_SHAPES[id as usize]);
+        let base_shapes = self.outline_shapes.iter().map(|&id| shape_box(id));
 
         let water_shape = self
             .is_waterlogged()
@@ -264,7 +260,7 @@ impl BlockState {
         let base_shapes = self
             .outline_shapes
             .iter()
-            .map(move |&id| COLLISION_SHAPES[id as usize].shift(offset));
+            .map(move |&id| shape_box(id).shift(offset));
 
         let water_shape = self
             .is_waterlogged()
@@ -424,25 +420,25 @@ const TOOL_REQUIRED: u16 = 1 << 2;
 const SIDED_TRANSPARENCY: u16 = 1 << 3;
 const REPLACEABLE: u16 = 1 << 4;
 const IS_LIQUID: u16 = 1 << 5;
-const IS_SOLID: u16 = 1 << 6;
-const IS_FULL_CUBE: u16 = 1 << 7;
-const IS_SOLID_BLOCK: u16 = 1 << 8;
+pub(crate) const IS_SOLID: u16 = 1 << 6;
+pub(crate) const IS_FULL_CUBE: u16 = 1 << 7;
+pub(crate) const IS_SOLID_BLOCK: u16 = 1 << 8;
 const HAS_RANDOM_TICKS: u16 = 1 << 9;
-const IS_SOLID_RENDER: u16 = 1 << 10;
-const CAN_OCCLUDE: u16 = 1 << 11;
+pub(crate) const IS_SOLID_RENDER: u16 = 1 << 10;
+pub(crate) const CAN_OCCLUDE: u16 = 1 << 11;
 const HAS_ANALOG_OUTPUT_SIGNAL: u16 = 1 << 12;
 // codegen flag
 pub(crate) const IS_WATERLOGGED: u16 = 1 << 13;
 
 // side_flags
-const DOWN_SIDE_SOLID: u8 = 1 << 0;
-const UP_SIDE_SOLID: u8 = 1 << 1;
-const NORTH_SIDE_SOLID: u8 = 1 << 2;
-const SOUTH_SIDE_SOLID: u8 = 1 << 3;
-const WEST_SIDE_SOLID: u8 = 1 << 4;
-const EAST_SIDE_SOLID: u8 = 1 << 5;
-const DOWN_CENTER_SOLID: u8 = 1 << 6;
-const UP_CENTER_SOLID: u8 = 1 << 7;
+pub(crate) const DOWN_SIDE_SOLID: u8 = 1 << 0;
+pub(crate) const UP_SIDE_SOLID: u8 = 1 << 1;
+pub(crate) const NORTH_SIDE_SOLID: u8 = 1 << 2;
+pub(crate) const SOUTH_SIDE_SOLID: u8 = 1 << 3;
+pub(crate) const WEST_SIDE_SOLID: u8 = 1 << 4;
+pub(crate) const EAST_SIDE_SOLID: u8 = 1 << 5;
+pub(crate) const DOWN_CENTER_SOLID: u8 = 1 << 6;
+pub(crate) const UP_CENTER_SOLID: u8 = 1 << 7;
 
 #[cfg(test)]
 mod tests {

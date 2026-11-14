@@ -459,10 +459,11 @@ impl ItemEntity {
         let pos = entity.pos.load();
         let bounding_box = entity.bounding_box.load();
 
-        let no_physics = !entity
-            .world
-            .load()
-            .is_space_empty(bounding_box.expand(-1.0e-7, -1.0e-7, -1.0e-7));
+        // Vanilla `noCollision(this, box)`: the collision context of the item.
+        let no_physics = !entity.world.load().no_block_collision(
+            Some(self as &dyn EntityBase),
+            bounding_box.expand(-1.0e-7, -1.0e-7, -1.0e-7),
+        );
 
         entity.no_physics.store(no_physics, Ordering::Relaxed);
 

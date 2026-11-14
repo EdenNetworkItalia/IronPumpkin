@@ -18,6 +18,7 @@ use ironpumpkin_mods::{
     },
     pumpkin_data::{Block, BlockState, dynamic, item::Item},
     register_mod,
+    shapes::VoxelShape,
 };
 
 /// A behaviour of the mod: a full cube that mobs path through.
@@ -58,10 +59,11 @@ impl NativeMod for BehaviourMod {
                 .behaviour(Arc::new(AnvilBlock)),
         )
         .unwrap();
-        cx.register_block(BlockBuilder::new(
-            "behaviour-mod:plain_torch",
-            Block::TORCH.default_state.id,
-        ))
+        // A mod block without a declared shape is a full cube: this one declares a torch shape.
+        cx.register_block(
+            BlockBuilder::new("behaviour-mod:plain_torch", Block::TORCH.default_state.id)
+                .shape(|_| VoxelShape::pixels(6.0, 0.0, 6.0, 10.0, 10.0, 10.0)),
+        )
         .unwrap();
         cx.register_item(
             ItemBuilder::new("behaviour-mod:lens", &Item::STICK).behaviour(Arc::new(SpyglassItem)),
@@ -107,7 +109,8 @@ fn land_pathfindable(name: &str) -> bool {
 #[test]
 fn the_block_registry_runs_the_behaviour_of_a_custom_block() {
     boot();
-    // Without a behaviour the registry falls back to the shape: a torch is not a full cube.
+    // Without a behaviour the registry falls back to the shape: a torch shape is not a full
+    // cube.
     assert!(land_pathfindable("behaviour-mod:plain_torch"));
     // The anvil behaviour of the server says no on a torch shape.
     assert!(!land_pathfindable("behaviour-mod:heavy_torch"));

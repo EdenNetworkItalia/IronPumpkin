@@ -46,6 +46,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 - [Events](./events.md): `@SubscribeEvent` and `IEventBus` against `ModInit::register_event`.
 - [Network payloads](./network.md): `PayloadRegistrar`, `IPayloadContext`, `PacketDistributor` and the configuration tasks against the `network` module.
 - [Capabilities and the transfer API](./capabilities.md): `BlockCapability`, `RegisterCapabilitiesEvent`, the transfer handlers and transactions against the `capabilities` and `transfer` modules, and what hoppers and droppers do with them.
+- [Block shapes](./shapes.md): `VoxelShape`, `Shapes` and the shape getters of `BlockBehaviour` against the `shapes` module and `BlockBuilder::shape`.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
 
