@@ -669,6 +669,8 @@ static PLAIN: LazyLock<Mutex<HashMap<BlockPos, Arc<ItemStacksResourceHandler>>>>
     LazyLock::new(Mutex::default);
 
 fn plain_block(at: BlockPos, stack: Option<ItemStack>) -> Arc<ItemStacksResourceHandler> {
+    // The hopper and the dropper reach the capability through the engine hooks.
+    vanilla_providers();
     static REGISTERED: LazyLock<()> = LazyLock::new(|| {
         let mut event = open_event();
         event
