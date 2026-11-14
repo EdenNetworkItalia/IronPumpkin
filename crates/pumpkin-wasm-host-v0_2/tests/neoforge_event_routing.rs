@@ -1,7 +1,7 @@
 //! `register_neoforge_event`, `register_neoforge_living_event`, `register_neoforge_entity_event`
 //! and `register_neoforge_player_event` register a v0.2 handler for the native event that each
-//! `EventType` names, and for no other (#131, #136, #137, #138). This file is its own test binary, so no other test registers handlers on the
-//! shared server.
+//! `EventType` names, and for no other (#131, #136, #137, #138). This file is its own test binary,
+//! so no other test registers handlers on the shared server.
 #![expect(clippy::expect_used, reason = "a test fails on the first setup error")]
 
 #[path = "../../pumpkin-core/tests/support/mod.rs"]
