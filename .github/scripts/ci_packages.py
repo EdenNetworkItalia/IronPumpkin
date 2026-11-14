@@ -83,6 +83,8 @@ RUST_CI_IGNORED_FILES = {
 WIT_ROOT = Path("crates/pumpkin-plugin-wit")
 # Its own Cargo workspace, built by the `blueprint` job rather than by the package jobs.
 BLUEPRINT_ROOT = Path("blueprint")
+# (dependency, dependent) pairs that tests use without a Cargo dependency edge.
+NON_CARGO_DEPENDENCIES = (("ironpumpkin-test-guest", "ironpumpkin-mods"),)
 # Crates that generate Rust bindings from the WIT files; their dependents follow from the closure.
 WIT_CONSUMER_PACKAGES = {
     "pumpkin-plugin-api",
@@ -136,6 +138,12 @@ def package_graph(
             dependency_name = package_by_root.get(Path(dependency_path).resolve())
             if dependency_name is not None:
                 reverse_dependencies[dependency_name].add(dependent)
+
+    # The `wasm_dispatch` tests of ironpumpkin-mods build this guest with a nested cargo, so no
+    # Cargo edge connects them.
+    for dependency, dependent in NON_CARGO_DEPENDENCIES:
+        if dependency in reverse_dependencies and dependent in reverse_dependencies:
+            reverse_dependencies[dependency].add(dependent)
 
     relative_roots = {
         root.relative_to(workspace_root): name for root, name in package_by_root.items()
