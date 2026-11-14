@@ -149,7 +149,7 @@ The registry name of a block and of its item can be the same, as in `hello-mod:g
 
 A vanilla client does not know the content of a mod. Each builder takes a `display` entry, which is a vanilla block state, item or entity type:
 
-- `BlockBuilder::new(name, display)` takes a `BlockStateId`. Every state of the block copies the physical data of that state.
+- `BlockBuilder::new(name, display)` takes a `BlockStateId`. Every state of the block copies the physical data of that state, except the shapes. A block is a full cube unless it declares its shapes or has a block type (see [Block shapes](./shapes.md)).
 - `ItemBuilder::new(name, display)` takes a `&'static Item`. The item copies its components.
 - `EntityTypeBuilder::new(name, display)` takes a `&'static EntityType`. A vanilla client renders that type.
 
@@ -194,7 +194,7 @@ A NeoForge mod block often extends a vanilla class, such as `StairBlock`, and ge
 
 - runs the server behaviour of the type when the builder sets no `.behaviour(..)`. A behaviour of the mod still wins.
 - gets the properties of the type when the builder adds none. A builder that adds properties must list the same names and values. The registry rejects other properties with `RegistryError::InvalidBlockType`.
-- copies the physical data of the matching state of the type: the shapes, the hardness, the instrument, the piston behaviour and the light. A stair has the stair shape in each state.
+- copies the physical data of the matching state of the type: the shapes, the hardness, the instrument, the piston behaviour and the light. A stair has the stair shape in each state. Shapes that the builder declares replace the shapes of the type.
 - joins the generated tags of the type, so the server sees a stair as `minecraft:stairs`. The tags follow the material: `minecraft:oak_stairs` is in `minecraft:wooden_stairs` and `minecraft:mineable/axe`, so a stone stair named with it breaks fastest with an axe.
 - does not get the block entity of the type. A type with a block entity, such as `minecraft:barrel`, `minecraft:chest`, `minecraft:furnace` or a sign, also needs `BlockEntityTypeAddBlocksEvent` for the block. Without it the behaviour of the type finds no block entity and does nothing, and the server logs a warning at the freeze.
 - shows a vanilla client the matching state of its `display` block when that block has the same properties as the type, else the `display` state.

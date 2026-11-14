@@ -19,6 +19,8 @@ The inventory in `design.md` of the change folder has one row for each element o
 | **Data generation and game tests** | `runData`, `RegisterGameTestsEvent` | Not supported |
 | **Mod version records of a world** | `ModMismatchEvent` | Not supported. Pumpkin does not keep them. |
 | **Some vanilla capability providers** | The composter, chest boats, minecarts with a chest or a hopper, horses, the shulker box and bundle items, buckets and cauldrons through `Capabilities` | No provider yet: Pumpkin keeps some of these inventories private, has no composter container and no fluid storage. Mods can still provide these capabilities. See [Capabilities](./capabilities.md). |
+| **Shapes per position or entity** | `dynamicShape()`, a `CollisionContext` check in `getShape` or `getCollisionShape` | Not supported. A mod block declares one shape per state. See [Block shapes](./shapes.md). |
+| **Some vanilla shape getters** | `getInteractionShape`, `getBlockSupportShape`, `getOcclusionShape` and `getVisualShape` where a vanilla block class overrides them (24 overrides, listed in [Block shapes](./shapes.md)) | Pumpkin extracts only the outline and the collision shape, so these blocks answer with the vanilla default. See [Block shapes](./shapes.md). |
 | **Creative tabs** | `creative_mode_tab` registry, `BuildCreativeModeTabContentsEvent` | The server never reads them. `ModInit::register_creative_mode_tab` accepts a tab and ignores it. |
 
 ---
@@ -29,7 +31,6 @@ The inventory in `design.md` of the change folder has one row for each element o
 
 - 2.12: the player rows that stay planned, listed below.
 - 2.9: menus.
-- 2.10: shapes.
 - 2.14: attachments.
 - 2.16: loot modifiers.
 - 2.17: data maps.
