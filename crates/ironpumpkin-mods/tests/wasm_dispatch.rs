@@ -395,8 +395,8 @@ fn build_guests(target: &Path) -> PathBuf {
         .env("CARGO_TARGET_DIR", target)
         .args([
             "build",
-            "-p",
-            "ironpumpkin-test-guest",
+            "--manifest-path",
+            "crates/ironpumpkin-test-guest/Cargo.toml",
             "--target",
             "wasm32-wasip1",
             "--release",

@@ -1,5 +1,8 @@
 [workspace]
 resolver = "3"
+# Built only by the `wasm_dispatch` tests of ironpumpkin-mods: its WIT bindings take ~2.5 GB of
+# rustc memory per target, which runs the CI lint job out of memory when the workspace includes it.
+exclude = ["crates/ironpumpkin-test-guest"]
 members = [
     "crates/pumpkin",
     "crates/pumpkin-core",
@@ -26,7 +29,6 @@ members = [
     "crates/pumpkin-world",
     "crates/ironpumpkin-mods",
     "crates/ironpumpkin-test-mod",
-    "crates/ironpumpkin-test-guest",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-tester",
