@@ -94,6 +94,12 @@ impl NativeMod for ShapeMod {
                 .shape(|_| VoxelShape::pixels(0.0, 0.0, 0.0, 16.0, 1.0, 16.0)),
         )
         .unwrap();
+        // Only a collision shape: the outline stays the full cube.
+        cx.register_block(
+            BlockBuilder::new("shapemod:collision_only", Block::STONE.default_state.id)
+                .collision_shape(|_| VoxelShape::pixels(0.0, 0.0, 0.0, 16.0, 8.0, 16.0)),
+        )
+        .unwrap();
         // A stair by type, with no declared shape: the stair shapes.
         cx.register_block(
             BlockBuilder::new("shapemod:stairs", Block::OAK_STAIRS.default_state.id)
@@ -172,6 +178,7 @@ fn shapes_of_vanilla_and_mod_blocks() {
     a_half_height_mod_block(&world);
     shapes_that_leave_their_block(&world);
     collision_for_the_context_of_an_entity(&world);
+    reads_at_a_position(&world);
 }
 
 /// Scenario "A vanilla slab".
@@ -213,6 +220,19 @@ fn the_shape_getters_of_a_mod_block() {
     let open = state_of("shapemod:step", &[("facing", "east"), ("open", "true")]);
     assert!(get_state_shape(open, ShapeKind::Collision).is_empty());
     assert!(!open.is_solid() && !open.is_side_solid(BlockDirection::Up));
+    // The outline and the collision shape differ on the north face.
+    assert!(outline.is_face_full(BlockDirection::North));
+    assert!(!collision.is_face_full(BlockDirection::North));
+
+    let collision_only = Block::from_name("shapemod:collision_only")
+        .unwrap()
+        .default_state;
+    assert_eq!(
+        corners(&get_state_shape(collision_only, ShapeKind::Collision)),
+        [[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]]
+    );
+    assert!(get_state_shape(collision_only, ShapeKind::Outline).is_full_block());
+
     // Light opacity follows the shapes: a slab outline on a stone display lets the light
     // through, as the vanilla slab.
     let half = Block::from_name("shapemod:half").unwrap().default_state;
@@ -450,5 +470,45 @@ fn collision_for_the_context_of_an_entity(world: &Arc<World>) {
         world,
         &standing,
         around(&scaffold, [0.2, 0.9, 0.2], [0.8, 1.5, 0.8])
+    ));
+}
+
+/// The reads at a position take the position offset, and the support tests their kind.
+fn reads_at_a_position(world: &Arc<World>) {
+    let poppy = BlockPos::new(136, 100, 137);
+    load(world, &poppy);
+    clear_above(world, &poppy);
+    let state = Block::POPPY.default_state;
+    world.set_block_state(&poppy, state.id, BlockFlags::empty());
+    let at_pos = get_block_shape(world, &poppy, ShapeKind::Outline, None)
+        .bounds()
+        .unwrap();
+    let alone = get_state_shape(state, ShapeKind::Outline).bounds().unwrap();
+    assert!(
+        (at_pos.min.x - alone.min.x).abs() > 1e-9 || (at_pos.min.z - alone.min.z).abs() > 1e-9,
+        "no offset at {poppy:?}"
+    );
+    assert!(((at_pos.max.x - at_pos.min.x) - (alone.max.x - alone.min.x)).abs() < 1e-9);
+
+    // A wall post holds a torch on its top, but its top face is not full.
+    let wall = BlockPos::new(152, 100, 152);
+    load(world, &wall);
+    clear_above(world, &wall);
+    world.set_block_state(
+        &wall,
+        Block::COBBLESTONE_WALL.default_state.id,
+        BlockFlags::empty(),
+    );
+    assert!(is_face_sturdy(
+        world,
+        &wall,
+        BlockDirection::Up,
+        SupportType::Center
+    ));
+    assert!(!is_face_sturdy(
+        world,
+        &wall,
+        BlockDirection::Up,
+        SupportType::Full
     ));
 }
