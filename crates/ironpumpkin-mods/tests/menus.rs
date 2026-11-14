@@ -33,7 +33,9 @@ use ironpumpkin_mods::{
         item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION, screen::WindowType,
     },
     pumpkin_util::text::TextComponent,
-    transfer::{ItemResource, ItemStacksResourceHandler, ResourceHandler, TransactionContext},
+    transfer::{
+        ItemResource, ItemStacksResourceHandler, ResourceHandler, Transaction, TransactionContext,
+    },
 };
 use pumpkin_inventory::{Inventory, SimpleInventory};
 use pumpkin_protocol::{
@@ -408,10 +410,36 @@ fn the_output_slot_refuses_items_and_reports_takes() {
     assert!(entries(&machine.log).contains(&"take 2 2".to_owned()));
 }
 
-/// A resource handler that records its extracts.
+/// A resource handler that records its extracts, and can extract at most `max_extract` per call
+/// or refuse every insert.
 struct Recording {
     inner: ItemStacksResourceHandler,
     log: Log,
+    max_extract: u32,
+    refuse_insert: bool,
+}
+
+impl Recording {
+    fn new(inner: ItemStacksResourceHandler, log: &Log) -> Self {
+        Self {
+            inner,
+            log: log.clone(),
+            max_extract: u32::MAX,
+            refuse_insert: false,
+        }
+    }
+
+    /// Fills `index` outside a menu, past the refusals.
+    fn fill(&self, index: usize, item: &'static Item, amount: u32) {
+        let mut transaction = Transaction::open_root().unwrap();
+        self.inner.insert_at(
+            index,
+            &ItemResource::of_item(item),
+            amount,
+            &mut transaction,
+        );
+        transaction.commit();
+    }
 }
 
 impl ResourceHandler<ItemResource> for Recording {
@@ -442,6 +470,9 @@ impl ResourceHandler<ItemResource> for Recording {
         amount: u32,
         transaction: &mut TransactionContext,
     ) -> u32 {
+        if self.refuse_insert {
+            return 0;
+        }
         let inserted = self.inner.insert_at(index, resource, amount, transaction);
         push(&self.log, format!("insert {index} {inserted}"));
         inserted
@@ -454,7 +485,9 @@ impl ResourceHandler<ItemResource> for Recording {
         amount: u32,
         transaction: &mut TransactionContext,
     ) -> u32 {
-        let extracted = self.inner.extract_at(index, resource, amount, transaction);
+        let extracted =
+            self.inner
+                .extract_at(index, resource, amount.min(self.max_extract), transaction);
         push(&self.log, format!("extract {index} {extracted}"));
         extracted
     }
@@ -471,11 +504,8 @@ fn a_handler_slot_extracts_and_inserts_in_transactions() {
     let commits = log.clone();
     let inner = ItemStacksResourceHandler::new(9, 64)
         .with_on_contents_changed(move |index, _| push(&commits, format!("commit {index}")));
-    let handler = Arc::new(Recording {
-        inner,
-        log: log.clone(),
-    });
-    let mut transaction = ironpumpkin_mods::transfer::Transaction::open_root().unwrap();
+    let handler = Arc::new(Recording::new(inner, &log));
+    let mut transaction = Transaction::open_root().unwrap();
     handler.insert_at(
         0,
         &ItemResource::of_item(&Item::REDSTONE),
@@ -580,7 +610,8 @@ fn data_slots_reach_the_client_as_16_bits() {
 }
 
 /// A button runs `click_button`, and a close inside it closes the menu when the button packet
-/// returns, after `removed` gave the container back to the player.
+/// returns, after `removed` gave the container back to the player. The cleared container calls
+/// `slots_changed`, as a vanilla container that notifies its menu does.
 #[test]
 fn a_close_inside_a_button_closes_at_once() {
     let _serial = support::serial();
@@ -595,7 +626,10 @@ fn a_close_inside_a_button_closes_at_once() {
     press_button(&player, sync_id, 9);
     assert!(get_open_menu(&player).is_none());
     let log = entries(&machine.log);
-    assert_eq!(log, ["changed 7", "button 2", "button 9", "removed"]);
+    assert_eq!(
+        log,
+        ["changed 7", "button 2", "button 9", "removed", "changed 0"]
+    );
     assert!(
         (0..36).any(|slot| player.inventory.get_stack(slot).item.id == Item::COAL.id),
         "clear_container gives the stack back"
@@ -627,4 +661,173 @@ fn a_close_inside_a_click_closes_at_once() {
     click(&player, menu.sync_id(), 0, 0, SlotActionType::Pickup);
     assert!(get_open_menu(&player).is_none());
     assert!(!menu.is_open());
+}
+
+/// The items of `item` that the player inventory holds.
+fn player_count(player: &Player, item: &Item) -> u32 {
+    (0..36)
+        .map(|slot| player.inventory.get_stack(slot))
+        .filter(|stack| stack.item.id == item.id)
+        .map(|stack| u32::from(stack.item_count))
+        .sum()
+}
+
+fn handler_menu(player: &Arc<Player>, handler: &Arc<Recording>) -> u8 {
+    let handler: Arc<dyn ResourceHandler<ItemResource>> = handler.clone();
+    let definition = MenuDefinition::vanilla(
+        WindowType::Generic9x1,
+        title(),
+        SlotSource::Handler(handler),
+    )
+    .unwrap();
+    open_menu(player, definition, Arc::new(VanillaMenuLogic))
+        .unwrap()
+        .sync_id()
+}
+
+/// A handler that extracts at most 16 per call refuses the shift-click of its 64 items: the
+/// click rolls back, and the player gets nothing.
+#[test]
+fn a_capped_extract_rolls_the_shift_click_back() {
+    let _serial = support::serial();
+    let player = support::player("CappedShifter");
+    let log: Log = Arc::default();
+    let mut handler = Recording::new(ItemStacksResourceHandler::new(9, 64), &log);
+    handler.max_extract = 16;
+    handler.fill(0, &Item::REDSTONE, 64);
+    let handler = Arc::new(handler);
+    let sync_id = handler_menu(&player, &handler);
+    click(&player, sync_id, 0, 0, SlotActionType::QuickMove);
+    assert_eq!(handler.get_amount_as_long(0), 64);
+    assert_eq!(player_count(&player, &Item::REDSTONE), 0);
+    assert!(cursor(&player).is_empty());
+}
+
+/// A handler that refuses every insert keeps the 5 diamonds of a place on the cursor.
+#[test]
+fn a_refused_place_keeps_the_cursor() {
+    let _serial = support::serial();
+    let player = support::player("RefusedPlacer");
+    let log: Log = Arc::default();
+    let mut handler = Recording::new(ItemStacksResourceHandler::new(9, 64), &log);
+    handler.refuse_insert = true;
+    let handler = Arc::new(handler);
+    let sync_id = handler_menu(&player, &handler);
+    get_open_menu(&player)
+        .unwrap()
+        .with(|menu| menu.set_carried(stack(5, &Item::DIAMOND)));
+    click(&player, sync_id, 0, 0, SlotActionType::Pickup);
+    assert_eq!(cursor(&player).item_count, 5);
+    assert_eq!(handler.get_amount_as_long(0), 0);
+}
+
+/// A swap of 1 diamond onto 10 redstone in a handler that refuses inserts rolls back both sides.
+#[test]
+fn a_refused_swap_keeps_both_stacks() {
+    let _serial = support::serial();
+    let player = support::player("RefusedSwapper");
+    let log: Log = Arc::default();
+    let mut handler = Recording::new(ItemStacksResourceHandler::new(9, 64), &log);
+    handler.refuse_insert = true;
+    handler.fill(0, &Item::REDSTONE, 10);
+    let handler = Arc::new(handler);
+    let sync_id = handler_menu(&player, &handler);
+    get_open_menu(&player)
+        .unwrap()
+        .with(|menu| menu.set_carried(stack(1, &Item::DIAMOND)));
+    click(&player, sync_id, 0, 0, SlotActionType::Pickup);
+    let carried = cursor(&player);
+    assert_eq!((carried.item.id, carried.item_count), (Item::DIAMOND.id, 1));
+    assert_eq!(handler.get_amount_as_long(0), 10);
+    assert_eq!(
+        handler.get_resource(0),
+        ItemResource::of_item(&Item::REDSTONE)
+    );
+}
+
+/// A root of another thread owns index 1: a place there inserts nothing, so the click rolls
+/// back.
+#[test]
+fn a_place_into_an_index_of_another_root_keeps_the_cursor() {
+    let _serial = support::serial();
+    let player = support::player("ContendedPlacer");
+    let log: Log = Arc::default();
+    let handler = Arc::new(Recording::new(ItemStacksResourceHandler::new(9, 64), &log));
+    let sync_id = handler_menu(&player, &handler);
+    let (claimed, wait_claim) = mpsc::channel();
+    let (release, wait_release) = mpsc::channel::<()>();
+    let other = handler.clone();
+    let holder = std::thread::spawn(move || {
+        let mut transaction = Transaction::open_root().unwrap();
+        other
+            .inner
+            .insert_at(1, &ItemResource::of_item(&Item::STONE), 1, &mut transaction);
+        claimed.send(()).unwrap();
+        wait_release.recv().unwrap();
+    });
+    wait_claim.recv().unwrap();
+    get_open_menu(&player)
+        .unwrap()
+        .with(|menu| menu.set_carried(stack(5, &Item::DIAMOND)));
+    click(&player, sync_id, 1, 0, SlotActionType::Pickup);
+    release.send(()).unwrap();
+    holder.join().unwrap();
+    assert_eq!(cursor(&player).item_count, 5);
+    assert_eq!(handler.get_amount_as_long(1), 0);
+}
+
+/// A callback runs inside the root of the click: its own root does not open, and it moves
+/// resources through `MenuAccess::transaction`, which commits with the click.
+#[test]
+fn a_callback_moves_resources_in_the_click_root() {
+    struct OwnTransfer {
+        handler: Arc<Recording>,
+        log: Log,
+    }
+    impl MenuLogic for OwnTransfer {
+        fn quick_move_stack(
+            &self,
+            menu: &mut MenuAccess<'_>,
+            _player: &Player,
+            _slot: usize,
+        ) -> ItemStack {
+            push(
+                &self.log,
+                format!("own root {}", Transaction::open_root().is_ok()),
+            );
+            let redstone = ItemResource::of_item(&Item::REDSTONE);
+            let moved = menu
+                .transaction(|root| {
+                    let mut transaction = Transaction::open(Some(root)).unwrap();
+                    let moved = self.handler.extract_at(0, &redstone, 4, &mut transaction);
+                    transaction.commit();
+                    moved
+                })
+                .unwrap();
+            let hotbar = menu.slot_count() - 9;
+            menu.set_item(hotbar, redstone.to_stack(u8::try_from(moved).unwrap()));
+            ItemStack::EMPTY.clone()
+        }
+    }
+    let _serial = support::serial();
+    let player = support::player("OwnTransfer");
+    let log: Log = Arc::default();
+    let handler = Arc::new(Recording::new(ItemStacksResourceHandler::new(9, 64), &log));
+    handler.fill(0, &Item::REDSTONE, 20);
+    let handler_dyn: Arc<dyn ResourceHandler<ItemResource>> = handler.clone();
+    let definition = MenuDefinition::vanilla(
+        WindowType::Generic9x1,
+        title(),
+        SlotSource::Handler(handler_dyn),
+    )
+    .unwrap();
+    let logic = Arc::new(OwnTransfer {
+        handler: handler.clone(),
+        log: log.clone(),
+    });
+    let menu = open_menu(&player, definition, logic).unwrap();
+    click(&player, menu.sync_id(), 0, 0, SlotActionType::QuickMove);
+    assert!(entries(&log).contains(&"own root false".to_owned()));
+    assert_eq!(handler.get_amount_as_long(0), 16);
+    assert_eq!(player.inventory.get_stack(0).item_count, 4);
 }

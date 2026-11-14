@@ -27,10 +27,11 @@ use pumpkin_inventory::{
 use pumpkin_protocol::java::server::play::SlotActionType;
 use tracing::warn;
 
+use super::scope;
 use super::{
     ContainerData, ContainerInput, Menu, MenuDefinition, MenuLogic, SlotSource, Storage, as_player,
 };
-use crate::transfer::{ItemResource, Resource, ResourceHandler, Transaction};
+use crate::transfer::{ItemResource, Resource, ResourceHandler, Transaction, TransactionContext};
 
 /// The container of a menu (`SimpleContainer`): a change calls [`MenuLogic::slots_changed`].
 pub struct MenuContainer {
@@ -96,12 +97,13 @@ impl Inventory for MenuContainer {
 }
 
 /// A resource handler seen as a Pumpkin inventory, so that a slot over it works with the Pumpkin
-/// click code. Every write is a root transaction that commits only when it moved everything.
+/// click code. Every write is a nested transaction of the action root ([`scope`]) that commits
+/// only when it moved everything; outside an action it is its own root.
 pub(super) struct HandlerInventory(pub(super) Arc<dyn ResourceHandler<ItemResource>>);
 
 impl HandlerInventory {
     fn amount(&self, slot: usize) -> u8 {
-        u8::try_from(self.0.get_amount_as_int(slot)).unwrap_or(u8::MAX)
+        saturate_u8(self.0.get_amount_as_int(slot))
     }
 }
 
@@ -135,15 +137,13 @@ impl Inventory for HandlerInventory {
         if resource.is_empty() || amount == 0 {
             return ItemStack::EMPTY.clone();
         }
-        let Ok(mut transaction) = Transaction::open_root() else {
-            warn!("a menu slot over a resource handler cannot take: a root transaction is open");
-            return ItemStack::EMPTY.clone();
-        };
-        let extracted = self
-            .0
-            .extract_at(slot, &resource, u32::from(amount), &mut transaction);
-        transaction.commit();
-        resource.to_stack(u8::try_from(extracted).unwrap_or(u8::MAX))
+        let extracted = transact(|transaction| {
+            Some(
+                self.0
+                    .extract_at(slot, &resource, u32::from(amount), transaction),
+            )
+        });
+        resource.to_stack(saturate_u8(extracted.unwrap_or(0)))
     }
 
     fn set_stack(&self, slot: usize, stack: ItemStack) {
@@ -155,30 +155,27 @@ impl Inventory for HandlerInventory {
         } else {
             u32::from(stack.item_count)
         };
-        let Ok(mut transaction) = Transaction::open_root() else {
-            warn!("a menu slot over a resource handler cannot set: a root transaction is open");
-            return;
-        };
-        let moved = if !old.is_empty() && old == new {
-            if new_amount >= old_amount {
-                let diff = new_amount - old_amount;
-                self.0.insert_at(slot, &new, diff, &mut transaction) == diff
+        let moved = transact(|transaction| {
+            let moved = if !old.is_empty() && old == new {
+                if new_amount >= old_amount {
+                    let diff = new_amount - old_amount;
+                    self.0.insert_at(slot, &new, diff, transaction) == diff
+                } else {
+                    let diff = old_amount - new_amount;
+                    self.0.extract_at(slot, &old, diff, transaction) == diff
+                }
             } else {
-                let diff = old_amount - new_amount;
-                self.0.extract_at(slot, &old, diff, &mut transaction) == diff
-            }
-        } else {
-            (old.is_empty()
-                || self.0.extract_at(slot, &old, old_amount, &mut transaction) == old_amount)
-                && (new_amount == 0
-                    || self.0.insert_at(slot, &new, new_amount, &mut transaction) == new_amount)
-        };
-        if moved {
-            transaction.commit();
-        } else {
+                (old.is_empty()
+                    || self.0.extract_at(slot, &old, old_amount, transaction) == old_amount)
+                    && (new_amount == 0
+                        || self.0.insert_at(slot, &new, new_amount, transaction) == new_amount)
+            };
+            moved.then_some(())
+        });
+        if moved.is_none() {
             warn!(
                 "a menu slot over a resource handler could not set index {slot} to {} x{}: \
-                 the handler refused part of the change",
+                 the handler refused part of the change, so the menu action rolls back",
                 stack.item.registry_key, stack.item_count
             );
         }
@@ -190,6 +187,28 @@ impl Inventory for HandlerInventory {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+/// Runs `write` in a nested transaction of the action root, or in its own root outside an
+/// action. `None` means refused: nothing changed.
+fn transact<R>(write: impl FnOnce(&mut TransactionContext) -> Option<R>) -> Option<R> {
+    let mut write = Some(write);
+    match scope::write(|transaction| write.take().and_then(|write| write(transaction))) {
+        scope::Write::Done(result) => Some(result),
+        scope::Write::Refused => None,
+        scope::Write::NoScope => {
+            let write = write.take()?;
+            let Ok(mut transaction) = Transaction::open_root() else {
+                warn!(
+                    "a menu slot over a resource handler cannot write: a root transaction is open"
+                );
+                return None;
+            };
+            let result = write(&mut transaction)?;
+            transaction.commit();
+            Some(result)
+        }
     }
 }
 
@@ -275,9 +294,16 @@ impl Slot for MenuSlot {
         if resource.is_empty() {
             return false;
         }
-        Transaction::open_root().is_ok_and(|mut transaction| {
-            handler.extract_at(self.index, &resource, 1, &mut transaction) == 1
-        })
+        let take_one = |transaction: &mut TransactionContext| {
+            handler.extract_at(self.index, &resource, 1, transaction) == 1
+        };
+        match scope::simulate(take_one) {
+            scope::Write::Done(takes) => takes,
+            scope::Write::Refused => false,
+            scope::Write::NoScope => {
+                Transaction::open_root().is_ok_and(|mut transaction| take_one(&mut transaction))
+            }
+        }
     }
 }
 
@@ -318,6 +344,12 @@ impl ScreenHandlerListener for DataSlotSync {
     }
 }
 
+/// The stacks that a refused menu action restores.
+struct Snapshot {
+    cursor: ItemStack,
+    slots: Vec<(usize, ItemStack)>,
+}
+
 /// The Pumpkin screen handler of a mod menu.
 pub(super) struct ModMenu {
     behaviour: ScreenHandlerBehaviour,
@@ -329,6 +361,8 @@ pub(super) struct ModMenu {
     storage: Option<Storage>,
     /// The container that got `startOpen`, for `stopOpen` on close.
     opened: Option<Arc<dyn Inventory>>,
+    /// The positions of the slots over a resource handler.
+    handler_slots: Vec<usize>,
     close_requested: bool,
     closing: bool,
 }
@@ -364,6 +398,7 @@ impl ModMenu {
                 data: definition.data.clone(),
                 storage: definition.storage.clone(),
                 opened,
+                handler_slots: Vec::new(),
                 close_requested: false,
                 closing: false,
             };
@@ -381,6 +416,7 @@ impl ModMenu {
                             .entry(Arc::as_ptr(&handler).cast::<()>())
                             .or_insert_with(|| Arc::new(HandlerInventory(handler.clone())))
                             .clone();
+                        menu.handler_slots.push(position);
                         (inventory, Some(handler))
                     }
                 };
@@ -426,6 +462,64 @@ impl ModMenu {
         self.player.upgrade()
     }
 
+    /// Runs `action` as one menu action ([`scope`]): when a handler refuses a write, the root
+    /// rolls back, the cursor and the other slots get their stacks from before the action, and
+    /// the client gets the whole menu again. Then calls `slotsChanged` when the container of the
+    /// menu changed.
+    pub(super) fn run_action<R>(&mut self, action: impl FnOnce(&mut Self) -> R) -> R {
+        let guard = scope::enter();
+        let snapshot = guard.owns().then(|| self.snapshot());
+        let result = action(self);
+        if !scope::refused() {
+            self.notify_slots_changed();
+        }
+        if guard.finish()
+            && let Some(snapshot) = snapshot
+        {
+            self.restore(snapshot);
+        }
+        result
+    }
+
+    /// The cursor and the stacks of the slots that are not over a resource handler: the root
+    /// transaction rolls back the others.
+    fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            cursor: self
+                .behaviour
+                .cursor_stack
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
+            slots: self
+                .behaviour
+                .slots
+                .iter()
+                .enumerate()
+                .filter(|(position, _)| !self.handler_slots.contains(position))
+                .map(|(position, slot)| (position, slot.get_cloned_stack()))
+                .collect(),
+        }
+    }
+
+    fn restore(&mut self, snapshot: Snapshot) {
+        for (position, stack) in snapshot.slots {
+            let slot = &self.behaviour.slots[position];
+            slot.get_inventory().set_stack(slot.get_index(), stack);
+        }
+        *self
+            .behaviour
+            .cursor_stack
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = snapshot.cursor;
+        if let Some(container) = &self.container {
+            container.changed.store(false, Ordering::Relaxed);
+        }
+        if !self.closing {
+            self.sync_state();
+        }
+    }
+
     /// Calls `slotsChanged` once when the container of the menu changed. The writes of the
     /// callback itself do not call it again.
     pub(super) fn notify_slots_changed(&mut self) {
@@ -467,7 +561,7 @@ impl ScreenHandler for ModMenu {
         self.default_on_closed(player);
         if let Some(player) = as_player(player) {
             let logic = self.logic.clone();
-            logic.removed(&mut MenuAccess::new(self), player);
+            self.run_action(|menu| logic.removed(&mut MenuAccess::new(menu), player));
         }
         if let Some(container) = self.opened.take()
             && !player.is_spectator()
@@ -480,7 +574,8 @@ impl ScreenHandler for ModMenu {
         let (Some(player), Ok(slot)) = (as_player(player), usize::try_from(slot_index)) else {
             return ItemStack::EMPTY.clone();
         };
-        if slot >= self.behaviour.slots.len() {
+        // A refused write ends the shift-click loop of the click code.
+        if slot >= self.behaviour.slots.len() || scope::refused() {
             return ItemStack::EMPTY.clone();
         }
         let logic = self.logic.clone();
@@ -492,8 +587,9 @@ impl ScreenHandler for ModMenu {
             return false;
         };
         let logic = self.logic.clone();
-        let clicked = logic.click_button(&mut MenuAccess::new(self), player, button_id);
-        self.notify_slots_changed();
+        let clicked = self.run_action(|menu| {
+            logic.click_button(&mut MenuAccess::new(menu), player, button_id) && !scope::refused()
+        });
         if clicked {
             self.send_content_updates();
         }
@@ -507,22 +603,22 @@ impl ScreenHandler for ModMenu {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
-        if let Some(mc_player) = as_player(player) {
-            let logic = self.logic.clone();
-            let input = container_input(&action_type);
-            if logic.clicked(
-                &mut MenuAccess::new(self),
-                slot_index,
-                button,
-                input,
-                mc_player,
-            ) {
-                self.notify_slots_changed();
-                return;
+        self.run_action(|menu| {
+            if let Some(mc_player) = as_player(player) {
+                let logic = menu.logic.clone();
+                let input = container_input(&action_type);
+                if logic.clicked(
+                    &mut MenuAccess::new(menu),
+                    slot_index,
+                    button,
+                    input,
+                    mc_player,
+                ) {
+                    return;
+                }
             }
-        }
-        self.internal_on_slot_click(slot_index, button, action_type, player);
-        self.notify_slots_changed();
+            menu.internal_on_slot_click(slot_index, button, action_type, player);
+        });
     }
 }
 
@@ -691,13 +787,31 @@ impl<'a> MenuAccess<'a> {
         clicked
     }
 
+    /// Runs `action` with the root transaction of this click, button, close or [`Menu::with`]
+    /// call, for a callback that moves resources of a handler itself: open a nested
+    /// transaction on it with `Transaction::open(Some(root))`. The root commits with the action,
+    /// or rolls back when a slot write of the action was refused. `Transaction::open_root` fails
+    /// inside a callback, because this root is open. Returns `None` when the thread had a root
+    /// transaction before the action.
+    ///
+    /// [`Menu::with`]: super::Menu::with
+    pub fn transaction<R>(
+        &mut self,
+        action: impl FnOnce(&mut TransactionContext) -> R,
+    ) -> Option<R> {
+        scope::with_root(action)
+    }
+
     /// `broadcastChanges`: sends the changed slots, the cursor and the data slots.
     pub fn broadcast_changes(&mut self) {
         self.menu.send_content_updates();
     }
 
-    /// `Player#closeContainer`. Inside a click or a button callback the menu closes when the
-    /// host released it, before the next packet; elsewhere it closes at the next tick.
+    /// `Player#closeContainer`. Inside a click, a button or a [`Menu::with`] call the menu closes
+    /// when the host released it, before the next packet; elsewhere, for example in
+    /// [`MenuLogic::slots_changed`] after a write from another menu, at the next tick.
+    ///
+    /// [`Menu::with`]: super::Menu::with
     pub fn close(&mut self) {
         if self.menu.closing || self.menu.close_requested {
             return;

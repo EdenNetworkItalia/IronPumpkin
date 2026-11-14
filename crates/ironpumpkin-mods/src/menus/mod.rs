@@ -15,6 +15,7 @@
 
 mod handler;
 pub mod layout;
+mod scope;
 #[cfg(test)]
 mod tests;
 
@@ -210,7 +211,7 @@ pub trait MenuLogic: Any + Send + Sync {
     }
 
     /// `slotsChanged`: the container of the menu changed. The host calls it after the click,
-    /// the button or the [`Menu::with`] call that changed it.
+    /// the button, the close or the [`Menu::with`] call that changed it.
     fn slots_changed(&self, _menu: &mut MenuAccess<'_>) {}
 
     /// `Slot#mayPlace` of a slot [`with_place_filter`](SlotDefinition::with_place_filter).
@@ -477,9 +478,7 @@ impl Menu {
     pub fn with<R>(&self, action: impl FnOnce(&mut MenuAccess<'_>) -> R) -> R {
         let _deferral = Deferral::start();
         let mut menu = self.handler.lock().unwrap_or_else(PoisonError::into_inner);
-        let result = action(&mut MenuAccess::new(&mut menu));
-        menu.notify_slots_changed();
-        result
+        menu.run_action(|menu| action(&mut MenuAccess::new(menu)))
     }
 
     /// Whether the player still has this menu open.
