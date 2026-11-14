@@ -1,6 +1,6 @@
 # Porting block shapes from NeoForge
 
-In NeoForge, a block gives its shapes through the getters of `BlockBehaviour`: `getShape` for the outline, `getCollisionShape`, `getInteractionShape`, `getBlockSupportShape`, `getOcclusionShape` and `getVisualShape`. Each getter takes the state, the level, the position and, for the outline and the collision shape, a `CollisionContext`. A mod builds the `VoxelShape` with `Block.box`, `Block.column` and `Shapes.join`, and reads other blocks with `state.getShape(level, pos)`, `state.isFaceSturdy(level, pos, face, type)` and `level.noCollision(entity, box)`.
+In NeoForge, a block gives its shapes through the getters of `BlockBehaviour`: `getShape` for the outline, `getCollisionShape`, `getInteractionShape`, `getBlockSupportShape`, `getOcclusionShape` and `getVisualShape`. `getShape`, `getCollisionShape` and `getVisualShape` take the state, the level, the position and a `CollisionContext`; `getInteractionShape` and `getBlockSupportShape` take the state, the level and the position; `getOcclusionShape` takes the state only. A mod builds the `VoxelShape` with `Block.box`, `Block.column` and `Shapes.join`, and reads other blocks with `state.getShape(level, pos)`, `state.isFaceSturdy(level, pos, face, type)` and `level.noCollision(entity, box)`.
 
 In IronPumpkin, a mod block declares its outline and its collision shape per state on the `BlockBuilder`. The server evaluates them once per state when the registry freezes, and uses them in entity collision, ray traces and support checks. The `shapes` module of `ironpumpkin-mods` reads the shapes and tests collisions.
 
@@ -14,12 +14,12 @@ In IronPumpkin, a mod block declares its outline and its collision shape per sta
 | **Build** | `Shapes.empty()`, `Shapes.block()`, `Shapes.box`, `Block.box`, `Block.column` | `VoxelShape::empty`, `block`, `cuboid`, `pixels`, `column` |
 | **Combine** | `Shapes.or`, `Shapes.join(a, b, BooleanOp.ONLY_FIRST)`, `move`, `Shapes.rotateHorizontal` | `or`, `join(&b, BooleanOp::OnlyFirst)`, `move_by`, `rotate_horizontal` |
 | **Outline** | override `getShape(state, level, pos, context)` | `BlockBuilder::shape(\|state\| ..)` |
-| **Collision shape** | override `getCollisionShape`, or `noCollission()` on the properties | `BlockBuilder::collision_shape(\|state\| ..)`. Return `VoxelShape::empty()` for no collision. |
+| **Collision shape** | override `getCollisionShape`, or `noCollision()` on the properties | `BlockBuilder::collision_shape(\|state\| ..)`. Return `VoxelShape::empty()` for no collision. |
 | **No shape declared** | `new Block(properties)` is a full cube; a subclass such as `StairBlock` has its shapes | A full cube; a block with `.block_type(..)` has the shapes of its type |
 | **Read a shape** | `state.getShape(level, pos, context)`, `getCollisionShape`, `getInteractionShape`, `getBlockSupportShape`, `getOcclusionShape` | `shapes::get_block_shape(&world, &pos, kind, entity)` and `shapes::get_state_shape(state, kind)`, with `ShapeKind::Outline`, `Collision`, `Interaction`, `BlockSupport`, `Occlusion`, `Visual` |
 | **Support test** | `state.isFaceSturdy(level, pos, face, SupportType.CENTER)` | `shapes::is_face_sturdy(&world, &pos, face, SupportType::Center)` |
 | **Free space** | `level.noCollision(entity, box)` | `shapes::no_collision(&world, entity, box)` |
-| **Shape per position or entity** | `dynamicShape()`, a `CollisionContext` check in the getter | Not supported. Shapes depend on the state only. |
+| **Shape per position or entity** | `dynamicShape()`, a `CollisionContext` check in the getter | Not supported for mod blocks: their shapes depend on the state only. The vanilla powder snow and scaffolding follow the entity in `get_block_shape` and `no_collision`. |
 
 ---
 
@@ -89,22 +89,26 @@ A custom state copies the physical data of its display state or of its block typ
 - the six full faces and the center of the top and bottom faces, which `is_side_solid`, `is_center_solid` and the placement of torches, rails and other blocks read;
 - the full cube flag and the redstone conductor flag, which follow `Block.isShapeFullBlock` of the collision shape;
 - the legacy solid flag (`BlockStateBase.calculateSolid`);
-- the solid render flag, from the outline when the display state can occlude.
+- the solid render flag, from the outline when the display state can occlude;
+- the light opacity (`getLightDampening`): 15 for a solid render, else 0 when the outline is not a full block and the state holds no fluid, else 1. A display state whose opacity is not this default of its own shapes, as leaves or glass, keeps its opacity.
 
-The light, the hardness, the occlusion of the display state and the sounds stay as the display state or the type gives them.
+A declared shape drops two overrides of the display block: `forceSolidOn` (the legacy solid flag follows the collision shape), and an override of `isRedstoneConductor` on a display state that is not a full cube. A full cube display that never conducts, such as glass, still never conducts.
+
+The light emission, the hardness, the occlusion of the display state and the sounds stay as the display state or the type gives them.
 
 ## The shape getters of vanilla blocks
 
-Pumpkin extracts the outline and the collision shape of every vanilla state. The other getters give the vanilla defaults of `BlockBehaviour`:
+Pumpkin extracts the outline and the collision shape of every vanilla state, with the empty collision context. `getBlockSupportShape` gives the collision shape, or the shape of the vanilla override: empty for the leaves, `SHAPES[layers]` for the snow layer, `column(16, 4, 5, 24)` along the axis for a closed fence gate, the full block for the shulker boxes (as closed), soul sand and mud, `column(14, 0, 15)` for the chorus flower, and the outline for the hanging signs. The other getters give the vanilla defaults of `BlockBehaviour`:
 
 | Getter | Default | Vanilla blocks that override it and answer with the default |
 | :--- | :--- | :--- |
 | `getInteractionShape` | empty | the cauldrons, the composter, the hopper, scaffolding |
-| `getBlockSupportShape` | the collision shape | the leaves, the snow layer, the fence gates, the shulker boxes, soul sand, mud, the hanging signs, the chorus flower |
 | `getOcclusionShape` | the outline when the state can occlude, else empty | the fences, the fence gates, the lectern, the sculk shrieker |
 | `getVisualShape` | the collision shape | the fences, the iron bars and glass panes, mud, powder snow, the snow layer, soul sand, glass and the other transparent blocks |
 
 `is_face_sturdy` reads the extracted flags for a full face and for the center of the top and bottom faces, and computes the center of a side face and the rigid support from the block support shape.
+
+`get_block_shape` and `no_collision` give the collision shape for the context of the entity for powder snow (a falling entity lands on 0.9, a walker with leather boots stands on top) and scaffolding (an entity below the top passes through). The liquids for a strider and the light block outline for a player that holds a light do not follow the context: see [Unsupported features](./unsupported.md).
 
 ## Client side
 
@@ -115,4 +119,4 @@ A NeoForge client runs the Java half of the mod and computes the shapes itself. 
 - Do declare the shapes of every block that is not a full cube. A block without declared shapes and without a type is a full cube, whatever its display state.
 - Do give `collision_shape` only when it differs from the outline: by default the collision shape is the outline.
 - Do not read the world or a global state in a shape function: it runs before the first world loads.
-- Do not port a shape that changes with the position or the entity, such as scaffolding. Use the shape of the most common case, or a source patch (see [Mixins, reflection and access transformers](./mixins-and-patches.md)).
+- Do not port a shape that changes with the position or the entity, as the vanilla scaffolding does. Use the shape of the most common case, or a source patch (see [Mixins, reflection and access transformers](./mixins-and-patches.md)).

@@ -413,9 +413,9 @@ fn vanilla_support_shape(state: &BlockState) -> Option<VoxelShape> {
 }
 
 impl BlockState {
-    /// The shape `kind` of this state, block-local, as vanilla reads it at `BlockPos.ZERO` in an
-    /// empty level with the empty collision context. See [`ShapeKind`] for the getters that
-    /// answer with the vanilla default.
+    /// The shape `kind` of this state, block-local and without the position offset, as vanilla
+    /// reads it in an empty level with the empty collision context. See [`ShapeKind`] for the
+    /// getters that answer with the vanilla default.
     #[must_use]
     pub fn shape(&self, kind: ShapeKind) -> VoxelShape {
         match kind {
