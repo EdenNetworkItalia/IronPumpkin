@@ -46,7 +46,7 @@ use ironpumpkin_mods::{
         SimpleEnergyHandler, Transaction, TransactionContext,
     },
 };
-use pumpkin_inventory::{Clearable, Inventory, SimpleInventory, screen_handler::ScreenHandler};
+use pumpkin_inventory::{Clearable, Inventory, SimpleInventory};
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
     java::{
