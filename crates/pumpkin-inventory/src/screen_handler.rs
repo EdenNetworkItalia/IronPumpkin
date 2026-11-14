@@ -953,7 +953,6 @@ pub trait ScreenHandler: Send + Sync {
                     } else {
                         let drop_stack = slot.safe_take(1, u8::MAX, player);
                         if !drop_stack.is_empty() {
-                            slot.on_take_item(player, &drop_stack);
                             player.drop_item(drop_stack, true);
                         }
                     }

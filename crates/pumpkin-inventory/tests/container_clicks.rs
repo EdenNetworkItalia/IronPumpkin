@@ -243,3 +243,16 @@ fn throw_all_from_a_slot_that_refuses_the_take_ends() {
     assert_eq!(drops, 0);
     assert_eq!(inventory.get_stack(0).item_count, 10);
 }
+
+/// One drop key press takes one item and runs `onTake` once, in `safeTake`.
+#[test]
+fn a_single_throw_runs_on_take_once() {
+    let (inventory, slots) = slots(1);
+    inventory.set_stack(0, ItemStack::new(10, &Item::STONE));
+    let player = TestPlayer::new();
+    let mut handler = TestHandler::new(&slots);
+    handler.internal_on_slot_click(0, 0, SlotActionType::Throw, &player);
+    assert_eq!(slots[0].takes.load(Ordering::Relaxed), 1);
+    assert_eq!(inventory.get_stack(0).item_count, 9);
+    assert_eq!(player.drops.lock().unwrap()[0].item_count, 1);
+}
