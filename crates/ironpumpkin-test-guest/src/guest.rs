@@ -35,7 +35,7 @@ use bindings::pumpkin::plugin::{
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
-const EVENTS: [EventType; 27] = [
+const EVENTS: [EventType; 28] = [
     EventType::BlockBreakEvent,
     EventType::BlockPlaceEvent,
     EventType::BlockEventEntityPlaceEvent,
@@ -61,6 +61,7 @@ const EVENTS: [EventType; 27] = [
     EventType::EntityLeaveLevelEvent,
     EventType::LivingEntityUseItemEventStart,
     EventType::LivingEntityUseItemEventStop,
+    EventType::ArrowLooseEvent,
     EventType::MobEffectEventApplicable,
     EventType::EntityPotionEffectEvent,
 ];
@@ -232,6 +233,11 @@ fn view(event: &mut Event) -> Option<View<'_>> {
         Event::LivingEntityUseItemEventStop(data) => (
             "LivingEntityUseItemEventStop",
             None,
+            Some(&mut data.cancelled),
+        ),
+        Event::ArrowLooseEvent(data) => (
+            "ArrowLooseEvent",
+            Some(&mut data.charge),
             Some(&mut data.cancelled),
         ),
         Event::MobEffectEventApplicable(data) => {
