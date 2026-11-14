@@ -214,6 +214,12 @@ pub trait MenuLogic: Any + Send + Sync {
     /// the button, the close or the [`Menu::with`] call that changed it.
     fn slots_changed(&self, _menu: &mut MenuAccess<'_>) {}
 
+    /// `canTakeItemForPickAll`: whether a double click with `carried` on the cursor collects from
+    /// `slot`. Vanilla menus return `false` for their result slot.
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, _slot: usize) -> bool {
+        true
+    }
+
     /// `Slot#mayPlace` of a slot [`with_place_filter`](SlotDefinition::with_place_filter).
     fn slot_may_place(&self, _slot: usize, _stack: &ItemStack) -> bool {
         true

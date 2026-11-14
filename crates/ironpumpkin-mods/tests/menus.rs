@@ -979,3 +979,29 @@ fn a_second_close_runs_nothing() {
     handler.on_closed(player.as_ref());
     assert_eq!(entries(&log), ["removed"]);
 }
+
+/// A double click collects through `can_take_item_for_pick_all`: the slot that the logic
+/// excludes keeps its stack.
+#[test]
+fn a_double_click_skips_the_slot_that_the_logic_excludes() {
+    struct ResultSlot;
+    impl MenuLogic for ResultSlot {
+        fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot: usize) -> bool {
+            slot != 1
+        }
+    }
+    let _serial = support::serial();
+    let player = support::player("DoubleClicker");
+    let definition =
+        MenuDefinition::vanilla(WindowType::Hopper, title(), SlotSource::MenuContainer).unwrap();
+    let menu = open_menu(&player, definition, Arc::new(ResultSlot)).unwrap();
+    menu.with(|menu| {
+        menu.set_item(1, stack(10, &Item::STONE));
+        menu.set_item(2, stack(10, &Item::STONE));
+        menu.set_carried(stack(1, &Item::STONE));
+    });
+    click(&player, menu.sync_id(), 0, 0, SlotActionType::PickupAll);
+    assert_eq!(cursor(&player).item_count, 11);
+    assert_eq!(menu.with(|menu| menu.get_item(1)).item_count, 10);
+    assert!(menu.with(|menu| menu.get_item(2)).is_empty());
+}

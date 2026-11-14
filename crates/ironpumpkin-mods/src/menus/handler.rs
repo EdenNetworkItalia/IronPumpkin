@@ -587,6 +587,10 @@ impl ScreenHandler for ModMenu {
         logic.quick_move_stack(&mut MenuAccess::new(self), player, slot)
     }
 
+    fn can_take_item_for_pick_all(&self, carried: &ItemStack, slot_index: usize) -> bool {
+        self.logic.can_take_item_for_pick_all(carried, slot_index)
+    }
+
     fn on_button_click(&mut self, player: &dyn InventoryPlayer, button_id: i32) -> bool {
         let Some(player) = as_player(player) else {
             return false;
