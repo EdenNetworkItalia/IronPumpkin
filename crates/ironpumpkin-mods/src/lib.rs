@@ -83,6 +83,7 @@ pub mod data_components;
 pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
+pub mod menus;
 pub mod mob_effects;
 pub mod mod_list;
 pub mod mods_toml;

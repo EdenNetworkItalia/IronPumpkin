@@ -13,6 +13,7 @@ pumpkin-data.workspace = true
 pumpkin-inventory.workspace = true
 pumpkin-macros.workspace = true
 pumpkin-nbt.workspace = true
+pumpkin-protocol.workspace = true
 pumpkin-util.workspace = true
 pumpkin-world.workspace = true
 rustc-hash.workspace = true
@@ -28,7 +29,6 @@ arc-swap.workspace = true
 criterion.workspace = true
 pumpkin-config.workspace = true
 pumpkin-inventory.workspace = true
-pumpkin-protocol.workspace = true
 pumpkin-wasm-host = { workspace = true, features = ["v0_2"] }
 wasi-preview1-component-adapter-provider = "=50.0.1"
 wit-component = { version = "=0.262.0", default-features = false }
