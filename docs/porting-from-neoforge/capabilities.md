@@ -104,9 +104,15 @@ The event fires once per process, after `dedicated_server_setup` and before `Ext
 
 A transaction belongs to the thread that opened it, and each thread has one root at a time. `Transaction::open_root` fails with `TransactionError::RootAlreadyOpen` while a root is open. `Transaction` is not `Send`, so it cannot live across an `.await` in a Pumpkin event handler: open it, do the transfer, and commit or drop it in one synchronous block. A nested transaction borrows its parent, so the parent is unusable until the nested one closes.
 
-A handler of your own makes its state transactional with a journal. Implement `Journal` (`create_snapshot`, `revert_to_snapshot`, and `on_root_commit` to mark a block dirty), wrap the state in `SnapshotJournal::new`, and call `update_snapshots(tx)` before each change. `ItemStacksResourceHandler`, `FluidStacksResourceHandler` and `SimpleEnergyHandler` do this already.
+Worlds and block entities tick in parallel, so roots of two threads can reach the same storage. A journal belongs to the root that touched it first until that root closes, on commit, on abort and on a panic. A transaction of another thread transfers nothing in it meanwhile: `insert` and `extract` return 0, and the caller tries again on a later tick, as a hopper does when the target is full. Nothing blocks.
 
-The handlers over Pumpkin inventories write to the inventory at once and roll back on an abort. Worlds tick in parallel, so a rollback restores a slot only while it still holds what the transaction wrote. When another thread changed the slot, the rollback keeps that change and logs a warning. NeoForge restores the slot without this check.
+A handler of your own makes its state transactional with a journal. Implement `Journal` (`create_snapshot`, `revert_to_snapshot`, and `on_root_commit` to mark a block dirty) and wrap the state in `SnapshotJournal::new`. In `insert` and `extract`, call `claim(tx)` before you read the state that the change depends on, and `update_snapshots(tx)` before each change. Both return `false` while another root owns the journal: then return 0 and change nothing. `ItemStacksResourceHandler`, `FluidStacksResourceHandler` and `SimpleEnergyHandler` do this already, with one journal per index, and `with_on_contents_changed(|index, previous| ..)` is `onContentsChanged`.
+
+A panic in a journal callback does not stop the other callbacks of the transaction: every journal reverts or commits, and the first panic goes on after the thread is consistent again.
+
+The handlers over Pumpkin inventories write to the inventory at once and roll back on an abort. Code outside the transaction, such as a Pumpkin hopper or a player click, can change the slot in between, so a rollback adds or takes back only the amount that the transaction moved. When another writer replaced the item, the rollback keeps that item and logs a warning. NeoForge restores the saved stack instead.
+
+The wrappers apply the vanilla container rules (`canPlaceItem`, `getMaxStackSize`, the faces of `WorldlyContainer`): one potion input per brewing stand bottle slot and brewing reagents on top, one record in a jukebox, one book per chiseled bookshelf slot, the even fill of a crafter. A transactional write does not trigger the side effects of `setItem` early, as `insideTransaction` does on NeoForge: the cooking progress of a furnace resets at the root commit, only when the input became empty or was empty, and an insert into an empty hopper sets its cooldown inside the transaction. The Pumpkin jukebox and chiseled bookshelf have no side effect in `set_stack`, so a record that a capability inserts does not start a song and a book does not show on the shelf, as with a Pumpkin hopper.
 
 ## Built-in capabilities and vanilla providers
 
@@ -123,7 +129,7 @@ A hopper or a dropper that faces a block without a vanilla inventory uses the `i
 
 ## Caches
 
-`BlockCapabilityCache::create_with_listener(cap, &world, pos, context, is_valid, listener)` keeps the handler until the host invalidates the position. The host does so when a block entity is placed or removed, when a chest changes its type and when the chunk loads or unloads. The listener runs only when the cache was read since the last invalidation. A block without a block entity calls `invalidate_capabilities(&world, &pos)` itself when its handler changes. After `is_valid` returns `false`, `get_capability` returns `Err(CapabilityError::InvalidCache)`.
+`BlockCapabilityCache::create_with_listener(cap, &world, pos, context, is_valid, listener)` keeps the handler until the host invalidates the position. The host does so when a block entity is placed or removed, when a chest changes its type and when the chunk loads or unloads. A chunk load or unload invalidates at the next tick of the world, where Pumpkin collects its chunk changes. The listener runs only when the cache was read since the last invalidation. A block without a block entity calls `invalidate_capabilities(&world, &pos)` itself when its handler changes. After `is_valid` returns `false`, `get_capability` returns `Err(CapabilityError::InvalidCache)`.
 
 ## Do and don't
 
@@ -137,6 +143,7 @@ A hopper or a dropper that faces a block without a vanilla inventory uses the `i
 **Don't**
 
 - Do not keep a `Transaction` across an `.await`. It does not compile.
+- Do not ignore a `false` from `claim` or `update_snapshots`: another thread owns the journal, and a change now would be lost on its abort.
 - Do not open a root transaction inside a handler call: use `Transaction::open(Some(tx))` on the transaction you got.
 - Do not cache a handler from `get_capability` across ticks without a `BlockCapabilityCache`: the block can change.
 - Do not expect `item::ENTITY_AUTOMATION` or the item providers of shulker boxes and bundles yet.

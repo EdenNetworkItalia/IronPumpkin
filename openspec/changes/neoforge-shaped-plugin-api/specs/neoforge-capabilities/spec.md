@@ -46,9 +46,13 @@ The built-in item capabilities SHALL return a handler over the Pumpkin block ent
 - **WHEN** a mod extracts 10 items in a transaction and drops it without commit
 - **THEN** the inventory still holds the 10 items (tests `an_aborted_extract_leaves_the_chest_untouched`, `a_mod_handler_rolls_back_with_its_root_transaction`)
 
+#### Scenario: Two threads on one journal
+- **WHEN** a transaction of thread A changed an index and thread B inserts into or extracts from that index before A's root closes
+- **THEN** B transfers nothing and A's commit or abort stays intact (test `a_journal_owned_by_another_thread_transfers_nothing`)
+
 #### Scenario: Concurrent write
 - **WHEN** another thread writes a slot while a transaction that changed it is open, and the transaction aborts
-- **THEN** the slot keeps the other write, because a rollback restores a Pumpkin inventory slot only while it holds what the transaction wrote (test `a_rollback_keeps_a_slot_that_another_write_changed`)
+- **THEN** the rollback gives back only what the transaction moved, and keeps the slot when the other write replaced its item (tests `an_aborted_extract_after_another_write_gives_back_its_items`, `a_rollback_keeps_a_slot_that_another_write_changed`)
 
 ### Requirement: Cache invalidation
 A `BlockCapabilityCache` that was read since its last invalidation SHALL call its invalidation listener when a block entity at its position is placed or removed, a chest there changes its type, its chunk loads or unloads, or a mod calls `invalidate_capabilities` for the position. Status: supported (task 2.7, #153, test `a_chunk_unload_invalidates_its_caches`).
