@@ -12,7 +12,7 @@ use pumpkin_util::text::TextComponent;
 use super::{
     ContainerData, MenuDefinition, MenuError, SimpleContainerData, SlotDefinition, SlotSource,
     handler::HandlerInventory,
-    layout::{VanillaLayout, vanilla_layout},
+    layout::{VanillaLayout, storage_size, vanilla_layout},
 };
 use crate::transfer::{ItemResource, ItemStacksResourceHandler, ResourceHandler, Transaction};
 
@@ -33,19 +33,45 @@ fn redstone_handler(amount: u32) -> Arc<ItemStacksResourceHandler> {
     handler
 }
 
-/// The counts that the vanilla 26.3 menu classes build on the client.
+/// The counts that the vanilla 26.3 menu classes build on the client, for every menu type.
 #[test]
 fn the_layout_table_has_the_vanilla_counts() {
-    let layout = |slots, data_slots| VanillaLayout { slots, data_slots };
-    assert_eq!(vanilla_layout(WindowType::Generic9x3), layout(63, 0));
-    assert_eq!(vanilla_layout(WindowType::Generic9x6), layout(90, 0));
-    assert_eq!(vanilla_layout(WindowType::Crafter3x3), layout(46, 10));
-    assert_eq!(vanilla_layout(WindowType::Furnace), layout(39, 4));
-    assert_eq!(vanilla_layout(WindowType::BrewingStand), layout(41, 4));
-    assert_eq!(vanilla_layout(WindowType::Enchantment), layout(38, 10));
-    assert_eq!(vanilla_layout(WindowType::Beacon), layout(37, 3));
-    assert_eq!(vanilla_layout(WindowType::Lectern), layout(1, 1));
-    assert_eq!(vanilla_layout(WindowType::Smithing), layout(40, 1));
+    use WindowType as W;
+    let table = [
+        (W::Generic9x1, 45, 0, Some(9)),
+        (W::Generic9x2, 54, 0, Some(18)),
+        (W::Generic9x3, 63, 0, Some(27)),
+        (W::Generic9x4, 72, 0, Some(36)),
+        (W::Generic9x5, 81, 0, Some(45)),
+        (W::Generic9x6, 90, 0, Some(54)),
+        (W::Generic3x3, 45, 0, Some(9)),
+        (W::Crafter3x3, 46, 10, None),
+        (W::Anvil, 39, 1, None),
+        (W::Beacon, 37, 3, None),
+        (W::BlastFurnace, 39, 4, None),
+        (W::BrewingStand, 41, 4, None),
+        (W::Crafting, 46, 0, None),
+        (W::Enchantment, 38, 10, None),
+        (W::Furnace, 39, 4, None),
+        (W::Grindstone, 39, 0, None),
+        (W::Hopper, 41, 0, Some(5)),
+        (W::Lectern, 1, 1, None),
+        (W::Loom, 40, 1, None),
+        (W::Merchant, 39, 0, None),
+        (W::ShulkerBox, 63, 0, Some(27)),
+        (W::Smithing, 40, 1, None),
+        (W::Smoker, 39, 4, None),
+        (W::CartographyTable, 39, 0, None),
+        (W::Stonecutter, 38, 1, None),
+    ];
+    for (window_type, slots, data_slots, storage) in table {
+        assert_eq!(
+            vanilla_layout(window_type),
+            VanillaLayout { slots, data_slots },
+            "{window_type:?}"
+        );
+        assert_eq!(storage_size(window_type), storage, "{window_type:?}");
+    }
 }
 
 #[test]

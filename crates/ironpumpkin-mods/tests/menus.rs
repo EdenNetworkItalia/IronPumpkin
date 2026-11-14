@@ -14,7 +14,7 @@ use std::{
     marker::PhantomData,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
     time::Duration,
@@ -25,7 +25,7 @@ use ironpumpkin_mods::{
     menus::{
         ContainerData, ContainerInput, MenuAccess, MenuDefinition, MenuError, MenuLogic,
         SimpleContainerData, SlotDefinition, SlotSource, VanillaMenuLogic, get_open_menu,
-        open_menu,
+        open_menu, still_valid_at,
     },
     pumpkin_core::{
         entity::player::Player,
@@ -34,15 +34,19 @@ use ironpumpkin_mods::{
         server::Server,
     },
     pumpkin_data::{
-        item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION, screen::WindowType,
+        Block, item::Item, item_stack::ItemStack, packet::CURRENT_MC_VERSION, screen::WindowType,
     },
-    pumpkin_util::{GameMode, text::TextComponent},
+    pumpkin_util::{
+        GameMode,
+        math::{position::BlockPos, vector3::Vector3},
+        text::TextComponent,
+    },
     transfer::{
         EnergyHandler, ItemResource, ItemStacksResourceHandler, ResourceHandler,
         SimpleEnergyHandler, Transaction, TransactionContext,
     },
 };
-use pumpkin_inventory::{Inventory, SimpleInventory, screen_handler::ScreenHandler};
+use pumpkin_inventory::{Clearable, Inventory, SimpleInventory, screen_handler::ScreenHandler};
 use pumpkin_protocol::{
     codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
     java::{
@@ -368,10 +372,11 @@ fn shift_click_moves_the_stack_into_the_machine() {
         0,
         SlotActionType::QuickMove,
     );
+    // Before `Menu::with`, which calls `slots_changed` for a change it did not see.
+    assert_eq!(entries(&machine.log), ["changed 40"]);
     let menu = get_open_menu(&player).unwrap();
     assert_eq!(menu.with(|menu| menu.get_item(0)).item_count, 40);
     assert!(player.inventory.get_stack(0).is_empty());
-    assert_eq!(entries(&machine.log), ["changed 40"]);
 }
 
 /// Scenario "Ghost slot": `clicked` returns true after it stores the filter, so the cursor keeps
@@ -1004,4 +1009,257 @@ fn a_double_click_skips_the_slot_that_the_logic_excludes() {
     assert_eq!(cursor(&player).item_count, 11);
     assert_eq!(menu.with(|menu| menu.get_item(1)).item_count, 10);
     assert!(menu.with(|menu| menu.get_item(2)).is_empty());
+}
+
+/// Reads packets until a data slot packet of `property` with a value other than 0.
+fn next_data_value<R: tokio::io::AsyncRead + Unpin>(
+    peer: &mut TCPNetworkDecoder<R>,
+    property: i16,
+) -> i16 {
+    support::RUNTIME.block_on(async {
+        loop {
+            let packet = tokio::time::timeout(Duration::from_secs(10), peer.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            if packet.id == CSetContainerProperty::to_id(CURRENT_MC_VERSION) {
+                let mut body = &packet.payload[..];
+                let _window = body.get_var_int().unwrap();
+                if body.get_i16_be().unwrap() == property {
+                    let value = body.get_i16_be().unwrap();
+                    if value != 0 {
+                        break value;
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// A button that `click_button` accepts broadcasts the changes, with no `broadcast_changes`
+/// call of the mod.
+#[test]
+fn an_accepted_button_broadcasts_the_changes() {
+    let _serial = support::serial();
+    let (player, peer) = support::player_with_peer("ButtonViewer", NegotiatedState::default());
+    let mut peer = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
+    player
+        .screen_handler_sync_handler
+        .store_player(player.clone());
+    let (_, _, sync_id) = open_machine(&player);
+    press_button(&player, sync_id, 5);
+    assert_eq!(next_data_value(&mut peer, 0), 5);
+}
+
+/// `still_valid` returning false closes the menu at the next player tick.
+#[test]
+fn an_invalid_menu_closes_on_the_tick() {
+    struct Expiring {
+        valid: AtomicBool,
+        log: Log,
+    }
+    impl MenuLogic for Expiring {
+        fn still_valid(&self, _player: &Player) -> bool {
+            self.valid.load(Ordering::Relaxed)
+        }
+
+        fn removed(&self, _menu: &mut MenuAccess<'_>, _player: &Player) {
+            push(&self.log, "removed");
+        }
+    }
+    let _serial = support::serial();
+    let player = support::player("ExpiringViewer");
+    let logic = Arc::new(Expiring {
+        valid: AtomicBool::new(true),
+        log: Arc::default(),
+    });
+    let definition =
+        MenuDefinition::vanilla(WindowType::Hopper, title(), SlotSource::MenuContainer).unwrap();
+    let menu = open_menu(&player, definition, logic.clone()).unwrap();
+    player.tick(support::server());
+    assert!(menu.is_open());
+    logic.valid.store(false, Ordering::Relaxed);
+    player.tick(support::server());
+    assert!(!menu.is_open());
+    assert_eq!(entries(&logic.log), ["removed"]);
+}
+
+/// `still_valid_at` is the vanilla check: the same block, and the eyes within the block
+/// interaction range (4.5) plus 4 of the block box.
+#[test]
+fn still_valid_at_checks_the_block_and_the_range() {
+    let _serial = support::serial();
+    let player = support::player("RangeChecker");
+    // An unloaded chunk reads as air.
+    let pos = BlockPos::new(100_000, 65, 100_000);
+    let at = |dx: f64| {
+        player
+            .living_entity
+            .entity
+            .set_pos(Vector3::new(100_001.0 + dx, 64.0, 100_000.5));
+    };
+    at(8.4);
+    assert!(still_valid_at(&player, &pos, &Block::AIR));
+    assert!(!still_valid_at(&player, &pos, &Block::STONE));
+    at(8.6);
+    assert!(!still_valid_at(&player, &pos, &Block::AIR));
+}
+
+/// A container that counts `mark_dirty`, `startOpen` and `stopOpen`.
+struct Counting {
+    items: SimpleInventory,
+    dirty: AtomicUsize,
+    opens: AtomicUsize,
+    closes: AtomicUsize,
+}
+
+impl Counting {
+    fn new(size: usize) -> Arc<Self> {
+        Arc::new(Self {
+            items: SimpleInventory::new(size),
+            dirty: AtomicUsize::new(0),
+            opens: AtomicUsize::new(0),
+            closes: AtomicUsize::new(0),
+        })
+    }
+}
+
+impl Clearable for Counting {
+    fn clear(&self) {
+        self.items.clear();
+    }
+}
+
+impl Inventory for Counting {
+    fn size(&self) -> usize {
+        self.items.size()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    fn get_stack(&self, slot: usize) -> ItemStack {
+        self.items.get_stack(slot)
+    }
+
+    fn remove_stack(&self, slot: usize) -> ItemStack {
+        self.items.remove_stack(slot)
+    }
+
+    fn remove_stack_specific(&self, slot: usize, amount: u8) -> ItemStack {
+        self.items.remove_stack_specific(slot, amount)
+    }
+
+    fn set_stack(&self, slot: usize, stack: ItemStack) {
+        self.items.set_stack(slot, stack);
+    }
+
+    fn on_open(&self) {
+        self.opens.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn on_close(&self) {
+        self.closes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn mark_dirty(&self) {
+        self.dirty.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// The `mark_dirty` count of a shift-click of 10 stone out of a vanilla storage menu.
+fn dirty_after_shift_click(name: &str, window_type: WindowType) -> usize {
+    let player = support::player(name);
+    let container = Counting::new(9);
+    container.set_stack(0, stack(10, &Item::STONE));
+    let source: Arc<dyn Inventory> = container.clone();
+    let definition =
+        MenuDefinition::vanilla(window_type, title(), SlotSource::Container(source)).unwrap();
+    let menu = open_menu(&player, definition, Arc::new(VanillaMenuLogic)).unwrap();
+    click(&player, menu.sync_id(), 0, 0, SlotActionType::QuickMove);
+    assert!(container.get_stack(0).is_empty());
+    assert_eq!(player_count(&player, &Item::STONE), 10);
+    container.dirty.load(Ordering::Relaxed)
+}
+
+/// `DispenserMenu#quickMoveStack` calls `onTake` after a move, `ChestMenu` does not.
+#[test]
+fn the_dispenser_shift_click_calls_on_take() {
+    let _serial = support::serial();
+    let chest = dirty_after_shift_click("ChestShifter", WindowType::Generic9x1);
+    let dispenser = dirty_after_shift_click("DispenserShifter", WindowType::Generic3x3);
+    assert_eq!(dispenser, chest + 1);
+}
+
+/// A vanilla storage menu calls `startOpen` and `stopOpen` of its container source; a custom
+/// definition does not.
+#[test]
+fn a_vanilla_storage_menu_opens_and_closes_its_container() {
+    let _serial = support::serial();
+    let player = support::player("ContainerOpener");
+    let container = Counting::new(5);
+    let source: Arc<dyn Inventory> = container.clone();
+    let definition = MenuDefinition::vanilla(
+        WindowType::Hopper,
+        title(),
+        SlotSource::Container(source.clone()),
+    )
+    .unwrap();
+    open_menu(&player, definition, Arc::new(VanillaMenuLogic)).unwrap();
+    assert_eq!(container.opens.load(Ordering::Relaxed), 1);
+    finish_within(&player, |player| player.close_handled_screen());
+    assert_eq!(container.closes.load(Ordering::Relaxed), 1);
+
+    let mut definition = MenuDefinition::new(WindowType::Hopper, title());
+    for index in 0..5 {
+        definition = definition.slot(SlotDefinition::new(
+            SlotSource::Container(source.clone()),
+            index,
+        ));
+    }
+    open_menu(
+        &player,
+        definition.player_inventory(),
+        Arc::new(VanillaMenuLogic),
+    )
+    .unwrap();
+    finish_within(&player, |player| player.close_handled_screen());
+    assert_eq!(container.opens.load(Ordering::Relaxed), 1);
+    assert_eq!(container.closes.load(Ordering::Relaxed), 1);
+}
+
+/// `ResourceHandlerSlot#mayPickup` simulates one extract: a double click on a handler slot that
+/// refuses it collects from the other slots, and on a handler slot that allows it collects
+/// nothing and leaves the handler unchanged.
+#[test]
+fn may_pickup_simulates_one_extract() {
+    let _serial = support::serial();
+    for (name, max_extract, cursor_after, player_after) in
+        [("StuckPicker", 0, 11, 0), ("FreePicker", u32::MAX, 1, 10)]
+    {
+        let player = support::player(name);
+        let log: Log = Arc::default();
+        let mut handler = Recording::new(ItemStacksResourceHandler::new(9, 64), &log);
+        handler.max_extract = max_extract;
+        handler.fill(0, &Item::REDSTONE, 5);
+        let handler = Arc::new(handler);
+        let sync_id = handler_menu(&player, &handler);
+        player.inventory.set_stack(0, stack(10, &Item::REDSTONE));
+        get_open_menu(&player)
+            .unwrap()
+            .with(|menu| menu.set_carried(stack(1, &Item::REDSTONE)));
+        click(&player, sync_id, 0, 0, SlotActionType::PickupAll);
+        assert_eq!(cursor(&player).item_count, cursor_after, "{name}");
+        assert_eq!(
+            player_count(&player, &Item::REDSTONE),
+            player_after,
+            "{name}"
+        );
+        assert_eq!(handler.get_amount_as_long(0), 5, "{name}");
+    }
 }
