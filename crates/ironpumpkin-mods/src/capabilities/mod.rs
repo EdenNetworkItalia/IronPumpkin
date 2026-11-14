@@ -1217,6 +1217,13 @@ pub(crate) fn post(mods: &[LoadedMod<'_>]) -> Result<(), String> {
     result
 }
 
+/// Runs the `RegisterCapabilitiesEvent` with no mod, as a server with no capability provider
+/// does: the engine hooks, the vanilla providers and the freeze. For the benches.
+#[doc(hidden)]
+pub fn install_for_bench() {
+    let _ = post(&[]);
+}
+
 /// [`post`] without the host, the engine hooks and the freeze, for the lifecycle tests.
 #[cfg(test)]
 pub(crate) fn post_unfrozen(mods: &[LoadedMod<'_>]) -> Result<(), String> {

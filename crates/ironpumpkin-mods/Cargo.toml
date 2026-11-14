@@ -37,5 +37,9 @@ uuid.workspace = true
 name = "transfer"
 harness = false
 
+[[bench]]
+name = "hopper_tick"
+harness = false
+
 [lints]
 workspace = true
