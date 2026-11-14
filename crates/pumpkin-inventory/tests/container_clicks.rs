@@ -179,12 +179,14 @@ impl Slot for TestSlot {
 
 struct TestHandler {
     behaviour: ScreenHandlerBehaviour,
+    refused_pick_all: Option<usize>,
 }
 
 impl TestHandler {
     fn new(slots: &[Arc<TestSlot>]) -> Self {
         let mut handler = Self {
             behaviour: ScreenHandlerBehaviour::new(1, Some(WindowType::Generic9x1)),
+            refused_pick_all: None,
         };
         for slot in slots {
             handler.add_slot(slot.clone());
@@ -208,6 +210,10 @@ impl ScreenHandler for TestHandler {
 
     fn get_behaviour_mut(&mut self) -> &mut ScreenHandlerBehaviour {
         &mut self.behaviour
+    }
+
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot_index: usize) -> bool {
+        self.refused_pick_all != Some(slot_index)
     }
 
     fn quick_move(&mut self, _player: &dyn InventoryPlayer, _slot_index: i32) -> ItemStack {
@@ -255,4 +261,76 @@ fn a_single_throw_runs_on_take_once() {
     assert_eq!(slots[0].takes.load(Ordering::Relaxed), 1);
     assert_eq!(inventory.get_stack(0).item_count, 9);
     assert_eq!(player.drops.lock().unwrap()[0].item_count, 1);
+}
+
+fn pick_all(
+    stacks: &[ItemStack],
+    carried: ItemStack,
+    clicked: i32,
+    button: i32,
+    refused: Option<usize>,
+) -> (Vec<u8>, u8) {
+    let (inventory, slots) = slots(stacks.len());
+    for (index, stack) in stacks.iter().enumerate() {
+        inventory.set_stack(index, stack.clone());
+    }
+    let player = TestPlayer::new();
+    let mut handler = TestHandler::new(&slots);
+    handler.refused_pick_all = refused;
+    *handler.behaviour.cursor_stack.lock().unwrap() = carried;
+    handler.internal_on_slot_click(clicked, button, SlotActionType::PickupAll, &player);
+    let counts = (0..stacks.len())
+        .map(|index| inventory.get_stack(index).item_count)
+        .collect();
+    let cursor = handler.behaviour.cursor_stack.lock().unwrap().item_count;
+    (counts, cursor)
+}
+
+fn stone(count: u8) -> ItemStack {
+    ItemStack::new(count, &Item::STONE)
+}
+
+fn pearls(count: u8) -> ItemStack {
+    ItemStack::new(count, &Item::ENDER_PEARL)
+}
+
+/// The first pass skips full stacks, so a double click empties the partial stacks first.
+#[test]
+fn pick_all_takes_partial_stacks_before_full_ones() {
+    let stacks = [ItemStack::EMPTY.clone(), stone(64), stone(10)];
+    assert_eq!(
+        pick_all(&stacks, stone(1), 0, 0, None),
+        (vec![0, 11, 0], 64)
+    );
+}
+
+/// Button 1 collects from the end.
+#[test]
+fn pick_all_with_button_1_collects_from_the_end() {
+    let stacks = [ItemStack::EMPTY.clone(), pearls(5), pearls(5)];
+    assert_eq!(
+        pick_all(&stacks, pearls(10), 0, 1, None),
+        (vec![0, 4, 0], 16)
+    );
+    assert_eq!(
+        pick_all(&stacks, pearls(10), 0, 0, None),
+        (vec![0, 0, 4], 16)
+    );
+}
+
+/// A double click on a slot with an item that the player can take collects nothing.
+#[test]
+fn pick_all_on_a_takeable_stack_collects_nothing() {
+    let stacks = [stone(3), stone(10)];
+    assert_eq!(pick_all(&stacks, stone(1), 0, 0, None), (vec![3, 10], 1));
+}
+
+/// `canTakeItemForPickAll` excludes a slot, as vanilla menus exclude their result slot.
+#[test]
+fn pick_all_skips_a_slot_that_the_menu_excludes() {
+    let stacks = [ItemStack::EMPTY.clone(), stone(10), stone(10)];
+    assert_eq!(
+        pick_all(&stacks, stone(1), 0, 0, Some(1)),
+        (vec![0, 10, 0], 11)
+    );
 }

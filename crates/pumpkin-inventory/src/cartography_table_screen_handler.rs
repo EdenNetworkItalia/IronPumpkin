@@ -118,6 +118,9 @@ impl CartographyTableScreenHandler {
 }
 
 impl ScreenHandler for CartographyTableScreenHandler {
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot_index: usize) -> bool {
+        slot_index != Self::RESULT_SLOT
+    }
     fn get_behaviour(&self) -> &ScreenHandlerBehaviour {
         &self.behaviour
     }

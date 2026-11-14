@@ -192,6 +192,9 @@ impl SmithingTableScreenHandler {
 }
 
 impl ScreenHandler for SmithingTableScreenHandler {
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot_index: usize) -> bool {
+        slot_index != 3
+    }
     fn get_behaviour(&self) -> &ScreenHandlerBehaviour {
         &self.behaviour
     }
