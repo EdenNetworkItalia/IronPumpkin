@@ -2,6 +2,7 @@
 //! `AbstractContainerMenu#doClick` (26.3).
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "a test fails on the first missing value"
 )]
 
