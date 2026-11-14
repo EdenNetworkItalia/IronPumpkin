@@ -94,8 +94,17 @@ impl VoxelShape {
 
     /// One box in block units, `0..1` for one block (`Shapes.box`). A box thinner than vanilla
     /// `Shapes.EPSILON` on an axis gives the empty shape.
+    ///
+    /// # Panics
+    ///
+    /// When a min value is greater than its max value, as vanilla `Shapes.box` throws an
+    /// `IllegalArgumentException`.
     #[must_use]
     pub fn cuboid(min_x: f64, min_y: f64, min_z: f64, max_x: f64, max_y: f64, max_z: f64) -> Self {
+        assert!(
+            min_x <= max_x && min_y <= max_y && min_z <= max_z,
+            "The min values need to be smaller or equals to the max values"
+        );
         Self::from_boxes([BoundingBox::new(
             Vector3::new(min_x, min_y, min_z),
             Vector3::new(max_x, max_y, max_z),
@@ -569,6 +578,12 @@ mod tests {
         let gate = Block::OAK_FENCE_GATE.default_state;
         assert!(!gate.shape(ShapeKind::BlockSupport).is_empty());
         assert!(!gate.is_face_sturdy(BlockDirection::East, SupportType::Center));
+    }
+
+    #[test]
+    #[should_panic(expected = "The min values need to be smaller or equals to the max values")]
+    fn an_inverted_box_panics_like_vanilla() {
+        let _ = VoxelShape::cuboid(0.5, 0.0, 0.0, 0.25, 1.0, 1.0);
     }
 
     #[test]
