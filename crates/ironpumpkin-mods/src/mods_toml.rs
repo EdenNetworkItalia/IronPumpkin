@@ -7,8 +7,10 @@
 //!
 //! The file keys `properties` and `issueTrackerURL`, the `[[mods]]` keys `issueTrackerURL` and
 //! `modUrl`, the `[modproperties.<modId>]` table and the dependency key `referralUrl` are kept on
-//! the [`ModInfo`]. An URL that is blank or holds `myurl.me` or `example.invalid` is absent, as
-//! in FML `StringUtils.toURL`.
+//! the [`ModInfo`]. The file `issueTrackerURL`, `modUrl` and `referralUrl` are URLs: a value that
+//! is blank or holds `myurl.me` or `example.invalid` is absent, as in FML `StringUtils.toURL`, and
+//! a value without a scheme stops the load. The `[[mods]]` `issueTrackerURL` is a plain string,
+//! as FML does not parse it.
 //!
 //! The host does not read the other keys: `modLoader`, `loaderVersion`, `showAsResourcePack`,
 //! `showAsDataPack`, `services`, `[[mixins]]`, `[[accessTransformers]]`; in a `[[mods]]` entry
@@ -220,7 +222,7 @@ pub fn parse(text: &str, id: &str, jar_version: &str) -> Result<ModInfo, String>
     };
     Ok(ModInfo {
         mod_url: url(entry, "modUrl")?,
-        issue_tracker_url: url(entry, "issueTrackerURL")?,
+        issue_tracker_url: string(entry, "issueTrackerURL")?.map(str::to_owned),
         file_issue_tracker_url: url(&file, "issueTrackerURL")?,
         mod_properties: sub_table(&file, "modproperties", &mod_id)?,
         file_properties: match file.get("properties") {
@@ -490,6 +492,14 @@ mod tests {
         assert_eq!(both.issues_url(), Some("https://mod.test/issues"));
         let none = parse("license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\n", "ok", "1").unwrap();
         assert_eq!(none.issues_url(), None);
+        // FML never parses the mod-level key as a URL.
+        let plain = parse(
+            "license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\nissueTrackerURL = \"no scheme\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(plain.issues_url(), Some("no scheme"));
     }
 
     #[test]
