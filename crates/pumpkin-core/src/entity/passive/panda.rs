@@ -1177,6 +1177,12 @@ mod tests {
         stone_floor(&world);
         let hit = spawn_panda(&world, 0.5, 0.5);
         let pricked = spawn_panda(&world, 6.5, 0.5);
+        // A sitting panda may still start a random stroll, as in vanilla, and the stroll path
+        // would fail the check that sitting ends the panic path in about 2% of the runs.
+        pricked
+            .mob_entity
+            .goals_selector
+            .remove_goal::<WanderAroundGoal>(pricked.as_ref());
         hit.damage(hit.as_ref(), 1.0, DamageType::MOB_ATTACK);
         pricked.damage(pricked.as_ref(), 1.0, DamageType::CACTUS);
 
