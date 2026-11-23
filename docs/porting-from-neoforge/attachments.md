@@ -16,9 +16,8 @@ In IronPumpkin, the `attachments` module of `ironpumpkin-mods` has the same type
 | **Serializer** | `IAttachmentSerializer` over `ValueInput` and `ValueOutput`, or a `MapCodec` | `AttachmentSerializer` over the NBT compound of the attachment, `NbtSerializer::new(read, write)`, or `serialize_codec` and `serialize_codec_if` for a value whose `pumpkin_codecs` codec encodes a compound |
 | **Sync** | `sync(StreamCodec)`, `sync(predicate, StreamCodec)`, `sync(AttachmentSyncHandler)` | `sync_with(encode)`, `sync_to(predicate, encode)`, `sync(handler)`. The encoder writes the bytes that the stream codec of the client reads. |
 | **Holders** | `entity`, `player`, `blockEntity`, `chunk`, `level` | `entity` (players through `player.get_entity()`), `attachments::block_entity(&world, &block_entity)`, `attachments::chunk(&world, chunk_pos)`, `world`. Each implements `AttachmentAccess`. |
-| **Read** | `getData` returns the stored object | `get_data` returns a clone. Change a value in place with `with_data(ty, \|value\| ..)`, or store an `Arc` with interior mutability. |
+| **Read** | `getData` returns the stored object | `get_data` returns a clone. Change a value in place with `with_data(ty, \|value\| ..)`, which also marks a block entity or a chunk changed, or store an `Arc` with interior mutability. |
 | **Existing value** | `getExistingData`, `getExistingDataOrNull` | `get_existing_data`, an `Option` |
-| **Sync without a handler** | `syncData` does nothing | `sync_data` fails with `AttachmentError::NotSynced` |
 
 ---
 
@@ -141,10 +140,12 @@ A key of an unknown type, a type without a serializer and a value that fails to 
 Pumpkin keeps the same `Player` when it respawns, where NeoForge creates a new `ServerPlayer` and fires `PlayerEvent.Clone`. IronPumpkin applies the copy rules of that event to the player:
 
 - After death, only the types with copy on death keep their value.
-- When a player leaves the End, every type with a serializer keeps its value.
+- When a player leaves the End through the exit portal, every type with a serializer keeps its value, as `PlayerList.respawn(player, true)` does after the credits.
 - A type without a serializer never survives a respawn.
 
-A value goes through the copy handler of its type, or else through a write and a read of its serializer, and a copy handler that returns `None` drops the value. The copy handler gets the player with its old attachments taken out, as NeoForge gives it the new player.
+A value goes through the copy handler of its type, or else through a write and a read of its serializer. A copy handler that returns `None` or panics drops only that value. The copy runs after `PlayerRespawnPositionEvent` and the change of world, so a handler of the respawn position sees every type. The copy handler gets the player with its old attachments taken out, as NeoForge gives it the new player.
+
+A mob that converts, such as a zombie that becomes a drowned, gives its copy-on-death types to the new mob before the new mob spawns, as `LivingConversionEvent.Post` does on NeoForge.
 
 ## Sync
 
@@ -155,16 +156,22 @@ A type with a sync handler gets an id in `neoforge:synced_attachment_types`, in 
 - a block entity: the players that got its chunk, at the start of the next world tick;
 - a level: the players of the level.
 
-A client that starts to see a holder gets its synced values: an entity when the client starts to track it, a player on join, respawn and dimension change, a level with the level info, and a chunk with its block entities when the chunk is sent. A vanilla client gets nothing.
+A client that starts to see a holder gets its synced values: an entity when the client starts to track it, a player on join, respawn and dimension change, a level with the level info, and a chunk with its block entities when the chunk is sent. A vanilla client gets nothing. `sync_data` on a type without a sync handler does nothing, as on NeoForge.
+
+## Locks and failures
+
+Each type of a holder has its own lock, and the `send_to_player` of a sync handler and a default constructor run with no lock held. A callback can read and write the other types of the same holder, so `entity.with_data(a, |a| *a += entity.get_data(b))` works. A use of the type of the running `with_data` on the same holder, or of the value that a serializer or a sync handler writes, panics with the name of the type, where a mutex would wait for ever.
+
+A serializer, a copy handler or a sync handler that panics loses only its own value: the holder logs the error and skips the value, as NeoForge catches the exception of one attachment.
 
 ## Differences from NeoForge
 
 - No `RegisterEvent` fires for `neoforge:attachment_types`: register the types in `init`.
-- `with_data` and the sync handlers run while the holder holds the lock of its attachments. They must not read or write the attachments of the same holder.
+- A name in the `minecraft` namespace fails with `AttachmentError::ReservedNamespace`. NeoForge accepts it.
+- A use of the type of the running `with_data` on the same holder panics.
 - The holder that a default constructor, a serializer or a copy handler gets for a chunk has the chunk data only: a chunk that loads from disk has no world yet.
 - A proto chunk has no holder, so there is nothing to copy when it becomes a full chunk.
 - The sync of a block entity sends no block update with it, and the payloads of a sent chunk and its block entities are not bundled.
-- The conversion of a mob, such as a zombie that becomes a drowned, does not copy attachments.
 - The Pump chunk format does not save chunk attachments. Use the Anvil or the Linear format.
 - A level that never saved an attachment writes no `data_attachments.dat`.
 
