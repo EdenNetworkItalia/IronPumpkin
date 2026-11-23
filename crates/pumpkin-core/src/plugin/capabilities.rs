@@ -12,9 +12,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use pumpkin_data::{
-    Block, BlockDirection, BlockState, block_properties::FacingHopper, item_stack::ItemStack,
-};
+use pumpkin_data::{Block, BlockDirection, BlockState, item_stack::ItemStack};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
 
 use crate::{block::entities::BlockEntity, world::World};
@@ -92,15 +90,4 @@ pub(crate) fn item_target(
     CAPABILITY_HOOKS
         .get()?
         .item_target(world, pos, side, block_entity, state)
-}
-
-/// The side a hopper facing `facing` pushes into.
-pub(crate) const fn hopper_direction(facing: FacingHopper) -> BlockDirection {
-    match facing {
-        FacingHopper::Down => BlockDirection::Down,
-        FacingHopper::North => BlockDirection::North,
-        FacingHopper::South => BlockDirection::South,
-        FacingHopper::West => BlockDirection::West,
-        FacingHopper::East => BlockDirection::East,
-    }
 }

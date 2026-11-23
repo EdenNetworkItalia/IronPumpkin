@@ -187,7 +187,12 @@ impl DragonFight {
             // damages locks the fight again, and a removal fires `EntityLeaveLevelEvent`.
             for crystal in summoned_with {
                 let pos = crystal.get_entity().pos.load();
-                world.explode(pos, 6.0, crate::world::ExplosionInteraction::None);
+                world.explode_from(
+                    crystal.as_ref(),
+                    pos,
+                    6.0,
+                    crate::world::ExplosionInteraction::None,
+                );
                 crystal.get_entity().remove();
             }
             return;

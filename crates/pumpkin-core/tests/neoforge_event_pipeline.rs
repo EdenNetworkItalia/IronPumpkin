@@ -197,6 +197,7 @@ fn block_hit(pos: BlockPos) -> ProjectileHit {
         face: BlockDirection::Up,
         hit_pos: pos.to_centered_f64(),
         normal: Vector3::new(0.0, 1.0, 0.0),
+        world_border: false,
     }
 }
 

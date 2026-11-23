@@ -1,5 +1,7 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
+use pumpkin_util::version::JavaMinecraftVersion;
+
 use crate::net::can_not_join;
 
 impl PendingConnection {
@@ -45,7 +47,7 @@ impl PendingConnection {
             return Some(PacketHandlerResult::Stop);
         };
 
-        if let Err(error) = self.set_encryption(&shared_secret) {
+        if let Err(error) = self.set_encryption(&shared_secret).await {
             self.kick(TextComponent::text(error.to_string())).await;
             return Some(PacketHandlerResult::Stop);
         }
@@ -92,6 +94,9 @@ impl PendingConnection {
     }
 
     pub(super) async fn enable_compression(&mut self, server: &Server) {
+        if self.version.load() < JavaMinecraftVersion::V_1_8 {
+            return;
+        }
         let compression = server
             .advanced_config
             .networking
@@ -149,6 +154,22 @@ impl PendingConnection {
         );
         self.send_packet_now(&packet).await;
         self.login_success_sent = true;
+        // Clients before 1.20.2 have no configuration state and enter play right away.
+        if self.version.load() < JavaMinecraftVersion::V_1_20_2 {
+            self.connection_state.store(ConnectionState::Play);
+            if let Some(reason) = can_not_join(profile, &self.address, server).await {
+                self.kick(reason).await;
+                return Some(PacketHandlerResult::Stop);
+            }
+            if !self.admit_client_without_neoforge(server).await {
+                return Some(PacketHandlerResult::Stop);
+            }
+            return Some(PacketHandlerResult::ReadyToPlay(
+                profile.clone(),
+                self.config.clone().unwrap_or_default(),
+                Box::new(self.take_negotiated_state()),
+            ));
+        }
         None
     }
 

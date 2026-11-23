@@ -356,16 +356,6 @@ pub fn game_rule_changed(
         .fire_blocking_with(server, || GameRuleChangedEvent::new(rule.clone(), value()));
 }
 
-/// Whether a handler listens to `ExplosionEventDetonate`: an explosion that keeps the blocks
-/// finds them only for it.
-pub fn listens_to_explosion_detonate(world: &World) -> bool {
-    world.server.upgrade().is_some_and(|server| {
-        server
-            .plugin_manager
-            .has_handlers::<ExplosionEventDetonate>()
-    })
-}
-
 /// Fires `ExplosionEventDetonate` and keeps the blocks and the entities that the last handler
 /// left in the lists.
 pub fn explosion_detonate(
@@ -383,24 +373,14 @@ pub fn explosion_detonate(
             world.clone(),
             center,
             power,
-            blocks.keys().copied().collect(),
+            blocks.clone(),
             entities.clone(),
         )
     }) else {
         return;
     };
     *entities = event.affected_entities;
-    *blocks = event
-        .affected_blocks
-        .into_iter()
-        .map(|pos| {
-            let entry = blocks
-                .get(&pos)
-                .copied()
-                .unwrap_or_else(|| world.get_block_and_state(&pos));
-            (pos, entry)
-        })
-        .collect();
+    *blocks = event.affected_blocks;
 }
 
 /// Fires `ExplosionKnockbackEvent` for the push of `entity` and returns the knockback that the
@@ -425,7 +405,7 @@ pub fn explosion_knockback(
                 power,
                 entity.clone(),
                 knockback,
-                blocks.keys().copied().collect(),
+                blocks.clone(),
             )
         })
         .map_or(knockback, |event| event.knockback)

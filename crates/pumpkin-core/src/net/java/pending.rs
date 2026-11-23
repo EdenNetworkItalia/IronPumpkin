@@ -23,7 +23,8 @@ use pumpkin_protocol::{
         packet_encoder::TCPNetworkEncoder,
         server::config::{
             SAcceptCodeOfConduct, SAcknowledgeFinishConfig, SClientInformationConfig,
-            SConfigCookieResponse, SConfigPong, SConfigResourcePack, SKnownPacks, SPluginMessage,
+            SConfigCookieResponse, SConfigPong, SConfigResourcePack, SKeepAlive, SKnownPacks,
+            SPluginMessage,
         },
     },
     packet::MultiVersionJavaPacket,
@@ -47,7 +48,7 @@ use crate::{
     },
     plugin::server::{
         config_custom_payload::ConfigCustomPayloadEvent,
-        packet::{ConnectionPacketReceivedEvent, ConnectionPacketSentEvent},
+        packet::{JavaConnectionPacketReceivedEvent, JavaConnectionPacketSentEvent},
     },
     server::Server,
 };
@@ -191,14 +192,20 @@ impl PendingConnection {
         self.close_token.cancelled().await;
     }
 
-    pub fn set_encryption(&mut self, shared_secret: &[u8]) -> Result<(), EncryptionError> {
+    pub async fn set_encryption(&mut self, shared_secret: &[u8]) -> Result<(), EncryptionError> {
         let crypt_key: [u8; 16] = shared_secret
             .try_into()
             .map_err(|_| EncryptionError::SharedWrongLength)?;
-        self.network_reader
+        // Drain all unencrypted outgoing bytes before switching the wire cipher.
+        // A failed flush is fatal; the client must not see mixed wire modes.
+        self.network_writer
+            .flush()
+            .await
+            .map_err(|err| EncryptionError::UnencryptedFlushFailed(err.to_string()))?;
+        self.network_writer
             .set_encryption(&crypt_key)
             .map_err(|_| EncryptionError::AlreadyEncrypted)?;
-        self.network_writer
+        self.network_reader
             .set_encryption(&crypt_key)
             .map_err(|_| EncryptionError::AlreadyEncrypted)?;
         Ok(())
@@ -262,7 +269,7 @@ impl PendingConnection {
         self.server.upgrade()
     }
 
-    /// Encoded as 26.3. `ConnectionPacketSentEvent` can rewrite it.
+    /// Encoded as 26.3. `JavaConnectionPacketSentEvent` can rewrite it.
     pub async fn send_packet_now<P: ClientPacket>(&mut self, packet: &P) {
         let mut packet_buf = Vec::new();
         let key = pumpkin_protocol::EncodingKey::new(CURRENT_MC_VERSION, self.content_ids);
@@ -270,38 +277,57 @@ impl PendingConnection {
             error!("Failed to write packet: {err:?}");
             return;
         }
-        let Some(payload) = self.translate_outgoing(Bytes::from(packet_buf)).await else {
-            return;
-        };
+        let (payload, extras) = self.translate_outgoing(Bytes::from(packet_buf)).await;
         let split = self.connection_state.load() == ConnectionState::Config
             && SplitPacketPayload::is_declared(&self.payload_setup, &self.client_channels.ad_hoc);
         // The parts are written after `translate_outgoing`, in the client's version.
         self.network_writer
             .set_split_payload_id(split.then(|| CPluginMessage::to_id(self.version.load())));
-        if let Err(err) = self.network_writer.write_packet(payload).await {
+        if let Some(payload) = payload
+            && let Err(err) = self.network_writer.write_packet(payload).await
+        {
             warn!("Failed to send packet to client {}: {}", self.id, err);
+            self.close();
+            return;
         }
-        let _ = self.network_writer.flush().await;
+        for extra in extras {
+            if let Err(err) = self.network_writer.write_packet(extra).await {
+                warn!("Failed to send extra packet to client {}: {}", self.id, err);
+                self.close();
+                return;
+            }
+        }
+        if let Err(err) = self.network_writer.flush().await {
+            warn!("Failed to flush packet for client {}: {}", self.id, err);
+            self.close();
+        }
     }
 
-    /// `ConnectionPacketSentEvent` with the 26.3 packet. `None` when cancelled.
-    async fn translate_outgoing(&self, packet_data: Bytes) -> Option<Bytes> {
+    fn frame_raw_packet(packet_id: i32, payload: &[u8]) -> Option<Bytes> {
+        let mut framed = Vec::with_capacity(5 + payload.len());
+        framed.write_var_int(&VarInt(packet_id)).ok()?;
+        framed.extend_from_slice(payload);
+        Some(framed.into())
+    }
+
+    /// `JavaConnectionPacketSentEvent` with the 26.3 packet. `(None, extras)` when cancelled.
+    async fn translate_outgoing(&self, packet_data: Bytes) -> (Option<Bytes>, Vec<Bytes>) {
         let Some(server) = self.translating_server() else {
-            return Some(packet_data);
+            return (Some(packet_data), Vec::new());
         };
         if !server
             .plugin_manager
-            .has_handlers::<ConnectionPacketSentEvent>()
+            .has_handlers::<JavaConnectionPacketSentEvent>()
         {
-            return Some(packet_data);
+            return (Some(packet_data), Vec::new());
         }
 
         let mut reader = &packet_data[..];
         let Ok(packet_id) = reader.get_var_int() else {
-            return Some(packet_data);
+            return (Some(packet_data), Vec::new());
         };
         let payload = packet_data.slice(packet_data.len() - reader.len()..);
-        let mut event = ConnectionPacketSentEvent::new(
+        let mut event = JavaConnectionPacketSentEvent::new(
             self.id,
             self.version.load(),
             self.connection_state.load(),
@@ -309,17 +335,22 @@ impl PendingConnection {
             payload,
         );
         server.plugin_manager.fire(&server, &mut event).await;
+        let extras = event
+            .extra_packets
+            .iter()
+            .filter_map(|(id, payload)| Self::frame_raw_packet(*id, payload))
+            .collect();
         if event.cancelled {
-            return None;
+            return (None, extras);
         }
 
-        let mut framed = Vec::with_capacity(5 + event.payload.len());
-        framed.write_var_int(&VarInt(event.packet_id)).ok()?;
-        framed.extend_from_slice(&event.payload);
-        Some(framed.into())
+        (
+            Self::frame_raw_packet(event.packet_id, &event.payload),
+            extras,
+        )
     }
 
-    /// `ConnectionPacketReceivedEvent` with the client's packet; handlers rewrite it to 26.3.
+    /// `JavaConnectionPacketReceivedEvent` with the client's packet; handlers rewrite it to 26.3.
     /// `None` when cancelled.
     async fn translate_incoming(&self, packet: &RawPacket) -> Option<RawPacket> {
         let unchanged = || RawPacket {
@@ -331,12 +362,12 @@ impl PendingConnection {
         };
         if !server
             .plugin_manager
-            .has_handlers::<ConnectionPacketReceivedEvent>()
+            .has_handlers::<JavaConnectionPacketReceivedEvent>()
         {
             return Some(unchanged());
         }
 
-        let mut event = ConnectionPacketReceivedEvent::new(
+        let mut event = JavaConnectionPacketReceivedEvent::new(
             self.id,
             self.version.load(),
             self.connection_state.load(),
@@ -678,6 +709,10 @@ impl PendingConnection {
                 }
                 Ok(None)
             }
+            id if id == SKeepAlive::to_id(version) => {
+                let _keep_alive = SKeepAlive::read(&mut payload, &version)?;
+                Ok(None)
+            }
             id if id == SConfigResourcePack::to_id(version) => {
                 self.handle_resource_pack_response(
                     server,
@@ -714,14 +749,6 @@ impl PendingConnection {
         client_information: SClientInformationConfig<'_>,
     ) {
         debug!("Handling client settings");
-        if client_information.view_distance <= 0 {
-            self.kick(TextComponent::text(
-                "Cannot have zero or negative view distance!",
-            ))
-            .await;
-            return;
-        }
-
         if let (Ok(main_hand), Ok(chat_mode)) = (
             Hand::try_from(client_information.main_hand.0),
             ChatMode::try_from(client_information.chat_mode.0),

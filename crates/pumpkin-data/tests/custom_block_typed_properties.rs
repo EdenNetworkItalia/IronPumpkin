@@ -86,6 +86,14 @@ fn every_state_survives_a_typed_round_trip() {
 }
 
 #[test]
+fn apply_properties_keeps_the_custom_properties() {
+    // `BlockInput.place` overwrites the given properties with `apply_properties`.
+    let young = SPROUT.apply_properties(old_blue(), &[Property::Age(5)]);
+    assert_eq!(value(young, "age"), "5");
+    assert_eq!(value(young, "color"), "blue");
+}
+
+#[test]
 fn with_properties_sets_named_values_and_keeps_the_rest() {
     let id = old_blue();
     let young = SPROUT.with_properties(id, &[Property::Age(5)]);

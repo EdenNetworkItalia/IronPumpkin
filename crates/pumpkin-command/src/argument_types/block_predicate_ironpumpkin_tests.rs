@@ -1,10 +1,8 @@
-use super::{
-    BlockPredicate, BlockPredicateArgumentType, ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES,
-    ERROR_UNKNOWN_TAG,
-};
+use super::{BlockPredicate, BlockPredicateArgumentType, ERROR_UNKNOWN_TAG};
 use crate::argument_types::argument_type::ArgumentType;
 use crate::argument_types::block::{
-    DUPLICATE_PROPERTY_ERROR_TYPE, INVALID_VALUE_ERROR_TYPE, UNKNOWN_PROPERTY_ERROR_TYPE,
+    ERROR_DUPLICATE_PROPERTY, ERROR_EXPECTED_VALUE, ERROR_INVALID_VALUE, ERROR_UNCLOSED_PROPERTIES,
+    ERROR_UNKNOWN_PROPERTY,
 };
 use crate::argument_types::nbt::NbtCompoundArgumentType;
 use crate::errors::command_syntax_error::CommandSyntaxError;
@@ -131,12 +129,12 @@ fn nbt_is_a_partial_match_on_the_block_entity() {
 fn block_errors_are_the_block_state_errors() {
     assert_error(
         "stone[foo=bar]",
-        &UNKNOWN_PROPERTY_ERROR_TYPE.create_without_context(text("minecraft:stone"), text("foo")),
+        &ERROR_UNKNOWN_PROPERTY.create_without_context(text("minecraft:stone"), text("foo")),
         6,
     );
     assert_error(
         "oak_stairs[facing=up]",
-        &INVALID_VALUE_ERROR_TYPE.create_without_context(
+        &ERROR_INVALID_VALUE.create_without_context(
             text("minecraft:oak_stairs"),
             text("up"),
             text("facing"),
@@ -145,12 +143,12 @@ fn block_errors_are_the_block_state_errors() {
     );
     assert_error(
         "oak_stairs[facing]",
-        &ERROR_NO_VALUE.create_without_context(text("facing"), text("minecraft:oak_stairs")),
+        &ERROR_EXPECTED_VALUE.create_without_context(text("facing"), text("minecraft:oak_stairs")),
         17,
     );
     assert_error(
         "oak_stairs[facing=east,facing=west]",
-        &DUPLICATE_PROPERTY_ERROR_TYPE
+        &ERROR_DUPLICATE_PROPERTY
             .create_without_context(text("facing"), text("minecraft:oak_stairs")),
         23,
     );
@@ -171,12 +169,12 @@ fn tag_errors_follow_read_vague_properties() {
     // The id of a tag predicate is `minecraft:`: vanilla never sets it for a tag.
     assert_error(
         "#logs[axis]",
-        &ERROR_NO_VALUE.create_without_context(text("axis"), text("minecraft:")),
+        &ERROR_EXPECTED_VALUE.create_without_context(text("axis"), text("minecraft:")),
         6,
     );
     assert_error(
         "#logs[axis=x,axis=y]",
-        &DUPLICATE_PROPERTY_ERROR_TYPE.create_without_context(text("axis"), text("minecraft:")),
+        &ERROR_DUPLICATE_PROPERTY.create_without_context(text("axis"), text("minecraft:")),
         13,
     );
     let unclosed = ERROR_UNCLOSED_PROPERTIES.create_without_context();

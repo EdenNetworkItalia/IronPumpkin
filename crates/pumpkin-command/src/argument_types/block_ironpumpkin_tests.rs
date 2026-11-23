@@ -1,26 +1,26 @@
 use super::{
-    BlockArgumentType, BlockStateArgument, DUPLICATE_PROPERTY_ERROR_TYPE, INVALID_BLOCK_ERROR_TYPE,
-    INVALID_VALUE_ERROR_TYPE, TAG_DISALLOWED_ERROR_TYPE, UNKNOWN_PROPERTY_ERROR_TYPE,
+    BlockArgumentType, BlockInput, ERROR_DUPLICATE_PROPERTY, ERROR_EXPECTED_VALUE,
+    ERROR_INVALID_VALUE, ERROR_NO_TAGS_ALLOWED, ERROR_UNCLOSED_PROPERTIES, ERROR_UNKNOWN_PROPERTY,
+    INVALID_BLOCK_ERROR_TYPE,
 };
 use crate::argument_types::argument_type::ArgumentType;
-use crate::argument_types::block_predicate::{ERROR_NO_VALUE, ERROR_UNCLOSED_PROPERTIES};
 use crate::errors::command_syntax_error::CommandSyntaxError;
 use crate::source::DummySource;
 use crate::string_reader::StringReader;
 use pumpkin_data::Block;
 use pumpkin_util::text::TextComponent;
 
-fn parse(input: &str) -> Result<(BlockStateArgument, usize), CommandSyntaxError> {
+fn parse(input: &str) -> Result<(BlockInput, usize), CommandSyntaxError> {
     let mut reader = StringReader::new(input);
     ArgumentType::<DummySource>::parse(&BlockArgumentType, &mut reader)
         .map(|parsed| (parsed, reader.cursor()))
 }
 
 /// The property values of the parsed state, sorted by name.
-fn props(parsed: &BlockStateArgument) -> Vec<(&'static str, &'static str)> {
+fn props(parsed: &BlockInput) -> Vec<(&'static str, &'static str)> {
     let mut props = parsed
         .block
-        .string_properties(parsed.state)
+        .string_properties(parsed.state_id)
         .unwrap_or_default();
     props.sort_unstable();
     props
@@ -45,11 +45,11 @@ fn assert_error(input: &str, expected: &CommandSyntaxError, cursor: usize) {
 #[test]
 fn parses_a_block_without_properties() {
     let (parsed, cursor) = parse("stone").unwrap();
-    assert_eq!(parsed.state, Block::STONE.default_state.id);
+    assert_eq!(parsed.state_id, Block::STONE.default_state.id);
     assert_eq!(cursor, 5);
 
     let (parsed, _) = parse("minecraft:stone[]").unwrap();
-    assert_eq!(parsed.state, Block::STONE.default_state.id);
+    assert_eq!(parsed.state_id, Block::STONE.default_state.id);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn parses_properties_into_the_state() {
     let (parsed, cursor) = parse("minecraft:redstone_lamp[lit=true] keep").unwrap();
     assert_eq!(parsed.block, &Block::REDSTONE_LAMP);
     assert_eq!(props(&parsed), [("lit", "true")]);
-    assert_ne!(parsed.state, Block::REDSTONE_LAMP.default_state.id);
+    assert_ne!(parsed.state_id, Block::REDSTONE_LAMP.default_state.id);
     assert_eq!(cursor, 33);
 
     let (parsed, _) = parse("hopper[ facing = east , enabled=false ]").unwrap();
@@ -96,7 +96,7 @@ fn unknown_block() {
 fn tags_are_disallowed() {
     assert_error(
         "#minecraft:logs",
-        &TAG_DISALLOWED_ERROR_TYPE.create_without_context(),
+        &ERROR_NO_TAGS_ALLOWED.create_without_context(),
         0,
     );
 }
@@ -105,13 +105,13 @@ fn tags_are_disallowed() {
 fn unknown_property() {
     assert_error(
         "redstone_lamp[lit=true,power=3]",
-        &UNKNOWN_PROPERTY_ERROR_TYPE
+        &ERROR_UNKNOWN_PROPERTY
             .create_without_context(text("minecraft:redstone_lamp"), text("power")),
         23,
     );
     assert_error(
         "stone[foo=bar]",
-        &UNKNOWN_PROPERTY_ERROR_TYPE.create_without_context(text("minecraft:stone"), text("foo")),
+        &ERROR_UNKNOWN_PROPERTY.create_without_context(text("minecraft:stone"), text("foo")),
         6,
     );
 }
@@ -121,17 +121,17 @@ fn invalid_value() {
     let lamp = || text("minecraft:redstone_lamp");
     assert_error(
         "redstone_lamp[lit=yes]",
-        &INVALID_VALUE_ERROR_TYPE.create_without_context(lamp(), text("yes"), text("lit")),
+        &ERROR_INVALID_VALUE.create_without_context(lamp(), text("yes"), text("lit")),
         18,
     );
     assert_error(
         "redstone_lamp[lit=]",
-        &INVALID_VALUE_ERROR_TYPE.create_without_context(lamp(), text(""), text("lit")),
+        &ERROR_INVALID_VALUE.create_without_context(lamp(), text(""), text("lit")),
         18,
     );
     assert_error(
         "light[level=16]",
-        &INVALID_VALUE_ERROR_TYPE.create_without_context(
+        &ERROR_INVALID_VALUE.create_without_context(
             text("minecraft:light"),
             text("16"),
             text("level"),
@@ -140,7 +140,7 @@ fn invalid_value() {
     );
     assert_error(
         "hopper[facing=up]",
-        &INVALID_VALUE_ERROR_TYPE.create_without_context(
+        &ERROR_INVALID_VALUE.create_without_context(
             text("minecraft:hopper"),
             text("up"),
             text("facing"),
@@ -153,7 +153,7 @@ fn invalid_value() {
 fn duplicate_property() {
     assert_error(
         "redstone_lamp[lit=true,lit=false]",
-        &DUPLICATE_PROPERTY_ERROR_TYPE
+        &ERROR_DUPLICATE_PROPERTY
             .create_without_context(text("lit"), text("minecraft:redstone_lamp")),
         23,
     );
@@ -162,7 +162,7 @@ fn duplicate_property() {
 #[test]
 fn missing_value() {
     let expected =
-        ERROR_NO_VALUE.create_without_context(text("lit"), text("minecraft:redstone_lamp"));
+        ERROR_EXPECTED_VALUE.create_without_context(text("lit"), text("minecraft:redstone_lamp"));
     assert_error("redstone_lamp[lit]", &expected, 17);
     assert_error("redstone_lamp[lit ", &expected, 18);
 }

@@ -1,18 +1,32 @@
 use super::*;
+use crate::item::Item;
+use crate::item_stack::ItemStack;
+
+fn stack(item: &'static Item) -> Option<ItemStack> {
+    Some(ItemStack::new(1, item))
+}
 
 fn decorations() -> PotDecorationsImpl {
     PotDecorationsImpl {
-        sherds: [
-            Some(Cow::Borrowed("minecraft:archer_pottery_sherd")),
-            Some(Cow::Borrowed("minecraft:brick")),
-            Some(Cow::Borrowed("minecraft:prize_pottery_sherd")),
-            Some(Cow::Borrowed("minecraft:miner_pottery_sherd")),
-        ],
+        back: stack(&Item::ARCHER_POTTERY_SHERD),
+        left: stack(&Item::BRICK),
+        right: stack(&Item::PRIZE_POTTERY_SHERD),
+        front: stack(&Item::MINER_POTTERY_SHERD),
     }
 }
 
 fn side_id<'a>(map: &'a NbtCompound, side: &str) -> Option<&'a str> {
     map.get_compound(side)?.get_string("id")
+}
+
+fn item_ids(decorations: &PotDecorationsImpl) -> [Option<u16>; 4] {
+    [
+        &decorations.back,
+        &decorations.left,
+        &decorations.right,
+        &decorations.front,
+    ]
+    .map(|side| side.as_ref().map(|stack| stack.item.id))
 }
 
 #[test]
@@ -44,11 +58,14 @@ fn pot_decorations_read_the_map_and_the_26_2_list() {
 
     // `PotDecorationsComponentUnflatteningFix`: list index 0 to 3 is back, left, right, front.
     let list = NbtTag::List(
-        decorations()
-            .ordered()
-            .iter()
-            .map(|id| NbtTag::String(id.to_string().into()))
-            .collect(),
+        [
+            "minecraft:archer_pottery_sherd",
+            "minecraft:brick",
+            "minecraft:prize_pottery_sherd",
+            "minecraft:miner_pottery_sherd",
+        ]
+        .map(|id| NbtTag::String(id.into()))
+        .to_vec(),
     );
     assert_eq!(PotDecorationsImpl::read_data(&list).unwrap(), decorations());
 
@@ -57,12 +74,12 @@ fn pot_decorations_read_the_map_and_the_26_2_list() {
         "minecraft:archer_pottery_sherd".into(),
     )]);
     assert_eq!(
-        PotDecorationsImpl::read_data(&short).unwrap().sherds,
+        item_ids(&PotDecorationsImpl::read_data(&short).unwrap()),
         [
-            Some(Cow::Borrowed("minecraft:archer_pottery_sherd")),
-            Some(Cow::Borrowed("minecraft:brick")),
-            Some(Cow::Borrowed("minecraft:brick")),
-            Some(Cow::Borrowed("minecraft:brick")),
+            Some(Item::ARCHER_POTTERY_SHERD.id),
+            Some(Item::BRICK.id),
+            Some(Item::BRICK.id),
+            Some(Item::BRICK.id),
         ]
     );
 }
@@ -79,21 +96,12 @@ fn pot_decorations_map_reads_bare_ids_and_missing_sides() {
 
     let read = PotDecorationsImpl::read_data(&NbtTag::Compound(map)).unwrap();
     assert_eq!(
-        read.sherds,
+        item_ids(&read),
         [
             None,
-            Some(Cow::Borrowed("minecraft:archer_pottery_sherd")),
+            Some(Item::ARCHER_POTTERY_SHERD.id),
             None,
-            Some(Cow::Borrowed("minecraft:miner_pottery_sherd")),
-        ]
-    );
-    assert_eq!(
-        read.ordered(),
-        [
-            "minecraft:brick",
-            "minecraft:archer_pottery_sherd",
-            "minecraft:brick",
-            "minecraft:miner_pottery_sherd",
+            Some(Item::MINER_POTTERY_SHERD.id),
         ]
     );
 

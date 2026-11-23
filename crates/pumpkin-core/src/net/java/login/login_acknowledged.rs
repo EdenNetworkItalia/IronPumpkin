@@ -1,8 +1,8 @@
 #[allow(clippy::wildcard_imports)]
 use super::*;
-use pumpkin_util::uuid::name_uuid_from_bytes;
+use pumpkin_util::{uuid::name_uuid_from_bytes, version::JavaMinecraftVersion};
 
-use crate::net::java::neoforge;
+use crate::net::java::{configuration_tasks::TaskReply, neoforge};
 
 impl PendingConnection {
     pub async fn handle_login_acknowledged(
@@ -98,8 +98,14 @@ impl PendingConnection {
         self.start_configuration_tasks(server).await;
     }
 
-    /// The start of the known packs task: `select_known_packs` only.
+    /// The start of the known packs task: `select_known_packs` only. Clients before 1.20.5 have
+    /// no known packs, so the registries follow right away and the task needs no reply.
     pub async fn send_known_packs(&mut self, server: &Server) {
+        if self.version.load() < JavaMinecraftVersion::V_1_20_5 {
+            self.handle_known_packs(server).await;
+            self.finish_configuration_task(TaskReply::KnownPacks).await;
+            return;
+        }
         let version_str = CURRENT_MC_VERSION.to_string();
         let loaded_packs = server.datapack_manager.get_loaded_packs();
         let known_packs = server.get_known_packs(&version_str, &loaded_packs);

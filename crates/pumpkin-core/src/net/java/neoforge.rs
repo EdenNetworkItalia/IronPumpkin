@@ -823,11 +823,10 @@ impl PendingConnection {
         self.payload_setup = network.setup;
     }
 
-    /// `NetworkRegistry.initializeOtherConnection`. Returns false when the client was disconnected.
-    ///
-    /// A client-required native mod also disconnects the client, as on a `NeoForge` server, where
-    /// a client without `NeoForge` cannot have the mod.
-    async fn initialize_other_connection(&mut self, server: &Server) -> bool {
+    /// The checks of `NetworkRegistry.initializeOtherConnection` that disconnect a client without
+    /// `NeoForge`: a client-required native mod, or a required channel. Clients before 1.20.2 have
+    /// no configuration phase and run only these. Returns false when the client was disconnected.
+    pub(super) async fn admit_client_without_neoforge(&mut self, server: &Server) -> bool {
         let required_mods = client_required_mod_ids(startup::native_mods());
         if !required_mods.is_empty() {
             info!(
@@ -845,6 +844,17 @@ impl PendingConnection {
                 self.kick(vanilla_client_not_supported()).await;
                 return false;
             }
+        }
+        true
+    }
+
+    /// `NetworkRegistry.initializeOtherConnection`. Returns false when the client was disconnected.
+    ///
+    /// A client-required native mod also disconnects the client, as on a `NeoForge` server, where
+    /// a client without `NeoForge` cannot have the mod.
+    async fn initialize_other_connection(&mut self, server: &Server) -> bool {
+        if !self.admit_client_without_neoforge(server).await {
+            return false;
         }
         let mut channels = BTreeSet::from(BUILTIN_CHANNELS);
         channels.extend(

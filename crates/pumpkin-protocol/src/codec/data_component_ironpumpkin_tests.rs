@@ -1,5 +1,6 @@
 use super::*;
 use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 
 /// Appends one side of vanilla `PotDecorations.STREAM_CODEC`: `ByteBufCodecs.optional` of
 /// `ItemStackTemplate.STREAM_CODEC`, which is the item holder id, the count and the patch.
@@ -24,12 +25,10 @@ fn pot_bytes(sides: [Option<&Item>; 4]) -> Vec<u8> {
 #[test]
 fn pot_decorations_are_written_as_four_optional_templates() {
     let decorations = PotDecorationsImpl {
-        sherds: [
-            Some(Cow::Borrowed("minecraft:archer_pottery_sherd")),
-            None,
-            Some(Cow::Borrowed("minecraft:brick")),
-            Some(Cow::Borrowed("minecraft:miner_pottery_sherd")),
-        ],
+        back: Some(ItemStack::new(1, &Item::ARCHER_POTTERY_SHERD)),
+        left: None,
+        right: Some(ItemStack::new(1, &Item::BRICK)),
+        front: Some(ItemStack::new(1, &Item::MINER_POTTERY_SHERD)),
     };
     let mut encoded = Vec::new();
     decorations.serialize(&mut encoded).unwrap();
@@ -56,12 +55,13 @@ fn pot_decorations_are_read_from_four_optional_templates() {
     let decoded = PotDecorationsImpl::deserialize(&mut slice).unwrap();
     assert!(slice.is_empty());
     assert_eq!(
-        decoded.sherds,
+        [&decoded.back, &decoded.left, &decoded.right, &decoded.front]
+            .map(|side| side.as_ref().map(|stack| stack.item.id)),
         [
-            Some(Cow::Borrowed("minecraft:archer_pottery_sherd")),
+            Some(Item::ARCHER_POTTERY_SHERD.id),
             None,
             None,
-            Some(Cow::Borrowed("minecraft:miner_pottery_sherd")),
+            Some(Item::MINER_POTTERY_SHERD.id),
         ]
     );
 

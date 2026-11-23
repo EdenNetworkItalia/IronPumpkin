@@ -371,7 +371,10 @@ fn data_components_follow_the_mode() {
     let entity_data = |name: &str| {
         let mut nbt = NbtCompound::new();
         nbt.put_string("id", name.to_string());
-        EntityDataImpl { nbt: Some(nbt) }
+        EntityDataImpl {
+            entity_type: None,
+            nbt: Some(nbt),
+        }
     };
     assert_eq!(
         component(

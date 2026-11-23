@@ -769,6 +769,9 @@ fn finished_digging_breaks_only_the_started_dig() {
         "a finish away from the started dig broke the block"
     );
 
+    // Vanilla breaks on a finish once the progress of the dig reaches 0.7: a bare hand on
+    // stone, off the ground as this player is, needs 525 ticks.
+    player.tick_counter.fetch_add(1000, Ordering::Relaxed);
     client.handle_player_action(&player, &dig(Status::FinishedDigging, started, 4), server);
     assert!(
         !is_stone(started),

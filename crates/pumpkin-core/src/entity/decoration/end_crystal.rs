@@ -2,6 +2,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::entity::{Entity, EntityBase, living::LivingEntity};
+use crate::world::{Explosion, ExplosionInteraction};
 use pumpkin_data::{
     damage::DamageType,
     tag::{self, Taggable},
@@ -68,6 +69,10 @@ impl EndCrystalEntity {
 }
 
 impl EntityBase for EndCrystalEntity {
+    fn can_hit(&self) -> bool {
+        true
+    }
+
     fn get_entity(&self) -> &Entity {
         &self.entity
     }
@@ -93,7 +98,16 @@ impl EntityBase for EndCrystalEntity {
         let world = self.entity.world.load();
         if !damage_type.has_tag(&tag::DamageType::MINECRAFT_IS_EXPLOSION) {
             let pos = self.entity.pos.load();
-            world.explode(pos, 6.0, crate::world::ExplosionInteraction::Block);
+            let cause =
+                cause.and_then(|cause| world.get_entity_by_id(cause.get_entity().entity_id));
+            let explosion = Explosion::new(
+                6.0,
+                pos,
+                world.get_block_interaction(ExplosionInteraction::Block),
+            )
+            .with_source(self);
+            // Without an attacker nobody gets the credit.
+            world.run_explosion(&explosion.with_indirect_source(cause));
         }
 
         if let Some(ref fight_mutex) = world.dragon_fight

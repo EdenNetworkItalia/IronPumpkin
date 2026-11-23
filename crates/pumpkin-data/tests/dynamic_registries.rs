@@ -195,8 +195,7 @@ fn invalid_and_late_registrations_fail() {
 
 /// Writes the stack, encodes the compound to NBT bytes and decodes it again.
 fn nbt_round_trip(stack: &ItemStack) -> NbtCompound {
-    let mut compound = NbtCompound::new();
-    stack.write_item_stack(&mut compound);
+    let compound = stack.to_nbt().expect("item stack saves");
     let bytes = Nbt::new(String::new(), compound).write();
     Nbt::read(&mut NbtReadHelperJava::new(Cursor::new(bytes.as_ref())))
         .expect("written item stack re-reads")

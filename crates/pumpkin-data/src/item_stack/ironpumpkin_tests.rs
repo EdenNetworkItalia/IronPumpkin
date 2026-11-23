@@ -30,8 +30,7 @@ fn read_item_stack_applies_the_26_3_component_removals() {
     assert!(ids.contains(&DataComponent::AttackAnimation));
     assert!(ids.contains(&DataComponent::InteractAnimation));
 
-    let mut written = NbtCompound::new();
-    stack.write_item_stack(&mut written);
+    let written = stack.to_nbt().unwrap();
     let written = written.get_compound("components").unwrap();
     assert!(written.get("minecraft:map_color").is_none());
     assert!(written.get("minecraft:swing_animation").is_none());

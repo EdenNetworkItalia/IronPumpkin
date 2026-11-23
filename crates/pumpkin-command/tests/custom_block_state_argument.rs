@@ -7,7 +7,7 @@
 
 use pumpkin_command::argument_types::argument_type::ArgumentType;
 use pumpkin_command::argument_types::block::{
-    BlockArgumentType, BlockStateArgument, INVALID_VALUE_ERROR_TYPE, UNKNOWN_PROPERTY_ERROR_TYPE,
+    BlockArgumentType, BlockInput, ERROR_INVALID_VALUE, ERROR_UNKNOWN_PROPERTY,
 };
 use pumpkin_command::errors::command_syntax_error::CommandSyntaxError;
 use pumpkin_command::source::DummySource;
@@ -16,7 +16,7 @@ use pumpkin_data::dynamic::{self, BlockDefinition, BlockPropertyDefinition};
 use pumpkin_data::{Block, BlockStateId};
 use pumpkin_util::text::TextComponent;
 
-fn parse(input: &str) -> Result<BlockStateArgument, CommandSyntaxError> {
+fn parse(input: &str) -> Result<BlockInput, CommandSyntaxError> {
     ArgumentType::<DummySource>::parse(&BlockArgumentType, &mut StringReader::new(input))
 }
 
@@ -57,56 +57,59 @@ fn custom_block_properties_follow_the_registered_schema() {
 
     let parsed = parse("acc-mod:crystal").unwrap();
     assert_eq!(parsed.block, crystal);
-    assert_eq!(parsed.state, crystal.default_state.id);
+    assert_eq!(parsed.state_id, crystal.default_state.id);
 
     let parsed = parse("acc-mod:crystal[lit=true,charge=2]").unwrap();
     assert_eq!(parsed.block, crystal);
     assert_eq!(
-        props(crystal, parsed.state),
+        props(crystal, parsed.state_id),
         [("charge", "2"), ("lit", "true"), ("tint", "clear")]
     );
     let parsed = parse("acc-mod:crystal[tint=smoke,charge=03]").unwrap();
     assert_eq!(
-        props(crystal, parsed.state),
+        props(crystal, parsed.state_id),
         [("charge", "3"), ("lit", "false"), ("tint", "smoke")]
     );
 
     let error = parse("acc-mod:crystal[charge=4]").unwrap_err();
     assert_eq!(
         error.message,
-        INVALID_VALUE_ERROR_TYPE
+        ERROR_INVALID_VALUE
             .create_without_context(text("acc-mod:crystal"), text("4"), text("charge"))
             .message
     );
     let error = parse("acc-mod:crystal[tint=blue]").unwrap_err();
     assert_eq!(
         error.message,
-        INVALID_VALUE_ERROR_TYPE
+        ERROR_INVALID_VALUE
             .create_without_context(text("acc-mod:crystal"), text("blue"), text("tint"))
             .message
     );
     let error = parse("acc-mod:crystal[power=1]").unwrap_err();
     assert_eq!(
         error.message,
-        UNKNOWN_PROPERTY_ERROR_TYPE
+        ERROR_UNKNOWN_PROPERTY
             .create_without_context(text("acc-mod:crystal"), text("power"))
             .message
     );
 
     let plain = Block::from_name("acc-mod:plain").unwrap();
     assert_eq!(
-        parse("acc-mod:plain[]").unwrap().state,
+        parse("acc-mod:plain[]").unwrap().state_id,
         plain.default_state.id
     );
     let error = parse("acc-mod:plain[lit=true]").unwrap_err();
     assert_eq!(
         error.message,
-        UNKNOWN_PROPERTY_ERROR_TYPE
+        ERROR_UNKNOWN_PROPERTY
             .create_without_context(text("acc-mod:plain"), text("lit"))
             .message
     );
 
     // Generated blocks keep their own schema after the freeze.
     let lamp = parse("redstone_lamp[lit=true]").unwrap();
-    assert_eq!(props(&Block::REDSTONE_LAMP, lamp.state), [("lit", "true")]);
+    assert_eq!(
+        props(&Block::REDSTONE_LAMP, lamp.state_id),
+        [("lit", "true")]
+    );
 }

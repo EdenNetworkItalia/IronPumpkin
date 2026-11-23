@@ -15,3 +15,16 @@ impl TrackedEntity {
         inserted
     }
 }
+
+impl TrackedEntity {
+    /// The Java viewers of this entity.
+    pub fn java_viewers(&self) -> Vec<Arc<Player>> {
+        self.seen_by
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .values()
+            .filter(|player| matches!(player.client.as_ref(), ClientPlatform::Java(_)))
+            .cloned()
+            .collect()
+    }
+}

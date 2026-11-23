@@ -18,9 +18,7 @@ use pumpkin_core::{
     },
     world::World,
 };
-use pumpkin_data::{
-    Block, block_properties::FacingHopper, dimension::Dimension, item::Item, item_stack::ItemStack,
-};
+use pumpkin_data::{Block, dimension::Dimension, item::Item, item_stack::ItemStack};
 use pumpkin_inventory::Inventory;
 use pumpkin_util::{
     math::{position::BlockPos, vector2::Vector2},
@@ -59,7 +57,7 @@ fn bench(c: &mut Criterion) {
         .insert(Vector2::new(0, 0), ChunkData::empty_sync(0, 0));
     let hopper = |pos: BlockPos, stack: Option<ItemStack>| {
         world.set_block_state(&pos, Block::HOPPER.default_state.id, BlockFlags::empty());
-        let hopper = Arc::new(HopperBlockEntity::new(pos, FacingHopper::Down));
+        let hopper = Arc::new(HopperBlockEntity::new(pos));
         if let Some(stack) = stack {
             hopper.set_stack(0, stack);
         }

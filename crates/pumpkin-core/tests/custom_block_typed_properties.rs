@@ -13,6 +13,10 @@ use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
+use pumpkin_command::argument_types::argument_type::ArgumentType;
+use pumpkin_command::argument_types::block::BlockArgumentType;
+use pumpkin_command::source::DummySource;
+use pumpkin_command::string_reader::StringReader;
 use pumpkin_core::block::{BlockBehaviour, OnPlaceArgs};
 use pumpkin_core::content::behaviour;
 use pumpkin_core::entity::player::Player;
@@ -193,4 +197,25 @@ fn debug_stick_keeps_the_custom_properties() {
             ("waterlogged", "false")
         ]
     );
+}
+
+/// `/setblock test:sprout[age=30,color=blue]`: `BlockInput.place` keeps the properties that the
+/// typed `Property` cannot hold, also when it overwrites another state with them.
+#[test]
+fn block_input_placement_keeps_the_custom_properties() {
+    let sprout = *SPROUT;
+    let _serial = support::serial();
+    let pos = BlockPos::new(12, 121, 8);
+    set(pos, Block::AIR.default_state.id);
+    let mut reader = StringReader::new("test:sprout[age=30,color=blue]");
+    let input = ArgumentType::<DummySource>::parse(&BlockArgumentType, &mut reader).unwrap();
+
+    assert!(support::world().place_block_input(&pos, &input, BlockFlags::NOTIFY_LISTENERS));
+    let placed = props(state_at(pos));
+    assert!(placed.contains(&("age", "30")), "{placed:?}");
+    assert!(placed.contains(&("color", "blue")), "{placed:?}");
+
+    let overwritten = props(input.overwrite_defined_properties(sprout.default_state.id));
+    assert!(overwritten.contains(&("age", "30")), "{overwritten:?}");
+    assert!(overwritten.contains(&("color", "blue")), "{overwritten:?}");
 }

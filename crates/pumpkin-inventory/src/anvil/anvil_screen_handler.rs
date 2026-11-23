@@ -240,6 +240,12 @@ pub fn set_enchantments(result: &mut ItemStack, enchantments: Vec<(&'static Ench
     if result.is_empty() {
         return;
     }
+    if enchantments.is_empty() {
+        result.patch.retain(|(id, _)| {
+            *id != DataComponent::Enchantments && *id != DataComponent::StoredEnchantments
+        });
+        return;
+    }
     if result.item == &Item::ENCHANTED_BOOK
         || result
             .get_data_component::<StoredEnchantmentsImpl>()
@@ -627,11 +633,17 @@ impl ScreenHandler for AnvilScreenHandler {
         action_type: pumpkin_protocol::java::server::play::SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
+        let inputs = [self.inventory.get_stack(0), self.inventory.get_stack(1)];
         self.internal_on_slot_click(slot_index, button, action_type, player);
-        if slot_index == 0 || slot_index == 1 || slot_index == 2 {
+        // Vanilla `slotsChanged`: the result, and the update event, follow a click on the anvil
+        // slots or a change of the inputs (a shift-click from the player inventory).
+        if (0..=2).contains(&slot_index)
+            || !self.inventory.get_stack(0).are_equal(&inputs[0])
+            || !self.inventory.get_stack(1).are_equal(&inputs[1])
+        {
             self.update_result(player);
-            self.send_content_updates();
         }
+        self.send_content_updates();
     }
 }
 

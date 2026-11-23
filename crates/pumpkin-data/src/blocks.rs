@@ -239,6 +239,64 @@ impl Block {
         })
     }
 
+    /// Parses a single `(key, value)` state property pair against this block's valid states.
+    pub fn parse_property(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Result<crate::Property, PropertyLookupError> {
+        let default_props = self
+            .properties(self.default_state.id)
+            .ok_or(PropertyLookupError::UnknownProperty)?
+            .to_props();
+        let idx = default_props
+            .iter()
+            .position(|p| p.key().to_str() == key)
+            .ok_or(PropertyLookupError::UnknownProperty)?;
+        self.states
+            .iter()
+            .find_map(|state| {
+                let props = self.properties(state.id)?.to_props();
+                let prop = *props.get(idx)?;
+                (prop.value_str() == value).then_some(prop)
+            })
+            .ok_or(PropertyLookupError::InvalidValue)
+    }
+
+    /// Returns whether this block defines a state property with `key`.
+    #[must_use]
+    pub fn has_property(&self, key: &str) -> bool {
+        self.properties(self.default_state.id)
+            .is_some_and(|props| props.to_props().iter().any(|p| p.key().to_str() == key))
+    }
+
+    /// Copies each property in `overrides` onto `base_state_id` when it belongs to this block.
+    #[must_use]
+    pub fn apply_properties(
+        &self,
+        base_state_id: BlockStateId,
+        overrides: &[crate::Property],
+    ) -> BlockStateId {
+        if overrides.is_empty() || Self::from_state_id(base_state_id).id != self.id {
+            return base_state_id;
+        }
+        // IronPumpkin: a content-registry block starts from the base state, so its properties
+        // without a `Property` variant keep their value.
+        if crate::dynamic::is_custom_block(self.id.as_u16()) {
+            return self.with_properties(base_state_id, overrides);
+        }
+        let Some(state_props) = self.properties(base_state_id) else {
+            return base_state_id;
+        };
+        let mut props = state_props.to_props();
+        for &defined in overrides {
+            if let Some(slot) = props.iter_mut().find(|p| p.key() == defined.key()) {
+                *slot = defined;
+            }
+        }
+        self.from_properties(&props).to_state_id(self)
+    }
+
     /// Returns whether this block is solid (based on default state)
     #[must_use]
     pub const fn is_solid(&self) -> bool {
@@ -296,6 +354,12 @@ impl Block {
             BlockState::from_id(id)
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PropertyLookupError {
+    UnknownProperty,
+    InvalidValue,
 }
 
 #[derive(Clone, Copy)]

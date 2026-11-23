@@ -66,20 +66,18 @@ pub fn fire_brew_pre(stand: &BrewingStandBlockEntity, world: &Arc<World>) -> boo
     if take_changed(&mut items, &before, event.stacks) {
         stand.mark_dirty();
     }
-    fire_brew_post(stand, world, items, false);
+    drop(fire_brew_post(stand, world, items));
     true
 }
 
 /// Fires [`PotionBrewEventPost`] on the stacks of `items`, the locked stand inventory, after the
-/// stand brewed (`EventHooks.onPotionBrewed`). The lock is released while the handlers run. Then
-/// it consumes one ingredient when `consume` is set, as `doBrew` shrinks the ingredient after the
-/// event.
+/// stand brewed (`EventHooks.onPotionBrewed`). The lock is released while the handlers run, and
+/// the returned guard holds it again, so `doBrew` shrinks the ingredient after the event.
 pub fn fire_brew_post<'a>(
     stand: &'a BrewingStandBlockEntity,
     world: &Arc<World>,
     mut items: RwLockWriteGuard<'a, Stacks>,
-    consume: bool,
-) {
+) -> RwLockWriteGuard<'a, Stacks> {
     if let Some(server) = world.server.upgrade()
         && server.plugin_manager.has_handlers::<PotionBrewEventPost>()
     {
@@ -92,7 +90,5 @@ pub fn fire_brew_post<'a>(
             stand.mark_dirty();
         }
     }
-    if consume {
-        items[3].decrement(1);
-    }
+    items
 }

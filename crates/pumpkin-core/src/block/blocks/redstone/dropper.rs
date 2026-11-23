@@ -157,46 +157,58 @@ impl BlockBehaviour for DropperBlock {
                 return;
             };
 
-            if let Some((slot_index, mut item)) = dropper.get_random_slot() {
+            if let Some((slot_index, item)) = dropper.get_random_slot() {
                 let props = DispenserLikeProperties::from_state_id(state.id);
+                let direction = props.facing.to_block_direction();
+                let target_pos = args.position.offset(direction.to_offset());
 
-                let target_pos = args
-                    .position
-                    .offset(props.facing.to_block_direction().to_offset());
-
-                let target_entity = args.world.get_block_entity(&target_pos);
-                if let Some(entity) = target_entity.clone()
-                    && let Some(container) = entity.get_inventory()
+                if let Some(container) =
+                    HopperBlockEntity::get_container_at(args.world, &target_pos)
                 {
-                    let backup = item.clone();
-                    let one_item = item.split(1);
-
-                    if HopperBlockEntity::add_one_item(dropper, container.as_ref(), &one_item) {
-                        dropper.set_stack(slot_index, item);
+                    // Taken and restored under the slot lock, a hopper filling the dropper meanwhile keeps its items.
+                    let Some(one_item) = HopperBlockEntity::take_one(dropper, slot_index, &item)
+                    else {
                         return;
+                    };
+                    if !HopperBlockEntity::add_item(
+                        Some(dropper),
+                        container.as_ref(),
+                        one_item.clone(),
+                        Some(direction.opposite()),
+                    )
+                    .is_empty()
+                        && let Some(leftover) =
+                            HopperBlockEntity::put_back(dropper, slot_index, one_item)
+                    {
+                        args.world.drop_stack(args.position, leftover);
                     }
-
-                    dropper.set_stack(slot_index, backup);
                     return;
                 }
-                if let Some(target) = crate::plugin::capabilities::item_target(
+                if let Some(target) = HopperBlockEntity::capability_target(
                     args.world,
                     &target_pos,
-                    props.facing.to_block_direction().opposite(),
-                    target_entity.as_ref(),
+                    direction.opposite(),
                     None,
                 ) {
                     // `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
-                    if target.insert(&item.copy_with_count(1)) > 0 {
-                        item.decrement(1);
-                        dropper.set_stack(slot_index, item);
+                    let Some(one_item) = HopperBlockEntity::take_one(dropper, slot_index, &item)
+                    else {
+                        return;
+                    };
+                    if target.insert(&one_item) == 0
+                        && let Some(leftover) =
+                            HopperBlockEntity::put_back(dropper, slot_index, one_item)
+                    {
+                        args.world.drop_stack(args.position, leftover);
                     }
                     return;
                 }
 
                 // No container found, dispense item into the world
-                let drop_item = item.split(1);
-                dropper.set_stack(slot_index, item);
+                let Some(drop_item) = HopperBlockEntity::take_one(dropper, slot_index, &item)
+                else {
+                    return;
+                };
                 let facing = to_normal(props.facing);
                 let mut pos = args.position.to_centered_f64().add(&(facing * 0.7));
 

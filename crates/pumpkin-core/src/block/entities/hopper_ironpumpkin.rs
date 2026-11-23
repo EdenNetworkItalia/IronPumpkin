@@ -8,12 +8,11 @@ use pumpkin_data::{Block, BlockDirection, BlockState};
 use pumpkin_inventory::Inventory;
 use pumpkin_util::math::position::BlockPos;
 
-use super::{HopperBlockEntity, to_offset};
+use super::HopperBlockEntity;
 use crate::{
-    block::entities::BlockEntity,
     plugin::{
         api::events::inventory::inventory_move_item::InventoryMoveItemEvent,
-        capabilities::{hopper_direction, item_target},
+        capabilities::{CAPABILITY_HOOKS, ItemTarget, item_target},
     },
     world::World,
 };
@@ -30,21 +29,31 @@ impl HopperBlockEntity {
         self.cooldown_time.store(cooldown, Ordering::Relaxed);
     }
 
+    /// The item capability of the block at `pos`, looked up from `side`. Reads the block entity
+    /// only when a mod installed the hooks, and not at all when `state` has none.
+    pub(crate) fn capability_target(
+        world: &Arc<World>,
+        pos: &BlockPos,
+        side: BlockDirection,
+        state: Option<(&'static Block, &'static BlockState)>,
+    ) -> Option<Box<dyn ItemTarget>> {
+        CAPABILITY_HOOKS.get()?;
+        let block_entity = match state {
+            Some((_, state)) if !state.has_block_entity() => None,
+            _ => world.get_block_entity(pos),
+        };
+        item_target(world, pos, side, block_entity.as_ref(), state)
+    }
+
     /// `VanillaInventoryCodeHooks.insertHook`: pushes one item into the item capability of the
-    /// block the hopper faces. `None` when that block has none.
+    /// block at `target_pos`, looked up from `side`. `None` when that block has none.
     pub(super) fn insert_into_capability(
         &self,
         world: &Arc<World>,
-        block_entity: Option<&Arc<dyn BlockEntity>>,
+        target_pos: &BlockPos,
+        side: BlockDirection,
     ) -> Option<bool> {
-        let target_pos = self.position.offset(to_offset(&self.facing));
-        let target = item_target(
-            world,
-            &target_pos,
-            hopper_direction(self.facing).opposite(),
-            block_entity,
-            None,
-        )?;
+        let target = Self::capability_target(world, target_pos, side, None)?;
         if target.is_full() {
             return Some(false);
         }
@@ -53,27 +62,23 @@ impl HopperBlockEntity {
             if item.is_empty() {
                 continue;
             }
-            let mut move_event = InventoryMoveItemEvent::new(
-                self.position,
-                target_pos,
-                item.item.registry_key.to_string(),
-                1,
-            );
-            if let Some(server) = world.server.upgrade() {
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut move_event);
-            }
-            if move_event.cancelled {
+            if world.cancelled_by_plugin(|| {
+                InventoryMoveItemEvent::new(
+                    self.position,
+                    *target_pos,
+                    item.item.registry_key.to_string(),
+                    1,
+                )
+            }) {
                 continue;
             }
-            let Some(extraction) = self.take_one(slot) else {
+            let Some(one_item) = Self::take_one(self, slot, &item) else {
                 continue;
             };
-            if target.insert(&extraction.one_item) == 1 {
+            if target.insert(&one_item) == 1 {
                 return Some(true);
             }
-            if let Some(leftover) = self.put_back(slot, extraction) {
+            if let Some(leftover) = Self::put_back(self, slot, one_item) {
                 let pos = self.position.to_centered_f64();
                 world.scatter_stack(pos.x, pos.y, pos.z, leftover);
             }
@@ -87,16 +92,9 @@ impl HopperBlockEntity {
         &self,
         world: &Arc<World>,
         source: &BlockPos,
-        block_entity: Option<&Arc<dyn BlockEntity>>,
         state: (&'static Block, &'static BlockState),
     ) -> Option<bool> {
-        let source = item_target(
-            world,
-            source,
-            BlockDirection::Down,
-            block_entity,
-            Some(state),
-        )?;
+        let source = Self::capability_target(world, source, BlockDirection::Down, Some(state))?;
         Some(source.extract_one(&mut |item| Self::add_one_item(self, self, item)))
     }
 }

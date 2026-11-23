@@ -41,7 +41,7 @@ use ironpumpkin_mods::{
     },
     pumpkin_data::{
         Block, BlockDirection, BlockStateId,
-        block_properties::{DispenserLikeProperties, Facing, FacingHopper},
+        block_properties::{DispenserLikeProperties, Facing},
         item::Item,
         item_stack::ItemStack,
     },
@@ -205,7 +205,7 @@ fn check(world: &Arc<World>) {
     // A hopper above pushes one item into the block.
     let hopper_pos = block.up();
     place(world, hopper_pos, Block::HOPPER.default_state.id);
-    let hopper = Arc::new(HopperBlockEntity::new(hopper_pos, FacingHopper::Down));
+    let hopper = Arc::new(HopperBlockEntity::new(hopper_pos));
     hopper.set_stack(0, diamonds(3));
     world.add_block_entity(hopper.clone());
     hopper.tick(world);
@@ -220,7 +220,7 @@ fn check(world: &Arc<World>) {
     transaction.commit();
     let below = source.down();
     place(world, below, Block::HOPPER.default_state.id);
-    let puller = Arc::new(HopperBlockEntity::new(below, FacingHopper::Down));
+    let puller = Arc::new(HopperBlockEntity::new(below));
     world.add_block_entity(puller.clone());
     puller.tick(world);
     assert_eq!(block_storage(world, source).get_amount_as_long(0), 3);

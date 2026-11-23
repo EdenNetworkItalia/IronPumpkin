@@ -41,7 +41,11 @@ pub use player_events::{Deferral, defer_if_active};
 pub mod startup;
 pub(crate) mod stat_events;
 
-use crate::{LOGGER_IMPL, server::Server};
+use crate::{
+    LOGGER_IMPL,
+    net::{bedrock::BedrockVersions, java::JavaVersions},
+    server::Server,
+};
 pub use api::*;
 pub use dispatch::{ParentEventHandler, ParentHandler};
 
@@ -49,7 +53,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Bump this whenever the public plugin API or any event layout changes in a way
 /// that makes old binary plugins incompatible.
-pub const PLUGIN_API_VERSION: u32 = 7;
+pub const PLUGIN_API_VERSION: u32 = 8;
 
 const PLUGIN_DIR: &str = "./plugins";
 
@@ -212,6 +216,8 @@ pub struct PluginManager {
     plugins: SyncRwLock<Vec<LoadedPlugin>>,
     loaders: RwLock<Vec<Arc<dyn PluginLoader>>>,
     pub handlers: Arc<ArcSwap<HandlerMap>>,
+    pub java_versions: Arc<JavaVersions>,
+    pub bedrock_versions: Arc<BedrockVersions>,
     unloaded_files: RwLock<HashSet<PathBuf>>,
     services: Arc<RwLock<HashMap<String, Arc<dyn Payload>>>>,
     // Plugin state tracking
@@ -269,6 +275,8 @@ impl PluginManager {
             plugins: SyncRwLock::new(Vec::new()),
             loaders: RwLock::new(loaders),
             handlers: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+            java_versions: Arc::new(JavaVersions::new()),
+            bedrock_versions: Arc::new(BedrockVersions::new()),
             unloaded_files: RwLock::new(HashSet::new()),
             services: Arc::new(RwLock::new(HashMap::new())),
             plugin_states: RwLock::new(HashMap::new()),
@@ -1147,6 +1155,8 @@ impl PluginManager {
         };
 
         self.unregister_handlers(name);
+        self.java_versions.unregister(name);
+        self.bedrock_versions.unregister(name);
         plugin.context.unregister_commands();
 
         if let Some(instance) = plugin.instance.take() {

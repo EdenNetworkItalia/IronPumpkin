@@ -103,30 +103,46 @@ pub fn damage_post(
     let _ = fire(&living.entity, make);
 }
 
-/// Fires `LivingShieldBlockEvent` for a damage of `damage` to `living`, which uses a shield.
-/// `vanilla_blocked` is whether the shield faces the damage, which gives the blocked damage of
-/// the event, and `original_blocked` whether the damage does not bypass the shield. Returns the blocked damage and the durability loss of the
-/// shield (-1 for the vanilla loss), or `None` when the shield blocks nothing.
+/// Fires `LivingShieldBlockEvent` for a damage of `damage` to `living`, which uses an item that
+/// blocks attacks. `blocked_damage` is the damage that the item blocks in vanilla, and
+/// `original_blocked` whether the damage does not bypass the item. Returns the blocked damage and
+/// the durability loss of the item (-1 for the vanilla loss), or `None` when it blocks nothing.
 pub fn shield_block(
     living: &LivingEntity,
     source: impl FnOnce() -> DamageSource,
     damage: f32,
-    vanilla_blocked: bool,
+    blocked_damage: f32,
     original_blocked: bool,
 ) -> Option<(f32, i32)> {
-    let vanilla = (vanilla_blocked && original_blocked).then_some((damage, -1));
+    let vanilla = (original_blocked && blocked_damage > 0.0).then_some((blocked_damage, -1));
     // Vanilla `applyItemBlocking` returns before the event for a damage of 0.
     if damage <= 0.0 {
         return vanilla;
     }
     let Some(event) = fire(&living.entity, |entity| {
-        let blocked_damage = if vanilla_blocked { damage } else { 0.0 };
         LivingShieldBlockEvent::new(entity, source(), damage, blocked_damage, original_blocked)
     }) else {
         return vanilla;
     };
     let blocked_damage = event.blocked_damage.clamp(0.0, damage);
     (event.blocked && blocked_damage > 0.0).then_some((blocked_damage, event.shield_damage))
+}
+
+/// `NeoForge` `DamageContainer`: what a hit of `damage_with_context` carries into
+/// `actually_hurt` for `LivingDamageEventPre`, and what `actually_hurt` hands back for
+/// `LivingDamageEventPost`. `LivingEntity` keeps a stack of them, because a handler can damage
+/// the same entity again.
+#[derive(Clone, Copy, Default)]
+pub struct DamageContainer {
+    pub position: Option<Vector3<f64>>,
+    /// The damage that `damage_with_context` got.
+    pub original_damage: f32,
+    pub after_armor: f32,
+    pub after_magic: f32,
+    /// The damage that `LivingDamageEventPre` left for the absorption and the health.
+    pub inflicted_damage: f32,
+    pub health_damage: f32,
+    pub absorbed_damage: f32,
 }
 
 /// Fires `LivingEntityUseItemEventStart` and returns the use duration, `None` when no use starts.

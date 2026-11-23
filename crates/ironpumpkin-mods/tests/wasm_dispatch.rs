@@ -384,6 +384,11 @@ impl EventHandler<EntitySpawnEvent> for Watch {
         _server: &'a Arc<Server>,
         event: &'a mut EntitySpawnEvent,
     ) -> BoxFuture<'a, ()> {
+        // Only the pig of the spawn test counts: the chunk generation of the random seed spawns
+        // the entities of its structures, such as the chest minecarts of a mineshaft.
+        if event.entity_type != EntityType::PIG.id.to_string() {
+            return Box::pin(async {});
+        }
         let joined = event.world.get_entity_by_id(event.entity_id).is_some();
         native().modb.push(format!(
             "spawn of {}, joined {joined}, cancelled {}",

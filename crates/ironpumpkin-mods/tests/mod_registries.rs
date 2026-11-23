@@ -36,8 +36,9 @@ use ironpumpkin_mods::{
         attributes::Attributes,
         data_component::DataComponent,
         data_component_impl::{
-            AttributeModifiersImpl, DataComponentImpl, Modifier, PotionContentsImpl,
-            StatusEffectInstance, SuspiciousStewEffect, SuspiciousStewEffectsImpl,
+            AttributeModifiersImpl, DataComponentImpl, Modifier, ModifierDisplay,
+            PotionContentsImpl, StatusEffectInstance, SuspiciousStewEffect,
+            SuspiciousStewEffectsImpl,
         },
         dynamic::ContentIds,
         effect::StatusEffect,
@@ -289,8 +290,7 @@ fn a_mod_component_on_an_item_survives_a_save_and_reaches_a_synced_client() {
     assert_eq!(CHARGE.get(&stack), Ok(None));
     CHARGE.set(&mut stack, &5).unwrap();
 
-    let mut saved = NbtCompound::new();
-    stack.write_item_stack(&mut saved);
+    let saved = stack.to_nbt().unwrap();
     let mut loaded = ItemStack::read_item_stack(&saved).unwrap();
     assert_eq!(CHARGE.get(&loaded), Ok(Some(5)));
     assert_eq!(
@@ -516,12 +516,13 @@ fn vanilla_components_leave_mod_effects_and_attributes_out_for_a_vanilla_client(
         ]
         .into(),
     };
-    let modifier = |attribute, id| Modifier {
+    let modifier = |attribute, id: &'static str| Modifier {
         r#type: attribute,
-        id,
+        id: id.into(),
         amount: 1.0,
         operation: Operation::AddValue,
         slot: AttributeModifierSlot::Any,
+        display: ModifierDisplay::default(),
     };
     let modifiers = AttributeModifiersImpl {
         attribute_modifiers: vec![

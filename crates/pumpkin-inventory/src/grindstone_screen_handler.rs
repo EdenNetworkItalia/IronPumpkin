@@ -189,7 +189,12 @@ pub fn get_enchantments_for_crafting(stack: &ItemStack) -> Vec<(&'static Enchant
 
 #[must_use]
 pub fn has_any_enchantments(stack: &ItemStack) -> bool {
-    !get_enchantments_for_crafting(stack).is_empty()
+    stack
+        .get_data_component::<EnchantmentsImpl>()
+        .is_some_and(|e| !e.enchantment.is_empty())
+        || stack
+            .get_data_component::<StoredEnchantmentsImpl>()
+            .is_some_and(|e| !e.enchantment.is_empty())
 }
 
 pub fn set_enchantments(result: &mut ItemStack, enchantments: Vec<(&'static Enchantment, i32)>) {
@@ -372,7 +377,7 @@ impl GrindstoneScreenHandler {
         let curses_count = curses.len();
 
         if item.item == &Item::ENCHANTED_BOOK && curses_count == 0 {
-            item.item = &Item::BOOK;
+            item = item.transmute_copy(&Item::BOOK, item.item_count);
         }
 
         set_enchantments(&mut item, curses);
@@ -545,10 +550,25 @@ impl ScreenHandler for GrindstoneScreenHandler {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
+        let inputs = [
+            self.inventory.get_stack(Self::INPUT_SLOT),
+            self.inventory.get_stack(Self::ADDITIONAL_SLOT),
+        ];
         self.internal_on_slot_click(slot_index, button, action_type, player);
-        if (slot_index as usize) <= Self::RESULT_SLOT {
+        // Vanilla `slotsChanged`: the result, and the place event, follow a click on the grindstone
+        // slots or a change of the inputs (a shift-click from the player inventory).
+        if usize::try_from(slot_index).is_ok_and(|slot| slot <= Self::RESULT_SLOT)
+            || !self
+                .inventory
+                .get_stack(Self::INPUT_SLOT)
+                .are_equal(&inputs[0])
+            || !self
+                .inventory
+                .get_stack(Self::ADDITIONAL_SLOT)
+                .are_equal(&inputs[1])
+        {
             self.update_result();
-            self.send_content_updates();
         }
+        self.send_content_updates();
     }
 }

@@ -32,8 +32,7 @@ use pumpkin_core::{
 use pumpkin_data::{
     Block, BlockDirection, BlockStateId,
     block_properties::{
-        ChestLikeProperties, ChestType, DispenserLikeProperties, Facing, FacingHopper,
-        HorizontalFacing,
+        ChestLikeProperties, ChestType, DispenserLikeProperties, Facing, HorizontalFacing,
     },
     dimension::Dimension,
     item::Item,
@@ -700,7 +699,7 @@ fn plain_block(at: BlockPos, stack: Option<ItemStack>) -> Arc<ItemStacksResource
 
 fn hopper_at(test: &TestWorld, at: BlockPos, stack: Option<ItemStack>) -> Arc<HopperBlockEntity> {
     test.place(at, Block::HOPPER.default_state.id);
-    let hopper = Arc::new(HopperBlockEntity::new(at, FacingHopper::Down));
+    let hopper = Arc::new(HopperBlockEntity::new(at));
     if let Some(stack) = stack {
         hopper.set_stack(0, stack);
     }

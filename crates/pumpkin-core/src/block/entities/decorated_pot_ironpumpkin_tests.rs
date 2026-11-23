@@ -63,3 +63,33 @@ fn a_missing_side_stays_empty_and_no_sherds_write_nothing() {
     plain.write_nbt(&mut written);
     assert!(written.get("sherds").is_none());
 }
+
+#[test]
+fn an_empty_side_is_a_brick_on_bedrock() {
+    let mut front = NbtCompound::new();
+    front.put_string("id", "minecraft:heart_pottery_sherd".to_string());
+    let mut map = NbtCompound::new();
+    map.put_compound("front", front);
+    let mut nbt = NbtCompound::new();
+    nbt.put_compound("sherds", map);
+    let pot = DecoratedPotBlockEntity::from_nbt(&nbt, BlockPos::new(0, 0, 0));
+
+    let actor = pot
+        .bedrock_block_actor_data(pumpkin_data::Block::DECORATED_POT.default_state.id)
+        .unwrap();
+    let names: Vec<_> = actor
+        .get_list("sherds")
+        .unwrap()
+        .iter()
+        .filter_map(NbtTag::extract_string)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "minecraft:brick",
+            "minecraft:brick",
+            "minecraft:brick",
+            "minecraft:heart_pottery_sherd"
+        ]
+    );
+}

@@ -7,9 +7,7 @@
 )]
 
 use pumpkin_command::argument_types::argument_type::ArgumentType;
-use pumpkin_command::argument_types::block::{
-    INVALID_VALUE_ERROR_TYPE, UNKNOWN_PROPERTY_ERROR_TYPE,
-};
+use pumpkin_command::argument_types::block::{ERROR_INVALID_VALUE, ERROR_UNKNOWN_PROPERTY};
 use pumpkin_command::argument_types::block_predicate::{
     BlockPredicate, BlockPredicateArgumentType,
 };
@@ -86,14 +84,14 @@ fn custom_block_properties_are_matched_by_id_and_by_tag() {
     let error = parse("acc-mod:crystal[charge=4]").unwrap_err();
     assert_eq!(
         error.message,
-        INVALID_VALUE_ERROR_TYPE
+        ERROR_INVALID_VALUE
             .create_without_context(text("acc-mod:crystal"), text("4"), text("charge"))
             .message
     );
     let error = parse("acc-mod:crystal[axis=y]").unwrap_err();
     assert_eq!(
         error.message,
-        UNKNOWN_PROPERTY_ERROR_TYPE
+        ERROR_UNKNOWN_PROPERTY
             .create_without_context(text("acc-mod:crystal"), text("axis"))
             .message
     );

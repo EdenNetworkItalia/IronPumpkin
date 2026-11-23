@@ -198,6 +198,7 @@ fn a_plugin_receives_the_block_and_the_entity_of_a_projectile_impact() {
                 face: BlockDirection::Up,
                 hit_pos: Vector3::new(1.5, 70.0, 0.5),
                 normal: Vector3::new(0.0, 1.0, 0.0),
+                world_border: false,
             },
         ),
     );

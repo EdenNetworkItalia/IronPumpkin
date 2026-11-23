@@ -25,7 +25,7 @@ use pumpkin_core::block::entities::{
     furnace::FurnaceBlockEntity, furnace_like_block_entity::CookingBlockEntityBase,
     hopper::HopperBlockEntity, jukebox::JukeboxBlockEntity,
 };
-use pumpkin_data::{block_properties::FacingHopper, item::Item, item_stack::ItemStack};
+use pumpkin_data::{item::Item, item_stack::ItemStack};
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_util::math::position::BlockPos;
 
@@ -460,10 +460,7 @@ fn a_transaction_on_the_furnace_input_resets_the_cooking_only_on_commit() {
 
 #[test]
 fn an_insert_into_an_empty_hopper_sets_its_cooldown_unless_aborted() {
-    let hopper = Arc::new(HopperBlockEntity::new(
-        BlockPos::new(0, 64, 0),
-        FacingHopper::Down,
-    ));
+    let hopper = Arc::new(HopperBlockEntity::new(BlockPos::new(0, 64, 0)));
     let wrapper = InventoryWrapper::of_kind(hopper.clone(), ContainerKind::Hopper);
     {
         let mut transaction = Transaction::open_root().unwrap();
