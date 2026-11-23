@@ -68,6 +68,18 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
 - [ ] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
 - [ ] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
+- [ ] 2.36 (#179) Sound and vanilla game events through one `World` entry point, and the sound ranges of the wave 4 review; verify: one test per event, the list of direct sound sends that stay, a v0.2 round trip per event
+- [ ] 2.37 (#180) Item, enchantment and brewing events with their fire sites; verify: one test per event, no extra cost on the enchantment lookup without a handler
+- [ ] 2.38 (#181) Living and player events that need a vanilla code path (equipment diff, wake checks, the experience orb follow, clone, advancement progress, negotiation); verify: one test per event and per ported vanilla path
+- [ ] 2.39 (#182) Farmland trample, entity section, entity constructing and spawn position events; verify: one test per event, the fixed-seed spawn equal to master, the world generation benches
+- [ ] 2.40 (#183) The NeoForge tag ids missing from the conventional tags; verify: a codegen rerun changes nothing, a unit test per registry
+- [ ] 2.41 (#184) Extension interfaces as one inventory row per hook, with the demand of the modpack scan; verify: the script reruns with no diff, `mapping_status.py --check`
+- [ ] 2.42 (#185) Damage container, permission nodes, transfer handlers and the other remaining packages; verify: a test per handler and per reduction kind
+- [ ] 2.43 (#186) Block and item event gaps of the wave 4 review; verify: a test per fix
+- [ ] 2.44 (#187) Damage, cause, explosion and tick gaps of the wave 4 review; verify: a test per fix
+- [ ] 2.45 (#188) Registration and registry gaps of the wave 4 review; verify: a test per fix
+- [ ] 2.46 (#151) Component hashes and nested item stack templates like vanilla; verify: hashes against the decompiled `HashOps`, template bytes from the decompiled codecs
+- [ ] 2.47 (#162) The hopper and the dropper ask the mod block capability before the entity containers; verify: the minecart test, the `hopper_tick` bench
 
 ## Workflow follow-up
 
