@@ -44,6 +44,82 @@ use pumpkin_data::{
 };
 use pumpkin_util::identifier::Identifier;
 
+/// A registry of the content registry, as a handle. [`ModInit::registry`](crate::ModInit::registry)
+/// gives one.
+///
+/// `NeoForge`: the `Registry<T>` that `DeferredRegister#getRegistry` supplies. The handle carries
+/// the lookups of this module for one registry, with the same rules for the freeze.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Registry(ContentKind);
+
+impl Registry {
+    /// The handle of the registry of this kind.
+    #[must_use]
+    pub const fn of(kind: ContentKind) -> Self {
+        Self(kind)
+    }
+
+    /// The key of the registry. `NeoForge`: `DeferredRegister#getRegistryKey`, a `ResourceKey` of
+    /// the registry. Here a registry is its [`ContentKind`], so the key is the kind that
+    /// [`ModInit::entries`](crate::ModInit::entries) and the lookups of this module take.
+    #[must_use]
+    pub const fn key(self) -> ContentKind {
+        self.0
+    }
+
+    /// The name of the registry, for example `minecraft:block`.
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryName`, the identifier of the registry key.
+    #[must_use]
+    pub const fn name(self) -> Identifier {
+        Identifier::vanilla_static(match self.0 {
+            ContentKind::Block => "block",
+            ContentKind::Item => "item",
+            ContentKind::EntityType => "entity_type",
+            ContentKind::SoundEvent => "sound_event",
+            ContentKind::MobEffect => "mob_effect",
+            ContentKind::Attribute => "attribute",
+            ContentKind::DataComponentType => "data_component_type",
+        })
+    }
+
+    /// See [`contains`].
+    #[must_use]
+    pub fn contains(self, key: &str) -> bool {
+        contains(self.0, key)
+    }
+
+    /// See [`id_of`].
+    #[must_use]
+    pub fn id_of(self, key: &str) -> Option<u16> {
+        id_of(self.0, key)
+    }
+
+    /// See [`key_of`].
+    #[must_use]
+    pub fn key_of(self, id: u16) -> Option<Identifier> {
+        key_of(self.0, id)
+    }
+
+    /// See [`keys`].
+    #[must_use]
+    pub fn keys(self) -> Vec<Identifier> {
+        keys(self.0)
+    }
+
+    /// See [`is_in_tag`].
+    #[must_use]
+    pub fn is_in_tag(self, key: &str, tag: &str) -> bool {
+        is_in_tag(self.0, key, tag)
+    }
+
+    /// See [`tag_entries`].
+    #[must_use]
+    pub fn tag_entries(self, tag: &str) -> Option<Vec<Identifier>> {
+        tag_entries(self.0, tag)
+    }
+}
+
 /// Whether the registry has an entry with this name.
 ///
 /// `NeoForge`: `Registry#containsKey`.

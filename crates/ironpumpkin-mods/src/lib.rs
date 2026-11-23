@@ -133,6 +133,7 @@ use imc::{InterModEnqueue, InterModProcess};
 use mod_list::ModList;
 use mods_toml::ModInfo;
 use permission::Permission;
+use pumpkin_util::identifier::Identifier;
 use server::Server;
 use version::ArtifactVersion;
 
@@ -317,6 +318,10 @@ type Registration = Box<dyn Fn(&Context) + Send + Sync>;
 /// This crate is the native API for mods. It passes `pumpkin-core` types through.
 pub struct ModInit {
     id: &'static str,
+    /// The registry namespace of the mod, `DeferredRegister#getNamespace`.
+    namespace: String,
+    /// The content that this `init` registered, in registration order. A tag is not an entry.
+    entries: Vec<(ContentKind, Identifier)>,
     data_root: PathBuf,
     registrations: Vec<Registration>,
     content_error: Option<ContentRegistrationError>,
@@ -361,6 +366,8 @@ impl ModInit {
     pub fn new(id: &'static str) -> Self {
         Self {
             id,
+            namespace: id.to_owned(),
+            entries: Vec::new(),
             // Must agree with `Context::get_data_folder`, which is not reachable without a server.
             data_root: Path::new("plugins").join("data"),
             registrations: Vec::new(),
@@ -577,6 +584,53 @@ impl ModInit {
         Ok(())
     }
 
+    /// The registry namespace of the mod: the `namespace` of its `neoforge.mods.toml`, or the mod
+    /// id. The registrations take names as written, so a mod puts this value in front of each
+    /// name itself.
+    ///
+    /// `NeoForge`: `DeferredRegister#getNamespace`, which the `DeferredRegister` puts in front of
+    /// each name.
+    #[must_use]
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    /// The names of the content that this mod registered with [`ModInit`] in a registry, in
+    /// registration order. A failed registration is not listed, and neither is a tag. Content that
+    /// a handler of `RegisterEvent` registers is not listed.
+    ///
+    /// `NeoForge`: `DeferredRegister#getEntries`, the holders of one `DeferredRegister`.
+    #[must_use]
+    pub fn entries(&self, kind: ContentKind) -> Vec<Identifier> {
+        self.entries
+            .iter()
+            .filter(|(entry_kind, _)| *entry_kind == kind)
+            .map(|(_, name)| name.clone())
+            .collect()
+    }
+
+    /// The registry of this kind. `NeoForge`: `DeferredRegister#getRegistry`.
+    #[must_use]
+    pub const fn registry(&self, kind: ContentKind) -> registry::Registry {
+        registry::Registry::of(kind)
+    }
+
+    /// The key of the registry of this kind, the kind itself. See [`registry::Registry::key`].
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryKey`.
+    #[must_use]
+    pub const fn registry_key(&self, kind: ContentKind) -> ContentKind {
+        self.registry(kind).key()
+    }
+
+    /// The name of the registry of this kind, for example `minecraft:block`.
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryName`.
+    #[must_use]
+    pub const fn registry_name(&self, kind: ContentKind) -> Identifier {
+        self.registry(kind).name()
+    }
+
     /// Passes `result` through and keeps its error if it is the first one of this mod.
     fn keep_content_error(
         &mut self,
@@ -584,6 +638,12 @@ impl ModInit {
         name: String,
         result: Result<(), RegistryError>,
     ) -> Result<(), RegistryError> {
+        if result.is_ok()
+            && !name.starts_with('#')
+            && let Ok(entry) = Identifier::parse(&name)
+        {
+            self.entries.push((kind, entry));
+        }
         if let Err(error) = &result {
             self.content_error
                 .get_or_insert_with(|| ContentRegistrationError {
@@ -749,6 +809,12 @@ fn run_init(
     native_mod: &dyn NativeMod,
     mut init: ModInit,
 ) -> Result<ModInit, ContentRegistrationError> {
+    if let Some(info) = mod_info(native_mod)
+        .ok()
+        .filter(|info| info.mod_id == init.id)
+    {
+        init.namespace = info.namespace;
+    }
     native_mod.init(&mut init);
     init.content_error.take().map_or(Ok(init), Err)
 }

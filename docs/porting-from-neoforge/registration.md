@@ -273,6 +273,20 @@ fn lamp_state() -> Option<u16> {
 
 Lookups by tag work for generated tags (vanilla, and the `c:` and `neoforge:` tags that Pumpkin generates) and for tags of mods. A tag of a mod is not visible to clients and data packs.
 
+### The getters of `DeferredRegister`
+
+`ModInit` has the getters of the `DeferredRegister` that a mod keeps for each registry. The first argument of a getter is the `ContentKind` of the registry.
+
+| NeoForge | `ModInit` |
+| :--- | :--- |
+| `getNamespace()` | `namespace()`: the `namespace` key of `neoforge.mods.toml`, or the mod id |
+| `getEntries()` | `entries(kind)`: the names that this mod registered through `ModInit`, in registration order. Tags and failed registrations are not listed. |
+| `getRegistry()` | `registry(kind)`: a `registry::Registry` with the lookups of the table above |
+| `getRegistryKey()` | `registry_key(kind)`: the `ContentKind` itself |
+| `getRegistryName()` | `registry_name(kind)`, for example `minecraft:block` |
+
+`addAlias` has no counterpart: the content registry has no alias map.
+
 ### RegisterEvent
 
 A mod that registers its content from a `RegisterEvent` listener keeps that shape. The handler gets `RegisterEvent` once per registry, and the methods of `content::RegisterEventExt` register only on the fire of their own registry, as `RegisterEvent#register(ResourceKey, ..)` does. Register the handler in `init`.
