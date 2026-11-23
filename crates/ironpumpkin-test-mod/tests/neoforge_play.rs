@@ -219,3 +219,95 @@ fn neoforge_client_plays_a_script() {
     server.wait_for_log(&format!("{PLAYER} left the game"));
     server.stop();
 }
+
+/// `NeoForgeEventHandler.onDpSync`: a `NeoForge` client that names the built-in data maps gets
+/// one `neoforge:registry_data_map_sync` per registry with synced maps after `set_held_slot` on
+/// join, and the same payloads again after `reload` on the server console.
+#[test]
+fn neoforge_client_gets_the_data_maps_on_join_and_reload() {
+    use pumpkin_neoforge_client::record::{Direction, State};
+
+    const SYNC: &str = "neoforge:registry_data_map_sync";
+    // block, block_transformer, entity_type, game_event, villager_profession, worldgen/biome.
+    const REGISTRIES: usize = 6;
+    // `review_a_neoforge_client_with_only_the_builtin_maps_gets_six_empty_payloads`.
+    const BUILTIN_BYTES: usize = 429;
+
+    if std::env::var_os(SERVER_DIR).is_some() {
+        return;
+    }
+    let script = Script::load(&client_path("scripts/data_maps.toml")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let mut server = Server::start(dir.path(), port);
+    server.wait_for_log(&format!("{ID} (client_required = true)"));
+    let options = Options {
+        host: Ipv4Addr::LOCALHOST.to_string(),
+        port,
+        username: PLAYER.to_owned(),
+        brand: "neoforge".to_owned(),
+        channels: Some(ChannelMap::load(&client_path("channels/neoforge-26.3.toml")).unwrap()),
+        timeout: SESSION_TIMEOUT,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let mut entries = Vec::new();
+    let mut synced = 0;
+    let console = &mut server.console;
+    runtime
+        .block_on(session::play(&options, &script, &mut |entry| {
+            if entry.direction == Direction::Clientbound
+                && entry.state == State::Play
+                && entry.channel.as_deref() == Some(SYNC)
+            {
+                synced += 1;
+                if synced == REGISTRIES {
+                    console.write_all(b"reload\n").unwrap();
+                }
+            }
+            entries.push(entry.clone());
+        }))
+        .unwrap();
+    let play: Vec<_> = entries
+        .iter()
+        .filter(|entry| entry.direction == Direction::Clientbound && entry.state == State::Play)
+        .collect();
+    let syncs: Vec<_> = play
+        .iter()
+        .enumerate()
+        .filter(|(_, entry)| entry.channel.as_deref() == Some(SYNC))
+        .collect();
+    let lengths: Vec<usize> = syncs.iter().map(|(_, entry)| entry.length).collect();
+    assert_eq!(syncs.len(), 2 * REGISTRIES, "{lengths:?}");
+    assert_eq!(
+        lengths[..REGISTRIES].iter().sum::<usize>(),
+        BUILTIN_BYTES,
+        "{lengths:?}"
+    );
+    assert_eq!(
+        lengths[REGISTRIES..].iter().sum::<usize>(),
+        BUILTIN_BYTES,
+        "{lengths:?}"
+    );
+    let held = play
+        .iter()
+        .position(|entry| entry.packet == "set_held_slot")
+        .unwrap_or_else(|| {
+            panic!(
+                "{:?}",
+                play.iter().map(|entry| &entry.packet).collect::<Vec<_>>()
+            )
+        });
+    assert!(syncs[0].0 > held, "the join sync follows set_held_slot");
+    assert!(
+        syncs[..REGISTRIES]
+            .windows(2)
+            .all(|pair| pair[1].0 == pair[0].0 + 1),
+        "the join sync is one run of payloads"
+    );
+    server.stop();
+    let log = server.log();
+    assert!(!log.contains("Could not encode"), "{log}");
+}
