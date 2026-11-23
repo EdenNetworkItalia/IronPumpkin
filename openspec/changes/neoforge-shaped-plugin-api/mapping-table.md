@@ -37,7 +37,7 @@ How to read it:
 | `RegisterCapabilitiesEvent` | 131 | event class | `NativeMod::register_capabilities` with `ironpumpkin_mods::capabilities::RegisterCapabilitiesEvent` (once per `EventPriority` phase) | supported |
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `ModInit::register_command` (API call, no event) | supported |
-| `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` (two hooks, no parent handler) | supported |
+| `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `config_reloading`, `config_unloading` (three hooks, no parent handler) | supported |
 | `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerInteractEvent.RightClickBlock` | 67 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `RightClickBlock`, built with `right_click_block`) | supported |
@@ -156,7 +156,7 @@ How to read it:
 | `BlockEvent.NeighborNotifyEvent` | 6 | event class | `event-bus.event::block-event-neighbor-notify-event` | supported |
 | `ChunkWatchEvent.Sent` | 6 | event class | `event-bus.event::chunk-watch-event-sent` | supported |
 | `ExplosionEvent.Start` | 6 | event class | `pumpkin_core::plugin::entity::EntityExplodeEvent` | supported |
-| `ModConfigEvent.Unloading` | 6 | event class | `event-bus.event::mod-config-event-unloading` (not implemented) | supported |
+| `ModConfigEvent.Unloading` | 6 | event class | `NativeMod::config_unloading` | supported |
 | `PermissionGatherEvent` | 6 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PermissionGatherEvent.Nodes` | 6 | event class | `event-bus.event::permission-gather-event-nodes` | supported |
 | `CommandEvent` | 5 | event class | `event-bus.event::command-event` | planned |

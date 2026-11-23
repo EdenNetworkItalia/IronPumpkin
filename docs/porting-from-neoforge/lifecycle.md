@@ -260,11 +260,11 @@ The mod list holds the system mods `minecraft` and `neoforge`, as on NeoForge. A
 | `namespace` | The registry namespace. The default is the mod id. |
 | `version` | The version. `${file.jarVersion}` becomes `NativeMod::version()`. The version starts with a digit. |
 | `displayName`, `description`, `authors` | The display fields of `ModInfo` |
-| `modUrl`, `issueTrackerURL` | `ModInfo::mod_url` and `ModInfo::issue_tracker_url`. The `issueTrackerURL` of the file is `ModInfo::file_issue_tracker_url`. `ModInfo::issues_url()` returns the key of the mod, else the key of the file. A blank value, or a value with `myurl.me` or `example.invalid`, is absent. A value without a scheme stops the load. |
+| `modUrl`, `issueTrackerURL` | `ModInfo::mod_url` and `ModInfo::issue_tracker_url`. The `issueTrackerURL` of the file is `ModInfo::file_issue_tracker_url`. `ModInfo::issues_url()` returns the key of the mod, else the key of the file. A blank value, or a value with `myurl.me` or `example.invalid`, is absent in `modUrl` and in the file `issueTrackerURL`, and a value without a scheme stops the load. The `issueTrackerURL` of a `[[mods]]` entry is a plain string, as FML does not parse it. |
 | `[properties]`, `[modproperties.<modId>]` | `ModInfo::file_properties` and `ModInfo::mod_properties`, as TOML tables |
 | `[[dependencies.<modId>]]` | The dependencies of the mod: `modId`, `type`, `versionRange`, `ordering`, `side`, `reason` and `referralUrl` (`ModDependency::referral_url`) |
 
-A file with several `[[mods]]` entries gives each native mod its own entry, picked by `modId`. A native mod is one crate with one mod id, so the file does not describe several mods at once.
+A crate that registers several mods with `register_mod!` gives each the same text, and each picks the `[[mods]]` entry with its id, or the only entry.
 
 The other keys (`modLoader`, `loaderVersion`, `mixins`, `accessTransformers` and the client display keys) are not read.
 

@@ -216,7 +216,7 @@ When a server has stopped, the server unloads each Synced config and calls `Nati
 
 - `define_in_list(path, default, acceptable)` accepts a value that is in `acceptable`. The default must be in the list.
 - `define_list_allow_empty` has the correction of `define_list`: an empty list in the file stays empty, a missing key gets the default, and a list with no valid element gets the default. NeoForge sets a size range that only limits the edits of the config screen.
-- `define_in_range::<i32>` reads and corrects an `i32` value. A TOML integer that does not fit in an `i32` gets the default.
+- `define_in_range::<i32>` reads and corrects an `i32` value. A TOML integer that does not fit in an `i32` clamps to the bound, as `Range.correct` compares `doubleValue()`.
 - `ConfigSpec::configure` builds a spec and returns the value that the closure returns, for a mod that keeps a path or a handle next to the spec.
 - `ModConfigs::get_mod_configs("examplemod")` returns the `Arc<ModConfig>` of each config that a mod registered.
 
