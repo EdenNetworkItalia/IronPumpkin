@@ -95,18 +95,9 @@ impl ModList {
 
 /// The mods that `NeoForge` always loads (`ModSorter.detectSystemMods`).
 pub(crate) fn system_mods() -> Vec<ModInfo> {
-    let system_mod = |mod_id: &str, display_name: &str, version: &str| ModInfo {
-        mod_id: mod_id.to_owned(),
-        namespace: mod_id.to_owned(),
-        version: ArtifactVersion::new(version),
-        display_name: display_name.to_owned(),
-        description: display_name.to_owned(),
-        authors: None,
-        dependencies: Vec::new(),
-    };
     vec![
-        system_mod("minecraft", "Minecraft", &CURRENT_MC_VERSION.to_string()),
-        system_mod("neoforge", "NeoForge", EMULATED_NEOFORGE_VERSION),
+        ModInfo::plain("minecraft", "Minecraft", &CURRENT_MC_VERSION.to_string()),
+        ModInfo::plain("neoforge", "NeoForge", EMULATED_NEOFORGE_VERSION),
     ]
 }
 
@@ -411,5 +402,51 @@ mod tests {
         assert_eq!(container.namespace, "examplemod");
         assert!(list.get_mod_container_by_id("jei").is_none());
         assert_eq!(dist(), Dist::DedicatedServer);
+    }
+
+    /// `forEachModContainer`, `forEachModInOrder` and `applyForEachModContainer` are an iteration
+    /// of the slices that `get_mods` and `get_sorted_mods` return.
+    #[test]
+    fn iterating_the_mod_slices_replaces_the_for_each_methods() {
+        let mods = [
+            mod_info(
+                "alpha",
+                "1.0",
+                "DEP\nmodId = \"beta\"\nordering = \"AFTER\"\n",
+            ),
+            mod_info("beta", "2.0", ""),
+        ];
+        let sorted: Vec<ModInfo> = sort(&mods)
+            .unwrap()
+            .into_iter()
+            .map(|i| mods[i].clone())
+            .collect();
+        let list = ModList::new(sorted);
+        // `forEachModContainer`: each container once, with its id.
+        let mut seen = Vec::new();
+        for container in list.get_mods() {
+            seen.push((container.mod_id.clone(), container.version.to_string()));
+        }
+        assert_eq!(
+            seen,
+            [
+                ("beta".to_owned(), "2.0".to_owned()),
+                ("alpha".to_owned(), "1.0".to_owned())
+            ]
+        );
+        // `forEachModInOrder`: load order, dependencies first.
+        let in_order: Vec<&str> = list
+            .get_sorted_mods()
+            .iter()
+            .map(|c| c.mod_id.as_str())
+            .collect();
+        assert_eq!(in_order, ["beta", "alpha"]);
+        // `applyForEachModContainer`: a function over each container.
+        let names: Vec<String> = list
+            .get_mods()
+            .iter()
+            .map(|c| c.display_name.to_uppercase())
+            .collect();
+        assert_eq!(names, ["BETA", "ALPHA"]);
     }
 }
