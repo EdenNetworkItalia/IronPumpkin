@@ -2055,6 +2055,7 @@ dependencies = [
  "pumpkin-wasm-host",
  "pumpkin-world",
  "rustc-hash",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

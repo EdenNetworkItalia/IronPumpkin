@@ -284,9 +284,30 @@ fn packs(dir: &Path, names: &[&str]) -> Vec<Pack> {
 fn values<T: DataMapValue + Clone>(data_map: &DataMapType<T>) -> BTreeMap<String, T> {
     data_map
         .data_map()
-        .into_iter()
-        .map(|(entry, value)| (entry.to_string(), (*value).clone()))
+        .iter()
+        .map(|(entry, value)| (entry.to_string(), value.clone()))
         .collect()
+}
+
+#[test]
+fn reads_go_through_the_view_and_with_data() {
+    let burn = int_map("mapmod:burn", "minecraft:item");
+    burn.info.set_values(Values::from([(
+        id("minecraft:stick"),
+        Arc::new(100) as Stored,
+    )]));
+    let view = burn.data_map();
+    assert_eq!(
+        burn.with_data(&id("minecraft:stick"), |time| time * 2),
+        Some(200)
+    );
+    assert_eq!(burn.with_data(&id("minecraft:coal"), |time| *time), None);
+    // A later load does not change a view taken before it.
+    burn.info.set_values(Values::new());
+    assert_eq!(view.get(&id("minecraft:stick")), Some(&100));
+    assert_eq!(view.len(), 1);
+    assert!(burn.data_map().is_empty());
+    assert!(burn.get_data(&id("minecraft:stick")).is_none());
 }
 
 fn list_map() -> AdvancedDataMapType<Vec<i32>, Without> {
@@ -723,7 +744,10 @@ fn builtin_values_read_both_forms_and_write_the_network_form() {
     );
 
     let frequency = parse::<builtin::VibrationFrequency>(json!({ "frequency": 16 }));
-    assert_eq!(frequency.unwrap_err(), "Value 16 outside of range [1:15]");
+    assert_eq!(
+        frequency.unwrap_err(),
+        "Value must be within range [1;15]: 16"
+    );
     assert_eq!(
         encode(&parse::<builtin::VibrationFrequency>(json!(3)).unwrap()),
         json!(3)
@@ -789,5 +813,23 @@ fn transformables_read_both_forms_and_their_remover_drops_one_transformer() {
             .transformers
             .len(),
         2
+    );
+}
+
+#[test]
+fn a_replaced_pack_tag_hides_the_builtin_values() {
+    let builtin = || vec!["minecraft:oak_planks".to_owned()];
+    let pack = Some(vec!["minecraft:birch_planks".to_owned()]);
+    assert_eq!(
+        registries::merge_tag_values(builtin, pack.clone(), false),
+        ["minecraft:oak_planks", "minecraft:birch_planks"]
+    );
+    assert_eq!(
+        registries::merge_tag_values(builtin, pack, true),
+        ["minecraft:birch_planks"]
+    );
+    assert_eq!(
+        registries::merge_tag_values(builtin, None, false),
+        ["minecraft:oak_planks"]
     );
 }

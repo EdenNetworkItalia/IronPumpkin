@@ -76,10 +76,13 @@
 pub mod builtin;
 mod loader;
 mod registries;
+#[cfg(test)]
+mod review_tests;
 mod sync;
 #[cfg(test)]
 mod tests;
 
+use arc_swap::ArcSwap;
 use std::{
     any::Any,
     collections::{BTreeMap, HashMap, HashSet},
@@ -285,7 +288,8 @@ pub trait DataMapValueRemover<T>: Send + Sync + 'static {
     ) -> Option<T>;
 }
 
-/// `DataMapValueRemover.Default`: removes the whole value. Its codec reads any value.
+/// `DataMapValueRemover.Default`: removes the whole value. Its codec reads any map, as
+/// `MapCodec.unitCodec` used as a `Codec`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct DefaultRemover;
 
@@ -308,9 +312,9 @@ impl Encode for DefaultRemover {
 impl Decode for DefaultRemover {
     fn decode<O: pumpkin_codecs::DynamicOps>(
         input: O::Value,
-        _ops: &'static O,
+        ops: &'static O,
     ) -> DataResult<(Self, O::Value)> {
-        DataResult::new_success((Self, input))
+        ops.get_map(&input).map(|_| (Self, ops.empty()))
     }
 }
 
@@ -444,19 +448,16 @@ pub struct TypeInfo {
     advanced: bool,
     no_tags_reason: Option<String>,
     ops: Box<dyn ErasedOps>,
-    values: RwLock<Arc<Values>>,
+    values: ArcSwap<Values>,
 }
 
 impl TypeInfo {
     fn values(&self) -> Arc<Values> {
-        self.values
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+        self.values.load_full()
     }
 
     fn set_values(&self, values: Values) {
-        *self.values.write().unwrap_or_else(PoisonError::into_inner) = Arc::new(values);
+        self.values.store(Arc::new(values));
     }
 }
 
@@ -505,30 +506,74 @@ impl<T: DataMapValue> DataMapType<T> {
     /// `None`.
     #[must_use]
     pub fn get_data(&self, entry: &Identifier) -> Option<Arc<T>> {
-        let values = self
-            .info
+        self.info
             .values
-            .read()
-            .unwrap_or_else(PoisonError::into_inner);
-        values
+            .load()
             .get(entry)
             .and_then(|value| value.clone().downcast::<T>().ok())
     }
 
-    /// `Registry.getDataMap(type)`: every entry with a value.
+    /// Runs `f` on the value of `entry`, or returns `None`. It takes no reference count, so a
+    /// read on a hot path writes no shared memory.
+    pub fn with_data<R>(&self, entry: &Identifier, f: impl FnOnce(&T) -> R) -> Option<R> {
+        let values = self.info.values.load();
+        values
+            .get(entry)
+            .and_then(|value| downcast::<T>(value))
+            .map(f)
+    }
+
+    /// `Registry.getDataMap(type)`: every entry with a value, as loaded now. A later load does
+    /// not change the view.
     #[must_use]
-    pub fn data_map(&self) -> HashMap<Identifier, Arc<T>> {
-        self.info
-            .values()
+    pub fn data_map(&self) -> DataMapView<T> {
+        DataMapView {
+            values: self.info.values(),
+            _value: PhantomData,
+        }
+    }
+}
+
+/// The values of a data map at one load: [`DataMapType::data_map`].
+pub struct DataMapView<T> {
+    values: Arc<Values>,
+    _value: PhantomData<fn() -> T>,
+}
+
+impl<T: DataMapValue> DataMapView<T> {
+    /// The value of `entry`, or `None`.
+    #[must_use]
+    pub fn get(&self, entry: &Identifier) -> Option<&T> {
+        self.values
+            .get(entry)
+            .and_then(|value| downcast::<T>(value))
+    }
+
+    /// Every entry and its value, in no fixed order.
+    pub fn iter(&self) -> impl Iterator<Item = (&Identifier, &T)> {
+        self.values
             .iter()
-            .filter_map(|(entry, value)| {
-                value
-                    .clone()
-                    .downcast::<T>()
-                    .ok()
-                    .map(|value| (entry.clone(), value))
-            })
-            .collect()
+            .filter_map(|(entry, value)| downcast::<T>(value).map(|value| (entry, value)))
+    }
+
+    /// The number of entries with a value.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Whether no entry has a value.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+}
+
+impl<T> fmt::Debug for DataMapView<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DataMapView")
+            .field("len", &self.values.len())
+            .finish_non_exhaustive()
     }
 }
 
@@ -612,7 +657,7 @@ where
                 merger,
                 _remover: PhantomData,
             }),
-            values: RwLock::new(Arc::new(HashMap::new())),
+            values: ArcSwap::from_pointee(HashMap::new()),
         }),
         _value: PhantomData,
     }

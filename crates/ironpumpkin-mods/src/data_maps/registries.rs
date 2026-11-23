@@ -136,6 +136,37 @@ pub(super) fn folder_location(registry: &Identifier) -> String {
     }
 }
 
+/// The values of a built-in tag: those of the server and those that mods add.
+fn builtin_tag_values(registry: &Identifier, name: &str) -> Vec<String> {
+    match static_registry(registry) {
+        Some(Static::Content(kind)) => crate::registry::tag_entries(kind, name)
+            .map(|entries| entries.iter().map(ToString::to_string).collect())
+            .unwrap_or_default(),
+        _ => {
+            if registry.is_vanilla()
+                && let Some(key) = RegistryKey::from_string(registry.path())
+                && let Some(entries) = get_tag_values(key, name)
+            {
+                entries.iter().map(|entry| (*entry).to_owned()).collect()
+            } else {
+                Vec::new()
+            }
+        }
+    }
+}
+
+/// The values of a tag: the built-in values, then those of the data packs. A pack that
+/// replaced the tag hides the built-in values, as `TagLoader` drops the earlier entries.
+pub(super) fn merge_tag_values(
+    builtin: impl FnOnce() -> Vec<String>,
+    packs: Option<Vec<String>>,
+    replaced: bool,
+) -> Vec<String> {
+    let mut values = if replaced { Vec::new() } else { builtin() };
+    values.extend(packs.unwrap_or_default());
+    values
+}
+
 /// The entries and tags of the registries, as the loader resolves the targets of a file.
 pub(super) trait Lookup {
     /// Whether the registry has the entry.
@@ -156,30 +187,13 @@ impl ServerLookup<'_> {
     /// The raw values of one tag: entry names and `#tag` references.
     fn tag_values(&self, registry: &Identifier, tag: &Identifier) -> Vec<String> {
         let name = tag.to_string();
-        let mut values: Vec<String> = Vec::new();
-        match static_registry(registry) {
-            Some(Static::Content(kind)) => {
-                if let Some(entries) = crate::registry::tag_entries(kind, &name) {
-                    values.extend(entries.iter().map(ToString::to_string));
-                }
-            }
-            _ => {
-                if registry.is_vanilla()
-                    && let Some(key) = RegistryKey::from_string(registry.path())
-                    && let Some(entries) = get_tag_values(key, &name)
-                {
-                    values.extend(entries.iter().map(|entry| (*entry).to_owned()));
-                }
-            }
-        }
-        if let Some(entries) = self
-            .server
-            .datapack_manager
-            .get_tag_entries(&folder_location(registry), &name)
-        {
-            values.extend(entries);
-        }
-        values
+        let folder = folder_location(registry);
+        let manager = &self.server.datapack_manager;
+        merge_tag_values(
+            || builtin_tag_values(registry, &name),
+            manager.get_tag_entries(&folder, &name),
+            manager.tag_replaces_builtin(&folder, &name),
+        )
     }
 
     fn collect_tag(

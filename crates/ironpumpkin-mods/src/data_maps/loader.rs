@@ -2,12 +2,13 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use pumpkin_util::identifier::Identifier;
+use serde::{Deserialize, Deserializer, de};
 use serde_json::Value;
 use tracing::{error, warn};
 
@@ -92,23 +93,80 @@ fn parse_removal_key(json: &Value) -> Result<DataMapSource, String> {
         .and_then(parse_source)
 }
 
+/// A JSON object with its keys in file order, as Gson reads it: a key given twice keeps its
+/// first place and its last value. `serde_json::Map` sorts its keys unless a crate of the build
+/// enables `preserve_order`.
+struct OrderedObject(Vec<(String, Value)>);
+
+impl<'de> Deserialize<'de> for OrderedObject {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = OrderedObject;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a JSON object")
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> Result<OrderedObject, A::Error> {
+                let mut entries: Vec<(String, Value)> = Vec::new();
+                while let Some((key, value)) = map.next_entry::<String, Value>()? {
+                    match entries.iter_mut().find(|(known, _)| *known == key) {
+                        Some((_, old)) => *old = value,
+                        None => entries.push((key, value)),
+                    }
+                }
+                Ok(OrderedObject(entries))
+            }
+        }
+
+        deserializer.deserialize_map(Visitor)
+    }
+}
+
+/// The fields of `DataMapFile.codec`; other keys are ignored, as `RecordCodecBuilder` does.
+#[derive(Deserialize)]
+struct RawFile {
+    replace: Option<Value>,
+    values: Option<OrderedObject>,
+    remove: Option<RawRemove>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum RawRemove {
+    List(Vec<Value>),
+    Map(OrderedObject),
+}
+
+/// `ExtraCodecs.strictUnboundedMap`: the keys of an object parsed in file order. Two keys that
+/// parse to the same target fail, as `ImmutableMap.Builder.build` throws.
+fn strict_keys(object: OrderedObject) -> Result<Vec<(DataMapSource, Value)>, String> {
+    let mut entries: Vec<(DataMapSource, Value)> = Vec::with_capacity(object.0.len());
+    for (key, value) in object.0 {
+        let source = parse_source(&key)?;
+        if entries.iter().any(|(known, _)| *known == source) {
+            return Err(format!("Multiple entries with same key: {source}"));
+        }
+        entries.push((source, value));
+    }
+    Ok(entries)
+}
+
 /// The `remove` field: a list of keys, and for an advanced type also a list of
 /// `{"key": .., "remover": ..}` objects or a map from key to remover.
-fn parse_removals(info: &TypeInfo, json: &Value) -> Result<Vec<Removal>, String> {
-    let plain = |json: &Value| -> Result<Vec<Removal>, String> {
-        json.as_array()
-            .ok_or_else(|| format!("Not a list: {json}"))?
-            .iter()
+fn parse_removals(info: &TypeInfo, remove: RawRemove) -> Result<Vec<Removal>, String> {
+    let plain = |list: &[Value]| -> Result<Vec<Removal>, String> {
+        list.iter()
             .map(|key| parse_removal_key(key).map(|key| Removal { key, remover: None }))
             .collect()
     };
-    if !info.advanced {
-        return plain(json);
-    }
-    let objects = |json: &Value| -> Result<Vec<Removal>, String> {
-        json.as_array()
-            .ok_or_else(|| format!("Not a list: {json}"))?
-            .iter()
+    let objects = |list: &[Value]| -> Result<Vec<Removal>, String> {
+        list.iter()
             .map(|removal| {
                 let object = removal
                     .as_object()
@@ -126,41 +184,39 @@ fn parse_removals(info: &TypeInfo, json: &Value) -> Result<Vec<Removal>, String>
             })
             .collect()
     };
-    objects(json).or_else(|_| plain(json)).or_else(|first| {
-        let Value::Object(map) = json else {
-            return Err(first);
-        };
-        map.iter()
+    match remove {
+        RawRemove::List(list) if !info.advanced => plain(&list),
+        RawRemove::List(list) => objects(&list).or_else(|_| plain(&list)),
+        RawRemove::Map(map) if info.advanced => strict_keys(map)?
+            .into_iter()
             .map(|(key, remover)| {
                 Ok(Removal {
-                    key: parse_source(key)?,
-                    remover: Some(info.ops.decode_remover(remover.clone())?),
+                    key,
+                    remover: Some(info.ops.decode_remover(remover)?),
                 })
             })
-            .collect()
-    })
+            .collect(),
+        RawRemove::Map(_) => {
+            Err("Not a list: the remove field of a data map without a remover".to_owned())
+        }
+    }
 }
 
-/// `DataMapFile.codec`.
-pub(super) fn parse_file(info: &TypeInfo, json: Value) -> Result<DataMapFile, String> {
-    let Value::Object(mut object) = json else {
-        return Err(format!("Not a map: {json}"));
-    };
-    let replace = match object.remove("replace") {
+/// `DataMapFile.codec`, read from the text of a file.
+pub(super) fn parse_file(info: &TypeInfo, text: &str) -> Result<DataMapFile, String> {
+    let raw: RawFile = serde_json::from_str(text).map_err(|error| error.to_string())?;
+    let replace = match raw.replace {
         None => false,
         Some(Value::Bool(replace)) => replace,
         Some(other) => return Err(format!("Not a boolean: {other}")),
     };
-    let Some(Value::Object(values)) = object.remove("values") else {
-        return Err("No key values in map".to_owned());
-    };
-    let values = values
+    let values = strict_keys(raw.values.ok_or("No key values in map")?)?
         .into_iter()
-        .map(|(key, entry)| Ok((parse_source(&key)?, parse_entry(info, entry)?)))
+        .map(|(key, entry)| Ok((key, parse_entry(info, entry)?)))
         .collect::<Result<Vec<_>, String>>()?;
-    let removals = object
-        .remove("remove")
-        .map_or_else(|| Ok(Vec::new()), |remove| parse_removals(info, &remove))?;
+    let removals = raw
+        .remove
+        .map_or_else(|| Ok(Vec::new()), |remove| parse_removals(info, remove))?;
     Ok(DataMapFile {
         replace,
         values,
@@ -335,8 +391,7 @@ pub(super) fn load(
                 had_file = true;
                 let file = fs::read_to_string(&path)
                     .map_err(|error| error.to_string())
-                    .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()))
-                    .and_then(|json| parse_file(info, json));
+                    .and_then(|text| parse_file(info, &text));
                 let file = match file {
                     Ok(file) => check_tag_usage(info, file, &pack.id),
                     Err(message) => {

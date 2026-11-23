@@ -59,10 +59,10 @@ json_codec!(
 );
 
 /// `Codec.withAlternative(record with one field, field codec)`: the value of `field` in an
-/// object, or the value itself.
+/// object, or the value itself. The record ignores the keys it does not read.
 fn one_field<'a>(json: &'a Value, field: &str) -> &'a Value {
     match json {
-        Value::Object(object) if object.len() == 1 && object.contains_key(field) => &object[field],
+        Value::Object(object) => object.get(field).unwrap_or(json),
         _ => json,
     }
 }
@@ -87,14 +87,31 @@ fn registry_entry(json: &Value, kind: ContentKind, registry: &str) -> Result<Ide
     }
 }
 
-fn int_in(json: &Value, min: i64, max: i64) -> Result<i32, String> {
-    let value = json
+/// `Codec.INT`: any JSON number, through `Number.intValue`, so a fraction is cut off and a
+/// number past the `int` range keeps its low 32 bits.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    reason = "Number.intValue narrows as Java does"
+)]
+fn int(json: &Value) -> Result<i32, String> {
+    let Value::Number(number) = json else {
+        return Err(format!("Not a number: {json}"));
+    };
+    let wide = number
         .as_i64()
-        .ok_or_else(|| format!("Not a number: {json}"))?;
+        .or_else(|| number.as_u64().map(|value| value as i64))
+        .unwrap_or_else(|| number.as_f64().map_or(0, |value| value.trunc() as i64));
+    Ok(wide as i32)
+}
+
+/// `Codec.intRange(min, max)`.
+fn int_in(json: &Value, min: i32, max: i32) -> Result<i32, String> {
+    let value = int(json)?;
     if value < min || value > max {
-        return Err(format!("Value {value} outside of range [{min}:{max}]"));
+        return Err(format!("Value must be within range [{min};{max}]: {value}"));
     }
-    i32::try_from(value).map_err(|error| error.to_string())
+    Ok(value)
 }
 
 /// `optionalFieldOf(name, true)`.
@@ -201,7 +218,7 @@ pub struct MonsterRoomMob {
 impl JsonForm for MonsterRoomMob {
     fn from_json(json: &Value) -> Result<Self, String> {
         Ok(Self {
-            weight: int_in(one_field(json, "weight"), 0, i64::from(i32::MAX))?,
+            weight: int_in(one_field(json, "weight"), 0, i32::MAX)?,
         })
     }
 
@@ -481,7 +498,7 @@ const fn transformable_from_transformers(
     Transformable { transformers }
 }
 
-/// The reason of `TRANSFORMABLES` and `BLOCK_TRANSFORM_APPENDERS` to refuse tag targets.
+/// The reason of `TRANSFORMABLES` to refuse tag targets.
 const SINGLE_BLOCK_REASON: &str = "A Transformable and its BlockTransformData must only target and attach to a single block to prevent duplicate transforms and support datamap removers";
 
 /// `NeoForgeDataMaps.ACCEPTABLE_VILLAGER_DISTANCES`.
@@ -508,7 +525,6 @@ pub static BLOCK_TRANSFORM_APPENDERS: LazyLock<AdvancedDataMapType<BlockTransfor
             appender_from_entries,
             ListMerger,
         ))
-        .disable_tag_support(SINGLE_BLOCK_REASON)
         .build()
     });
 
