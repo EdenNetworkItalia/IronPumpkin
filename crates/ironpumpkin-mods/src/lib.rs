@@ -69,6 +69,7 @@ use tracing::{error, info};
 pub use inventory;
 
 pub use data_pack::include_data_pack;
+pub use pumpkin_codecs;
 pub use pumpkin_core;
 pub use pumpkin_data;
 pub use pumpkin_macros;
@@ -83,6 +84,7 @@ pub mod capabilities;
 pub mod config;
 pub mod content;
 pub mod data_components;
+pub mod data_maps;
 pub mod data_pack;
 pub mod entity_attributes;
 pub mod imc;
@@ -163,6 +165,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/capabilities.md")]
     struct Capabilities;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/data-maps.md")]
+    struct DataMaps;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/shapes.md")]
     struct Shapes;
@@ -270,6 +275,9 @@ pub trait NativeMod: Sync {
     /// which. Runs after `dedicated_server_setup` of every mod, before `ExtendPoiTypesEvent`. See
     /// [`capabilities`].
     fn register_capabilities(&self, _event: &mut capabilities::RegisterCapabilitiesEvent) {}
+    /// `RegisterDataMapTypesEvent`: registers data map types. Runs after
+    /// `RegisterCapabilitiesEvent`, before `ExtendPoiTypesEvent`. See [`data_maps`].
+    fn register_data_map_types(&self, _event: &mut data_maps::RegisterDataMapTypesEvent) {}
 }
 
 #[doc(hidden)]

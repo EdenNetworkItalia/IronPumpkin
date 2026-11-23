@@ -54,7 +54,7 @@ pub enum Action {
     Wait(Duration),
     /// Only read, until the server has sent a play payload on this channel since the play state
     /// began. The step has no ping and no extra wait, and fails the run after `timeout`.
-    AwaitPayload(String),
+    AwaitPayload(String, usize),
     /// Close the connection. Always the last step.
     Leave,
 }
@@ -74,7 +74,7 @@ impl Action {
             Self::UseItem => "use_item",
             Self::Respawn => "respawn",
             Self::Wait(_) => "wait",
-            Self::AwaitPayload(_) => "await_payload",
+            Self::AwaitPayload(..) => "await_payload",
             Self::Leave => "leave",
         }
     }
@@ -128,8 +128,12 @@ impl Action {
                 Self::Wait(Duration::from_millis(ms))
             }
             "await_payload" => match args.as_slice() {
-                [channel] => Self::AwaitPayload((*channel).to_owned()),
-                _ => return Err("await_payload needs one channel".to_owned()),
+                [channel] => Self::AwaitPayload((*channel).to_owned(), 1),
+                [channel, count] => Self::AwaitPayload(
+                    (*channel).to_owned(),
+                    count.parse().map_err(|_| format!("bad count {count:?}"))?,
+                ),
+                _ => return Err("await_payload needs one channel and an optional count".to_owned()),
             },
             _ => return Err(format!("unknown action {name:?}")),
         };
@@ -142,7 +146,7 @@ impl Action {
                 | Self::Place { .. }
                 | Self::Hold(_)
                 | Self::Wait(_)
-                | Self::AwaitPayload(_)
+                | Self::AwaitPayload(..)
         );
         if !takes_args && !rest.is_empty() {
             return Err(format!("{name} takes no arguments"));
@@ -378,7 +382,10 @@ steps = [
         assert_eq!(actions[6], &Action::Hold(&Item::STONE));
         assert!(matches!(actions[7], Action::Place { face: Face::Up, .. }));
         assert_eq!(actions[10], &Action::Wait(Duration::from_millis(500)));
-        assert_eq!(actions[11], &Action::AwaitPayload("mod:reply".to_owned()));
+        assert_eq!(
+            actions[11],
+            &Action::AwaitPayload("mod:reply".to_owned(), 1)
+        );
         assert_eq!(script.steps[1].text, "chat hello  there");
     }
 

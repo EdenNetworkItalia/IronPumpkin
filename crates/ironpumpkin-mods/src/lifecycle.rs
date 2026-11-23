@@ -92,13 +92,15 @@ pub(crate) fn run(
         loaded.native_mod.dedicated_server_setup();
     }
     // `RegistrationEvents.init`, the "Registration events" task after the sided setup:
-    // `CapabilityHooks.init`, then `PoiTypeExtender.extendPoiTypes`.
+    // `CapabilityHooks.init`, `RegistryManager.initDataMaps`, then
+    // `PoiTypeExtender.extendPoiTypes`.
     #[cfg(not(test))]
     crate::capabilities::post(mods)?;
     // The unit tests of `capabilities` register providers after this step in the same process,
     // so the lifecycle tests do not close and freeze the shared registry.
     #[cfg(test)]
     crate::capabilities::post_unfrozen(mods)?;
+    crate::data_maps::post(mods)?;
     post(mods, |m, event| m.extend_poi_types(event))?;
     let mut queue = ImcQueue::default();
     for loaded in mods {
@@ -254,6 +256,13 @@ mod tests {
         fn extend_poi_types(&self, _event: &mut ExtendPoiTypesEvent) {
             record(format!("ExtendPoiTypesEvent {}", self.0));
         }
+
+        fn register_data_map_types(
+            &self,
+            _event: &mut crate::data_maps::RegisterDataMapTypesEvent,
+        ) {
+            record(format!("RegisterDataMapTypesEvent {}", self.0));
+        }
     }
 
     static ALPHA: LifecycleMod = LifecycleMod("alpha");
@@ -306,6 +315,8 @@ mod tests {
                 "common_setup beta",
                 "dedicated_server_setup alpha",
                 "dedicated_server_setup beta",
+                "RegisterDataMapTypesEvent alpha",
+                "RegisterDataMapTypesEvent beta",
                 "ExtendPoiTypesEvent alpha",
                 "ExtendPoiTypesEvent beta",
                 "inter_mod_enqueue alpha",

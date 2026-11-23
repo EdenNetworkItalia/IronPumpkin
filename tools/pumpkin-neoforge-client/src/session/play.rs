@@ -7,7 +7,7 @@
 //! light data.
 
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -187,7 +187,7 @@ struct Play<'a> {
     /// The payload of the last `pong_response` from the server.
     pong: Option<i64>,
     /// The channels of the play payloads that the server sent, for `await_payload`.
-    payload_channels: HashSet<String>,
+    payload_channels: HashMap<String, usize>,
     steps: Vec<StepReport>,
 }
 
@@ -237,7 +237,7 @@ impl<'a> Play<'a> {
             sequence: 0,
             barrier: 0,
             pong: None,
-            payload_channels: HashSet::new(),
+            payload_channels: HashMap::new(),
             steps: Vec::new(),
         }
     }
@@ -365,7 +365,9 @@ impl<'a> Play<'a> {
                 .await?;
             }
             Action::Wait(duration) => return self.read_until(Instant::now() + *duration).await,
-            Action::AwaitPayload(channel) => return self.await_payload(channel).await,
+            Action::AwaitPayload(channel, count) => {
+                return self.await_payload(channel, *count).await;
+            }
             // Like the vanilla client, which closes the connection without a packet.
             Action::Leave => return Ok(None),
         }
@@ -399,9 +401,13 @@ impl<'a> Play<'a> {
 
     /// Reads until the server has sent a play payload on `channel`. A server that sends none
     /// within `options.timeout` fails the run.
-    async fn await_payload(&mut self, channel: &str) -> Result<Option<PlayOutcome>, Error> {
+    async fn await_payload(
+        &mut self,
+        channel: &str,
+        count: usize,
+    ) -> Result<Option<PlayOutcome>, Error> {
         let deadline = Instant::now() + self.options.timeout;
-        while !self.payload_channels.contains(channel) {
+        while self.payload_channels.get(channel).copied().unwrap_or(0) < count {
             match self.read_one(deadline).await? {
                 Read::Handled => {}
                 Read::End(outcome) => return Ok(Some(outcome)),
@@ -492,7 +498,7 @@ impl<'a> Play<'a> {
         }
         if packet.id == play::CUSTOM_PAYLOAD {
             let (channel, data) = read_custom_payload(body)?;
-            self.payload_channels.insert(channel.to_owned());
+            *self.payload_channels.entry(channel.to_owned()).or_default() += 1;
             self.recorder.record_body(
                 Direction::Clientbound,
                 State::Play,

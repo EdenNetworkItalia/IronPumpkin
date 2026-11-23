@@ -752,11 +752,21 @@ impl<'a> Session<'a> {
                     .reply(ExtensibleEnumAcknowledgePayload::CHANNEL, &reply)
                     .await;
             }
-            // An empty map: the client knows no data maps, which only fails for mandatory ones.
+            // `ClientRegistryManager.handleKnownDataMaps` names every map of the client: here
+            // every map of the server, as a client with the same mods.
             KnownRegistryDataMapsPayload::CHANNEL => {
-                decode_payload(data, reassembled, KnownRegistryDataMapsPayload::read)?;
+                let known = decode_payload(data, reassembled, KnownRegistryDataMapsPayload::read)?;
                 let mut reply = Vec::new();
-                KnownRegistryDataMapsReplyPayload::default().write(&mut reply)?;
+                KnownRegistryDataMapsReplyPayload {
+                    data_maps: known
+                        .data_maps
+                        .into_iter()
+                        .map(|(registry, maps)| {
+                            (registry, maps.into_iter().map(|map| map.id).collect())
+                        })
+                        .collect(),
+                }
+                .write(&mut reply)?;
                 return self
                     .reply(KnownRegistryDataMapsReplyPayload::CHANNEL, &reply)
                     .await;

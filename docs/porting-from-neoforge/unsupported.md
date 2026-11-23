@@ -33,7 +33,6 @@ The inventory in `design.md` of the change folder has one row for each element o
 
 - 2.12: the player rows that stay planned, listed below.
 - 2.14: attachments.
-- 2.17: data maps.
 
 The player events landed with task 2.12. These player rows stay planned, each for its own reason:
 

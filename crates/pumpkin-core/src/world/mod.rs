@@ -4176,6 +4176,7 @@ impl World {
         player.enqueue_set_held_item_packet(&CSetSelectedSlot::new(
             player.get_inventory().get_selected_slot() as i8,
         ));
+        crate::plugin::data_maps::sync_player(player);
 
         if client.version.load() >= JavaMinecraftVersion::V_1_20_2 {
             // Start waiting for level chunks. Sets the "Loading Terrain" screen (Added in 1.20.2)

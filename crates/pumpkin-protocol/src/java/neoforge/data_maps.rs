@@ -106,6 +106,64 @@ impl KnownRegistryDataMapsReplyPayload {
     }
 }
 
+/// `FriendlyByteBuf.writeUtf(String)`: at most 32767 UTF-16 units.
+const MAX_JSON_UNITS: usize = 32767;
+
+/// Mirrors `RegistryDataMapSyncPayload`: the values of the synced data maps of one registry.
+///
+/// The registry key and each entry key are an `Identifier`, each data map a map from entry key to
+/// the value as JSON text, as `writeJsonWithRegistryCodec` writes it with `writeUtf`. The maps keep
+/// their order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegistryDataMapSyncPayload {
+    pub registry: Identifier,
+    pub data_maps: IndexMap<Identifier, IndexMap<Identifier, String>>,
+}
+
+impl RegistryDataMapSyncPayload {
+    pub const CHANNEL: &'static str = "neoforge:registry_data_map_sync";
+
+    pub fn read(read: &mut &[u8]) -> Result<Self, ReadingError> {
+        let registry = read_identifier(read)?;
+        let count = read_count(read)?;
+        let mut data_maps = IndexMap::with_capacity(count.min(MAX_PREALLOCATED));
+        for _ in 0..count {
+            let id = read_identifier(read)?;
+            let len = read_count(read)?;
+            let mut values = IndexMap::with_capacity(len.min(MAX_PREALLOCATED));
+            for _ in 0..len {
+                let key = read_identifier(read)?;
+                let json = read.get_str_bounded(MAX_JSON_UNITS)?.into_string();
+                values.insert(key, json);
+            }
+            data_maps.insert(id, values);
+        }
+        Ok(Self {
+            registry,
+            data_maps,
+        })
+    }
+
+    pub fn write(&self, mut write: impl Write) -> Result<(), WritingError> {
+        write_identifier(&mut write, &self.registry)?;
+        write_count(&mut write, self.data_maps.len())?;
+        for (id, values) in &self.data_maps {
+            write_identifier(&mut write, id)?;
+            write_count(&mut write, values.len())?;
+            for (key, json) in values {
+                write_identifier(&mut write, key)?;
+                if json.encode_utf16().count() > MAX_JSON_UNITS {
+                    return Err(WritingError::Message(format!(
+                        "the JSON of data map {id} for {key} is longer than {MAX_JSON_UNITS} characters"
+                    )));
+                }
+                write.write_string_bounded(json, MAX_JSON_UNITS * 3)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{decode_exact, tests::hex_fixture};
@@ -183,6 +241,57 @@ mod tests {
         let mut written = Vec::new();
         payload.write(&mut written).unwrap();
         assert_eq!(written, bytes);
+    }
+
+    fn sync_sample() -> (RegistryDataMapSyncPayload, Vec<u8>) {
+        let payload = RegistryDataMapSyncPayload {
+            registry: id("minecraft:item"),
+            data_maps: IndexMap::from([
+                (
+                    id("mymod:fuel"),
+                    IndexMap::from([(id("minecraft:stick"), r#"{"burn_time":100}"#.to_owned())]),
+                ),
+                (id("mymod:empty"), IndexMap::new()),
+            ]),
+        };
+        let bytes = [
+            &[0x0e][..], // registryKey: Identifier length 14
+            b"minecraft:item",
+            &[0x02], // writeMap: size VarInt 2
+            &[0x0a], // writeIdentifier: length 10
+            b"mymod:fuel",
+            &[0x01], // inner writeMap: size VarInt 1
+            &[0x0f], // writeResourceKey: Identifier length 15
+            b"minecraft:stick",
+            &[0x11], // writeUtf: length 17
+            br#"{"burn_time":100}"#,
+            &[0x0b], // writeIdentifier: length 11
+            b"mymod:empty",
+            &[0x00], // inner writeMap: size VarInt 0
+        ]
+        .concat();
+        (payload, bytes)
+    }
+
+    #[test]
+    fn sync_writes_java_bytes() {
+        let (payload, expected) = sync_sample();
+        let mut bytes = Vec::new();
+        payload.write(&mut bytes).unwrap();
+        assert_eq!(bytes, expected);
+        assert_eq!(
+            decode_exact(&bytes, RegistryDataMapSyncPayload::read).unwrap(),
+            payload
+        );
+    }
+
+    #[test]
+    fn sync_rejects_json_longer_than_write_utf_allows() {
+        let mut payload = sync_sample().0;
+        payload.data_maps[0].insert(id("minecraft:coal"), "x".repeat(MAX_JSON_UNITS + 1));
+        assert!(payload.write(&mut Vec::new()).is_err());
+        payload.data_maps[0].insert(id("minecraft:coal"), "\u{e9}".repeat(MAX_JSON_UNITS));
+        assert!(payload.write(&mut Vec::new()).is_ok());
     }
 
     fn data_maps_sample() -> (KnownRegistryDataMapsPayload, Vec<u8>) {

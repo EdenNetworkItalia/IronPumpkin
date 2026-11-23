@@ -46,12 +46,17 @@ pub const EMULATED_NEOFORGE_VERSION: &str = "26.3.0.64-beta";
 /// The id of the probe ping. Its pong starts the vanilla configuration.
 const PROBE_PING_ID: i32 = 0;
 
-/// Whether connections run the `NeoForge` probe: `detect_neoforge_clients`, or a loaded
-/// client-required native mod, which needs the probe to tell a vanilla client from a `NeoForge`
-/// client.
+/// Whether connections run the `NeoForge` probe.
+///
+/// The probe runs for `detect_neoforge_clients`, a loaded client-required native mod, or a data
+/// map with `mandatorySync`. Both need it to tell a vanilla client from a `NeoForge` client.
 #[must_use]
 pub fn detects_neoforge_clients(config: &BasicConfiguration) -> bool {
-    detection_on(config.detect_neoforge_clients, startup::native_mods())
+    detection_on(
+        config.detect_neoforge_clients,
+        startup::native_mods(),
+        &crate::plugin::data_maps::mandatory_data_maps(),
+    )
 }
 
 /// Whether a connection joins the `neoforge:split` parts its client sends. The rule matches the
@@ -66,8 +71,10 @@ pub(crate) fn joins_split_packets(
     detection && SplitPacketPayload::is_declared(payload_setup, ad_hoc_channels)
 }
 
-fn detection_on(option: bool, mods: &[NativeModInfo]) -> bool {
-    option || mods.iter().any(|native_mod| native_mod.client_required)
+fn detection_on(option: bool, mods: &[NativeModInfo], mandatory_data_maps: &[String]) -> bool {
+    option
+        || mods.iter().any(|native_mod| native_mod.client_required)
+        || !mandatory_data_maps.is_empty()
 }
 
 fn client_required_mod_ids(mods: &[NativeModInfo]) -> Vec<&str> {
@@ -77,23 +84,45 @@ fn client_required_mod_ids(mods: &[NativeModInfo]) -> Vec<&str> {
         .collect()
 }
 
-/// Warns at startup, after the native mods are set, when a client-required mod turns on the
-/// detection that the configuration turns off.
+/// Warns at startup, after the native mods and the data map types are set, when a
+/// client-required mod or a mandatory data map turns on the detection that the configuration
+/// turns off.
 pub(crate) fn warn_if_detection_forced(config: &BasicConfiguration) {
-    if let Some(warning) =
-        forced_detection_warning(config.detect_neoforge_clients, startup::native_mods())
-    {
+    if let Some(warning) = forced_detection_warning(
+        config.detect_neoforge_clients,
+        startup::native_mods(),
+        &crate::plugin::data_maps::mandatory_data_maps(),
+    ) {
         warn!("{warning}");
     }
 }
 
-fn forced_detection_warning(option: bool, mods: &[NativeModInfo]) -> Option<String> {
+fn forced_detection_warning(
+    option: bool,
+    mods: &[NativeModInfo],
+    mandatory_data_maps: &[String],
+) -> Option<String> {
+    if option {
+        return None;
+    }
     let ids = client_required_mod_ids(mods);
-    (!option && !ids.is_empty()).then(|| {
-        format!(
-            "detect_neoforge_clients is false, but the client-required native mods {} need it: \
-             NeoForge client detection is on",
+    let mut needs = Vec::new();
+    if !ids.is_empty() {
+        needs.push(format!(
+            "the client-required native mods {}",
             ids.join(", ")
+        ));
+    }
+    if !mandatory_data_maps.is_empty() {
+        needs.push(format!(
+            "the mandatory data maps {}",
+            mandatory_data_maps.join(", ")
+        ));
+    }
+    (!needs.is_empty()).then(|| {
+        format!(
+            "detect_neoforge_clients is false, but {} need it: NeoForge client detection is on",
+            needs.join(" and ")
         )
     })
 }
@@ -604,6 +633,8 @@ pub struct NegotiatedState {
     /// The data maps the client knows, per registry.
     pub known_data_maps: BTreeMap<Identifier, BTreeSet<Identifier>>,
     pub content_ids: ContentIds,
+    /// Set when the join sync of the data maps reads the values.
+    pub data_maps_joined: crate::plugin::data_maps::JoinedFlag,
 }
 
 impl NegotiatedState {
@@ -639,6 +670,7 @@ pub(crate) static NOT_NEGOTIATED: NegotiatedState = NegotiatedState {
     common_channels: BTreeMap::new(),
     known_data_maps: BTreeMap::new(),
     content_ids: ContentIds::Display,
+    data_maps_joined: crate::plugin::data_maps::JoinedFlag::new(),
 };
 
 impl PendingConnection {
@@ -652,6 +684,7 @@ impl PendingConnection {
             common_channels: std::mem::take(&mut self.client_channels.common),
             known_data_maps: std::mem::take(&mut self.client_channels.known_data_maps),
             content_ids: self.content_ids,
+            data_maps_joined: crate::plugin::data_maps::JoinedFlag::new(),
         }
     }
 
@@ -856,6 +889,10 @@ impl PendingConnection {
         if !self.admit_client_without_neoforge(server).await {
             return false;
         }
+        if let Some(reason) = crate::plugin::data_maps::vanilla_refusal() {
+            self.kick(reason).await;
+            return false;
+        }
         let mut channels = BTreeSet::from(BUILTIN_CHANNELS);
         channels.extend(
             server
@@ -895,16 +932,38 @@ mod tests {
     fn a_client_required_mod_forces_detection_on() {
         let required = [native_mod("test-mod", true)];
         let optional = [native_mod("server-only", false)];
-        assert!(detection_on(false, &required));
-        assert!(!detection_on(false, &optional));
-        assert!(!detection_on(false, &[]));
-        assert!(detection_on(true, &optional));
-        assert!(detection_on(true, &[]));
+        assert!(detection_on(false, &required, &[]));
+        assert!(!detection_on(false, &optional, &[]));
+        assert!(!detection_on(false, &[], &[]));
+        assert!(detection_on(true, &optional, &[]));
+        assert!(detection_on(true, &[], &[]));
+    }
+
+    #[test]
+    fn a_mandatory_data_map_forces_detection_on() {
+        let maps = ["mymod:fuel (minecraft:item)".to_owned()];
+        assert!(detection_on(false, &[], &maps));
+        assert!(detection_on(
+            false,
+            &[native_mod("server-only", false)],
+            &maps
+        ));
+        let warning = forced_detection_warning(false, &[], &maps).unwrap();
+        assert_eq!(
+            warning,
+            "detect_neoforge_clients is false, but the mandatory data maps mymod:fuel (minecraft:item) need it: NeoForge client detection is on"
+        );
+        let both = forced_detection_warning(false, &[native_mod("test-mod", true)], &maps).unwrap();
+        assert!(
+            both.contains("the client-required native mods test-mod and the mandatory data maps"),
+            "{both}"
+        );
+        assert_eq!(forced_detection_warning(true, &[], &maps), None);
     }
 
     #[test]
     fn split_packets_are_joined_only_with_detection_and_a_declared_channel() {
-        let forced = detection_on(false, &[native_mod("test-mod", true)]);
+        let forced = detection_on(false, &[native_mod("test-mod", true)], &[]);
         let split = Identifier::parse_static(SplitPacketPayload::CHANNEL);
         let declared = NetworkPayloadSetup {
             channels: BTreeMap::from([(
@@ -934,12 +993,12 @@ mod tests {
             native_mod("server-only", false),
             native_mod("test-mod", true),
         ];
-        let warning = forced_detection_warning(false, &mods).unwrap();
+        let warning = forced_detection_warning(false, &mods, &[]).unwrap();
         assert!(warning.contains("test-mod"), "{warning}");
         assert!(!warning.contains("server-only"), "{warning}");
-        assert_eq!(forced_detection_warning(true, &mods), None);
+        assert_eq!(forced_detection_warning(true, &mods, &[]), None);
         assert_eq!(
-            forced_detection_warning(false, &[native_mod("server-only", false)]),
+            forced_detection_warning(false, &[native_mod("server-only", false)], &[]),
             None
         );
     }

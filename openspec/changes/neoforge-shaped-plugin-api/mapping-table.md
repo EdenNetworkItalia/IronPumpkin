@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 332 | 332 | 0 | 0 | 0 | 292 | 73 |
-| Inventory, planned | 402 | 357 | 43 | 2 | 0 | 260 | 50 |
+| Inventory, supported | 363 | 363 | 0 | 0 | 0 | 313 | 73 |
+| Inventory, planned | 371 | 326 | 43 | 2 | 0 | 239 | 50 |
 | Inventory, not supported | 149 | 0 | 0 | 1 | 148 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -100,7 +100,7 @@ How to read it:
 | `FinalizeSpawnEvent` | 16 | event class | `event-bus.event::finalize-spawn-event` | supported |
 | `LivingEntityUseItemEvent` | 16 | event class | `pumpkin_core::plugin::living::LivingEntityUseItemEvent` (concrete parent of `LivingEntityUseItemEventStart`, `Tick` and `Stop`) | supported |
 | `PlayerInteractEvent.EntityInteract` | 16 | event class | `event-bus.event::player-interact-event-entity-interact` | supported |
-| `RegisterDataMapTypesEvent` | 16 | event class | `event-bus.event::register-data-map-types-event` (resource `data-maps.register-data-map-types-event`) | planned |
+| `RegisterDataMapTypesEvent` | 16 | event class | `NativeMod::register_data_map_types` with `ironpumpkin_mods::data_maps::RegisterDataMapTypesEvent` | supported |
 | `LivingEvent.LivingJumpEvent` | 15 | event class | `pumpkin_core::plugin::living::LivingEventLivingJumpEvent` | supported |
 | `AttackEntityEvent` | 15 | event class | `event-bus.event::attack-entity-event` | supported |
 | `ChunkEvent.Unload` | 15 | event class | `pumpkin_core::plugin::world::ChunkUnloadEvent` | supported |
@@ -186,7 +186,7 @@ How to read it:
 | `BlockEvent.FarmlandTrampleEvent` | 4 | event class | `event-bus.event::block-event-farmland-trample-event` | planned |
 | `ChunkDataEvent.Save` | 4 | event class | `event-bus.event::chunk-data-event-save` | planned |
 | `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | supported |
-| `DataMapsUpdatedEvent` | 4 | event class | `event-bus.event::data-maps-updated-event` | planned |
+| `DataMapsUpdatedEvent` | 4 | event class | `pumpkin_core::plugin::data_maps::DataMapsUpdatedEvent` (re-exported by `ironpumpkin_mods::data_maps`) | supported |
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
@@ -407,7 +407,7 @@ How to read it:
 | `entity_sub_predicate_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `enchantment_entity_effect_type` | 1 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `BaseMappedRegistry` | 0 | Registration API | `registration` doc, not supported | not supported |
-| `DataMapLoader` | 0 | Registration API | `data-maps` (host loader of `data_maps` JSON) | planned |
+| `DataMapLoader` | 0 | Registration API | host loader of `ironpumpkin_mods::data_maps`, after `DatapackManager::load_all` at startup and on `/reload` | supported |
 | `DatapackRegistryBuilder` | 0 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#createEntities` | 0 | Registration API | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | supported |
 | `DeferredRegister#createTagKey` | 0 | Registration API | the tag name: `content::TagBuilder`, `registry::is_in_tag`, `registry::tag_entries` | supported |
@@ -545,30 +545,30 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `DataMapType` | 27 | Data map API | `data-maps.data-map-type` | planned |
-| `DataMapType.Builder` | 18 | Data map API | `data-maps.data-map-type` | planned |
-| `WAXABLES` | 5 | Built-in data maps | `data-maps` doc (`neoforge:waxables`), `data-maps.get-data` | planned |
-| `registries.datamaps.builtin` | 5 | Built-in data maps | `data-maps` doc (`neoforge:registries.datamaps.builtin`), `data-maps.get-data` | planned |
-| `AdvancedDataMapType` | 3 | Data map API | `data-maps.data-map-type` | planned |
-| `OXIDIZABLES` | 3 | Built-in data maps | `data-maps` doc (`neoforge:oxidizables`), `data-maps.get-data` | planned |
-| `AdvancedDataMapType.Builder` | 2 | Data map API | `data-maps.data-map-type` | planned |
-| `DataMapValueRemover` | 2 | Data map API | `data-maps.data-map-type.remover`, `callbacks.remove-data-map-value` | planned |
-| `DataMapEntry` | 1 | Data map API | `data-maps.get-data` (JSON entry) | planned |
-| `DataMapEntry.Removal` | 1 | Data map API | `callbacks.remove-data-map-value` | planned |
-| `DataMapFile` | 1 | Data map API | `data-maps` host loader | planned |
-| `DataMapValueMerger` | 1 | Data map API | `data-maps.value-merger`, `callbacks.merge-data-map-value` | planned |
-| `DataMapValueRemover.Default` | 1 | Data map API | `data-maps.data-map-type.remover` (none) | planned |
-| `IWithData` | 1 | Data map API | `data-maps.get-data` | planned |
-| `MONSTER_ROOM_MOBS` | 1 | Built-in data maps | `data-maps` doc (`neoforge:monster_room_mobs`), `data-maps.get-data` | planned |
-| `PARROT_IMITATIONS` | 1 | Built-in data maps | `data-maps` doc (`neoforge:parrot_imitations`), `data-maps.get-data` | planned |
-| `RAID_HERO_GIFTS` | 1 | Built-in data maps | `data-maps` doc (`neoforge:raid_hero_gifts`), `data-maps.get-data` | planned |
-| `VIBRATION_FREQUENCIES` | 1 | Built-in data maps | `data-maps` doc (`neoforge:vibration_frequencies`), `data-maps.get-data` | planned |
-| `VILLAGER_TYPES` | 1 | Built-in data maps | `data-maps` doc (`neoforge:villager_types`), `data-maps.get-data` | planned |
-| `DataMapsUpdatedEvent.UpdateCause` | 0 | Data map API | `event-bus.update-cause` | planned |
-| `ACCEPTABLE_VILLAGER_DISTANCES` | 0 | Built-in data maps | `data-maps` doc (`neoforge:acceptable_villager_distances`), `data-maps.get-data` | planned |
-| `BLOCK_TRANSFORM_APPENDERS` | 0 | Built-in data maps | `data-maps` doc (`neoforge:block_transform_appenders`), `data-maps.get-data` | planned |
-| `TRANSFORMABLES` | 0 | Built-in data maps | `data-maps` doc (`neoforge:transformables`), `data-maps.get-data` | planned |
-| `VILLAGER_COMPOSTABLES` | 0 | Built-in data maps | `data-maps` doc (`neoforge:villager_compostables`), `data-maps.get-data` | planned |
+| `DataMapType` | 27 | Data map API | `ironpumpkin_mods::data_maps::DataMapType` (`get_data`, `with_data`, `data_map`) | supported |
+| `DataMapType.Builder` | 18 | Data map API | `ironpumpkin_mods::data_maps::DataMapTypeBuilder` | supported |
+| `WAXABLES` | 5 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::WAXABLES` | supported |
+| `registries.datamaps.builtin` | 5 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin` (value types) | supported |
+| `AdvancedDataMapType` | 3 | Data map API | `ironpumpkin_mods::data_maps::AdvancedDataMapType` | supported |
+| `OXIDIZABLES` | 3 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::OXIDIZABLES` | supported |
+| `AdvancedDataMapType.Builder` | 2 | Data map API | `ironpumpkin_mods::data_maps::AdvancedDataMapTypeBuilder` | supported |
+| `DataMapValueRemover` | 2 | Data map API | trait `ironpumpkin_mods::data_maps::DataMapValueRemover` | supported |
+| `DataMapEntry` | 1 | Data map API | host loader: `{"value", "replace"}` or the bare value | supported |
+| `DataMapEntry.Removal` | 1 | Data map API | host loader: the `remove` field, with remover objects for an advanced type | supported |
+| `DataMapFile` | 1 | Data map API | host loader: `replace`, `values`, `remove` | supported |
+| `DataMapValueMerger` | 1 | Data map API | trait `ironpumpkin_mods::data_maps::DataMapValueMerger` (`DefaultMerger`, `ListMerger`, `SetMerger`, `MapMerger`, `WrappedMerger`) | supported |
+| `DataMapValueRemover.Default` | 1 | Data map API | `ironpumpkin_mods::data_maps::DefaultRemover` | supported |
+| `IWithData` | 1 | Data map API | `ironpumpkin_mods::data_maps::DataMapType::get_data` | supported |
+| `MONSTER_ROOM_MOBS` | 1 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::MONSTER_ROOM_MOBS` | supported |
+| `PARROT_IMITATIONS` | 1 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::PARROT_IMITATIONS` | supported |
+| `RAID_HERO_GIFTS` | 1 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::RAID_HERO_GIFTS` | supported |
+| `VIBRATION_FREQUENCIES` | 1 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::VIBRATION_FREQUENCIES` | supported |
+| `VILLAGER_TYPES` | 1 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::VILLAGER_TYPES` | supported |
+| `DataMapsUpdatedEvent.UpdateCause` | 0 | Data map API | `pumpkin_core::plugin::data_maps::UpdateCause` | supported |
+| `ACCEPTABLE_VILLAGER_DISTANCES` | 0 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::ACCEPTABLE_VILLAGER_DISTANCES` | supported |
+| `BLOCK_TRANSFORM_APPENDERS` | 0 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::BLOCK_TRANSFORM_APPENDERS` | supported |
+| `TRANSFORMABLES` | 0 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::TRANSFORMABLES` | supported |
+| `VILLAGER_COMPOSTABLES` | 0 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::VILLAGER_COMPOSTABLES` | supported |
 
 ### Config
 
@@ -668,15 +668,15 @@ How to read it:
 | `neoforge:frozen_registry` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:frozen_registry_sync_completed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:frozen_registry_sync_start` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:known_registry_data_maps` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
-| `neoforge:known_registry_data_maps_reply` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
+| `neoforge:known_registry_data_maps` | 0 | Payloads | `pumpkin_protocol::java::neoforge::KnownRegistryDataMapsPayload` (host payload) | supported |
+| `neoforge:known_registry_data_maps_reply` | 0 | Payloads | `pumpkin_protocol::java::neoforge::KnownRegistryDataMapsReplyPayload` (host payload) | supported |
 | `minecraft:register` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
 | `minecraft:unregister` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
 | `neoforge:network` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | supported |
 | `neoforge:modded_network_setup_failed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:recipe_content` | 0 | Payloads | `network` doc, not supported | not supported |
-| `neoforge:registry_data_map_sync` | 0 | Payloads | `data-maps.data-map-type.synced` (host payload) | planned |
+| `neoforge:registry_data_map_sync` | 0 | Payloads | `pumpkin_protocol::java::neoforge::RegistryDataMapSyncPayload` (host payload) | supported |
 | `neoforge:split` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
 | `neoforge:sync_attachments` | 0 | Payloads | `attachments.attachment-sync` (host payload) | planned |
 | `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
@@ -685,7 +685,7 @@ How to read it:
 | `CheckFeatureFlags` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
 | `CommonRegisterTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
 | `CommonVersionTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
-| `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host configuration task (`pumpkin_core::plugin::data_maps`); no mod API | supported |
 | `SyncConfig` | 0 | Configuration tasks and other network types | host-side task: `ConfigurationTask::SyncConfig` reads `pumpkin_core::plugin::startup::synced_configs` for `ironpumpkin_mods::config::ConfigType::Synced` | planned |
 | `SyncRegistries` | 0 | Configuration tasks and other network types | host-side M3 task; no mod API | planned |
 | `QueuedPacket` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |

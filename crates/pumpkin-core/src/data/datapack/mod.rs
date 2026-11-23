@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tracing::{info, warn};
+use tracing::info;
 
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::registry::RegistryEntryData;
@@ -238,14 +238,12 @@ impl DatapackManager {
             &mut loaded_packs_vec,
         );
 
-        scan_datapacks_dir(
+        load_enabled_datapacks(
             &datapacks_dir,
             enabled_packs,
             &mut acc,
             &mut loaded_packs_vec,
         );
-
-        load_bundled_datapacks(enabled_packs, &mut acc, &mut loaded_packs_vec);
 
         let damage_type_registry = build_damage_type_registry(all_damage_type_defs);
 
@@ -829,6 +827,26 @@ impl DatapackManager {
         };
         let tag_entry = cat_tags.get(&full_tag).or_else(|| cat_tags.get(tag_id))?;
         Some(tag_entry.values.clone())
+    }
+
+    /// Whether a data pack replaced the tag, so its built-in values no longer apply.
+    #[must_use]
+    pub fn tag_replaces_builtin(&self, category: &str, tag_id: &str) -> bool {
+        let guard = self
+            .tags
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let category = category.strip_prefix("minecraft:").unwrap_or(category);
+        let tag_id = tag_id.strip_prefix('#').unwrap_or(tag_id);
+        let full_tag = if tag_id.contains(':') {
+            tag_id.to_string()
+        } else {
+            format!("minecraft:{tag_id}")
+        };
+        guard
+            .get(category)
+            .and_then(|tags| tags.get(&full_tag))
+            .is_some_and(|entry| entry.replace)
     }
 
     #[must_use]
@@ -1636,106 +1654,71 @@ fn find_bundled_datapack_dir(pack_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn load_bundled_datapacks(
-    enabled_packs: &[String],
-    acc: &mut PackContentAccumulators<'_>,
-    loaded_packs_vec: &mut Vec<LoadedDatapack>,
-) {
-    for bundled in [
-        "trade_rebalance",
-        "minecart_improvements",
-        "redstone_experiments",
-    ] {
-        let is_enabled = enabled_packs.iter().any(|p| {
-            p == bundled
-                || p == &format!("minecraft:{bundled}")
-                || p == &format!("file/{bundled}")
-                || p.strip_prefix("file/") == Some(bundled)
-                || p.strip_prefix("minecraft:") == Some(bundled)
-        });
-        let already_loaded = loaded_packs_vec.iter().any(|p| {
-            p.id == bundled || p.id == format!("minecraft:{bundled}") || p.name == bundled
-        });
-        if is_enabled
-            && !already_loaded
-            && let Some(pack_path) = find_bundled_datapack_dir(bundled)
-        {
-            let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-            let counts = load_pack_contents(&pack_path, acc);
-            info!(
-                "Loaded bundled datapack '{bundled}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
-                counts.recipes,
-                counts.functions,
-                counts.test_instances,
-                counts.damage_types,
-                counts.int_providers,
-                counts.float_providers,
-                counts.loot_tables,
-                counts.structures,
-                counts.template_pools,
-                counts.processor_lists,
-                counts.dynamic_registries,
-                counts.trade_sets,
-                counts.trades,
-                counts.advancements,
-                counts.predicates,
-                counts.tags,
-            );
-            loaded_packs_vec.push(LoadedDatapack {
-                id: format!("minecraft:{bundled}"),
-                name: bundled.to_string(),
-                description,
-                pack_format,
-                root_path: pack_path,
-                recipe_count: counts.recipes,
-                function_count: counts.functions,
-                known_packs,
-            });
-        }
-    }
+/// The feature packs that ship with the server.
+const BUNDLED_DATAPACKS: [&str; 3] = [
+    "trade_rebalance",
+    "minecart_improvements",
+    "redstone_experiments",
+];
+
+/// The bundled pack that an enabled-pack id names.
+fn bundled_pack_name(id: &str) -> Option<&'static str> {
+    let name = id
+        .strip_prefix("minecraft:")
+        .or_else(|| id.strip_prefix("file/"))
+        .unwrap_or(id);
+    BUNDLED_DATAPACKS
+        .into_iter()
+        .find(|bundled| *bundled == name)
 }
 
-fn scan_datapacks_dir(
+/// The folder in `datapacks/` that an enabled-pack id names: `file/<name>` or `<name>`.
+fn world_pack_name(id: &str) -> Option<&str> {
+    let name = id.strip_prefix("file/").unwrap_or(id);
+    let plain = !name.is_empty() && !name.starts_with('.') && !name.contains(['/', '\\', ':']);
+    plain.then_some(name)
+}
+
+/// Loads the enabled packs in the order of `enabled_packs`, lowest priority first, as
+/// `PackRepository.rebuildSelected` orders the selected packs. An id resolves to a folder in
+/// `datapacks/`, else to a bundled pack; an unknown id and a repeated pack are skipped.
+fn load_enabled_datapacks(
     datapacks_dir: &Path,
     enabled_packs: &[String],
     acc: &mut PackContentAccumulators<'_>,
     loaded_packs_vec: &mut Vec<LoadedDatapack>,
 ) {
-    if !datapacks_dir.is_dir() {
-        return;
-    }
-    let entries = match fs::read_dir(datapacks_dir) {
-        Ok(entries) => entries,
-        Err(error) => {
-            warn!(
-                "Failed to read datapacks directory '{}': {error}",
-                datapacks_dir.display()
-            );
-            return;
-        }
-    };
-
-    for entry in entries.flatten() {
-        let pack_path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if file_name.starts_with('.') || !pack_path.is_dir() {
+    for enabled in enabled_packs {
+        let world = world_pack_name(enabled)
+            .map(|name| (name, datapacks_dir.join(name)))
+            .filter(|(_, path)| path.is_dir());
+        let (id, name, pack_path, bundled) = if let Some((name, path)) = world {
+            (format!("file/{name}"), name.to_string(), path, false)
+        } else if let Some(bundled) = bundled_pack_name(enabled)
+            && let Some(path) = find_bundled_datapack_dir(bundled)
+        {
+            (
+                format!("minecraft:{bundled}"),
+                bundled.to_string(),
+                path,
+                true,
+            )
+        } else {
             continue;
-        }
-
-        let pack_id = format!("file/{file_name}");
-        let is_enabled = enabled_packs
-            .iter()
-            .any(|p| p == &pack_id || p == &file_name);
-        if !is_enabled {
+        };
+        if loaded_packs_vec.iter().any(|pack| pack.id == id) {
             continue;
         }
 
         let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
         let counts = load_pack_contents(&pack_path, acc);
-
+        let kind = if bundled {
+            "bundled datapack"
+        } else {
+            "datapack"
+        };
         info!(
-            "Loaded datapack '{file_name}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
+            "Loaded {kind} '{name}': {} recipe(s), {} function(s), {} test instance(s), {} damage type(s), {} int provider(s), {} float provider(s), {} loot table(s), {} structure(s), {} template pool(s), {} processor list(s), {} dynamic registry entry/entries, {} trade set(s), {} trade(s), {} advancement(s), {} predicate(s), {} tag(s)",
             counts.recipes,
             counts.functions,
             counts.test_instances,
@@ -1753,10 +1736,9 @@ fn scan_datapacks_dir(
             counts.predicates,
             counts.tags,
         );
-
         loaded_packs_vec.push(LoadedDatapack {
-            id: pack_id,
-            name: file_name,
+            id,
+            name,
             description,
             pack_format,
             root_path: pack_path,
@@ -2488,6 +2470,61 @@ mod tests {
                 "trade rebalance must load loot tables"
             );
         }
+    }
+
+    #[test]
+    fn enabled_packs_load_in_the_order_of_the_enabled_list() {
+        let world = tempfile::tempdir().expect("tempdir");
+        for (pack, value) in [
+            ("a", "minecraft:oak_planks"),
+            ("b", "minecraft:birch_planks"),
+        ] {
+            let tags = world
+                .path()
+                .join("datapacks")
+                .join(pack)
+                .join("data/minecraft/tags/item");
+            std::fs::create_dir_all(&tags).expect("create dir");
+            std::fs::write(
+                tags.join("ordered.json"),
+                format!(r#"{{"replace": true, "values": ["{value}"]}}"#),
+            )
+            .expect("write");
+        }
+        std::fs::create_dir_all(world.path().join("datapacks/.hidden")).expect("create dir");
+        let manager = DatapackManager::new();
+        let enabled = [
+            "vanilla",
+            "file/b",
+            "trade_rebalance",
+            "a",
+            "file/b",
+            "file/missing",
+            "file/.hidden",
+            "file/../a",
+        ]
+        .map(str::to_owned);
+        manager.load_all(
+            world.path(),
+            &enabled,
+            &crate::server::recipe::RecipeManager::default(),
+        );
+        let ids: Vec<String> = manager
+            .get_loaded_packs()
+            .into_iter()
+            .map(|pack| pack.id)
+            .collect();
+        let mut expected = vec!["file/b".to_owned()];
+        if super::find_bundled_datapack_dir("trade_rebalance").is_some() {
+            expected.push("minecraft:trade_rebalance".to_owned());
+        }
+        expected.push("file/a".to_owned());
+        assert_eq!(ids, expected);
+        // `a` comes last, so its `replace` wins.
+        assert_eq!(
+            manager.get_tag_entries("item", "minecraft:ordered"),
+            Some(vec!["minecraft:oak_planks".to_owned()])
+        );
     }
 
     #[test]

@@ -31,6 +31,7 @@ pub use common::{CommonRegisterPayload, CommonVersionPayload};
 pub use config_file::ConfigFilePayload;
 pub use data_maps::{
     KnownDataMap, KnownRegistryDataMapsPayload, KnownRegistryDataMapsReplyPayload,
+    RegistryDataMapSyncPayload,
 };
 pub use extensible_enums::{
     EnumEntry, ExtensibleEnumAcknowledgePayload, ExtensibleEnumDataPayload, ExtensionData,

@@ -187,6 +187,9 @@ pub enum ConfigurationTask {
     /// `RegistryDataMapNegotiation`: `neoforge:known_registry_data_maps`, then the wait for the
     /// client's data maps.
     DataMaps,
+    /// `RegistryDataMapNegotiation` for a `NeoForge` client without the channel: the refusal
+    /// when a data map has `mandatorySync`, else nothing. No reply.
+    DataMapsWithoutChannel,
     /// `CheckExtensibleEnums`: `neoforge:extensible_enum_data`, then the wait for the ack.
     ExtensibleEnums,
     /// `CheckFeatureFlags`: `neoforge:feature_flags`, then the wait for the ack.
@@ -219,7 +222,7 @@ pub enum TaskReply {
 impl ConfigurationTask {
     /// Every task, to find the task that waits for a custom payload channel. A new task goes here
     /// too: `every_payload_reply_resolves_through_its_channel` checks the replies of this list.
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::RegistrySync,
         Self::KnownPacks,
         Self::ResourcePack,
@@ -227,6 +230,7 @@ impl ConfigurationTask {
         Self::CommonRegister,
         Self::SyncConfig,
         Self::DataMaps,
+        Self::DataMapsWithoutChannel,
         Self::ExtensibleEnums,
         Self::FeatureFlags,
         Self::Finish,
@@ -243,7 +247,7 @@ impl ConfigurationTask {
             Self::ResourcePack => Some(TaskReply::ResourcePack),
             Self::CommonVersion => Some(TaskReply::Payload(CommonVersionPayload::CHANNEL)),
             Self::CommonRegister => Some(TaskReply::Payload(CommonRegisterPayload::CHANNEL)),
-            Self::SyncConfig => None,
+            Self::SyncConfig | Self::DataMapsWithoutChannel => None,
             Self::DataMaps => Some(TaskReply::Payload(
                 KnownRegistryDataMapsReplyPayload::CHANNEL,
             )),
@@ -266,7 +270,9 @@ impl ConfigurationTask {
             Self::CommonVersion => "neoforge:common_version",
             Self::CommonRegister => "neoforge:common_register",
             Self::SyncConfig => "neoforge:sync_config",
-            Self::DataMaps => "neoforge:registry_data_map_negotiation",
+            Self::DataMaps | Self::DataMapsWithoutChannel => {
+                "neoforge:registry_data_map_negotiation"
+            }
             Self::ExtensibleEnums => "neoforge:check_extensible_enum",
             Self::FeatureFlags => "neoforge:check_feature_flags",
             Self::Mod { task_type, .. } => task_type,
@@ -399,11 +405,14 @@ impl ConfigurationTasks {
             tasks.push(ConfigurationTask::SyncConfig);
         }
         if channels.connection_type == ConnectionType::NeoForge {
-            // `RegistryDataMapNegotiation` and `CheckFeatureFlags` take the `Other` path when the
-            // channel is missing, and that path finishes at once in M3.
-            if has(KnownRegistryDataMapsPayload::CHANNEL) {
-                tasks.push(ConfigurationTask::DataMaps);
-            }
+            // `RegistryDataMapNegotiation` without the channel refuses the client when a data
+            // map has `mandatorySync`. `CheckFeatureFlags` without the channel has no modded
+            // feature flag to check, so it finishes at once.
+            tasks.push(if has(KnownRegistryDataMapsPayload::CHANNEL) {
+                ConfigurationTask::DataMaps
+            } else {
+                ConfigurationTask::DataMapsWithoutChannel
+            });
             tasks.push(ConfigurationTask::ExtensibleEnums);
             if has(FeatureFlagDataPayload::CHANNEL) {
                 tasks.push(ConfigurationTask::FeatureFlags);
@@ -500,11 +509,16 @@ impl PendingConnection {
                     }
                 }
                 ConfigurationTask::DataMaps => {
-                    let data_maps = configuration_payloads::known_registry_data_maps();
+                    let data_maps = crate::plugin::data_maps::known_data_maps();
                     self.send_neoforge_payload(KnownRegistryDataMapsPayload::CHANNEL, |data| {
                         data_maps.write(data)
                     })
                     .await;
+                }
+                ConfigurationTask::DataMapsWithoutChannel => {
+                    if let Some(reason) = crate::plugin::data_maps::vanilla_refusal() {
+                        self.kick(reason).await;
+                    }
                 }
                 ConfigurationTask::ExtensibleEnums => {
                     let enums = configuration_payloads::extensible_enum_data();
@@ -806,6 +820,7 @@ mod tests {
                 ConfigurationTask::RegistrySync,
                 ConfigurationTask::KnownPacks,
                 ConfigurationTask::ResourcePack,
+                ConfigurationTask::DataMapsWithoutChannel,
                 ConfigurationTask::ExtensibleEnums,
                 ConfigurationTask::Finish
             ]
@@ -821,6 +836,7 @@ mod tests {
             [
                 ConfigurationTask::RegistrySync,
                 ConfigurationTask::KnownPacks,
+                ConfigurationTask::DataMapsWithoutChannel,
                 ConfigurationTask::ExtensibleEnums,
                 ConfigurationTask::Finish
             ]
@@ -831,6 +847,7 @@ mod tests {
     fn neoforge_connection_without_every_sync_channel_gets_no_sync() {
         let without_sync = [
             ConfigurationTask::KnownPacks,
+            ConfigurationTask::DataMapsWithoutChannel,
             ConfigurationTask::ExtensibleEnums,
             ConfigurationTask::Finish,
         ];
@@ -1076,13 +1093,21 @@ mod tests {
     #[test]
     fn neoforge_connection_without_the_check_channels_skips_their_tasks() {
         let channels = neoforge(ConnectionProtocol::Configuration, &[]);
+        // Without the known data maps channel, the negotiation only refuses the client when a
+        // map is mandatory: it waits for no reply.
         assert_eq!(
             order(queue(&channels, false)),
             [
                 ConfigurationTask::KnownPacks,
+                ConfigurationTask::DataMapsWithoutChannel,
                 ConfigurationTask::ExtensibleEnums,
                 ConfigurationTask::Finish
             ]
+        );
+        assert_eq!(ConfigurationTask::DataMapsWithoutChannel.reply(), None);
+        assert_eq!(
+            ConfigurationTask::DataMapsWithoutChannel.id(),
+            "neoforge:registry_data_map_negotiation"
         );
     }
 

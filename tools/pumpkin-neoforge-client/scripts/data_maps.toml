@@ -1,0 +1,9 @@
+# The data map sync test of `ironpumpkin-test-mod`: the six `neoforge:registry_data_map_sync`
+# payloads of the join, then six more after the test writes `reload` to the server console.
+wait_ms = 500
+steps = [
+    "join",
+    "await_payload neoforge:registry_data_map_sync 6",
+    "await_payload neoforge:registry_data_map_sync 12",
+    "leave",
+]
