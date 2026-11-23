@@ -453,10 +453,16 @@ pub fn effect_particle(living: &LivingEntity, effect: &Effect, color: i32) -> Op
 }
 
 /// Fires `MobEffectEventApplicable` and returns whether `effect` applies; `vanilla` is the
-/// vanilla check.
-pub fn effect_applicable(living: &LivingEntity, effect: &Effect, vanilla: bool) -> bool {
+/// vanilla check and `source` the entity that applies the effect.
+pub fn effect_applicable(
+    living: &LivingEntity,
+    effect: &Effect,
+    source: Option<&dyn EntityBase>,
+    vanilla: bool,
+) -> bool {
     fire(&living.entity, |entity| {
-        MobEffectEventApplicable::new(entity, effect.clone(), None)
+        let source = source.and_then(|source| shared(source.get_entity()));
+        MobEffectEventApplicable::new(entity, effect.clone(), source)
     })
     .map_or(vanilla, |event| event.application_result(vanilla))
 }

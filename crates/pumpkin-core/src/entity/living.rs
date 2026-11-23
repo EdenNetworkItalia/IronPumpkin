@@ -1583,7 +1583,8 @@ impl LivingEntity {
     #[expect(clippy::too_many_lines)]
     pub fn add_effect_with_source(&self, effect: Effect, source: Option<&dyn EntityBase>) {
         let can_be_affected = self.can_be_affected(&effect);
-        if !crate::plugin::living_events::effect_applicable(self, &effect, can_be_affected) {
+        if !crate::plugin::living_events::effect_applicable(self, &effect, source, can_be_affected)
+        {
             return;
         }
 

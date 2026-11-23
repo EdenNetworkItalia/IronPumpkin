@@ -549,7 +549,8 @@ pub enum MobEffectEventApplicableResult {
 ///
 /// `NeoForge`: `MobEffectEvent.Applicable`, fired by `CommonHooks.canMobEffectBeApplied` in
 /// `LivingEntity.addEffect`, before `MobEffectEvent.Added` (`EntityPotionEffectEvent`). `result`
-/// is settable. Pumpkin knows no source entity of an effect, so `effect_source` is `None`.
+/// is settable. `effect_source` is the entity that applies the effect, `None` for a source
+/// Pumpkin does not pass, such as a command.
 #[derive(Event, Clone)]
 pub struct MobEffectEventApplicable {
     pub entity: Arc<dyn EntityBase>,
