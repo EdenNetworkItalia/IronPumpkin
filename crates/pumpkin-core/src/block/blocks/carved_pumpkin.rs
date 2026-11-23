@@ -178,14 +178,18 @@ fn try_spawn_golem(world: &Arc<World>, top_pos: &BlockPos) {
             &EntityType::COPPER_GOLEM,
         ));
         let golem_entity: Arc<dyn EntityBase> = golem.clone();
-        if spawn_golem_in_world(world, &pattern, &golem_entity, pumpkin_pos) {
-            CopperChestBlock::place_from_copper_block(world, &copper_pos, copper_block, facing);
+        // Vanilla places the chest whether or not the golem joins the world.
+        let spawned = spawn_golem_in_world(world, &pattern, &golem_entity, pumpkin_pos);
+        CopperChestBlock::place_from_copper_block(world, &copper_pos, copper_block, facing);
+        if spawned {
             golem.spawn(weather_state);
         }
     }
 }
 
-/// Clears the pattern and spawns `golem`, `false` when a plugin cancels the spawn.
+/// Vanilla `spawnGolemInWorld`: clears the pattern, spawns `golem`, then plays the break effects,
+/// triggers the advancement and updates the neighbours even when a plugin cancels the spawn.
+/// Returns `false` when the spawn was cancelled.
 fn spawn_golem_in_world(
     world: &Arc<World>,
     pattern: &GolemPattern,
@@ -210,9 +214,7 @@ fn spawn_golem_in_world(
         f64::from(spawn_pos.0.y) + 0.05,
         f64::from(spawn_pos.0.z) + 0.5,
     ));
-    if !world.spawn_entity(golem.clone()) {
-        return false;
-    }
+    let spawned = world.spawn_entity(golem.clone());
     for (pos, state_id) in &cells {
         world.sync_world_event(
             WorldEvent::ParticlesAndSoundDestroyBlock,
@@ -233,7 +235,7 @@ fn spawn_golem_in_world(
     for (pos, _) in &cells {
         world.update_neighbors(pos, None);
     }
-    true
+    spawned
 }
 
 pub struct CarvedPumpkinBlock;
