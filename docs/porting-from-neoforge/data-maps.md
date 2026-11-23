@@ -176,7 +176,34 @@ The loader drops a value of a synced map whose JSON is longer than 32767 charact
 
 ## Built-in data maps
 
-The host registers the eleven types of `NeoForgeDataMaps` in `data_maps::builtin`, so data packs and mods can give their values: `ACCEPTABLE_VILLAGER_DISTANCES`, `BLOCK_TRANSFORM_APPENDERS`, `MONSTER_ROOM_MOBS`, `OXIDIZABLES`, `PARROT_IMITATIONS`, `RAID_HERO_GIFTS`, `TRANSFORMABLES`, `VIBRATION_FREQUENCIES`, `VILLAGER_COMPOSTABLES`, `VILLAGER_TYPES` and `WAXABLES`. The server does not ship the default values of NeoForge, and no vanilla behaviour reads these maps yet: a value that a pack gives is synced and readable, but copper still oxidizes and a parrot still imitates with the built-in vanilla data.
+The host registers the eleven types of `NeoForgeDataMaps` in `data_maps::builtin`, so data packs and mods can give their values: `ACCEPTABLE_VILLAGER_DISTANCES`, `BLOCK_TRANSFORM_APPENDERS`, `MONSTER_ROOM_MOBS`, `OXIDIZABLES`, `PARROT_IMITATIONS`, `RAID_HERO_GIFTS`, `TRANSFORMABLES`, `VIBRATION_FREQUENCIES`, `VILLAGER_COMPOSTABLES`, `VILLAGER_TYPES` and `WAXABLES`.
+
+The server gives the loader the default values of NeoForge as the first pack, so a data pack overrides them and `replace: true` or a `remove` entry hides them, as on NeoForge. The values come from the vanilla tables and data of the server. A server with no data pack that touches these maps behaves as vanilla.
+
+The vanilla behaviours read the loaded values where NeoForge reads them:
+
+| Map | Consumer | Fallback when the map has no value |
+| --- | --- | --- |
+| `ACCEPTABLE_VILLAGER_DISTANCES` | the hostile sensor of villagers | the vanilla distance table |
+| `OXIDIZABLES` | the next and previous stage of copper (`weathering_copper`) | none |
+| `WAXABLES` | the honeycomb | none |
+| `BLOCK_TRANSFORM_APPENDERS`, `TRANSFORMABLES` | the axe, the hoe and the shovel | none |
+| `MONSTER_ROOM_MOBS` | the spawner of a dungeon | the vanilla pick (also for an empty map) |
+| `PARROT_IMITATIONS` | the imitations of a parrot | the vanilla table names the types, a type without a value plays the ambient sound |
+| `RAID_HERO_GIFTS` | the gift of a villager to a hero of the village | the vanilla gift table |
+| `VILLAGER_COMPOSTABLES` | the villager that works at a composter | none |
+| `VILLAGER_TYPES` | the type of a new villager in a biome | the vanilla biome table |
+| `VIBRATION_FREQUENCIES` | `game_event_frequency` | none |
+
+A value of `OXIDIZABLES` or `WAXABLES` with `generate_block_transform` (the default) gives the axe a transform that undoes the step. `MONSTER_ROOM_MOBS` with the default values keeps the vanilla pick, so the dungeons of a seed do not change.
+
+Limits:
+
+- A server without sculk vibration listeners does not use `VIBRATION_FREQUENCIES` yet: sculk sensors do not listen to game events, so no behaviour reads the frequency.
+- A block that is not in the copper family does not get random ticks from an `OXIDIZABLES` value, because the engine ticks only blocks that have a behaviour.
+- A block transform from a data map reads a `rule_based` provider (or a simple or `copy_properties` provider) with the `matching_blocks`, `matching_block_tag` and `all_of` predicates, and a vanilla sound. It keeps the block of a state and not its properties. The loader ignores other transforms with a warning that names the part.
+- A parrot imitates only the sounds of vanilla.
+- A biome that a data pack adds does not get a villager type. No test covers the other maps with the entries of a mod.
 
 ---
 
@@ -198,4 +225,4 @@ The host registers the eleven types of `NeoForgeDataMaps` in `data_maps::builtin
 
 - Do not keep the `Arc` of `get_data` or a `data_map` view across a `/reload`: it holds the old values.
 - Do not register a type after the event: the call fails with `DataMapError::Closed`.
-- Do not expect the vanilla behaviour to read the built-in maps yet.
+- Do not rely on a built-in map for the entries of a mod: see the limits above.
