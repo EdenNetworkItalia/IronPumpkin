@@ -80,6 +80,7 @@ pub mod capabilities;
 pub mod config;
 pub mod content;
 pub mod data_components;
+pub mod data_maps;
 pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
@@ -254,6 +255,9 @@ pub trait NativeMod: Sync {
     /// which. Runs after `dedicated_server_setup` of every mod, before `ExtendPoiTypesEvent`. See
     /// [`capabilities`].
     fn register_capabilities(&self, _event: &mut capabilities::RegisterCapabilitiesEvent) {}
+    /// `RegisterDataMapTypesEvent`: registers data map types. Runs after
+    /// `RegisterCapabilitiesEvent`, before `ExtendPoiTypesEvent`. See [`data_maps`].
+    fn register_data_map_types(&self, _event: &mut data_maps::RegisterDataMapTypesEvent) {}
 }
 
 #[doc(hidden)]
