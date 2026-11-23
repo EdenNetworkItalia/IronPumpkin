@@ -152,14 +152,14 @@ at = { x = "a:d" }
 #[test]
 fn run_b_matches_itself_and_reports_differences() {
     let reference = run_b();
-    // The recording of IronPumpkin has the six synced registries. The reference keeps all 35.
+    // The recording of IronPumpkin has the seven synced registries. The reference keeps all 35.
     let recording = limited(&reference, &SYNCED_REGISTRIES);
     assert!(compare_with_reference(&recording, &reference).is_empty());
 
     let channels = synced_channels(&reference).unwrap();
-    assert_eq!(channels.len(), 14, "{channels:?}");
+    assert_eq!(channels.len(), 15, "{channels:?}");
     assert_eq!(channels[0], "neoforge:frozen_registry_sync_start");
-    assert_eq!(channels[13], "neoforge:feature_flags");
+    assert_eq!(channels[14], "neoforge:feature_flags");
 
     // Only the synced registries of the reference count, in any order.
     let reversed: Vec<&str> = SYNCED_REGISTRIES.iter().rev().copied().collect();
@@ -171,14 +171,14 @@ fn run_b_matches_itself_and_reports_differences() {
     assert_eq!(failures.len(), 1, "{failures:#?}");
     assert!(failures[0].starts_with("channel order differs"));
 
-    // A seventh registry in the recording is a difference: the filter applies to the reference
+    // An eighth registry in the recording is a difference: the filter applies to the reference
     // only.
-    let mut seven = SYNCED_REGISTRIES.to_vec();
-    seven.push("minecraft:sound_event");
-    let extra = limited(&reference, &seven);
+    let mut eight = SYNCED_REGISTRIES.to_vec();
+    eight.push("minecraft:sound_event");
+    let extra = limited(&reference, &eight);
     assert_eq!(
         extra.iter().filter(|e| is_registry(e)).count(),
-        7,
+        8,
         "run (b) must have minecraft:sound_event"
     );
     let failures = compare_with_reference(&extra, &reference);
