@@ -37,6 +37,7 @@
 //! | [`sound_events`]  | mod sound events and playing sounds near a position                       |
 //! | [`mob_effects`]   | mod mob effects and the effects of living entities                        |
 //! | [`entity_attributes`] | mod and `NeoForge` attributes and the attributes of living entities |
+//! | [`loot`]        | global loot modifier types and `LootContext`                              |
 //!
 //! The modules are the modules of the pumpkin crates, so what those crates add appears here. The
 //! crates themselves are re-exported too, for what the modules do not cover: [`pumpkin_core`],
@@ -83,6 +84,7 @@ pub mod data_components;
 pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
+pub mod loot;
 pub mod menus;
 pub mod mob_effects;
 pub mod mod_list;
@@ -158,6 +160,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/menus.md")]
     struct Menus;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/loot-modifiers.md")]
+    struct LootModifiers;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;
