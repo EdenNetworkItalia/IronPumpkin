@@ -1,4 +1,4 @@
 [profile.default]
-# A hung test grows on a 16 GB hosted runner until GitHub loses the runner, and then the job
-# uploads no log. Terminating it names the test instead. The slowest test takes ~85 s on CI.
+# Without a limit, a hung test holds the CI job until the 6-hour job timeout. The slowest tests
+# are the first ones of `wasm_dispatch`, which wait for the build of the Wasm guests.
 slow-timeout = { period = "60s", terminate-after = 5 }
