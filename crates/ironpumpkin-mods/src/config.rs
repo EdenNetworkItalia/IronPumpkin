@@ -319,6 +319,25 @@ pub enum RestartType {
     Game,
 }
 
+/// `Range.correct` compares `doubleValue()`, so a number that the type cannot hold, such as a
+/// TOML integer above `i32::MAX`, still clamps to the nearest bound. A value that is not a number,
+/// or a number inside the range, has no clamp.
+fn clamp_raw<T: RangeBound>(value: &Value, range: Range<T>) -> Option<Value> {
+    let number = |value: &Value| match value {
+        Value::Integer(n) => Some(*n as f64),
+        Value::Float(n) => Some(*n),
+        _ => None,
+    };
+    let n = number(value)?;
+    if n < number(&range.min.into_toml())? {
+        Some(range.min.into_toml())
+    } else if n > number(&range.max.into_toml())? {
+        Some(range.max.into_toml())
+    } else {
+        None
+    }
+}
+
 /// A range of numbers, like `ModConfigSpec.Range`. [`ConfigSpecBuilder::define_in_range`] uses it.
 #[derive(Debug, Clone, Copy)]
 pub struct Range<T> {
@@ -758,8 +777,10 @@ impl ConfigSpecBuilder {
             default.into_toml(),
             Box::new(move |value| T::from_toml(value).is_some_and(|v| range.test(v))),
             Box::new(move |value| {
-                T::from_toml(value)
-                    .map_or_else(|| fallback.clone(), |v| range.correct(v).into_toml())
+                T::from_toml(value).map_or_else(
+                    || clamp_raw(value, range).unwrap_or_else(|| fallback.clone()),
+                    |v| range.correct(v).into_toml(),
+                )
             }),
         )
     }
@@ -1607,6 +1628,8 @@ fn unload_synced(configs: &[Arc<ModConfig>]) {
     for config in configs
         .iter()
         .filter(|config| config.config_type == ConfigType::Synced)
+        // `ConfigTracker.unloadConfig` skips a config that never loaded.
+        .filter(|config| config.read_state().values.is_some())
     {
         config.unload();
         config.fire(|owner, config| owner.config_unloading(config));
@@ -2187,14 +2210,25 @@ mod tests {
         let inside = startup_config(dir.path(), "inti32three", Some("count = 7\n"), spec());
         assert_eq!(inside.get::<i32>("count"), Ok(7));
         let dir = tempfile::tempdir().unwrap();
-        // A value that does not fit in an `i32` is out of the type, so it gets the default.
+        // A value that does not fit in an `i32` clamps to the bound, as `Range.correct` does.
         let wide = startup_config(
             dir.path(),
             "inti32four",
             Some("count = 5000000000\n"),
             spec(),
         );
-        assert_eq!(wide.get::<i32>("count"), Ok(5));
+        assert_eq!(wide.get::<i32>("count"), Ok(10));
+        let dir = tempfile::tempdir().unwrap();
+        let narrow = startup_config(
+            dir.path(),
+            "inti32five",
+            Some("count = -5000000000\n"),
+            spec(),
+        );
+        assert_eq!(narrow.get::<i32>("count"), Ok(1));
+        let dir = tempfile::tempdir().unwrap();
+        let text = startup_config(dir.path(), "inti32six", Some("count = \"x\"\n"), spec());
+        assert_eq!(text.get::<i32>("count"), Ok(5));
     }
 
     #[test]
@@ -2316,6 +2350,9 @@ mod tests {
             .register_config(ConfigType::Synced, general_spec())
             .unwrap();
         load(&init.configs, ConfigType::Local).unwrap();
+        // A synced config that never loaded does not unload and calls no hook.
+        unload_synced(&init.configs);
+        assert_eq!(UNLOADINGS.load(Ordering::Relaxed), 0);
         load(&init.configs, ConfigType::Synced).unwrap();
         assert_eq!(synced.get::<i64>("general.damage"), Ok(10));
 
