@@ -112,6 +112,9 @@ impl AttachmentMap {
 #[derive(Default)]
 pub struct Attachments {
     map: Mutex<Option<Box<AttachmentMap>>>,
+    /// Held while a sync payload of the holder is encoded and sent, so the payloads leave in
+    /// the order of their snapshots.
+    sync: Mutex<()>,
 }
 
 impl Attachments {
@@ -144,6 +147,30 @@ impl Attachments {
             .map_or_else(Vec::new, |map| map.cells())
     }
 
+    /// A slot that shares the cells of this one: a proto chunk that becomes a full chunk, or
+    /// the reverse, keeps its attachments.
+    #[must_use]
+    pub fn share(&self) -> Self {
+        let cells = self.cells();
+        if cells.is_empty() {
+            return Self::default();
+        }
+        let mut map = AttachmentMap::default();
+        for (index, cell) in cells {
+            map.insert(index, cell);
+        }
+        Self {
+            map: Mutex::new(Some(Box::new(map))),
+            sync: Mutex::new(()),
+        }
+    }
+
+    /// The lock that orders the sync payloads of the holder. A caller encodes and sends a
+    /// payload while it holds the guard, and holds no lock of a value while it sends.
+    pub fn sync_lock(&self) -> MutexGuard<'_, ()> {
+        self.sync.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Takes the map out of the slot.
     pub fn take(&self) -> Option<Box<AttachmentMap>> {
         self.lock().take()
@@ -174,6 +201,24 @@ pub trait ChunkAttachmentCodec: Send + Sync {
 /// chunks save no attachment and drop the saved ones on load, as `NeoForge` drops the
 /// attachments of unknown types.
 pub static CHUNK_ATTACHMENT_CODEC: OnceLock<&'static dyn ChunkAttachmentCodec> = OnceLock::new();
+
+/// Logs once that the Pump chunk format drops the attachments of a chunk.
+pub(crate) fn warn_pump_drop(pos: (i32, i32)) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| {
+        tracing::warn!(
+            "The Pump chunk format does not save NeoForge attachments: the attachments of chunk \
+             {pos:?} and of later chunks are dropped. Use the Anvil or the Linear format."
+        );
+    });
+}
+
+/// Whether the NBT bytes of a chunk hold the attachment key, for the converter, which runs
+/// without the attachment codec.
+pub(crate) fn bytes_hold_attachments(nbt: &[u8]) -> bool {
+    nbt.windows(ATTACHMENTS_NBT_KEY.len())
+        .any(|window| window == ATTACHMENTS_NBT_KEY.as_bytes())
+}
 
 /// Writes the attachments of `chunk` into its NBT root.
 pub(crate) fn write_chunk(chunk: &ChunkData, root: &mut NbtCompound) {

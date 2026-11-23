@@ -739,6 +739,9 @@ impl ChunkData {
     #[allow(clippy::too_many_lines)]
     pub fn internal_to_pump_bytes(&self) -> Bytes {
         const PUMP_CHUNK_VERSION: u8 = 1;
+        if self.attachments.has_attachments() {
+            crate::attachments::warn_pump_drop((self.x, self.z));
+        }
 
         let is_light_correct = self.light_populated.load(Ordering::Relaxed);
         let block_entities_nbt = {

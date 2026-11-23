@@ -377,3 +377,38 @@ fn custom_data_survives_chunk_data_resume() {
         Some(7)
     );
 }
+
+/// `SerializableChunkData` reads the attachments into the proto chunk and `LevelChunk` takes
+/// them from it: the relight downgrade keeps the attachments of a chunk.
+#[test]
+fn attachments_survive_chunk_data_resume() {
+    use crate::{attachments::new_cell, chunk_system::chunk_state::Chunk};
+    use pumpkin_config::lighting::LightingEngineConfig;
+
+    let world_gen = get_world_gen(
+        Seed(4242),
+        Dimension::OVERWORLD,
+        false,
+        Vec::new(),
+        String::new(),
+    );
+    let mut staged = Chunk::Proto(Box::new(ProtoChunk::new(2, 2, &world_gen)));
+    staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(chunk_data) = staged else {
+        unreachable!()
+    };
+    chunk_data
+        .attachments
+        .lock()
+        .get_or_insert_with(Box::default)
+        .insert(4, new_cell(Box::new(9i32)));
+
+    let resumed = ProtoChunk::from_chunk_data(&chunk_data, &world_gen);
+    let mut staged_again = Chunk::Proto(Box::new(resumed));
+    staged_again.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(chunk_again) = staged_again else {
+        unreachable!()
+    };
+    let cell = chunk_again.attachments.cell(4).unwrap();
+    assert_eq!(cell.lock().unwrap().downcast_ref::<i32>(), Some(&9));
+}
