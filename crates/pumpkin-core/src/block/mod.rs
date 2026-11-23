@@ -517,8 +517,10 @@ pub fn collect_loot(
     };
     // TODO: vanilla rolls from the loot table's `random_sequence`, which is seeded per world.
     let seed: i64 = rand::random();
+    let block_entity = world.get_block_entity(pos);
     let params = LootContextParameters {
         world: Some(world),
+        block_entity: block_entity.as_deref(),
         tool: Some(
             params
                 .tool
@@ -546,7 +548,6 @@ pub fn collect_loot(
         return Vec::new();
     }
 
-    let block_entity = world.get_block_entity(pos);
     let mut items = event.items;
     if let Some(block_entity) = &block_entity {
         for stack in &mut items {

@@ -1012,9 +1012,12 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
         ItemStack::EMPTY.clone(),
         ItemStack::EMPTY.clone(),
     ]);
-    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, _rng| {
+    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, seed| {
         assert_eq!(key, "minecraft:chests/simple_dungeon");
-        vec![ItemStack::new(1, &Item::STONE)]
+        (
+            vec![ItemStack::new(1, &Item::STONE)],
+            RollRandom::seeded(seed),
+        )
     });
     assert_eq!(key.as_deref(), Some("minecraft:chests/simple_dungeon"));
     assert!(loot_table.lock().unwrap().is_none());
@@ -1028,8 +1031,11 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
         1
     );
     assert!(
-        unpack_loot_into_slots(&loot_table, 1, &items, |_, _| {
-            vec![ItemStack::new(1, &Item::GOLD_INGOT)]
+        unpack_loot_into_slots(&loot_table, 1, &items, |_, seed| {
+            (
+                vec![ItemStack::new(1, &Item::GOLD_INGOT)],
+                RollRandom::seeded(seed),
+            )
         })
         .is_none()
     );
@@ -1060,9 +1066,10 @@ fn fill_places_with_the_random_source_of_the_roll() {
             ItemStack::EMPTY.clone()
         }));
         // The roll draws once, as `LootTable.fill` rolls before it shuffles.
-        unpack_loot_into_slots(&loot_table, seed, &items, |_, rng| {
-            rng.next_i64();
-            vec![ItemStack::new(1, &Item::STONE)]
+        unpack_loot_into_slots(&loot_table, seed, &items, |_, seed| {
+            let mut random = RollRandom::seeded(seed);
+            random.rng().next_i64();
+            (vec![ItemStack::new(1, &Item::STONE)], random)
         });
         let placed = items
             .read()
@@ -1085,6 +1092,7 @@ fn fill_places_with_the_random_source_of_the_roll() {
 /// `LOOT_PARITY_DUMP=target/scratch/parity.txt tools/cargo-slot.sh nextest run -p pumpkin-core --lib --run-ignored only vanilla_tables_dump`.
 #[test]
 #[ignore = "writes the dump that LOOT_PARITY_DUMP names"]
+#[allow(clippy::too_many_lines)]
 fn vanilla_tables_dump() {
     use std::fmt::Write as _;
 
@@ -1191,4 +1199,108 @@ fn vanilla_tables_dump() {
         }
     }
     std::fs::write(path, dump).unwrap();
+}
+
+/// A table of one stone behind `condition`.
+fn stone_if(condition: &str) -> DynamicLootTable {
+    parse_loot_table(&format!(
+        r#"{{"pools":[{{"rolls":1,"entries":[{{"type":"minecraft:item","name":"minecraft:stone"}}],"conditions":[{condition}]}}]}}"#
+    ))
+    .unwrap()
+}
+
+fn passes(condition: &str, params: &LootContextParameters<'_>) -> bool {
+    !generate_dynamic_loot_with_context(&stone_if(condition), 1, params).is_empty()
+}
+
+fn chicken(world: &std::sync::Arc<World>) -> std::sync::Arc<ChickenEntity> {
+    ChickenEntity::new(Entity::new(
+        world.clone(),
+        Vector3::default(),
+        &EntityType::CHICKEN,
+    ))
+}
+
+#[tokio::test]
+async fn killed_by_player_passes_for_a_last_damage_player() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let player = chicken(&world);
+    let condition = r#"{"condition":"minecraft:killed_by_player"}"#;
+    assert!(!passes(condition, &LootContextParameters::default()));
+    assert!(passes(
+        condition,
+        &LootContextParameters {
+            killed_by_player: Some(true),
+            ..Default::default()
+        }
+    ));
+    assert!(passes(
+        condition,
+        &LootContextParameters {
+            last_damage_player: Some(player.as_ref()),
+            ..Default::default()
+        }
+    ));
+}
+
+#[tokio::test]
+async fn entity_targets_read_the_interaction_parameters() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let chicken = chicken(&world);
+    let entity: &dyn EntityBase = chicken.as_ref();
+    for target in ["attacking_player", "target_entity", "interacting_entity"] {
+        let condition = format!(
+            r#"{{"condition":"minecraft:entity_properties","entity":"{target}","predicate":{{"type":"minecraft:chicken"}}}}"#
+        );
+        let with = |params: LootContextParameters<'_>| passes(&condition, &params);
+        assert!(!with(LootContextParameters::default()), "{target}");
+        let set = match target {
+            "attacking_player" => LootContextParameters {
+                last_damage_player: Some(entity),
+                ..Default::default()
+            },
+            "target_entity" => LootContextParameters {
+                target_entity: Some(entity),
+                ..Default::default()
+            },
+            _ => LootContextParameters {
+                interacting_entity: Some(entity),
+                ..Default::default()
+            },
+        };
+        assert!(with(set), "{target}");
+        // Another parameter does not stand in for the target.
+        let other = LootContextParameters {
+            this_entity: Some(entity),
+            ..Default::default()
+        };
+        assert!(!with(other), "{target}");
+    }
+}
+
+#[tokio::test]
+async fn the_damage_source_feeds_the_damage_conditions() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let chicken = chicken(&world);
+    let fire = r#"{"condition":"minecraft:damage_source_properties","predicate":{"tags":[{"id":"minecraft:is_fire","expected":true}]}}"#;
+    let attacker = r#"{"condition":"minecraft:damage_source_properties","predicate":{"source_entity":{"type":"minecraft:chicken"}}}"#;
+    let source = |damage_type, attacker| LootContextParameters {
+        damage_source: Some(LootDamageSource {
+            damage_type,
+            attacker,
+            direct: None,
+        }),
+        ..Default::default()
+    };
+    assert!(!passes(fire, &LootContextParameters::default()));
+    assert!(passes(fire, &source(DamageType::ON_FIRE, None)));
+    assert!(!passes(fire, &source(DamageType::PLAYER_ATTACK, None)));
+    assert!(!passes(attacker, &source(DamageType::PLAYER_ATTACK, None)));
+    assert!(passes(
+        attacker,
+        &source(DamageType::PLAYER_ATTACK, Some(chicken.as_ref()))
+    ));
 }

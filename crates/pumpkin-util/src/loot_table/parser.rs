@@ -134,6 +134,10 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
         Some(Table {
             pools,
             functions: self.functions(value),
+            random_sequence: value
+                .get("random_sequence")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })
     }
 
@@ -387,6 +391,9 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
             Some("this") => LootEntityTarget::This,
             Some("attacker" | "killer") => LootEntityTarget::Attacker,
             Some("direct_attacker" | "direct_killer") => LootEntityTarget::DirectAttacker,
+            Some("attacking_player") => LootEntityTarget::AttackingPlayer,
+            Some("target_entity") => LootEntityTarget::TargetEntity,
+            Some("interacting_entity") => LootEntityTarget::InteractingEntity,
             _ => return None,
         };
         let mut predicate = value.get("predicate")?.as_object()?.clone();

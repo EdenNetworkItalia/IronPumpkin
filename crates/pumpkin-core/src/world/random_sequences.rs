@@ -18,6 +18,12 @@ impl RandomSequence {
         }
     }
 
+    /// The random source of the sequence: a roll without a seed draws from it, so its state
+    /// advances for every draw.
+    pub const fn random(&mut self) -> &mut Xoroshiro {
+        &mut self.rng
+    }
+
     pub fn random_between_inclusive(&mut self, min: i32, max: i32) -> i32 {
         if min >= max {
             return min;

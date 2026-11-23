@@ -25,8 +25,15 @@ pub(super) fn matches_entity(
 ) -> bool {
     let entity = match target {
         LootEntityTarget::This => params.this_entity,
-        LootEntityTarget::Attacker => params.killer_entity,
-        LootEntityTarget::DirectAttacker => params.direct_killer_entity,
+        LootEntityTarget::Attacker => params
+            .killer_entity
+            .or_else(|| params.damage_source.and_then(|source| source.attacker)),
+        LootEntityTarget::DirectAttacker => params
+            .direct_killer_entity
+            .or_else(|| params.damage_source.and_then(|source| source.direct)),
+        LootEntityTarget::AttackingPlayer => params.last_damage_player,
+        LootEntityTarget::TargetEntity => params.target_entity,
+        LootEntityTarget::InteractingEntity => params.interacting_entity,
     };
     entity.is_some_and(|entity| entity_matches(entity, predicate, params))
 }
@@ -891,33 +898,33 @@ pub(super) fn matches_damage_source(predicate: &Value, params: &LootContextParam
                     let exp = tag.get("expected").and_then(Value::as_bool).unwrap_or(true);
                     let clean_tag = name.trim_start_matches('#');
                     params
-                        .damage_type
+                        .resolved_damage_type()
                         .is_some_and(|dt| dt.is_tagged_with(clean_tag) == Some(exp))
                 })
             }),
             "is_projectile" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_projectile") == Some(exp))
             }),
             "is_explosion" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_explosion") == Some(exp))
             }),
             "is_fire" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_fire") == Some(exp))
             }),
             "is_lightning" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_lightning") == Some(exp))
             }),
             "is_fall" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_fall") == Some(exp))
             }),
             "is_direct" => expected.as_bool().is_some_and(|exp| {

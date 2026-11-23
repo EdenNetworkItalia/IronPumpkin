@@ -2967,9 +2967,20 @@ impl LivingEntity {
             let is_thundering = world.is_thundering();
 
             let has_player_kill = self.last_hurt_by_player_memory_time.load(Relaxed) > 0;
+            let last_damage_player = has_player_kill
+                .then(|| self.get_last_hurt_by_player())
+                .flatten();
 
             let params = LootContextParameters {
                 killed_by_player: Some(has_player_kill),
+                last_damage_player: last_damage_player
+                    .as_deref()
+                    .map(|player| player as &dyn EntityBase),
+                damage_source: Some(crate::world::loot::LootDamageSource {
+                    damage_type,
+                    attacker: killer,
+                    direct: source,
+                }),
                 world: Some(&world),
                 this_entity: Some(dyn_self.as_ref()),
                 killer_entity: killer,

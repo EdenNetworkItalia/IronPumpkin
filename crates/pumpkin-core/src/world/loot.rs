@@ -1,4 +1,4 @@
-use crate::{entity::EntityBase, world::World};
+use crate::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
@@ -18,6 +18,23 @@ mod generation;
 pub mod modifiers;
 mod predicates;
 
+/// `LootContextParams.DAMAGE_SOURCE`: the damage of a kill.
+///
+/// `DamageSource` of vanilla also holds the causing entity and the direct entity: here they are
+/// `attacker` and `direct`, the values of `LootContextParams.ATTACKING_ENTITY` and
+/// `DIRECT_ATTACKING_ENTITY`.
+#[derive(Clone, Copy)]
+pub struct LootDamageSource<'a> {
+    pub damage_type: DamageType,
+    pub attacker: Option<&'a dyn EntityBase>,
+    pub direct: Option<&'a dyn EntityBase>,
+}
+
+/// The parameters of a loot roll: `LootParams` of vanilla.
+///
+/// There is one field per `LootContextParams` key (`position` is `ORIGIN`, `killer_entity` is
+/// `ATTACKING_ENTITY`, `direct_killer_entity` is `DIRECT_ATTACKING_ENTITY`, `tool` is `TOOL`).
+/// A field that a roll does not set is `None`.
 #[derive(Default, Clone)]
 pub struct LootContextParameters<'a> {
     pub world: Option<&'a World>,
@@ -39,6 +56,39 @@ pub struct LootContextParameters<'a> {
     pub is_on_fire: Option<bool>,
     pub direct_attacker_weapon: Option<ItemStack>,
     pub enchantment_level: Option<i32>,
+    /// `LAST_DAMAGE_PLAYER`: the player that last damaged the killed entity.
+    pub last_damage_player: Option<&'a dyn EntityBase>,
+    /// `DAMAGE_SOURCE`.
+    pub damage_source: Option<LootDamageSource<'a>>,
+    /// `INTERACTING_ENTITY`: the entity that uses a block or an entity.
+    pub interacting_entity: Option<&'a dyn EntityBase>,
+    /// `TARGET_ENTITY`: the entity that an interaction or a command targets.
+    pub target_entity: Option<&'a dyn EntityBase>,
+    /// `BLOCK_ENTITY`: the block entity of the block of the roll.
+    pub block_entity: Option<&'a dyn BlockEntity>,
+    /// `ENCHANTMENT_ACTIVE`: whether the enchantment of an effect is active.
+    pub enchantment_active: Option<bool>,
+}
+
+impl LootContextParameters<'_> {
+    /// The damage type of the roll: `damage_type`, else the type of `damage_source`.
+    fn resolved_damage_type(&self) -> Option<DamageType> {
+        self.damage_type
+            .or_else(|| self.damage_source.map(|source| source.damage_type))
+    }
+
+    /// `KilledByPlayer`: the flag, or a player of the last damage.
+    fn killed_by_player(&self) -> bool {
+        self.killed_by_player.unwrap_or(false) || self.last_damage_player.is_some()
+    }
+}
+
+/// `Player.getLuck`: the luck of the player, `withLuck` of the vanilla loot params.
+#[must_use]
+pub fn player_luck(player: &crate::entity::player::Player) -> f32 {
+    player
+        .living_entity
+        .get_attribute_value(&pumpkin_data::attributes::Attributes::LUCK) as f32
 }
 
 fn enchantment_level_chance(
@@ -160,14 +210,14 @@ fn check_dynamic_condition(
             predicates::matches_entity(*target, predicate, params)
         }
         DynamicLootCondition::DamageSourceTag { tag, expected } => params
-            .damage_type
+            .resolved_damage_type()
             .is_some_and(|damage| damage.is_tagged_with(tag) == Some(*expected)),
         DynamicLootCondition::SilkTouch => has_silk_touch,
         DynamicLootCondition::NoSilkTouch => !has_silk_touch,
         DynamicLootCondition::Shears => has_shears,
         DynamicLootCondition::SilkTouchOrShears => has_silk_touch || has_shears,
         DynamicLootCondition::NoSilkTouchOrShears => !has_silk_touch && !has_shears,
-        DynamicLootCondition::KilledByPlayer => params.killed_by_player.unwrap_or(false),
+        DynamicLootCondition::KilledByPlayer => params.killed_by_player(),
         DynamicLootCondition::SurvivesExplosion => params
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
@@ -261,7 +311,7 @@ fn check_condition(
             predicates::matches_entity(target, predicate, params)
         }
         LootCondition::DamageSourceTag { tag, expected } => params
-            .damage_type
+            .resolved_damage_type()
             .is_some_and(|damage| damage.is_tagged_with(tag) == Some(expected)),
         LootCondition::Inverted(condition) => {
             !check_condition(*condition, has_silk_touch, has_shears, params, rng)
@@ -271,7 +321,7 @@ fn check_condition(
         LootCondition::Shears => has_shears,
         LootCondition::SilkTouchOrShears => has_silk_touch || has_shears,
         LootCondition::NoSilkTouchOrShears => !has_silk_touch && !has_shears,
-        LootCondition::KilledByPlayer => params.killed_by_player.unwrap_or(false),
+        LootCondition::KilledByPlayer => params.killed_by_player(),
         LootCondition::SurvivesExplosion => params
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
@@ -435,6 +485,16 @@ pub struct LootTableHandle {
 }
 
 impl LootTableHandle {
+    /// The `random_sequence` of the table: the id of the server random sequence that a roll
+    /// without a seed draws from. The tables of the vanilla data name their own id.
+    #[must_use]
+    pub fn random_sequence(&self) -> Option<&str> {
+        match &self.table {
+            LootTableRef::Static(_) => self.id.as_deref(),
+            LootTableRef::Dynamic(table) => table.random_sequence.as_deref(),
+        }
+    }
+
     #[must_use]
     pub const fn new(table: LootTableRef, id: String) -> Self {
         Self {
@@ -597,6 +657,88 @@ pub fn generate_loot_from_handle_with_rng(
     generation::generate_with_rng(handle.into(), rng, params)
 }
 
+/// The random source of a container roll.
+///
+/// `LootTable.fill` and `getRandomItems(params, seed)` create it with
+/// `LootContext.Builder.withOptionalRandomSeed(seed)` and `create(randomSequence)`: a seed other
+/// than 0 gives a source of its own, and the seed 0 gives the random sequence of the table, or a
+/// fresh source (the level random) when the table has none. The roll and the placement of the
+/// loot draw from the same source.
+///
+/// A source from a sequence goes back into the server when it drops, so the sequence goes on
+/// where the roll ended.
+pub struct RollRandom {
+    rng: Xoroshiro,
+    sequence: Option<SequenceLink>,
+}
+
+struct SequenceLink {
+    server: std::sync::Arc<crate::server::Server>,
+    id: pumpkin_util::identifier::Identifier,
+    world_seed: i64,
+}
+
+impl RollRandom {
+    /// A source of its own for `seed`: the roll of a container with no table to look up.
+    #[must_use]
+    pub const fn seeded(seed: i64) -> Self {
+        Self {
+            rng: Xoroshiro::from_seed(seed as u64),
+            sequence: None,
+        }
+    }
+
+    /// The source of a roll of `table` with `seed`, in the world of `params`.
+    #[must_use]
+    pub fn new(params: &LootContextParameters<'_>, table: &LootTableHandle, seed: i64) -> Self {
+        if seed != 0 {
+            return Self::seeded(seed);
+        }
+        let link = table
+            .random_sequence()
+            .and_then(|id| pumpkin_util::identifier::Identifier::parse(id).ok())
+            .zip(params.world.and_then(|world| world.server.upgrade()));
+        let Some((id, server)) = link else {
+            return Self::seeded(rand::random());
+        };
+        let world_seed = server.level_info.load().world_gen_settings.seed;
+        let rng = server
+            .random_sequences
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_create(&id, world_seed)
+            .random()
+            .clone();
+        Self {
+            rng,
+            sequence: Some(SequenceLink {
+                server,
+                id,
+                world_seed,
+            }),
+        }
+    }
+
+    /// The random source of the roll.
+    pub const fn rng(&mut self) -> &mut Xoroshiro {
+        &mut self.rng
+    }
+}
+
+impl Drop for RollRandom {
+    fn drop(&mut self) {
+        if let Some(link) = &self.sequence {
+            *link
+                .server
+                .random_sequences
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get_or_create(&link.id, link.world_seed)
+                .random() = self.rng.clone();
+        }
+    }
+}
+
 /// Places loot into empty slots of `slots` with the random source of its roll. Occupied slots
 /// stay.
 pub fn place_items_in_slots(
@@ -618,13 +760,14 @@ pub fn place_items_in_slots(
 /// Vanilla `RandomizableContainer.unpackLootTable` lock protocol for concurrent containers.
 ///
 /// Takes the pending loot-table key so another unpack cannot run, runs `generate` with neither
-/// chest lock held, then places into still-empty slots so concurrent inserts stay. As
-/// `LootTable.fill`, the placement goes on with the random source of the roll.
+/// chest lock held, then places into still-empty slots so concurrent inserts stay. `generate`
+/// gets the key and the seed of the container and returns the loot with the random source of its
+/// roll: as `LootTable.fill`, the placement goes on with that source.
 pub fn unpack_loot_into_slots<const N: usize>(
     loot_table: &std::sync::Mutex<Option<String>>,
     seed: i64,
     items: &std::sync::RwLock<[ItemStack; N]>,
-    generate: impl FnOnce(String, &mut Xoroshiro) -> Vec<ItemStack>,
+    generate: impl FnOnce(String, i64) -> (Vec<ItemStack>, RollRandom),
 ) -> Option<String> {
     let key = {
         let mut loot = loot_table
@@ -632,12 +775,11 @@ pub fn unpack_loot_into_slots<const N: usize>(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loot.take()?
     };
-    let mut rng = Xoroshiro::from_seed(seed as u64);
-    let generated = generate(key.clone(), &mut rng);
+    let (generated, mut random) = generate(key.clone(), seed);
     let mut slots = items
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    place_items_in_slots(&mut *slots, generated, &mut rng);
+    place_items_in_slots(&mut *slots, generated, random.rng());
     Some(key)
 }
 
@@ -687,9 +829,9 @@ pub fn fill_chest_inventory_handle(
     seed: i64,
     params: &LootContextParameters<'_>,
 ) {
-    let mut rng = Xoroshiro::from_seed(seed as u64);
-    let items_to_place = generate_loot_from_handle_with_rng(handle, &mut rng, params);
-    place_items_in_chest(inventory, items_to_place, &mut rng);
+    let mut random = RollRandom::new(params, handle, seed);
+    let items_to_place = generate_loot_from_handle_with_rng(handle, random.rng(), params);
+    place_items_in_chest(inventory, items_to_place, random.rng());
 }
 
 pub fn fill_chest_inventory(

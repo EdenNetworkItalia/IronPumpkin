@@ -1133,10 +1133,13 @@ impl TrialSpawner {
             && let Some(living) = entity.get_living_entity()
         {
             let seed = rand::random::<i64>();
+            // `Mob.createEquipmentParams`: the `equipment` parameter set, the mob and its position.
             let items = loot_table.generate_loot_with_context(
                 seed,
                 &crate::world::loot::LootContextParameters {
                     world: Some(world),
+                    position: Some(spawn_pos),
+                    this_entity: Some(entity.as_ref()),
                     ..Default::default()
                 },
             );
