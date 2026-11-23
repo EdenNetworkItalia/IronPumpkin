@@ -30,7 +30,8 @@ impl HopperBlockEntity {
     }
 
     /// The item capability of the block at `pos`, looked up from `side`. Reads the block entity
-    /// only when a mod installed the hooks, and not at all when `state` has none.
+    /// only when a mod installed the hooks and the state has one, as the vanilla container
+    /// lookup does.
     pub(crate) fn capability_target(
         world: &Arc<World>,
         pos: &BlockPos,
@@ -38,11 +39,13 @@ impl HopperBlockEntity {
         state: Option<(&'static Block, &'static BlockState)>,
     ) -> Option<Box<dyn ItemTarget>> {
         CAPABILITY_HOOKS.get()?;
-        let block_entity = match state {
-            Some((_, state)) if !state.has_block_entity() => None,
-            _ => world.get_block_entity(pos),
+        let state = state.unwrap_or_else(|| world.get_block_and_state(pos));
+        let block_entity = if state.1.has_block_entity() {
+            world.get_block_entity(pos)
+        } else {
+            None
         };
-        item_target(world, pos, side, block_entity.as_ref(), state)
+        item_target(world, pos, side, block_entity.as_ref(), Some(state))
     }
 
     /// `VanillaInventoryCodeHooks.insertHook`: pushes one item into the item capability of the
