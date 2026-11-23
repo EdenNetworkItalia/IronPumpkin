@@ -1145,7 +1145,7 @@ The `capabilities` and `transfer` modules of `ironpumpkin-mods` (task 2.7, #153)
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
 | `AttachmentHolder` | class, 5 public methods | both | supported | `attachments::AttachmentAccess` on `Entity`, `World`, `attachments::block_entity` and `attachments::chunk` | the storage is `pumpkin_world::attachments::Attachments`, with no map until the first attachment |
-| `AttachmentHolder.AsField` | class, 2 public methods | both | supported | `attachments::ChunkAttachments` over the `attachments` field of `ChunkData` | the chunk holder; a proto chunk has no holder, so nothing is copied on promotion |
+| `AttachmentHolder.AsField` | class, 2 public methods | both | supported | `attachments::ChunkAttachments` over the `attachments` field of `ChunkData` | the chunk holder; a proto chunk carries the attachments of the chunk it resumed from, so the relight downgrade keeps them |
 | `AttachmentInternals` | class, 4 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
 | `AttachmentSync` | class, 9 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
 | `AttachmentSyncHandler` | interface, 3 public methods | both | supported | `attachments::AttachmentSyncHandler` | `sendToPlayer` and `write`; `read` runs on the client |

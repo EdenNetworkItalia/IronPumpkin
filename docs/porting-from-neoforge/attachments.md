@@ -158,6 +158,8 @@ A type with a sync handler gets an id in `neoforge:synced_attachment_types`, in 
 
 A client that starts to see a holder gets its synced values: an entity when the client starts to track it, a player on join, respawn and dimension change, a level with the level info, and a chunk with its block entities when the chunk is sent. A vanilla client gets nothing. `sync_data` on a type without a sync handler does nothing, as on NeoForge.
 
+The payloads of one holder leave in the order of their snapshots, so a first sync never overwrites a newer update on the client. No lock of a value is held while a payload is sent, so a `PacketSentEvent` handler can read the holder. A block entity that sleeps in the chunk data with saved attachments wakes when its chunk is sent, so a client gets its synced values after a restart.
+
 ## Locks and failures
 
 Each type of a holder has its own lock, and the `send_to_player` of a sync handler and a default constructor run with no lock held. A callback can read and write the other types of the same holder, so `entity.with_data(a, |a| *a += entity.get_data(b))` works. A use of the type of the running `with_data` on the same holder, or of the value that a serializer or a sync handler writes, panics with the name of the type, where a mutex would wait for ever.
@@ -170,9 +172,9 @@ A serializer, a copy handler or a sync handler that panics loses only its own va
 - A name in the `minecraft` namespace fails with `AttachmentError::ReservedNamespace`. NeoForge accepts it.
 - A use of the type of the running `with_data` on the same holder panics.
 - The holder that a default constructor, a serializer or a copy handler gets for a chunk has the chunk data only: a chunk that loads from disk has no world yet.
-- A proto chunk has no holder, so there is nothing to copy when it becomes a full chunk.
+- Mod code reaches only the attachments of a loaded full chunk. A chunk that Pumpkin turns back into a proto chunk to relight it keeps its attachments.
 - The sync of a block entity sends no block update with it, and the payloads of a sent chunk and its block entities are not bundled.
-- The Pump chunk format does not save chunk attachments. Use the Anvil or the Linear format.
+- The Pump chunk format does not save chunk attachments, and logs one warning when it drops them. Use the Anvil or the Linear format.
 - A level that never saved an attachment writes no `data_attachments.dat`.
 
 See the rustdoc of [`ironpumpkin_mods::attachments`](../../crates/ironpumpkin-mods/src/attachments/mod.rs) for every type and method.
