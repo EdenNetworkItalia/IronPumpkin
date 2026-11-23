@@ -1239,7 +1239,7 @@ pub fn serialize(
         }
         DataComponent::Food => get::<FoodImpl>(value).serialize(seq),
         DataComponent::Consumable => get::<ConsumableImpl>(value).serialize_for(seq, ids),
-        DataComponent::UseRemainder => get::<UseRemainderImpl>(value).serialize(seq),
+        DataComponent::UseRemainder => get::<UseRemainderImpl>(value).serialize_for(seq, ids),
         DataComponent::UseCooldown => get::<UseCooldownImpl>(value).serialize(seq),
         DataComponent::DamageResistant => get::<DamageResistantImpl>(value).serialize(seq),
         DataComponent::Tool => get::<ToolImpl>(value).serialize_for(seq, ids),
@@ -1250,7 +1250,7 @@ pub fn serialize(
         DataComponent::Repairable => get::<RepairableImpl>(value).serialize_for(seq, ids),
         DataComponent::Glider => get::<GliderImpl>(value).serialize(seq),
         DataComponent::TooltipStyle => get::<TooltipStyleImpl>(value).serialize(seq),
-        DataComponent::DeathProtection => get::<DeathProtectionImpl>(value).serialize(seq),
+        DataComponent::DeathProtection => get::<DeathProtectionImpl>(value).serialize_for(seq, ids),
         DataComponent::BlocksAttacks => get::<BlocksAttacksImpl>(value).serialize(seq),
         DataComponent::PiercingWeapon => get::<PiercingWeaponImpl>(value).serialize(seq),
         DataComponent::KineticWeapon => get::<KineticWeaponImpl>(value).serialize(seq),
@@ -1295,7 +1295,7 @@ pub fn serialize(
         DataComponent::NoteBlockSound => get::<NoteBlockSoundImpl>(value).serialize(seq),
         DataComponent::BannerPatterns => get::<BannerPatternsImpl>(value).serialize(seq),
         DataComponent::BaseColor => get::<BaseColorImpl>(value).serialize(seq),
-        DataComponent::PotDecorations => get::<PotDecorationsImpl>(value).serialize(seq),
+        DataComponent::PotDecorations => get::<PotDecorationsImpl>(value).serialize_for(seq, ids),
         DataComponent::Container => get::<ContainerImpl>(value).serialize_for(seq, ids),
         DataComponent::BlockState => get::<BlockStateImpl>(value).serialize(seq),
         DataComponent::Bees => get::<BeesImpl>(value).serialize(seq),
@@ -2104,10 +2104,17 @@ impl DataComponentCodec<Self> for FoodImpl {
 
 impl DataComponentCodec<Self> for UseRemainderImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         let stack = self.remainder.as_ref().ok_or_else(|| {
             WritingError::Message("UseRemainderImpl has no remainder stack".into())
         })?;
-        serialize_item_stack_template(stack, seq, ContentIds::Display)
+        serialize_item_stack_template(stack, seq, ids)
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
@@ -2267,9 +2274,16 @@ impl DataComponentCodec<Self> for TooltipStyleImpl {
 
 impl DataComponentCodec<Self> for DeathProtectionImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt(self.death_effects.len() as i32))?;
         for effect in self.death_effects.iter() {
-            serialize_consume_effect(effect, seq, ContentIds::Display)?;
+            serialize_consume_effect(effect, seq, ids)?;
         }
         Ok(())
     }
@@ -3237,10 +3251,17 @@ impl DataComponentCodec<Self> for BaseColorImpl {
 /// `ItemStackTemplate`.
 impl DataComponentCodec<Self> for PotDecorationsImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
         for side in [&self.back, &self.left, &self.right, &self.front] {
             if let Some(stack) = side {
                 seq.write_bool(true)?;
-                serialize_item_stack_template(stack, seq, ContentIds::Display)?;
+                serialize_item_stack_template(stack, seq, ids)?;
             } else {
                 seq.write_bool(false)?;
             }

@@ -14,7 +14,8 @@ use std::sync::Once;
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::{
-    ContainerImpl, DataComponentImpl, EntityDataImpl, IDSet, RepairableImpl,
+    ContainerImpl, DataComponentImpl, EntityDataImpl, IDSet, PotDecorationsImpl, RepairableImpl,
+    UseRemainderImpl,
 };
 use pumpkin_data::dynamic::{
     self, BlockDefinition, BlockPropertyDefinition, ContentIds, ContentKind, EntityTypeDefinition,
@@ -342,6 +343,30 @@ fn data_components_follow_the_mode() {
     );
     let real = component(DataComponent::Container, &container(ruby), ContentIds::Real);
     assert!(contains(&real, &var_int(i32::from(ruby.id))));
+
+    // The item templates of a use remainder and of the pot sides carry the real id too.
+    let remainder = UseRemainderImpl {
+        remainder: Some(ItemStack::new(1, ruby)),
+    };
+    let real = component(DataComponent::UseRemainder, &remainder, ContentIds::Real);
+    assert!(real.starts_with(&var_int(i32::from(ruby.id))));
+    let pot = PotDecorationsImpl {
+        back: Some(ItemStack::new(1, ruby)),
+        ..PotDecorationsImpl::EMPTY
+    };
+    let real = component(DataComponent::PotDecorations, &pot, ContentIds::Real);
+    assert!(contains(&real, &var_int(i32::from(ruby.id))));
+    assert_eq!(
+        component(DataComponent::PotDecorations, &pot, ContentIds::Display),
+        component(
+            DataComponent::PotDecorations,
+            &PotDecorationsImpl {
+                back: Some(ItemStack::new(1, &Item::DIAMOND)),
+                ..PotDecorationsImpl::EMPTY
+            },
+            ContentIds::Display
+        )
+    );
 
     let repairable = |item: &'static Item| RepairableImpl {
         items: IDSet::IDs(Cow::Owned(vec![item])),
