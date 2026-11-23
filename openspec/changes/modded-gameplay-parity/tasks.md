@@ -1,0 +1,304 @@
+# Tasks
+
+Each task mirrors one GitHub issue of this repository. A task gets its issue number when its wave is planned. The issue fixes the public API of the task in `ironpumpkin-mods` (names, signatures, error variants), the files that the task creates or changes, and the acceptance criteria from the specs. An agent reports `question` on a contract that its issue does not fix. A wave 6 task gets a design note in its issue first.
+
+Milestone: M5 Modded gameplay parity. Task numbers start with 6, the phase number. Each task names the tasks it needs. A task starts when they are done, so tasks of different waves can run at the same time.
+
+#189, #190, #191 and #192 belong to M4 wave 10 (M4 tasks 2.48 to 2.51). A task of this change only checks that the fix has landed.
+
+Rules for every task:
+- Add a test mod entry in `crates/ironpumpkin-test-mod`. Its test registers, uses, saves and reloads the entry.
+- Test each new play-phase payload and the chunk packet with a byte test against the decompiled stream codec.
+- Test each new registry sync row with the headless client `tools/pumpkin-neoforge-client` and a NeoForge 26.3.0.64-beta capture.
+- Test each new kind with a `Display` connection.
+- Run the performance guardrail when the task touches a tick, generation or lookup path.
+- Check the section "Migration" of design.md when the task adds save data.
+- Follow `openspec/config.yaml` for reviews.
+
+## 6. Modded gameplay parity
+
+### Wave 1: scope, id table, block entities, menus, abilities
+
+- [ ] 6.1 Apply the scope rule to the inventory
+  - Needs: M4 closed, including M4 task 2.52 that moves the inventory to `docs/neoforge-inventory/`.
+  - Edit the rows of the inventory by hand.
+  - Mark each `M5 engine extension:` row without demand `not supported` with the reason "no mod of the reference modpack uses it".
+  - Keep `ModifyRegistriesEvent` and the registry callbacks, because mods use them.
+  - Count a registration through a helper such as `GameRules.register` as use.
+  - Decide `NewDatapackRegistryEvent`, the fluid contact rules and the holder set types by demand.
+  - Verify: requirements "Scope follows the modpack demand" and "Closed rows" of `neoforge-extension-hooks`.
+  - Verify: requirements "Registries with demand", "Decoder registries with demand", "Registries without demand" and "Minecart collision handler" of `neoforge-static-registries`.
+  - Verify: `python3 -I tools/openspec-sync/mapping_status.py --check` passes.
+- [ ] 6.2 Id table and run-time sync rows
+  - Needs: 6.1.
+  - Build one id table in `pumpkin-data`, keyed by registry id, for `particle_type`, `point_of_interest_type`, `potion`, `custom_stat` and `map_decoration_type`.
+  - Add one id function next to `Particle`, `PoiType`, `Potion` and `MapDecorationType`.
+  - Let a mod name the display entry of each particle type, potion and map decoration type at registration.
+  - Build `SYNCED_REGISTRIES` at the freeze, as design.md describes.
+  - Make `PoiRecord` store the id of the id table, and keep the name in the POI save.
+  - Keep a POI record of an unknown type as a raw record that no query matches, and write it back (`poi/mod.rs`).
+  - Keep unknown stat keys in the stats file.
+  - Apply the policy in the particle, potion, map decoration, statistics and tags encoders.
+  - Verify: requirements "Ids of id table entries", "Display entry at registration", "Point of interest types" and "Sync rows for carried ids" of `neoforge-static-registries`.
+  - Verify: requirements "Rows list every mod", "One id function", "Policy of id table registries" and "Saves keep mod entries by name" of `neoforge-static-registries`.
+  - Verify: the section "Migration" of design.md (POI records and stats).
+  - Verify: a count test per registry against the generated lookups.
+  - Verify: a NeoForge capture for the built-in names and order of each new row.
+- [ ] 6.3 Decoder registries
+  - Needs: 6.1.
+  - Add a generic `DecoderRegistry<T>` in `pumpkin-util`. Move `LootModifierTypes` onto it.
+  - Reject a duplicate name and the `minecraft` namespace. Close the registry at the freeze.
+  - Add a manual `PartialEq` for each use-site enum that gets a `Custom` arm.
+  - Put the trait of a loot `Custom` arm in `pumpkin-util`. Let it read the loot context through a context trait that `pumpkin-core` implements.
+  - Verify: requirements "Decoder registries" and "Decoder registries are server-only" of `neoforge-static-registries`.
+- [ ] 6.4 Mod block entity types
+  - Needs: 6.2, #192.
+  - Add a content kind with a creation set, a valid set, a factory and a loader.
+  - Add a block state parameter to the NBT load path and to each caller of `block_entity_from_nbt`.
+  - Extend the full-name helper of #192 to the other sites and to the mod table.
+  - Fill the creation set through the M4 store `add_block_entity_block`.
+  - Let `BlockEntityTypeAddBlocksEvent` set the creation type of a mod block that has none.
+  - Accept mod type names in `BlockEntityTypeAddBlocksEvent` and in the capability registration.
+  - Build the `minecraft:block_entity_type` row.
+  - Leave mod types out of the chunk packet, the block entity data packet and the `block_entity_data` component for a `Display` connection.
+  - Verify: requirements "Register a block entity type", "Type ids", "Creation set and valid set", "Full name lookup" and "Save and load" of `neoforge-block-entity-types`.
+  - Verify: requirements "Ticking", "Client sync on a Real connection", "Policy for Display connections" and "Cost of a type that does not tick" of `neoforge-block-entity-types`.
+  - Verify: requirements "Add blocks to a type" and "Capability registration for a mod type" of `neoforge-block-entity-types`.
+  - Verify: a test with the name `examplemod:chest`, and a byte test of the chunk packet.
+  - Verify: the section "Migration" of design.md (block entities).
+- [ ] 6.5 Mod menu types and data slots
+  - Needs: 6.2.
+  - Register a menu type as an id table entry and build the `minecraft:menu` row.
+  - Add a second field for the mod menu type id to `ScreenHandlerBehaviour`.
+  - Add a `MenuError` variant that names the menu type, for a `Display` connection.
+  - Make `open_menu` take an extra data writer. Send `neoforge:advanced_open_screen` only for non-empty extra data.
+  - Carry the data slot value as `i32` from `sync_handler.rs` to the send. Send `neoforge:advanced_container_set_data` to a client with the channel.
+  - Verify: requirements "Register a menu type", "Open a menu of a mod menu type", "No layout limit for mod menu types" and "Extra data" of `neoforge-menu-types`.
+  - Verify: requirements "Policy for Display connections", "32-bit data slots" and "Menu logic for a mod menu type" of `neoforge-menu-types`.
+  - Verify: byte tests of `advanced_open_screen` and `advanced_container_set_data` against the decompiled stream codecs.
+- [ ] 6.6 Item abilities
+  - Needs: 6.1.
+  - Add one `can_perform_action` function with the vanilla answers.
+  - Replace the vanilla checks in `loot.rs`, `generation.rs`, `entity/mod.rs`, `entity/player.rs`, `tripwire.rs`, `campfire.rs`, `ignition.rs`, `shears.rs`, `beehive.rs`, `pumpkin.rs` and `armadillo.rs`.
+  - Keep `mooshroom.rs` and `copper_golem.rs` as they are. Keep the own shears check of sheep and snow golems.
+  - Verify: requirement "Item abilities" of `neoforge-static-registries`.
+  - Verify: a test per call site.
+- [ ] 6.7 Special plantables and farmland water
+  - Needs: 6.1, M4 #183 (`neoforge:villager_farmlands`).
+  - Add a plantable trait object on the item. Call it from `harvest_farmland.rs` and from the villager pickup check in `villager/mod.rs`.
+  - Add a water ticket store keyed by chunk. Read it in `is_water_nearby` of `farmland.rs`.
+  - Verify: requirements "Special plantables" and "Farmland water tickets" of `neoforge-static-registries`.
+- [ ] 6.8 Structure template palette keeps mod block properties (#135)
+  - Needs: 6.1.
+  - Keep string properties in `PaletteEntry`. Resolve them through `state_nbt::block_state_from_compound`.
+  - Keep mod properties in the processor rule outputs of `processor.rs` the same way.
+  - Verify: requirement "Structure template palette keeps mod properties" of `neoforge-worldgen`.
+
+### Wave 2: conditions, recipes, registries, game rules, chunk tickets
+
+- [ ] 6.9 Data conditions
+  - Needs: 6.2, 6.3.
+  - Add one module that evaluates `neoforge:conditions` after the JSON parse of each covered loader.
+  - Run the loaders in two passes, tags first.
+  - Read the mod list from `plugin/startup.rs`. Answer `registered` from the Pumpkin lookups, false with a warning when none exists.
+  - Update the two Pumpkin tests that use the 21.1 names: `data_maps/tests.rs` and `loot/modifiers/tests.rs`.
+  - Verify: requirements "Evaluate conditions on load", "Condition types", "Registered without a lookup", "Feature flags", "Old condition names", "Mod loaded", "Tags load first", "Covered loaders", "Mod condition types" and "Conditions are server-only" of `neoforge-data-conditions`.
+- [ ] 6.10 Mod recipe types and the recipe snapshot
+  - Needs: 6.2, 6.9, #191.
+  - Add the recipe lookup bench in `pumpkin-core/benches`.
+  - Record its baseline on master with the vanilla recipes. Run it again with the test mod recipes.
+  - Register recipe type and serializer as id table entries, with a JSON decoder and a stream encoder.
+  - Swap one immutable snapshot in `set_recipes`, with a per-type index.
+  - Log a decode error with the recipe id.
+  - Verify: requirements "Register a recipe type and a serializer", "Serializer codecs", "One recipe snapshot", "Query recipes by type" and "Recipe conditions" of `neoforge-recipes`.
+  - Verify: requirement "Tag ingredient strings" of `neoforge-recipes`.
+  - Verify: the recipe lookup bench shows no significant regression.
+- [ ] 6.11 Custom ingredients, recipe sync and recipe rows
+  - Needs: 6.10.
+  - Add a `Custom` arm to the ingredient type, with a trait object and a stream encoder.
+  - Register `neoforge:ingredient_serializer` as an id table entry. Support the six built-in types.
+  - Send `neoforge:recipe_content` for the types that a mod lists at registration. Refuse a vanilla type.
+  - Let the freeze decide the three rows.
+  - Verify: requirements "Custom ingredient types", "Ingredient wire form", "Recipe sync", "Recipe registry rows" and "Policy for Display connections" of `neoforge-recipes`.
+  - Verify: a byte test of `neoforge:recipe_content` against the NeoForge stream codec.
+- [ ] 6.12 `command_argument_type`
+  - Needs: 6.2.
+  - Register a mod argument type as an id table entry. Build the `command_argument_type` row.
+  - Leave its nodes out of the command tree for a `Display` connection.
+  - Verify: requirements "Command argument types" and "Command argument type row" of `neoforge-extension-hooks`.
+  - Verify: a NeoForge capture for the names and order of the row.
+- [ ] 6.13 Mod-defined registries and holder set types
+  - Needs: 6.1, 6.3.
+  - Add `CustomRegistry<T>` to `ironpumpkin-mods`. Freeze it with the other mod registries.
+  - Fail the freeze for `sync(true)` with a "not supported" error.
+  - Run an add callback per entry and a bake callback once after the freeze.
+  - Add a decoder registry for custom holder set types when 6.1 keeps the row. Write the direct member list on the wire.
+  - Verify: requirements "Mod-defined registries", "Synced mod-defined registries are refused", "Registry callbacks" and "Holder set types" of `neoforge-static-registries`.
+- [ ] 6.14 Decoder registry use sites
+  - Needs: 6.3.
+  - Add the `Custom` arm at `DynamicLootCondition`, `AdvancementTrigger` and the predicates.
+  - Cover `trigger_type`, `loot_function_type`, `loot_pool_entry_type`, `loot_condition_type`, `data_component_predicate_type` and `entity_sub_predicate_type`.
+  - Expose a trigger fire call to mods.
+  - Verify: requirement "Use sites call the decoded behaviour" of `neoforge-static-registries`.
+- [ ] 6.15 Mod game rules
+  - Needs: 6.1.
+  - Add a side table of mod rules with a typed handle. Save under `modid:rule` keys.
+  - Extend the `/gamerule` command and the values packet. Leave mod rules out for a `Display` connection.
+  - Add the mod rule id to `GameRuleChangedEvent`. Send no mod rule change to the v0.2 host.
+  - Verify: requirements "Register a mod game rule", "The gamerule command", "Save and load", "Client values", "Change event", "Scope rule" and "Vanilla rules keep their interface" of `neoforge-game-rules`.
+  - Verify: the section "Migration" of design.md (game rules).
+  - Close the open question: does vanilla `GameRuleMap.CODEC` accept an unknown key, and which `LevelInfo` holds the rules of a second world.
+- [ ] 6.16 Chunk tickets per mod
+  - Needs: 6.1, #190.
+  - Add an owner store that records the mod owner of each forced chunk. Save it under `neo_ticket_data`.
+  - Add `RegisterTicketControllersEvent`, the three owner kinds, the `forceTicks` flag and the validation callback.
+  - Add the chunks of `forceTicks` tickets to `count_natural_spawn_chunks` in `world/mod.rs`.
+  - Verify: requirement "Vanilla forced chunks save" of `neoforge-chunk-tickets` (the fix of #190 has landed).
+  - Verify: requirements "Register a ticket controller", "Force a chunk", "Save and load", "Validation callback" and "Tickets are server-only" of `neoforge-chunk-tickets`.
+  - Verify: the section "Migration" of design.md (tickets).
+  - Close the open question: does a world with only a forced chunk tick with no player.
+
+### Wave 3: fluids
+
+- [ ] 6.17 Shared flow code
+  - Needs: 6.1, #190.
+  - Take the fluid registration id from the fluid, not from a fixed list.
+  - Stop the replace rule from treating every fluid as water (`flowing_trait.rs`, `physics.rs`).
+  - Verify: requirements "Shared flow code" and "Fluid spread event" of `neoforge-fluids`, with a unit test on a non-water fluid id.
+- [ ] 6.18 Fluid content kind
+  - Needs: 6.2, 6.17.
+  - Change the codegen template of `fluid.rs`. Add leaked `Fluid` values and fallthrough lookups.
+  - Add fluid tags and the full name in fluid ticks. Drop a tick of an unknown fluid on load.
+  - Build the `fluid` row. Send no `neoforge:fluid_type` row.
+  - Map a mod fluid to a display fluid for a `Display` connection.
+  - Verify: requirements "Register a fluid pair", "Registry sync", "Policy for Display connections" and "Saves keep mod fluids" of `neoforge-fluids`.
+  - Verify: the section "Migration" of design.md (fluids). Codegen on a clean checkout changes nothing.
+- [ ] 6.19 Generic flowing fluid and `FluidType`
+  - Needs: 6.18.
+  - Add one generic flowing fluid that runs `FlowingFluid` with the parameters of the mod.
+  - Add `FluidType` as a trait object with the members that the engine reads.
+  - Verify: requirements "Flow", "Fluid contact rules" and "Fluid type" of `neoforge-fluids`.
+  - Verify: the water and lava flow tests give the vanilla results.
+- [ ] 6.20 Buckets and the link check
+  - Needs: 6.19.
+  - Add one helper call after the vanilla arms of `bucket.rs`. Add a filled mod bucket as an item behaviour.
+  - Fail the freeze for a declared bucket link with a missing or wrong target.
+  - Verify: requirements "Buckets" and "Bucket and cauldron links" of `neoforge-fluids`.
+- [ ] 6.21 Entity interaction, step one
+  - Needs: 6.19, 6.23.
+  - Run the water branches with the `FluidType` values for a water-like mod fluid.
+  - Put the logic in a new file. Edit `entity/mod.rs`, `living.rs` and `player.rs` only at call sites.
+  - Verify: requirement "Entity interaction, water-like fluids" of `neoforge-fluids`.
+  - Verify: requirement "Entity fluid scan" of `neoforge-fluids` (the entity tick bench).
+- [ ] 6.22 Cauldron content and transfer handlers
+  - Needs: 6.20.
+  - Add the cauldron content table and one helper call in `cauldron.rs`.
+  - Add the fluid handler of a cauldron block to the M4 capabilities if they have none.
+  - Add the bucket and cauldron transfer handlers of the `transfer.fluid` package.
+  - Fail the freeze for a declared cauldron link whose target is missing or not a cauldron.
+  - Verify: requirements "Cauldron content and transfer" and "Bucket and cauldron links" of `neoforge-fluids`.
+  - Verify: a test of the freeze error for a missing cauldron target.
+- [ ] 6.23 Entity tick bench
+  - Needs: M4 closed.
+  - Add the entity tick bench.
+  - Record its baseline on master with the vanilla content. Run it again with the test mod content.
+  - Verify: the bench runs and the baseline is in the issue.
+
+### Wave 4: world generation
+
+- [ ] 6.24 Placement modifiers check
+  - Needs: M4 closed, #189.
+  - Check that `cuboid`, `random_chance` and `randomly_selected` have landed.
+  - Verify: requirement "Vanilla placement modifiers" of `neoforge-worldgen`.
+- [ ] 6.25 Startup load and feature overlay
+  - Needs: 6.24.
+  - Move the `load_all` call of `server/mod.rs` before the world loop. Skip mod features and biome modifiers on reload.
+  - Add an overlay table keyed by full name beside the generated enums. Read it at the four biome feature list sites.
+  - Record the `cargo bench -p pumpkin-world` baseline on master first.
+  - Verify: requirement "Startup load" of `neoforge-worldgen`, with an overlay entry built in code.
+  - Verify: scenario "A vanilla feature" of requirement "JSON is the registration contract" of `neoforge-worldgen`.
+  - Verify: `cargo bench -p pumpkin-world` shows no significant regression against the baseline.
+  - Close the open question: how the 65 feature files use `feature_name` beyond the biome check.
+  - Close the open question: does an unknown structure start survive a save.
+- [ ] 6.26 Runtime JSON reader and differential test
+  - Needs: 6.9, 6.25.
+  - Add the reader in an IronPumpkin module of `pumpkin-world`. Extend the parsers of `jigsaw.rs` and `processor.rs`.
+  - Derive `PartialEq` and `Debug` on the feature structs, one line per struct.
+  - Copy the gitignored `assets/datapack` into the worktree before the differential test.
+  - Verify: requirements "Runtime JSON reader" and "Differential test" of `neoforge-worldgen`.
+- [ ] 6.27 Mod world generation types
+  - Needs: 6.3, 6.26.
+  - Add one enum arm that calls a trait object for each of the nine registries of the requirement.
+  - Pass the world to the traits through an object-safe facade over `GenerationCache`.
+  - Verify: requirement "Mod types with a trait object" of `neoforge-worldgen`.
+- [ ] 6.28 Biome modifiers
+  - Needs: 6.26.
+  - Apply `add_features`, `remove_features`, `add_spawns` and `remove_spawns` as an overlay per biome. Freeze it before the first chunk.
+  - Verify: requirement "Biome modifiers" of `neoforge-worldgen`.
+  - Verify: scenario "A mod ore" of requirement "JSON is the registration contract" of `neoforge-worldgen`.
+  - Verify: requirement "Server-only content and cost" of `neoforge-worldgen`.
+
+### Wave 5: extension interface hooks
+
+- [ ] 6.29 Extension interface hooks, first group
+  - Needs: 6.1, 6.4, 6.18, #184.
+  - Group the hooks by extension interface and target. Take the group with the highest demand in the Mods column of `mapping-table.md`.
+  - Add hook registration to the builder of the target.
+  - Build one slot table per implemented hook at the freeze.
+  - Move the vanilla answer into a function that first resolves the M2 vanilla type.
+  - Verify: requirements "Register a hook implementation", "Slot tables", "The vanilla answer in a function", "Hook tests" and "Cost of a hook" of `neoforge-extension-hooks`.
+- [ ] 6.30 Extension interface hooks, next groups
+  - Needs: 6.29.
+  - Open one task for each next group, in descending order of demand, when the wave is planned.
+  - Verify: as task 6.29, for each group.
+
+### Wave 6: the last design pass, remaining rows
+
+- [ ] 6.31 The last world generation design pass
+  - Needs: 6.28.
+  - Cover `add_carvers`, `carver_type`, `chunk_generator`, `biome_source`, `density_function_type`, mod biomes and mod structures.
+  - Choose option S1 or the source patch route. Record the choice and the reason in design.md.
+  - Verify: requirement "The last design pass" of `neoforge-worldgen`.
+  - Close the open question: option S1 or the source patch route.
+- [ ] 6.32 Implement the route of task 6.31
+  - Needs: 6.31.
+  - Open the tasks of the chosen route in the issue.
+  - Verify: the scenarios of requirement "The last design pass" of `neoforge-worldgen`.
+- [ ] 6.33 Remaining rows
+  - Needs: 6.1, 6.22.
+  - Write a design note first, then one task per row.
+  - Make each row `supported` with a test or `not supported` with the reason.
+  - Verify: requirement "Remaining rows" of `neoforge-extension-hooks`.
+  - Verify: `python3 -I tools/openspec-sync/mapping_status.py --check` passes.
+- [ ] 6.34 `villager_profession`
+  - Needs: 6.2.
+  - Make the registry `supported` with a test, or `not supported` with the reason. State the policy for a `Display` connection.
+  - Verify: requirement "Registries with an engine change" of `neoforge-extension-hooks`.
+- [ ] 6.35 `memory_module_type` and `sensor_type`
+  - Needs: 6.2.
+  - Treat each registry as its own issue. Apply the same checks as task 6.34.
+  - Verify: requirement "Registries with an engine change" of `neoforge-extension-hooks`.
+- [ ] 6.36 Data pack enchantment effects
+  - Needs: 6.3.
+  - Make the effects of a data pack enchantment run, as vanilla does (`dynamic_registry_loader.rs`).
+  - Verify: scenario "A data pack enchantment" of requirement "Enchantment effect registries" of `neoforge-static-registries`.
+- [ ] 6.37 Enchantment effect registries
+  - Needs: 6.3, 6.36.
+  - Add the decode path for `enchantment_effect_component_type` and `enchantment_entity_effect_type` next to the vanilla path.
+  - Verify: scenario "A mod enchantment effect" of requirement "Enchantment effect registries" of `neoforge-static-registries`.
+- [ ] 6.38 Entity fluid scan, step two
+  - Needs: 6.21.
+  - Start only when a ported mod needs a fluid that is not water-like. Keep the fast path for generated fluids.
+  - Verify: requirement "Entity fluid scan" of `neoforge-fluids`, or mark the rows `not supported` with that reason.
+- [ ] 6.39 Port one mod of the reference modpack
+  - Needs: 6.1 to 6.38.
+  - Pick the mod with the fewest server classes whose kinds this change supports.
+  - Port it into `examples/modpack`. Build and boot the modpack from the modpack blueprint.
+  - Verify: the modpack boots and the mod works on a `Real` connection.
+- [ ] 6.40 Close the change
+  - Needs: 6.39.
+  - Update the inventory in `docs/neoforge-inventory/` and the porting guide `docs/porting-from-neoforge/`.
+  - Run all levels of the section "Test levels" and the full CI.
+  - After the M4 archive, turn requirement "Open a menu of a mod menu type" of `neoforge-menu-types` into a MODIFIED delta of `neoforge-menus`.
+  - Run the `spec-review` skill in drift mode. Run `openspec archive modded-gameplay-parity`.
+  - Verify: every command passes.
