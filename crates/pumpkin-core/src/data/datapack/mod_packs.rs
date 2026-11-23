@@ -4,20 +4,28 @@
 //! resources. A native mod of `IronPumpkin` is compiled into the binary, so it embeds the files of
 //! its pack and hands them to this module with [`set_mod_data_packs`].
 //!
-//! The loaders of [`DatapackManager`](super::DatapackManager) read directories. So each load
-//! writes the embedded files of every mod to `mod_data/<mod id>/` in the server directory, then
-//! runs the same loaders as for a world data pack on that directory. Every file type that a world
-//! data pack supports works from a mod pack, and the loaders need no second code path.
+//! The loaders of [`DatapackManager`](super::DatapackManager) read directories. So the first load
+//! of a process writes the embedded files of every mod to `mod_data/<mod id>/` in the server
+//! directory, then runs the same loaders as for a world data pack on that directory. Every file
+//! type that a world data pack supports works from a mod pack, and the loaders need no second code
+//! path. The embedded files cannot change inside a process, so a `/reload` and the load of a
+//! second server of the same process only read the folder.
 //!
 //! Position: the packs load after the embedded vanilla data and before the world data packs, in
 //! mod load order, so a world data pack overrides a mod pack and a mod pack overrides vanilla.
-//! `NeoForge` gives the same order: the `mod_data` pack is required, and sits above `vanilla` and
-//! below the packs that a world enables.
+//! This is the order of `NeoForge` for a new world: the required `mod_data` pack sits above
+//! `vanilla` and below the packs that the world enables. `NeoForge` appends `mod_data` to the end
+//! of the saved pack list of a world that lacks it, so in an older world it can sit above the
+//! packs of the world. `IronPumpkin` always puts the mod packs below the world packs.
+//!
+//! A mod id is a folder name, so the names that Windows reserves (`con`, `prn`, `aux`, `nul`,
+//! `com1` and the others) cannot be written on Windows.
 
 use std::{
+    collections::BTreeSet,
     fs, io,
     path::{Component, Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
 };
 
 use tracing::{info, warn};
@@ -73,7 +81,7 @@ pub(super) fn load_mod_packs(
     loaded_packs: &mut Vec<LoadedDatapack>,
 ) {
     for pack in packs {
-        let pack_path = match extract(root, pack) {
+        let pack_path = match ensure_extracted(root, pack) {
             Ok(path) => path,
             Err(error) => {
                 warn!(
@@ -116,24 +124,62 @@ pub(super) fn load_mod_packs(
     }
 }
 
+/// The packs that this process has written, by folder. The embedded files cannot change inside a
+/// process, so a load after the first only reads the folder. The lock is held while a pack is
+/// written, so a second server that loads at the same time waits for the files instead of reading
+/// a half-written folder.
+static WRITTEN: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
+/// Writes the pack to `root/<mod id>` once per process and returns the folder. Later calls, such
+/// as a `/reload`, return the folder without a write, unless it lost its marker file.
+fn ensure_extracted(root: &Path, pack: &ModDataPack) -> io::Result<PathBuf> {
+    check_relative(&pack.mod_id)?;
+    let dir = root.join(&pack.mod_id);
+    let mut written = WRITTEN
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if written.contains(&dir) && dir.join(MARKER_FILE).is_file() {
+        return Ok(dir);
+    }
+    extract(root, pack)?;
+    written.insert(dir.clone());
+    Ok(dir)
+}
+
 /// Replaces `root/<mod id>` with the files of `pack` and returns that folder.
+///
+/// The files go to `root/.staging-<mod id>` first, with the marker file as the first one. The old
+/// folder is renamed to `root/.trash-<mod id>`, the staging folder takes its name, and the trash
+/// is deleted. So `root/<mod id>` never exists without its marker file, whatever the moment of a
+/// crash. A folder with a name that starts with a dot is the server's by name: the next call
+/// deletes the leftovers of this mod.
 ///
 /// # Errors
 ///
 /// Returns an error when the mod id or a file path is not a plain relative path, when the folder
-/// exists and the server did not write it, or when a write fails.
+/// exists, is not empty and the server did not write it, or when a write fails.
 fn extract(root: &Path, pack: &ModDataPack) -> io::Result<PathBuf> {
-    // The mod id is one folder name.
+    // The mod id is one folder name, and no path may leave it.
     check_relative(&pack.mod_id)?;
-    if pack.mod_id.contains('/') {
+    if pack.mod_id.contains('/') || pack.mod_id.starts_with('.') {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("'{}' is not a single folder name", pack.mod_id),
+            format!("'{}' is not a valid folder name", pack.mod_id),
         ));
     }
+    for (path, _) in pack.files {
+        check_relative(path)?;
+    }
+    fs::create_dir_all(root)?;
     let dir = root.join(&pack.mod_id);
-    if dir.exists() {
-        if !dir.join(MARKER_FILE).is_file() {
+    let staging = root.join(format!(".staging-{}", pack.mod_id));
+    let trash = root.join(format!(".trash-{}", pack.mod_id));
+    remove_if_exists(&staging)?;
+    remove_if_exists(&trash)?;
+
+    let has_old = match dir.symlink_metadata() {
+        Ok(_) if is_owned(&dir) => true,
+        Ok(_) => {
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!(
@@ -142,26 +188,58 @@ fn extract(root: &Path, pack: &ModDataPack) -> io::Result<PathBuf> {
                 ),
             ));
         }
-        // A file that a newer version of the mod no longer ships must not load again.
-        fs::remove_dir_all(&dir)?;
-    }
-    fs::create_dir_all(&dir)?;
-    fs::write(dir.join(MARKER_FILE), b"")?;
+        Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+        Err(error) => return Err(error),
+    };
+
+    fs::create_dir(&staging)?;
+    fs::write(staging.join(MARKER_FILE), b"")?;
     for (path, contents) in pack.files {
-        check_relative(path)?;
-        let target = dir.join(path);
+        let target = staging.join(path);
         if let Some(parent) = target.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(target, contents)?;
     }
+    if has_old {
+        fs::rename(&dir, &trash)?;
+    }
+    if let Err(error) = fs::rename(&staging, &dir) {
+        if has_old {
+            let _ = fs::rename(&trash, &dir);
+        }
+        return Err(error);
+    }
+    // The pack is in place. A failed delete leaves a dot folder that the next load removes.
+    if let Err(error) = remove_if_exists(&trash) {
+        warn!("Cannot delete '{}': {error}", trash.display());
+    }
     Ok(dir)
+}
+
+/// Whether the server may replace `dir`: it holds the marker file, or it is an empty folder that
+/// a crash of an older version can have left. A symbolic link counts as what it points to, and a
+/// replace removes the link, not the target.
+fn is_owned(dir: &Path) -> bool {
+    dir.join(MARKER_FILE).is_file()
+        || (dir.is_dir() && fs::read_dir(dir).is_ok_and(|mut entries| entries.next().is_none()))
+}
+
+/// Deletes a file, a link or a folder that the server named itself. A link is unlinked, never
+/// followed.
+fn remove_if_exists(path: &Path) -> io::Result<()> {
+    match path.symlink_metadata() {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
+        Ok(_) => fs::remove_file(path),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 /// Accepts only a path of normal components, so a pack cannot write outside its folder.
 fn check_relative(path: &str) -> io::Result<()> {
     let plain = !path.is_empty()
-        && !path.contains('\\')
+        && !path.contains(['\\', '\0'])
         && Path::new(path)
             .components()
             .all(|component| matches!(component, Component::Normal(_)));
@@ -376,11 +454,12 @@ mod tests {
     }
 
     #[test]
-    fn a_reload_picks_up_a_changed_pack_and_drops_a_removed_file() {
+    fn a_reload_reads_the_folder_that_the_first_load_wrote() {
         let world = tempfile::tempdir().unwrap();
         let mod_root = tempfile::tempdir().unwrap();
         let manager = DatapackManager::new();
-        let reload = |files: PackFiles| {
+        let files: PackFiles = &[("data/gems/loot_table/box.json", ONE_POOL)];
+        let reload = || {
             manager.load_all_with_mod_packs(
                 world.path(),
                 &[],
@@ -389,11 +468,19 @@ mod tests {
                 mod_root.path(),
             );
         };
-        reload(&[("data/gems/loot_table/box.json", ONE_POOL)]);
+        reload();
         assert_eq!(pools(&manager, "gems:box"), Some(1));
-        reload(&[("data/gems/loot_table/chest.json", TWO_POOLS)]);
+        // The second load does not write: a file that appears in the folder stays.
+        let extra = mod_root.path().join("gems/data/gems/loot_table/extra.json");
+        fs::write(&extra, TWO_POOLS).unwrap();
+        reload();
+        assert_eq!(pools(&manager, "gems:box"), Some(1));
+        assert_eq!(pools(&manager, "gems:extra"), Some(2));
+        // A folder that lost its marker is no longer the server's: the pack stays out.
+        fs::remove_file(mod_root.path().join("gems").join(MARKER_FILE)).unwrap();
+        reload();
         assert_eq!(pools(&manager, "gems:box"), None);
-        assert_eq!(pools(&manager, "gems:chest"), Some(2));
+        assert!(extra.is_file());
     }
 
     #[test]
@@ -521,5 +608,322 @@ mod override_tests {
             registry.trade_tags.get("gems:t"),
             Some(&vec!["gems:b".to_owned()])
         );
+    }
+
+    #[test]
+    fn r_a_world_tag_with_replace_drops_the_mod_values() {
+        let (manager, _) = load(
+            &[(
+                "data/gems/tags/item/gems.json",
+                br#"{"values":["minecraft:diamond"]}"#,
+            )],
+            &[(
+                "data/gems/tags/item/gems.json",
+                br#"{"replace":true,"values":["minecraft:emerald"]}"#,
+            )],
+        );
+        assert_eq!(
+            manager.get_tag_values("item", "gems:gems"),
+            Some(vec!["minecraft:emerald".to_owned()])
+        );
+    }
+
+    #[test]
+    fn r_a_world_function_overrides_the_mod_function() {
+        let (manager, _) = load(
+            &[("data/gems/function/hello.mcfunction", b"say mod\n")],
+            &[("data/gems/function/hello.mcfunction", b"say world\n")],
+        );
+        assert_eq!(
+            manager.get_functions().get("gems:hello"),
+            Some(&vec!["say world".to_owned()])
+        );
+    }
+
+    #[test]
+    fn r_a_world_predicate_and_item_modifier_override_the_mod_ones() {
+        let (manager, _) = load(
+            &[
+                (
+                    "data/gems/predicate/p.json",
+                    br#"{"condition":"minecraft:survives_explosion","from":"mod"}"#,
+                ),
+                (
+                    "data/gems/item_modifier/m.json",
+                    br#"{"function":"minecraft:set_count","count":1}"#,
+                ),
+            ],
+            &[
+                (
+                    "data/gems/predicate/p.json",
+                    br#"{"condition":"minecraft:survives_explosion","from":"world"}"#,
+                ),
+                (
+                    "data/gems/item_modifier/m.json",
+                    br#"{"function":"minecraft:set_count","count":2}"#,
+                ),
+            ],
+        );
+        assert_eq!(manager.get_predicate("gems:p").unwrap()["from"], "world");
+        assert_eq!(manager.get_item_modifier("gems:m").unwrap()["count"], 2);
+    }
+}
+
+/// Adversarial tests of the extraction: folder names, links, crashes and concurrent loads.
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod review_tests {
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
+
+    use super::*;
+    use crate::{
+        data::datapack::DatapackManager, server::recipe::RecipeManager,
+        world::loot::LootTableHandle,
+    };
+
+    const LT: &[u8] = br#"{"type":"minecraft:block","pools":[]}"#;
+
+    fn pack(mod_id: &str, files: PackFiles) -> ModDataPack {
+        ModDataPack {
+            mod_id: mod_id.to_owned(),
+            files,
+        }
+    }
+
+    fn leak(files: Vec<(&'static str, &'static [u8])>) -> PackFiles {
+        Box::leak(files.into_boxed_slice())
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn r_bad_mod_ids_never_write_outside() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir(&root).unwrap();
+        for id in [
+            "..", ".", "", "a/b", "a\\b", "/abs", "../x", "x/..", "./a", "a\0b",
+        ] {
+            let result = extract(&root, &pack(id, &[("pack.mcmeta", b"{}")]));
+            assert!(result.is_err(), "{id:?} accepted");
+        }
+        assert_eq!(names(base.path()), ["mod_data"]);
+        assert!(names(&root).is_empty());
+    }
+
+    #[test]
+    fn r_bad_file_paths_never_write_outside() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        for bad in [
+            "../escape.json",
+            "data/../../escape.json",
+            "data/../../../escape.json",
+            "./x.json",
+            "data/..",
+            "..",
+            "a\\..\\..\\escape.json",
+        ] {
+            let files = leak(vec![
+                ("pack.mcmeta", b"{}".as_slice()),
+                (bad, b"x".as_slice()),
+            ]);
+            let error = extract(&root, &pack("gems", files)).unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::InvalidInput, "{bad}");
+        }
+        let abs = base.path().join("abs_escape.json");
+        let abs: &'static str = Box::leak(abs.to_str().unwrap().to_owned().into_boxed_str());
+        let error = extract(&root, &pack("gems", leak(vec![(abs, b"x".as_slice())]))).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+        // The paths are checked before anything is written.
+        assert!(names(base.path()).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_symlinked_mod_folder_with_marker_is_unlinked_not_followed() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir(&root).unwrap();
+        let outside = base.path().join("precious");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join(MARKER_FILE), b"").unwrap();
+        fs::write(outside.join("keep.txt"), b"keep").unwrap();
+        symlink(&outside, root.join("gems")).unwrap();
+        let dir = extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")])).unwrap();
+        assert_eq!(fs::read(outside.join("keep.txt")).unwrap(), b"keep");
+        assert!(!outside.join("pack.mcmeta").exists());
+        assert!(!dir.symlink_metadata().unwrap().file_type().is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_symlinked_mod_folder_without_marker_is_refused() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir(&root).unwrap();
+        let outside = base.path().join("precious");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep.txt"), b"keep").unwrap();
+        symlink(&outside, root.join("gems")).unwrap();
+        let error = extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")])).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(names(&outside), ["keep.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_symlink_inside_owned_folder_is_not_followed_on_delete() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        let outside = base.path().join("precious");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("keep.txt"), b"keep").unwrap();
+        extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")])).unwrap();
+        symlink(&outside, root.join("gems/data")).unwrap();
+        symlink(outside.join("keep.txt"), root.join("gems/link.txt")).unwrap();
+        extract(&root, &pack("gems", &[("data/gems/loot_table/a.json", LT)])).unwrap();
+        assert_eq!(names(&outside), ["keep.txt"]);
+        assert_eq!(fs::read(outside.join("keep.txt")).unwrap(), b"keep");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_dangling_symlink_is_not_followed_on_create() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir(&root).unwrap();
+        let target = base.path().join("created_by_server");
+        symlink(&target, root.join("gems")).unwrap();
+        let result = extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")]));
+        assert!(result.is_err());
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn r_a_regular_file_in_place_of_the_folder_is_refused_and_kept() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("gems"), b"keep").unwrap();
+        let error = extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")])).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(fs::read(root.join("gems")).unwrap(), b"keep");
+    }
+
+    #[test]
+    fn r_planted_marker_lets_the_server_delete_foreign_files() {
+        // By design: the marker is the only ownership proof.
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir_all(root.join("gems")).unwrap();
+        fs::write(root.join("gems").join(MARKER_FILE), b"").unwrap();
+        fs::write(root.join("gems/notes.txt"), b"mine").unwrap();
+        extract(&root, &pack("gems", &[("pack.mcmeta", b"{}")])).unwrap();
+        assert!(!root.join("gems/notes.txt").exists());
+    }
+
+    /// A crash before the write of the marker left an empty folder in an older layout. It holds
+    /// nothing, so the pack replaces it.
+    #[test]
+    fn r_an_empty_folder_left_by_a_crash_does_not_block_the_pack() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir_all(root.join("gems")).unwrap();
+        let files: PackFiles = &[("data/gems/loot_table/box.json", LT)];
+        let dir = extract(&root, &pack("gems", files)).unwrap();
+        assert!(dir.join("data/gems/loot_table/box.json").is_file());
+        assert!(dir.join(MARKER_FILE).is_file());
+    }
+
+    /// Files without the marker are not the server's: the pack stays out and the files stay.
+    #[test]
+    fn r_files_without_marker_keep_the_mod_pack_out() {
+        let world = tempfile::tempdir().unwrap();
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir_all(root.join("gems/data")).unwrap();
+        fs::write(root.join("gems/data/left.json"), b"{}").unwrap();
+        let files: PackFiles = &[("data/gems/loot_table/box.json", LT)];
+        let manager = DatapackManager::new();
+        manager.load_all_with_mod_packs(
+            world.path(),
+            &[],
+            &RecipeManager::default(),
+            &[pack("gems", files)],
+            &root,
+        );
+        assert!(manager.get_loot_table("gems:box").is_none());
+        assert!(root.join("gems/data/left.json").is_file());
+    }
+
+    /// The old folder goes to a trash folder and the new one comes from a staging folder, so the
+    /// leftovers of a crash are dot folders. The next load deletes them.
+    #[test]
+    fn r_leftovers_of_a_crash_are_cleaned_and_never_block_the_pack() {
+        let base = tempfile::tempdir().unwrap();
+        let root = base.path().join("mod_data");
+        fs::create_dir_all(root.join(".staging-gems/data")).unwrap();
+        fs::write(root.join(".staging-gems/data/half.json"), b"{").unwrap();
+        fs::create_dir_all(root.join(".trash-gems")).unwrap();
+        fs::write(root.join(".trash-gems/old.json"), b"{}").unwrap();
+        let files: PackFiles = &[("data/gems/loot_table/box.json", LT)];
+        extract(&root, &pack("gems", files)).unwrap();
+        assert_eq!(names(&root), ["gems"]);
+        assert!(!root.join("gems/data/half.json").exists());
+    }
+
+    #[test]
+    fn r_two_servers_loading_at_once_see_every_mod_file() {
+        const N: usize = 300;
+        let files = leak(
+            (0..N)
+                .map(|i| {
+                    let path: &'static str =
+                        Box::leak(format!("data/gems/loot_table/t{i}.json").into_boxed_str());
+                    (path, LT)
+                })
+                .collect(),
+        );
+        let world = tempfile::tempdir().unwrap();
+        let mod_root = tempfile::tempdir().unwrap();
+        let packs = [pack("gems", files)];
+        let bad = std::sync::atomic::AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..2 {
+                scope.spawn(|| {
+                    for _ in 0..20 {
+                        let manager = DatapackManager::new();
+                        manager.load_all_with_mod_packs(
+                            world.path(),
+                            &[],
+                            &RecipeManager::default(),
+                            &packs,
+                            mod_root.path(),
+                        );
+                        let loaded = (0..N)
+                            .filter(|i| {
+                                matches!(
+                                    manager.get_loot_table(&format!("gems:t{i}")),
+                                    Some(LootTableHandle::Dynamic(_))
+                                )
+                            })
+                            .count();
+                        if loaded != N {
+                            bad.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+                });
+            }
+        });
+        assert_eq!(bad.into_inner(), 0, "loads that missed mod files");
     }
 }
