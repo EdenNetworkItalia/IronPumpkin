@@ -13,6 +13,7 @@ use pumpkin_core::{
     entity::{Entity, EntityBase, player::Player},
     plugin::attachments::{
         ATTACHMENT_HOOKS, ATTACHMENTS_NBT_KEY, AttachmentHooks, AttachmentValue, Attachments,
+        new_cell,
     },
     world::World,
 };
@@ -49,9 +50,7 @@ fn types() -> Option<&'static Types> {
 
 /// Writes the attachments of `slot`, `None` when nothing is saved.
 fn write_slot(slot: &Attachments) -> Option<NbtCompound> {
-    let types = types()?;
-    let guard = slot.lock();
-    types.write_map(guard.as_deref()?)
+    types()?.write_map(&slot.cells())
 }
 
 /// Reads `nbt` into `slot`. The reads run with the lock released, so a serializer can read the
@@ -70,7 +69,7 @@ fn store(slot: &Attachments, values: Vec<(u32, AttachmentValue)>) {
     let mut guard = slot.lock();
     let map = guard.get_or_insert_with(Box::default);
     for (index, value) in values {
-        map.insert(index, value);
+        map.insert(index, new_cell(value));
     }
 }
 
@@ -89,11 +88,7 @@ fn initial_sync(holder: &AttachmentHolder<'_>, slot: &Attachments, to: &Player) 
     let Some(types) = types() else {
         return;
     };
-    let payload = {
-        let guard = slot.lock();
-        sync::initial_payload(holder, guard.as_deref(), types, to)
-    };
-    sync::send_initial(to, payload);
+    sync::send_initial(to, sync::initial_payload(holder, slot, types, to));
 }
 
 impl AttachmentHooks for Hooks {
@@ -202,10 +197,22 @@ impl AttachmentHooks for Hooks {
         let Some(old) = entity.attachments.take() else {
             return;
         };
-        let copies = types.copy_map(&old, &AttachmentHolder::Entity(entity), |entry| {
+        let copies = types.copy_map(&old.cells(), &AttachmentHolder::Entity(entity), |entry| {
             !was_death || entry.copy_on_death()
         });
         store(&entity.attachments, copies);
+    }
+
+    fn copy_on_conversion(&self, from: &Entity, to: &Entity) {
+        let Some(types) = types() else {
+            return;
+        };
+        let copies = types.copy_map(
+            &from.attachments.cells(),
+            &AttachmentHolder::Entity(to),
+            |entry| entry.copy_on_death(),
+        );
+        store(&to.attachments, copies);
     }
 
     fn sync_player(&self, player: &Arc<Player>) {
@@ -283,10 +290,9 @@ impl AttachmentHooks for Hooks {
                 continue;
             };
             let players = sync::chunk_recipients(world, chunk_pos);
-            let guard = slot.lock();
             sync::sync_update(
                 &AttachmentHolder::BlockEntity(block_entity.as_ref()),
-                guard.as_deref(),
+                &slot,
                 entry,
                 &players,
             );

@@ -7,7 +7,7 @@ use pumpkin_core::{
     net::ClientPlatform,
     plugin::{
         api::events::network::ConnectionProtocol,
-        attachments::AttachmentMap,
+        attachments::{AttachmentCell, Attachments},
         network_events::{negotiated_channels, send_to_player},
     },
     world::World,
@@ -19,7 +19,7 @@ use pumpkin_util::{
     math::{position::BlockPos, vector2::Vector2},
 };
 
-use super::{AttachmentHolder, types::ErasedType};
+use super::{AttachmentHolder, cell, types::ErasedType};
 
 /// The channel of the attachment sync. `NeoForge`: `SyncAttachmentsPayload.TYPE`.
 pub const SYNC_ATTACHMENTS_CHANNEL: &str = "neoforge:sync_attachments";
@@ -102,11 +102,13 @@ fn send(player: &Player, payload: &[u8]) {
     let _ = send_to_player(player, SYNC_ATTACHMENTS_CHANNEL, payload);
 }
 
-/// `AttachmentSync.syncUpdate`: the current value of `entry`, or its absence, to every player of
-/// `players` whose client has the channel and that the sync handler accepts.
+/// `AttachmentSync.syncUpdate`: the current value of `entry` in `slot`, or its absence, to
+/// every player of `players` whose client has the channel and that the sync handler accepts.
+/// The sync handler chooses the players before any lock is taken, so it can read the holder;
+/// only the write of the value holds its lock. A failed write sends nothing.
 pub(super) fn sync_update(
     holder: &AttachmentHolder<'_>,
-    map: Option<&AttachmentMap>,
+    slot: &Attachments,
     entry: &dyn ErasedType,
     players: &[Arc<Player>],
 ) {
@@ -121,12 +123,18 @@ pub(super) fn sync_update(
         return;
     }
     let mut data = Vec::new();
-    match map.and_then(|map| map.get(entry.index())) {
-        Some(value) => {
-            data.push(1);
-            entry.write_sync(&mut data, value.as_ref(), false);
+    if let Some(cell) = slot.cell(entry.index()) {
+        data.push(1);
+        let written = entry.write_sync(&mut data, cell::lock(&cell, entry.name()).as_ref(), false);
+        if let Err(message) = written {
+            tracing::error!(
+                "Failed to sync data attachment {}. Skipping. {message}",
+                entry.name()
+            );
+            return;
         }
-        None => data.push(0),
+    } else {
+        data.push(0);
     }
     let payload = encode_payload(Target::of(holder), &[synced_id], &data);
     for player in recipients {
@@ -140,29 +148,28 @@ pub(super) fn sync_update(
 /// out of the list.
 pub(super) fn initial_payload(
     holder: &AttachmentHolder<'_>,
-    map: Option<&AttachmentMap>,
+    slot: &Attachments,
     types: &super::types::Types,
     to: &Player,
 ) -> Option<Vec<u8>> {
-    let map = map?;
     if !has_channel(to) {
         return None;
     }
-    let (synced_ids, data) = initial_data(map, types)?;
+    let (synced_ids, data) = initial_data(&slot.cells(), types)?;
     Some(encode_payload(Target::of(holder), &synced_ids, &data))
 }
 
-/// The synced type ids and the data of an initial payload of `map`, `None` without a synced
-/// type.
+/// The synced type ids and the data of an initial payload of `cells`, `None` without a synced
+/// type. A type whose write fails is left out.
 pub(super) fn initial_data(
-    map: &AttachmentMap,
+    cells: &[(u32, AttachmentCell)],
     types: &super::types::Types,
 ) -> Option<(Vec<u32>, Vec<u8>)> {
-    let entries: Vec<_> = map
+    let entries: Vec<_> = cells
         .iter()
-        .filter_map(|(index, value)| {
-            let entry = types.get(index)?;
-            Some((entry, entry.synced_id()?, value))
+        .filter_map(|(index, cell)| {
+            let entry = types.get(*index)?;
+            Some((entry, entry.synced_id()?, cell))
         })
         .collect();
     if entries.is_empty() {
@@ -170,12 +177,18 @@ pub(super) fn initial_data(
     }
     let mut synced_ids = Vec::new();
     let mut data = Vec::new();
-    for (entry, synced_id, value) in entries {
+    for (entry, synced_id, cell) in entries {
         let before = data.len();
         data.push(1);
         let between = data.len();
-        entry.write_sync(&mut data, value.as_ref(), true);
-        if data.len() > between {
+        let written = entry.write_sync(&mut data, cell::lock(cell, entry.name()).as_ref(), true);
+        if let Err(message) = &written {
+            tracing::error!(
+                "Failed to sync data attachment {}. Skipping. {message}",
+                entry.name()
+            );
+        }
+        if written.is_ok() && data.len() > between {
             synced_ids.push(synced_id);
         } else {
             data.truncate(before);

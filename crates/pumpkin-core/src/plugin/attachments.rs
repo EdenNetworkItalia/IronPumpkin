@@ -16,7 +16,7 @@ use pumpkin_util::{
     math::{position::BlockPos, vector2::Vector2},
 };
 pub use pumpkin_world::attachments::{
-    ATTACHMENTS_NBT_KEY, AttachmentMap, AttachmentValue, Attachments,
+    ATTACHMENTS_NBT_KEY, AttachmentCell, AttachmentMap, AttachmentValue, Attachments, new_cell,
 };
 use pumpkin_world::chunk::ChunkData;
 use rustc_hash::FxHashMap;
@@ -64,6 +64,10 @@ pub trait AttachmentHooks: Send + Sync {
     ///
     /// `NeoForge`: `AttachmentInternals.onPlayerClone`.
     fn clone_player(&self, player: &Player, was_death: bool);
+    /// Copies the copy-on-death attachments of a converted mob to the mob it became.
+    ///
+    /// `NeoForge`: `AttachmentInternals.onLivingConvert`.
+    fn copy_on_conversion(&self, from: &Entity, to: &Entity);
     /// Sends the synced attachments of `player` to its own client.
     ///
     /// `NeoForge`: `AttachmentSync.syncInitialPlayerAttachments`.
@@ -267,6 +271,13 @@ pub fn save_level(world: &World) {
 pub fn clone_player(player: &Player, was_death: bool) {
     if let Some(hooks) = hooks() {
         hooks.clone_player(player, was_death);
+    }
+}
+
+/// See [`AttachmentHooks::copy_on_conversion`].
+pub fn copy_on_conversion(from: &Entity, to: &Entity) {
+    if let Some(hooks) = hooks() {
+        hooks.copy_on_conversion(from, to);
     }
 }
 

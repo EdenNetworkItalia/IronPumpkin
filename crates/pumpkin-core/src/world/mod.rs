@@ -4542,8 +4542,6 @@ impl World {
             .clone();
 
         let data_kept = u8::from(alive);
-        // `PlayerEvent.Clone`: Pumpkin keeps the player, so the copy runs on it.
-        crate::plugin::attachments::clone_player(player, !alive);
 
         let server = self.server.upgrade();
         let default_world = server.as_ref().map_or_else(
@@ -4731,6 +4729,9 @@ impl World {
             || (self.clone(), position, yaw, pitch),
             |new_world| (new_world.clone(), position, yaw, pitch),
         );
+        // `PlayerEvent.Clone`, after the respawn position and in the respawn world: Pumpkin
+        // keeps the player, so the copy runs on it.
+        crate::plugin::attachments::clone_player(player, !alive);
 
         // Notify plugins that the player has respawned (non-cancellable).
         if let Some(server) = self.server.upgrade() {

@@ -859,6 +859,7 @@ impl PiglinEntity {
             }
         }
 
+        crate::plugin::attachments::copy_on_conversion(entity, zombified.get_entity());
         crate::plugin::living_events::conversion_post(entity, &zombified);
         world.spawn_entity(zombified);
         entity.remove();

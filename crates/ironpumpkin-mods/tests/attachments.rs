@@ -494,11 +494,9 @@ fn a_synced_change_reaches_neoforge_clients_only() {
 
     entity.set_data(mana(), 300);
     entity.set_data(name(), "not synced".to_owned());
-    entity.sync_data(mana()).unwrap();
-    assert_eq!(
-        entity.sync_data(name()),
-        Err(AttachmentError::NotSynced("attachtest:name".to_owned()))
-    );
+    entity.sync_data(mana());
+    // `AttachmentSync.syncUpdate` returns for a type without a sync handler: nothing is sent.
+    entity.sync_data(name());
     entity.remove_data(mana());
     hooks::sync_player(&player);
 

@@ -46,6 +46,7 @@ pub fn convert_to(
     let to = converted.get_mob()?;
     convert_single(from, to, params);
     after_conversion(to);
+    crate::plugin::attachments::copy_on_conversion(from_entity, converted.get_entity());
     let leash_holder = from_entity.get_leash_holder();
     world.spawn_entity(converted.clone());
     if let Some(holder) = leash_holder {

@@ -6,7 +6,7 @@ use std::{
     sync::{Mutex, OnceLock, PoisonError},
 };
 
-use pumpkin_core::{entity::player::Player, plugin::attachments::AttachmentMap};
+use pumpkin_core::{entity::player::Player, plugin::attachments::AttachmentCell};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::identifier::Identifier;
 use rustc_hash::FxHashMap;
@@ -15,6 +15,7 @@ use tracing::error;
 use super::{
     AttachmentCopyHandler, AttachmentHolder, AttachmentSerializer, AttachmentSyncHandler,
     AttachmentValue,
+    cell::{self, guarded},
 };
 
 /// The default value or the default constructor of a type.
@@ -33,7 +34,8 @@ pub(super) struct TypedEntry<T> {
 }
 
 /// An attachment type without its value type, for the steps that visit every attachment of a
-/// holder.
+/// holder. A panic of a mod callback is an error, as `NeoForge` catches the exception of each
+/// attachment.
 pub trait ErasedType: Send + Sync {
     fn index(&self) -> u32;
     fn name(&self) -> &str;
@@ -54,9 +56,15 @@ pub trait ErasedType: Send + Sync {
         value: &dyn Any,
         holder: &AttachmentHolder<'_>,
     ) -> Result<Option<AttachmentValue>, String>;
+    /// Whether the sync handler sends the value of `holder` to `to`. A panic counts as no.
     fn send_to_player(&self, holder: &AttachmentHolder<'_>, to: &Player) -> bool;
     /// Writes the sync bytes of `value`. A type without a sync handler writes nothing.
-    fn write_sync(&self, buf: &mut Vec<u8>, value: &dyn Any, initial_sync: bool);
+    fn write_sync(
+        &self,
+        buf: &mut Vec<u8>,
+        value: &dyn Any,
+        initial_sync: bool,
+    ) -> Result<(), String>;
 }
 
 fn wrong_type(name: &str) -> String {
@@ -92,7 +100,7 @@ impl<T: Send + Sync + 'static> ErasedType for TypedEntry<T> {
             .downcast_ref::<T>()
             .ok_or_else(|| wrong_type(&self.name))?;
         let mut nbt = NbtCompound::new();
-        Ok(serializer.write(value, &mut nbt).then_some(nbt))
+        Ok(guarded(|| serializer.write(value, &mut nbt))?.then_some(nbt))
     }
 
     fn read(
@@ -104,7 +112,7 @@ impl<T: Send + Sync + 'static> ErasedType for TypedEntry<T> {
             .serializer
             .as_ref()
             .ok_or_else(|| format!("attachment type {} has no serializer", self.name))?;
-        Ok(Box::new(serializer.read(holder, nbt)?))
+        Ok(Box::new(guarded(|| serializer.read(holder, nbt))??))
     }
 
     fn copy(
@@ -116,8 +124,7 @@ impl<T: Send + Sync + 'static> ErasedType for TypedEntry<T> {
             .downcast_ref::<T>()
             .ok_or_else(|| wrong_type(&self.name))?;
         if let Some(handler) = &self.copy_handler {
-            return Ok(handler
-                .copy(value, holder)
+            return Ok(guarded(|| handler.copy(value, holder))?
                 .map(|copy| Box::new(copy) as AttachmentValue));
         }
         // `AttachmentType.defaultCopyHandler`: a write and a read through the serializer.
@@ -125,24 +132,38 @@ impl<T: Send + Sync + 'static> ErasedType for TypedEntry<T> {
             return Err("Cannot copy non-serializable attachments".to_owned());
         };
         let mut nbt = NbtCompound::new();
-        if !serializer.write(value, &mut nbt) {
+        if !guarded(|| serializer.write(value, &mut nbt))? {
             return Ok(None);
         }
-        Ok(Some(Box::new(serializer.read(holder, &nbt)?)))
+        Ok(Some(Box::new(guarded(|| serializer.read(holder, &nbt))??)))
     }
 
     fn send_to_player(&self, holder: &AttachmentHolder<'_>, to: &Player) -> bool {
-        self.sync
-            .as_ref()
-            .is_some_and(|sync| sync.send_to_player(holder, to))
+        let Some(sync) = &self.sync else {
+            return false;
+        };
+        guarded(|| sync.send_to_player(holder, to)).unwrap_or_else(|message| {
+            error!(
+                "Failed to check the sync of data attachment {}. Skipping. {message}",
+                self.name
+            );
+            false
+        })
     }
 
-    fn write_sync(&self, buf: &mut Vec<u8>, value: &dyn Any, initial_sync: bool) {
-        if let Some(sync) = &self.sync
-            && let Some(value) = value.downcast_ref::<T>()
-        {
-            sync.write(buf, value, initial_sync);
-        }
+    fn write_sync(
+        &self,
+        buf: &mut Vec<u8>,
+        value: &dyn Any,
+        initial_sync: bool,
+    ) -> Result<(), String> {
+        let Some(sync) = &self.sync else {
+            return Ok(());
+        };
+        let value = value
+            .downcast_ref::<T>()
+            .ok_or_else(|| wrong_type(&self.name))?;
+        guarded(|| sync.write(buf, value, initial_sync))
     }
 }
 
@@ -184,14 +205,19 @@ impl Types {
     }
 
     /// `AttachmentHolder#serializeAttachments`: every attachment with a serializer, by type
-    /// name, `None` when nothing is written. A failed write is logged and skipped.
-    pub(super) fn write_map(&self, map: &AttachmentMap) -> Option<NbtCompound> {
+    /// name, `None` when nothing is written. A failed write is logged and skipped. Each value
+    /// is locked alone, so a serializer can read the other types of the holder.
+    pub(super) fn write_map(&self, cells: &[(u32, AttachmentCell)]) -> Option<NbtCompound> {
         let mut out = NbtCompound::new();
-        for (index, value) in map.iter() {
-            let Some(entry) = self.get(index) else {
+        for (index, cell) in cells {
+            let Some(entry) = self.get(*index) else {
                 continue;
             };
-            match entry.write(value.as_ref()) {
+            if !entry.has_serializer() {
+                continue;
+            }
+            let written = entry.write(cell::lock(cell, entry.name()).as_ref());
+            match written {
                 Ok(Some(nbt)) => out.put_compound(entry.name(), nbt),
                 Ok(None) => {}
                 Err(message) => error!(
@@ -243,20 +269,21 @@ impl Types {
     /// value, and a failed copy is logged and dropped.
     pub(super) fn copy_map(
         &self,
-        from: &AttachmentMap,
+        from: &[(u32, AttachmentCell)],
         to: &AttachmentHolder<'_>,
         filter: impl Fn(&dyn ErasedType) -> bool,
     ) -> Vec<(u32, AttachmentValue)> {
         let mut copies = Vec::new();
-        for (index, value) in from.iter() {
-            let Some(entry) = self.get(index) else {
+        for (index, cell) in from {
+            let Some(entry) = self.get(*index) else {
                 continue;
             };
             if !entry.has_serializer() || !filter(entry) {
                 continue;
             }
-            match entry.copy(value.as_ref(), to) {
-                Ok(Some(copy)) => copies.push((index, copy)),
+            let copied = entry.copy(cell::lock(cell, entry.name()).as_ref(), to);
+            match copied {
+                Ok(Some(copy)) => copies.push((*index, copy)),
                 Ok(None) => {}
                 Err(message) => error!(
                     "Failed to copy data attachment {}. Dropping it. {message}",

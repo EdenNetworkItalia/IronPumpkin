@@ -1,17 +1,18 @@
 #![expect(
     clippy::unwrap_used,
-    reason = "a test fails on the first missing value"
+    clippy::panic,
+    reason = "a test fails on the first missing value, and a panicking callback is the case under test"
 )]
 
 use std::collections::HashMap;
 
-use pumpkin_core::plugin::attachments::AttachmentMap;
+use pumpkin_core::plugin::attachments::{AttachmentCell, new_cell};
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 use pumpkin_world::chunk::ChunkData;
 
 use super::{
-    AttachmentError, AttachmentHolder, AttachmentSyncHandler, AttachmentType,
+    AttachmentError, AttachmentHolder, AttachmentSerializer, AttachmentSyncHandler, AttachmentType,
     AttachmentTypeBuilder, NbtSerializable, NbtSerializer, leak_entry,
     sync::{Target, encode_payload, initial_data},
     types::{ErasedType, Types},
@@ -32,16 +33,22 @@ fn types(entries: &[&'static dyn ErasedType]) -> Types {
     Types::new(entries.to_vec())
 }
 
-fn map_of(values: Vec<(u32, Box<dyn std::any::Any + Send + Sync>)>) -> AttachmentMap {
-    let mut map = AttachmentMap::default();
-    for (index, value) in values {
-        map.insert(index, value);
-    }
-    map
+type Cells = Vec<(u32, AttachmentCell)>;
+
+fn map_of(values: Vec<(u32, Box<dyn std::any::Any + Send + Sync>)>) -> Cells {
+    values
+        .into_iter()
+        .map(|(index, value)| (index, new_cell(value)))
+        .collect()
 }
 
-fn int(map: &AttachmentMap, ty: AttachmentType<i32>) -> Option<i32> {
-    map.get(ty.index())?.downcast_ref::<i32>().copied()
+fn value_of<T: Clone + 'static>(cells: &Cells, index: u32) -> Option<T> {
+    let (_, cell) = cells.iter().find(|(i, _)| *i == index)?;
+    cell.lock().unwrap().downcast_ref::<T>().cloned()
+}
+
+fn int(cells: &Cells, ty: AttachmentType<i32>) -> Option<i32> {
+    value_of(cells, ty.index())
 }
 
 #[test]
@@ -123,7 +130,7 @@ fn a_holder_without_saved_types_writes_nothing() {
         AttachmentTypeBuilder::new(|| 0i32),
     );
     let types = types(&[transient.erased()]);
-    assert!(types.write_map(&AttachmentMap::default()).is_none());
+    assert!(types.write_map(&[]).is_none());
     assert!(
         types
             .write_map(&map_of(vec![(0, Box::new(1i32))]))
@@ -181,10 +188,11 @@ fn a_serializer_that_skips_a_value_drops_its_key() {
     let nbt = types.write_map(&full).unwrap();
     let chunk = ChunkData::empty(0, 0);
     let read = map_of(types.read_map(&AttachmentHolder::Chunk(&chunk), &nbt));
-    let value = read.get(0).unwrap().downcast_ref::<HashMap<String, i32>>();
-    assert_eq!(value.and_then(|map| map.get("level")), Some(&4));
+    let value = value_of::<HashMap<String, i32>>(&read, 0).unwrap();
+    assert_eq!(value.get("level"), Some(&4));
 }
 
+#[derive(Clone)]
 struct Counter(i32);
 
 impl NbtSerializable for Counter {
@@ -212,10 +220,7 @@ fn a_serializable_type_reads_into_its_default() {
     let chunk = ChunkData::empty(0, 0);
     let read = map_of(types.read_map(&AttachmentHolder::Chunk(&chunk), &nbt));
     // `AttachmentType.serializable`: the read starts from the default value.
-    assert_eq!(
-        read.get(0).unwrap().downcast_ref::<Counter>().unwrap().0,
-        105
-    );
+    assert_eq!(value_of::<Counter>(&read, 0).unwrap().0, 105);
 }
 
 /// The copy rules of `AttachmentInternals.copyAttachments` on a death and on the End exit.
@@ -393,4 +398,75 @@ fn synced_names_follow_the_synced_ids() {
         .map(ToString::to_string)
         .collect();
     assert_eq!(names, ["test:c", "test:a"]);
+}
+
+struct Panics;
+
+impl AttachmentSerializer<i32> for Panics {
+    fn read(&self, _: &AttachmentHolder<'_>, _: &NbtCompound) -> Result<i32, String> {
+        panic!("read")
+    }
+
+    fn write(&self, _: &i32, _: &mut NbtCompound) -> bool {
+        panic!("write")
+    }
+}
+
+impl AttachmentSyncHandler<i32> for Panics {
+    fn send_to_player(
+        &self,
+        _: &AttachmentHolder<'_>,
+        _: &pumpkin_core::entity::player::Player,
+    ) -> bool {
+        panic!("send_to_player")
+    }
+
+    fn write(&self, _: &mut Vec<u8>, _: &i32, _: bool) {
+        panic!("sync write")
+    }
+}
+
+/// `AttachmentHolder#serializeAttachments` and `deserializeAttachments` catch the exception of
+/// one attachment and go on: a panic of a mod callback skips only its value.
+#[test]
+fn a_panicking_callback_skips_only_its_value() {
+    let good = leak_entry(
+        0,
+        "test:good",
+        Some(0),
+        AttachmentTypeBuilder::new(|| 0i32)
+            .serialize(int_serializer())
+            .sync(Bytes),
+    );
+    let bad = leak_entry(
+        1,
+        "test:bad",
+        Some(1),
+        AttachmentTypeBuilder::new(|| 0i32)
+            .serialize(Panics)
+            .copy_on_death()
+            .sync(Panics),
+    );
+    let types = types(&[good.erased(), bad.erased()]);
+    let cells = map_of(vec![(0, Box::new(7i32)), (1, Box::new(8i32))]);
+
+    let nbt = types.write_map(&cells).unwrap();
+    assert_eq!(nbt.child_tags.len(), 1);
+    assert!(nbt.get_compound("test:good").is_some());
+
+    let mut saved = nbt;
+    saved.put_compound("test:bad", NbtCompound::new());
+    let chunk = ChunkData::empty(0, 0);
+    let holder = AttachmentHolder::Chunk(&chunk);
+    let read = map_of(types.read_map(&holder, &saved));
+    assert_eq!(int(&read, good), Some(7));
+    assert_eq!(int(&read, bad), None);
+
+    let copies = map_of(types.copy_map(&cells, &holder, |_| true));
+    assert_eq!(int(&copies, good), Some(7));
+    assert_eq!(int(&copies, bad), None);
+
+    let (ids, data) = initial_data(&cells, &types).unwrap();
+    assert_eq!(ids, vec![0]);
+    assert_eq!(data, vec![1, 7]);
 }

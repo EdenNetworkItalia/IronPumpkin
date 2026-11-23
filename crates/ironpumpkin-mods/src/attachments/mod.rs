@@ -17,20 +17,26 @@
 //!   to `data/neoforge/data_attachments.dat` in its dimension folder, as
 //!   `LevelAttachmentsSavedData` does.
 //! - Copy on death: when a player respawns after death, only the types with copy on death keep
-//!   their value, through their copy handler. When a player leaves the End, every type with a
-//!   serializer keeps its value. A type without a serializer never survives a respawn.
+//!   their value, through their copy handler or a write and a read of their serializer. When a
+//!   player leaves the End, every type with a serializer keeps its value. A type without a
+//!   serializer never survives a respawn. The copy runs after the respawn position event, in the
+//!   respawn world, as `PlayerEvent.Clone` does. A mob that converts, such as a zombie that
+//!   becomes a drowned, gives its copy-on-death types to the new mob.
 //! - Sync: a type with a sync handler reaches the `NeoForge` clients that negotiated
 //!   `neoforge:sync_attachments` when its value is created, set or removed and on
 //!   [`AttachmentAccess::sync_data`], and every holder sends its synced values when a client
-//!   starts to see it. A vanilla client gets nothing.
+//!   starts to see it. A vanilla client gets nothing. `sync_data` on a type without a sync
+//!   handler does nothing.
 //!
 //! A holder without attachments allocates nothing and writes no NBT key, and without a
 //! registered type the engine hooks are not installed.
 //!
-//! The holder calls a default constructor, a serializer, a copy handler and a sync handler
-//! with the lock of its attachments released where `NeoForge` order allows it, but
-//! [`AttachmentAccess::with_data`] and the sync writes run under the lock: such code must not
-//! read or write the attachments of the same holder.
+//! Each type of a holder has its own lock, and no lock is held while the holder calls a default
+//! constructor or the `send_to_player` of a sync handler. A mod callback can read and write the
+//! other types of the same holder. Inside [`AttachmentAccess::with_data`], a serializer write or
+//! a sync write, the type that runs is locked: a use of that type of the same holder panics.
+//! A serializer, a copy handler or a sync handler that panics loses only its own value, which is
+//! logged and skipped, as `NeoForge` catches the exception of one attachment.
 //!
 //! ```
 //! use ironpumpkin_mods::{
@@ -61,6 +67,7 @@
 //! # }
 //! ```
 
+mod cell;
 mod hooks;
 mod sync;
 mod types;
@@ -75,7 +82,7 @@ pub use pumpkin_core::plugin::attachments::ATTACHMENTS_NBT_KEY;
 use pumpkin_core::{
     block::entities::BlockEntity,
     entity::{Entity, player::Player},
-    plugin::attachments::{AttachmentMap, AttachmentValue, Attachments},
+    plugin::attachments::{AttachmentCell, AttachmentValue, Attachments},
     world::World,
 };
 /// The saved form of an attachment, re-exported for serializers.
@@ -544,8 +551,6 @@ pub enum AttachmentError {
     Duplicate(String),
     /// The attachment types are frozen: a type registers in [`crate::NativeMod::init`].
     RegistryFrozen(String),
-    /// `sync_data` on a type without a sync handler.
-    NotSynced(String),
 }
 
 impl fmt::Display for AttachmentError {
@@ -562,7 +567,6 @@ impl fmt::Display for AttachmentError {
                     "{name} registers after the freeze of the attachment types"
                 )
             }
-            Self::NotSynced(name) => write!(f, "attachment type {name} has no sync handler"),
         }
     }
 }
@@ -647,7 +651,10 @@ impl ModInit {
         builder: AttachmentTypeBuilder<T, S>,
     ) -> Result<AttachmentType<T>, AttachmentError> {
         let result = register(name, builder);
-        if let Err(error) = &result {
+        // After the freeze nobody reads the error: the caller gets it.
+        if let Err(error) = &result
+            && !matches!(error, AttachmentError::RegistryFrozen(_))
+        {
             types::pending().error.get_or_insert_with(|| {
                 format!(
                     "native mod \"{}\" cannot register the attachment type \"{name}\": {error}",
@@ -698,7 +705,9 @@ pub(crate) fn freeze() -> Result<(), String> {
 mod private {
     use std::{ops::Deref, sync::Arc};
 
-    use super::{AttachmentHolder, Attachments, ErasedType};
+    use super::{
+        AttachmentCell, AttachmentHolder, AttachmentType, Attachments, ErasedType, cell, typed,
+    };
 
     /// The attachments of a holder, borrowed or shared.
     pub enum Slot<'a> {
@@ -729,20 +738,46 @@ mod private {
         fn changed(&self) {}
         /// `syncData` of the holder for a type with a sync handler.
         fn sync(&self, entry: &'static dyn ErasedType);
+        /// Runs `f` on the value of `ty` in `cell`, after `changed`.
+        fn with_cell<T: Send + Sync + 'static, R>(
+            &self,
+            ty: AttachmentType<T>,
+            cell: &AttachmentCell,
+            f: impl FnOnce(&mut T) -> R,
+        ) -> R {
+            self.changed();
+            let mut guard = cell::lock(cell, ty.name());
+            f(typed(&mut guard, ty))
+        }
     }
 }
 
-fn downcast<T: 'static>(map: &AttachmentMap, index: u32) -> Option<&T> {
-    map.get(index)?.downcast_ref::<T>()
+/// The value of `ty` in a locked cell.
+#[expect(
+    clippy::panic,
+    reason = "the index of a type is unique, so its cell holds a value of its type"
+)]
+fn typed<T: 'static>(value: &mut AttachmentValue, ty: AttachmentType<T>) -> &mut T {
+    let Some(value) = value.downcast_mut::<T>() else {
+        panic!(
+            "the value of attachment type {} has another type",
+            ty.name()
+        );
+    };
+    value
 }
 
-fn take_value<T: 'static>(value: Option<AttachmentValue>) -> Option<T> {
-    value?.downcast::<T>().ok().map(|value| *value)
+fn take_value<T: 'static>(value: AttachmentValue) -> Option<T> {
+    value.downcast::<T>().ok().map(|value| *value)
 }
 
 /// The attachment calls of a holder.
 ///
 /// `NeoForge`: `IAttachmentHolder`.
+///
+/// Each type of a holder has its own lock. A call can read or write another type of the same
+/// holder inside [`with_data`](Self::with_data), a serializer or a sync handler; a call on the
+/// type of the running `with_data` panics.
 pub trait AttachmentAccess: private::Holder {
     /// Whether the holder has at least one attachment.
     ///
@@ -774,41 +809,41 @@ pub trait AttachmentAccess: private::Holder {
     }
 
     /// Runs `f` on the stored value of `ty`, created from the default when the holder has
-    /// none. A change in place is not synced: call [`sync_data`](Self::sync_data) after it,
-    /// as on `NeoForge`. `f` runs under the lock of the holder's attachments.
+    /// none, and marks a block entity or a chunk changed, as a mod does after a change of the
+    /// object that `getData` returns. A change in place is not synced: call
+    /// [`sync_data`](Self::sync_data) after it, as on `NeoForge`.
+    ///
+    /// # Panics
+    ///
+    /// When `f` reads or writes `ty` on the same holder.
     fn with_data<T: Send + Sync + 'static, R>(
         &self,
         ty: AttachmentType<T>,
         f: impl FnOnce(&mut T) -> R,
     ) -> R {
         let index = ty.index();
-        let mut created = None;
-        let mut synced = false;
-        loop {
-            let slot = self.slot();
-            let mut guard = slot.lock();
-            let map = guard.get_or_insert_with(Box::default);
-            if let Some(value) = created.take()
-                && downcast::<T>(map, index).is_none()
-            {
-                map.insert(index, Box::new(value));
-                synced = true;
-            }
-            if let Some(value) = map
-                .get_mut(index)
-                .and_then(|value| value.downcast_mut::<T>())
-            {
-                let result = f(value);
-                drop(guard);
-                if synced {
-                    self.sync(ty.erased());
+        let slot = self.slot();
+        let (cell, created) = slot.cell(index).map_or_else(
+            || {
+                // `getData`: the default comes from the holder with no lock held.
+                let value: AttachmentValue = Box::new((ty.entry.default)(&self.view()));
+                let inserted = slot
+                    .lock()
+                    .get_or_insert_with(Box::default)
+                    .insert_new(index, value);
+                match inserted {
+                    Ok(cell) => (cell, true),
+                    Err((cell, _)) => (cell, false),
                 }
-                return result;
-            }
-            drop(guard);
-            // `getData`: the default comes from the holder with the lock released.
-            created = Some((ty.entry.default)(&self.view()));
+            },
+            |cell| (cell, false),
+        );
+        drop(slot);
+        let result = self.with_cell(ty, &cell, f);
+        if created {
+            self.sync(ty.erased());
         }
+        result
     }
 
     /// The value of `ty`, or `None` when the holder has none.
@@ -818,9 +853,9 @@ pub trait AttachmentAccess: private::Holder {
         &self,
         ty: AttachmentType<T>,
     ) -> Option<T> {
-        let slot = self.existing_slot()?;
-        let guard = slot.lock();
-        downcast::<T>(guard.as_ref()?, ty.index()).cloned()
+        let cell = self.existing_slot()?.cell(ty.index())?;
+        let mut guard = cell::lock(&cell, ty.name());
+        Some(typed(&mut guard, ty).clone())
     }
 
     /// Stores `value` for `ty`, syncs it and returns the previous value.
@@ -828,13 +863,21 @@ pub trait AttachmentAccess: private::Holder {
     /// `NeoForge`: `IAttachmentHolder#setData`.
     fn set_data<T: Send + Sync + 'static>(&self, ty: AttachmentType<T>, value: T) -> Option<T> {
         self.changed();
-        let previous = self
-            .slot()
+        let slot = self.slot();
+        let inserted = slot
             .lock()
             .get_or_insert_with(Box::default)
-            .insert(ty.index(), Box::new(value));
+            .insert_new(ty.index(), Box::new(value));
+        let previous = match inserted {
+            Ok(_) => None,
+            Err((cell, value)) => {
+                let mut guard = cell::lock(&cell, ty.name());
+                take_value(std::mem::replace(&mut *guard, value))
+            }
+        };
+        drop(slot);
         self.sync(ty.erased());
-        take_value(previous)
+        previous
     }
 
     /// Removes the value of `ty`, syncs the removal and returns the value.
@@ -843,32 +886,22 @@ pub trait AttachmentAccess: private::Holder {
     fn remove_data<T: Send + Sync + 'static>(&self, ty: AttachmentType<T>) -> Option<T> {
         self.changed();
         let slot = self.existing_slot()?;
-        let previous = {
-            let mut guard = slot.lock();
-            guard.as_mut()?.remove(ty.index())
-        };
+        let removed = slot.lock().as_mut()?.remove(ty.index());
         drop(slot);
+        let previous = removed.and_then(|cell| {
+            let mut guard = cell::lock(&cell, ty.name());
+            take_value(std::mem::replace(&mut *guard, Box::new(())))
+        });
         self.sync(ty.erased());
-        take_value(previous)
+        previous
     }
 
     /// Sends the current value of `ty`, or its absence, to the clients that see the holder.
+    /// A type without a sync handler sends nothing.
     ///
-    /// `NeoForge`: `IAttachmentHolder#syncData`, which does nothing for a type without a sync
-    /// handler.
-    ///
-    /// # Errors
-    ///
-    /// [`AttachmentError::NotSynced`] when `ty` has no sync handler.
-    fn sync_data<T: Send + Sync + 'static>(
-        &self,
-        ty: AttachmentType<T>,
-    ) -> Result<(), AttachmentError> {
-        if ty.entry.sync.is_none() {
-            return Err(AttachmentError::NotSynced(ty.name().to_owned()));
-        }
+    /// `NeoForge`: `IAttachmentHolder#syncData`.
+    fn sync_data<T: Send + Sync + 'static>(&self, ty: AttachmentType<T>) {
         self.sync(ty.erased());
-        Ok(())
     }
 }
 
@@ -891,8 +924,7 @@ impl private::Holder for Entity {
         }
         let world = self.world.load_full();
         let players = sync::entity_recipients(&world, self);
-        let guard = self.attachments.lock();
-        sync::sync_update(&self.view(), guard.as_deref(), entry, &players);
+        sync::sync_update(&self.view(), &self.attachments, entry, &players);
     }
 }
 
@@ -916,8 +948,7 @@ impl private::Holder for World {
             return;
         }
         let players = sync::level_recipients(self);
-        let guard = self.attachments.level.lock();
-        sync::sync_update(&self.view(), guard.as_deref(), entry, &players);
+        sync::sync_update(&self.view(), &self.attachments.level, entry, &players);
     }
 }
 
@@ -1038,8 +1069,7 @@ impl private::Holder for ChunkAttachments<'_> {
             return;
         }
         let players = sync::chunk_recipients(self.world, Vector2::new(self.chunk.x, self.chunk.z));
-        let guard = self.chunk.attachments.lock();
-        sync::sync_update(&self.view(), guard.as_deref(), entry, &players);
+        sync::sync_update(&self.view(), &self.chunk.attachments, entry, &players);
     }
 }
 

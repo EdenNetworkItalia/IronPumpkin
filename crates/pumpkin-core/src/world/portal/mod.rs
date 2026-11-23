@@ -133,6 +133,9 @@ impl PortalType {
                         if let Some(player) =
                             current_level.get_player_by_id(caller.get_entity().entity_id)
                         {
+                            // `PlayerList.respawn(player, true)` after the credits: the
+                            // `PlayerEvent.Clone` of the End exit.
+                            crate::plugin::attachments::clone_player(&player, false);
                             match player.client.as_ref() {
                                 crate::net::ClientPlatform::Java(client) => {
                                     if let Ok(data) = client.serialize_packet(&pumpkin_protocol::java::client::play::CGameEvent::new(

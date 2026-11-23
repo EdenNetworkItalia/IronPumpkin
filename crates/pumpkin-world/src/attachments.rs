@@ -7,7 +7,7 @@
 
 use std::{
     any::Any,
-    sync::{Mutex, MutexGuard, OnceLock, PoisonError},
+    sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError},
 };
 
 use pumpkin_nbt::compound::NbtCompound;
@@ -22,39 +22,64 @@ pub const ATTACHMENTS_NBT_KEY: &str = "neoforge:attachments";
 /// The value of one attachment.
 pub type AttachmentValue = Box<dyn Any + Send + Sync>;
 
+/// One attachment with its own lock, so a mod can change one type of a holder while it reads
+/// another.
+pub type AttachmentCell = Arc<Mutex<AttachmentValue>>;
+
+/// A new cell for `value`.
+#[must_use]
+pub fn new_cell(value: AttachmentValue) -> AttachmentCell {
+    Arc::new(Mutex::new(value))
+}
+
 /// The attachments of one holder, by the index of their attachment type.
 #[derive(Default)]
 pub struct AttachmentMap {
-    entries: Vec<(u32, AttachmentValue)>,
+    entries: Vec<(u32, AttachmentCell)>,
 }
 
 impl AttachmentMap {
-    /// The value of the type `index`.
+    /// The cell of the type `index`.
     #[must_use]
-    pub fn get(&self, index: u32) -> Option<&AttachmentValue> {
+    pub fn get(&self, index: u32) -> Option<&AttachmentCell> {
         self.entries
             .iter()
-            .find_map(|(i, value)| (*i == index).then_some(value))
+            .find_map(|(i, cell)| (*i == index).then_some(cell))
     }
 
-    /// The value of the type `index`, for a change in place.
-    pub fn get_mut(&mut self, index: u32) -> Option<&mut AttachmentValue> {
-        self.entries
-            .iter_mut()
-            .find_map(|(i, value)| (*i == index).then_some(value))
-    }
-
-    /// Stores `value` for the type `index` and returns the previous value.
-    pub fn insert(&mut self, index: u32, value: AttachmentValue) -> Option<AttachmentValue> {
-        if let Some(slot) = self.get_mut(index) {
-            return Some(std::mem::replace(slot, value));
+    /// Stores `value` for the type `index` in a new cell and returns the cell.
+    ///
+    /// # Errors
+    ///
+    /// The cell that the type already has, and `value`.
+    pub fn insert_new(
+        &mut self,
+        index: u32,
+        value: AttachmentValue,
+    ) -> Result<AttachmentCell, (AttachmentCell, AttachmentValue)> {
+        if let Some(cell) = self.get(index) {
+            return Err((cell.clone(), value));
         }
-        self.entries.push((index, value));
+        let cell = new_cell(value);
+        self.entries.push((index, cell.clone()));
+        Ok(cell)
+    }
+
+    /// Stores `cell` for the type `index` and returns the previous cell.
+    pub fn insert(&mut self, index: u32, cell: AttachmentCell) -> Option<AttachmentCell> {
+        if let Some(slot) = self
+            .entries
+            .iter_mut()
+            .find_map(|(i, slot)| (*i == index).then_some(slot))
+        {
+            return Some(std::mem::replace(slot, cell));
+        }
+        self.entries.push((index, cell));
         None
     }
 
-    /// Removes the value of the type `index` and returns it.
-    pub fn remove(&mut self, index: u32) -> Option<AttachmentValue> {
+    /// Removes the cell of the type `index` and returns it.
+    pub fn remove(&mut self, index: u32) -> Option<AttachmentCell> {
         let position = self.entries.iter().position(|(i, _)| *i == index)?;
         Some(self.entries.swap_remove(position).1)
     }
@@ -71,9 +96,15 @@ impl AttachmentMap {
         self.entries.is_empty()
     }
 
-    /// The type indices and values.
-    pub fn iter(&self) -> impl Iterator<Item = (u32, &AttachmentValue)> {
-        self.entries.iter().map(|(index, value)| (*index, value))
+    /// The type indices and cells.
+    pub fn iter(&self) -> impl Iterator<Item = (u32, &AttachmentCell)> {
+        self.entries.iter().map(|(index, cell)| (*index, cell))
+    }
+
+    /// A copy of the type indices and cells, to read the values without the lock of the map.
+    #[must_use]
+    pub fn cells(&self) -> Vec<(u32, AttachmentCell)> {
+        self.entries.clone()
     }
 }
 
@@ -85,7 +116,8 @@ pub struct Attachments {
 
 impl Attachments {
     /// The map of the holder, `None` before the first attachment. A caller that stores a value
-    /// creates the map with `get_or_insert_with(Box::default)`.
+    /// creates the map with `get_or_insert_with(Box::default)`. A caller must not lock a cell
+    /// while it holds this lock.
     pub fn lock(&self) -> MutexGuard<'_, Option<Box<AttachmentMap>>> {
         self.map.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -96,6 +128,20 @@ impl Attachments {
     #[must_use]
     pub fn has_attachments(&self) -> bool {
         self.lock().as_ref().is_some_and(|map| !map.is_empty())
+    }
+
+    /// The cell of the type `index`.
+    #[must_use]
+    pub fn cell(&self, index: u32) -> Option<AttachmentCell> {
+        self.lock().as_ref()?.get(index).cloned()
+    }
+
+    /// A copy of the type indices and cells, empty without attachments.
+    #[must_use]
+    pub fn cells(&self) -> Vec<(u32, AttachmentCell)> {
+        self.lock()
+            .as_ref()
+            .map_or_else(Vec::new, |map| map.cells())
     }
 
     /// Takes the map out of the slot.
@@ -156,18 +202,20 @@ mod tests {
         let slot = Attachments::default();
         assert!(slot.lock().is_none());
         assert!(!slot.has_attachments());
+        assert!(slot.cells().is_empty());
     }
 
     #[test]
-    fn map_replaces_and_removes_by_index() {
+    fn map_keeps_one_cell_per_index() {
         let mut map = AttachmentMap::default();
-        assert!(map.insert(3, Box::new(1i32)).is_none());
-        let previous = map.insert(3, Box::new(2i32)).unwrap();
-        assert_eq!(previous.downcast_ref::<i32>(), Some(&1));
+        assert!(map.insert_new(3, Box::new(1i32)).is_ok());
+        let (cell, value) = map.insert_new(3, Box::new(2i32)).unwrap_err();
+        assert_eq!(value.downcast_ref::<i32>(), Some(&2));
+        assert_eq!(cell.lock().unwrap().downcast_ref::<i32>(), Some(&1));
         assert!(map.contains(3));
         assert!(!map.contains(4));
         let removed = map.remove(3).unwrap();
-        assert_eq!(removed.downcast_ref::<i32>(), Some(&2));
+        assert_eq!(removed.lock().unwrap().downcast_ref::<i32>(), Some(&1));
         assert!(map.is_empty());
         assert!(map.remove(3).is_none());
     }
