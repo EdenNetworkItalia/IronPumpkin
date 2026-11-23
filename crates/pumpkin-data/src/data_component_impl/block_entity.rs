@@ -70,7 +70,10 @@ impl DataComponentImpl for EntityDataImpl {
     fn write_data(&self) -> NbtTag {
         let mut out = self.nbt.clone().unwrap_or_default();
         if let Some(et) = self.get_entity_type() {
-            out.put_string("id", format!("minecraft:{}", et.resource_name));
+            out.put_string(
+                "id",
+                crate::dynamic::namespaced_name(et.resource_name).into_owned(),
+            );
             NbtTag::Compound(out)
         } else if out.is_empty() {
             NbtTag::End
