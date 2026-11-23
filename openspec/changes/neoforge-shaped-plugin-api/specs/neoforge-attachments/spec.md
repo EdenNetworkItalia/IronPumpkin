@@ -47,10 +47,3 @@ A type with `attachment-sync` other than `none` SHALL be sent to the matching pl
 #### Scenario: Tracking player
 - **WHEN** a synced value of an entity changes
 - **THEN** every NeoForge client tracking that entity receives the new value
-
-### Requirement: Backing phase
-Until M5 (Modded gameplay parity) adds attachment storage, every call SHALL fail with `not-available`. Status: planned (task 2.14).
-
-#### Scenario: Before M5 (Modded gameplay parity)
-- **WHEN** a mod calls `get-data` on a host without attachment storage
-- **THEN** the call fails with `attachment-error::not-available`

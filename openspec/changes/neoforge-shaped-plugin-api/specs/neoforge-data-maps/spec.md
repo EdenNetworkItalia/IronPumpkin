@@ -40,10 +40,3 @@ After each load the host SHALL fire the Pumpkin event `DataMapsUpdatedEvent` wit
 #### Scenario: Reload
 - **WHEN** an operator runs `/reload`
 - **THEN** handlers of `DataMapsUpdatedEvent` run with cause `server-reload`
-
-### Requirement: Backing phase
-Until M5 (Modded gameplay parity) adds the loader, registration SHALL succeed and lookups SHALL return none. Status: planned (task 2.17).
-
-#### Scenario: Before M5 (Modded gameplay parity)
-- **WHEN** a mod calls `get-data` on a host without the data map loader
-- **THEN** the call returns none
