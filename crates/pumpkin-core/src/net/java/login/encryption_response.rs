@@ -161,7 +161,11 @@ impl PendingConnection {
                 self.kick(reason).await;
                 return Some(PacketHandlerResult::Stop);
             }
-            if !self.admit_client_without_neoforge(server).await {
+            // A client before 1.20.2 has no configuration phase, so it gets the checks that a
+            // newer client without `NeoForge` gets from the probe.
+            if crate::net::java::neoforge::detects_neoforge_clients(&server.basic_config)
+                && !self.admit_client_without_neoforge(server).await
+            {
                 return Some(PacketHandlerResult::Stop);
             }
             return Some(PacketHandlerResult::ReadyToPlay(
