@@ -20,9 +20,9 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 388 | 388 | 0 | 0 | 0 | 335 | 81 |
-| Inventory, planned | 346 | 301 | 43 | 2 | 0 | 217 | 42 |
-| Inventory, not supported | 149 | 0 | 0 | 1 | 148 | 55 | 10 |
+| Inventory, supported | 445 | 445 | 0 | 0 | 0 | 365 | 85 |
+| Inventory, planned | 287 | 239 | 46 | 2 | 0 | 187 | 38 |
+| Inventory, not supported | 151 | 0 | 0 | 1 | 150 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
 
@@ -38,13 +38,13 @@ How to read it:
 | `PlayerEvent` | 96 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `RegisterCommandsEvent` | 93 | event class | `ModInit::register_command` (API call, no event) | supported |
 | `ModConfigEvent` | 86 | event class | `NativeMod::config_loading`, `NativeMod::config_reloading` (two hooks, no parent handler) | planned |
-| `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PlayerInteractEvent` | 85 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `BuildCreativeModeTabContentsEvent` | 75 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerInteractEvent.RightClickBlock` | 67 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `RightClickBlock`, built with `right_click_block`) | supported |
 | `PlayerEvent.PlayerLoggedInEvent` | 66 | event class | `event-bus.event::player-event-player-logged-in-event` | supported |
 | `BlockEvent` | 65 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `BreakBlockEvent` | 52 (21.1 `BlockEvent$BreakEvent`) | event class | `pumpkin_core::plugin::block::BlockBreakEvent` (fired by `World::break_block` and `World::destroy_block`; a break without a player and a `Level.destroyBlock` have no NeoForge event) | supported |
-| `ServerTickEvent` | 52 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ServerTickEvent` | 52 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `EntityJoinLevelEvent` | 49 | event class | `event-bus.event::entity-join-level-event` | supported |
 | `ModConfigEvent.Reloading` | 48 | event class | `NativeMod::config_reloading` (after a poll reload and after `ModConfig::save`; a `save` inside the hook does not call it again) | supported |
 | `LivingDeathEvent` | 46 | event class | `event-bus.event::living-death-event` | supported |
@@ -54,11 +54,11 @@ How to read it:
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | planned |
 | `ServerStartedEvent` | 40 | event class | `pumpkin_core::plugin::server::ServerLoadEvent` | supported |
-| `LevelTickEvent` | 40 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `LivingDamageEvent` | 38 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `LevelTickEvent` | 40 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
+| `LivingDamageEvent` | 38 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `LivingIncomingDamageEvent` | 37 | event class | `event-bus.event::living-incoming-damage-event` | supported |
 | `ServerStoppedEvent` | 36 | event class | `pumpkin_core::plugin::server::ServerStoppedEvent` | supported |
-| `PlayerTickEvent` | 36 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PlayerTickEvent` | 36 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `LevelTickEvent.Post` | 32 | event class | `pumpkin_core::plugin::world::LevelTickEventPost` (fires while the game is frozen too; the worlds tick in parallel) | supported |
 | `LivingDropsEvent` | 31 | event class | `event-bus.event::living-drops-event` | supported |
 | `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | supported |
@@ -71,7 +71,7 @@ How to read it:
 | `LivingDamageEvent.Pre` | 27 | event class | `pumpkin_core::plugin::living::LivingDamageEventPre` | supported |
 | `PlayerInteractEvent.LeftClickBlock` | 27 | event class | `pumpkin_core::plugin::player::PlayerInteractEvent` (action `LeftClickBlock`, `left_click_action`) | supported |
 | `LevelEvent.Load` | 27 | event class | `event-bus.event::level-event-load` | supported |
-| `EntityTickEvent` | 27 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `EntityTickEvent` | 27 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PlayerEvent.PlayerChangedDimensionEvent` | 26 | event class | `event-bus.event::player-event-player-changed-dimension-event` | supported |
 | `ServerStartingEvent` | 26 | event class | `pumpkin_core::plugin::server::ServerStartingEvent` | supported |
 | `LivingDamageEvent.Post` | 25 | event class | `pumpkin_core::plugin::living::LivingDamageEventPost` | supported |
@@ -85,7 +85,7 @@ How to read it:
 | `BlockEvent.EntityPlaceEvent` | 23 | event class | `pumpkin_core::plugin::block::BlockPlaceEvent` (a player), `pumpkin_core::plugin::level::BlockEventEntityPlaceEvent` (another entity) | supported |
 | `EntityTeleportEvent` | 22 | event class | `event-bus.event::entity-teleport-event` | supported |
 | `LivingEvent` | 22 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `ItemEntityPickupEvent` | 20 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ItemEntityPickupEvent` | 20 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `TagsUpdatedEvent` | 19 | event class | `event-bus.event::tags-updated-event` | planned |
 | `LevelTickEvent.Pre` | 19 | event class | `pumpkin_core::plugin::world::LevelTickEventPre` (fires while the game is frozen too; the worlds tick in parallel) | supported |
 | `PlayerEvent.BreakSpeed` | 18 | event class | `pumpkin_core::plugin::player::PlayerEventBreakSpeed` | supported |
@@ -109,15 +109,15 @@ How to read it:
 | `AddPackFindersEvent` | 13 | event class | `event-bus.event::add-pack-finders-event` (resource `lifecycle.add-pack-finders-event`) | planned |
 | `LivingExperienceDropEvent` | 13 | event class | `pumpkin_core::plugin::living::LivingExperienceDropEvent` | supported |
 | `LivingHealEvent` | 13 | event class | `event-bus.event::living-heal-event` | supported |
-| `MobEffectEvent` | 13 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `MobEffectEvent` | 13 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PlayerEvent.StartTracking` | 13 | event class | `pumpkin_core::plugin::player::PlayerEventStartTracking` | supported |
 | `ProjectileImpactEvent` | 12 | event class | `pumpkin_core::plugin::level::ProjectileImpactEvent` | supported |
-| `ExplosionEvent` | 12 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ExplosionEvent` | 12 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `EntityTickEvent.Pre` | 12 | event class | `pumpkin_core::plugin::level::EntityTickEventPre` | supported |
 | `ItemAttributeModifierEvent` | 11 | event class | `event-bus.event::item-attribute-modifier-event` | planned |
-| `MobSpawnEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `MobSpawnEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PlayerEvent.ItemCraftedEvent` | 11 | event class | `event-bus.event::player-event-item-crafted-event` | supported |
-| `ChunkWatchEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ChunkWatchEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `EntityEvent` | 10 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `LivingEquipmentChangeEvent` | 10 | event class | `event-bus.event::living-equipment-change-event` | planned |
 | `PlayerContainerEvent` | 10 | event class | `pumpkin_core::plugin::player::PlayerContainerEvent` (concrete parent of `InventoryOpenEvent` and `InventoryCloseEvent`) | supported |
@@ -143,7 +143,7 @@ How to read it:
 | `MobSpawnEvent.PositionCheck` | 7 | event class | `pumpkin_core::plugin::level::MobSpawnEventPositionCheck` | supported |
 | `AdvancementEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `PlayerInteractEvent.LeftClickEmpty` | 7 | event class | `event-bus` doc, not supported | not supported |
-| `PlayerXpEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PlayerXpEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `BlockEvent.BlockToolModificationEvent` | 7 | event class | `pumpkin_core::plugin::level::BlockEventBlockToolModificationEvent` (fire starters and shears) | supported |
 | `RegisterConfigurationTasksEvent` | 7 | event class | `ironpumpkin_mods::network::RegisterConfigurationTasksEvent` (a Pumpkin event; `register` takes a `CustomConfigurationTask`) | supported |
 | `ModifyDefaultComponentsEvent` | 6 | event class | `event-bus` doc, not supported | planned |
@@ -157,13 +157,13 @@ How to read it:
 | `ChunkWatchEvent.Sent` | 6 | event class | `event-bus.event::chunk-watch-event-sent` | supported |
 | `ExplosionEvent.Start` | 6 | event class | `pumpkin_core::plugin::entity::EntityExplodeEvent` | supported |
 | `ModConfigEvent.Unloading` | 6 | event class | `event-bus.event::mod-config-event-unloading` (not implemented) | planned |
-| `PermissionGatherEvent` | 6 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PermissionGatherEvent` | 6 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PermissionGatherEvent.Nodes` | 6 | event class | `event-bus.event::permission-gather-event-nodes` | supported |
 | `CommandEvent` | 5 | event class | `event-bus.event::command-event` | planned |
 | `EntityTeleportEvent.EnderEntity` | 5 | event class | `event-bus.event::entity-teleport-event-ender-entity` | supported |
 | `EntityTeleportEvent.EnderPearl` | 5 | event class | `event-bus.event::entity-teleport-event-ender-pearl` | supported |
 | `LivingBreatheEvent` | 5 | event class | `event-bus.event::living-breathe-event` | supported |
-| `LivingConversionEvent` | 5 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `LivingConversionEvent` | 5 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `MobEffectEvent.Expired` | 5 | event class | `event-bus.event::mob-effect-event-expired` | supported |
 | `CriticalHitEvent` | 5 | event class | `pumpkin_core::plugin::player::CriticalHitEvent` | supported |
 | `PlayerContainerEvent.Close` | 5 | event class | `pumpkin_core::plugin::player::InventoryCloseEvent` | supported |
@@ -188,7 +188,7 @@ How to read it:
 | `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | supported |
 | `DataMapsUpdatedEvent` | 4 | event class | `pumpkin_core::plugin::data_maps::DataMapsUpdatedEvent` (re-exported by `ironpumpkin_mods::data_maps`) | supported |
 | `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
-| `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `pumpkin_core::plugin::inventory::GrindstoneEventOnTakeItem` (fires outside the screen lock on every take; a cancel gives no experience and puts the inputs back) | supported |
 | `EntityEvent.Size` | 3 | event class | `event-bus` doc, not supported | planned |
@@ -202,7 +202,7 @@ How to read it:
 | `PlayerRespawnPositionEvent` | 3 | event class | `pumpkin_core::plugin::player::player_spawn_location::PlayerSpawnLocationEvent` | supported |
 | `PlayerSpawnPhantomsEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
 | `ChunkTicketLevelUpdatedEvent` | 3 | event class | `event-bus` doc, not supported | planned |
-| `NoteBlockEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `NoteBlockEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `NoteBlockEvent.Play` | 3 | event class | `event-bus.event::note-block-event-play` | supported |
 | `VillageSiegeEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
 | `ItemStackedOnOtherEvent` | 2 | event class | `event-bus.event::item-stacked-on-other-event` | planned |
@@ -216,7 +216,7 @@ How to read it:
 | `ItemExpireEvent` | 2 | event class | `event-bus.event::item-expire-event` | supported |
 | `AnimalTameEvent` | 2 | event class | `event-bus.event::animal-tame-event` | supported |
 | `LivingGetProjectileEvent` | 2 | event class | `pumpkin_core::plugin::living::LivingGetProjectileEvent` | supported |
-| `AnvilCraftEvent` | 2 (21.1 `AnvilRepairEvent`) | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `AnvilCraftEvent` | 2 (21.1 `AnvilRepairEvent`) | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `AnvilCraftEvent.Post` | 2 (21.1 `AnvilRepairEvent`) | event class | `pumpkin_core::plugin::player::AnvilCraftEventPost` (under the screen-handler lock) | supported |
 | `ArrowLooseEvent` | 2 | event class | `pumpkin_core::plugin::player::ArrowLooseEvent` | supported |
 | `PlayerEvent.NameFormat` | 2 | event class | `pumpkin_core::plugin::player::PlayerEventNameFormat` (not cached) | supported |
@@ -227,16 +227,16 @@ How to read it:
 | `ExplosionKnockbackEvent` | 2 | event class | `pumpkin_core::plugin::level::ExplosionKnockbackEvent` | supported |
 | `LevelEvent.PotentialSpawns` | 2 | event class | `pumpkin_core::plugin::level::LevelEventPotentialSpawns` | supported |
 | `SleepFinishedTimeEvent` | 2 | event class | `event-bus.event::sleep-finished-time-event` | supported |
-| `CropGrowEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `CropGrowEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `CropGrowEvent.Post` | 2 | event class | `pumpkin_core::plugin::level::CropGrowEventPost` | supported |
 | `FMLDedicatedServerSetupEvent` | 2 | event class | `NativeMod::dedicated_server_setup` | supported |
-| `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ParallelDispatchEvent` | 2 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `ExtendPoiTypesEvent` | 2 | event class | `NativeMod::extend_poi_types` with `registration::ExtendPoiTypesEvent` (`addStatesToPoi` with a part of the states: gap, `registration` doc) | supported |
 | `ModifyRegistriesEvent` | 2 | event class | `event-bus` doc, not supported | planned |
 | `RegisterGameTestsEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
 | `StatAwardEvent` | 1 | event class | `pumpkin_core::plugin::player::PlayerStatisticIncrementEvent` (`value` is the new total; fires on `increment_stat` and `set_stat`) | supported |
 | `EntityEvent.EnteringSection` | 1 | event class | `event-bus.event::entity-event-entering-section` | planned |
-| `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `ItemEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `LivingUseTotemEvent` | 1 | event class | `event-bus.event::living-use-totem-event` | supported |
 | `MobSplitEvent` | 1 | event class | `pumpkin_core::plugin::level::MobSplitEvent` | supported |
 | `AdvancementEvent.AdvancementProgressEvent` | 1 | event class | `event-bus.event::advancement-event-advancement-progress-event` | planned |
@@ -251,7 +251,7 @@ How to read it:
 | `TradeWithVillagerEvent` | 1 | event class | `pumpkin_core::plugin::player::TradeWithVillagerEvent` (under the screen-handler lock) | supported |
 | `BlockEvent.PortalSpawnEvent` | 1 | event class | `event-bus.event::block-event-portal-spawn-event` | supported |
 | `ModifyCustomSpawnersEvent` | 1 | event class | `event-bus` doc, not supported | not supported |
-| `PistonEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PistonEvent` | 1 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PistonEvent.Pre` | 1 | event class | `event-bus.event::piston-event-pre` | supported |
 | `CropGrowEvent.Pre` | 1 | event class | `event-bus.event::crop-grow-event-pre` | supported |
 | `RegisterCauldronFluidContentEvent` | 1 | event class | `event-bus` doc, not supported | planned |
@@ -271,7 +271,7 @@ How to read it:
 | `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | planned |
 | `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (8 of the 61 vanilla game events from 10 sites, no vibration dispatch: gap) | planned |
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
-| `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PotionBrewEvent.Post` | 0 | event class | `pumpkin_core::plugin::inventory::PotionBrewEventPost` (after the brew and after a cancelled Pre; changed stacks apply if the stand did not change) | supported |
 | `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` (a cancel takes `stacks` only if the stand did not change, then Post fires) | supported |
 | `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | planned |
@@ -280,7 +280,7 @@ How to read it:
 | `EntityTeleportEvent.ItemConsumption` | 0 | event class | `event-bus.event::entity-teleport-event-item-consumption` | supported |
 | `EffectParticleModificationEvent` | 0 | event class | `pumpkin_core::plugin::living::EffectParticleModificationEvent` | supported |
 | `LivingDrownEvent` | 0 | event class | `pumpkin_core::plugin::living::LivingDrownEvent` | supported |
-| `LivingSwapItemsEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `LivingSwapItemsEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `LivingSwapItemsEvent.Hands` | 0 | event class | `event-bus.event::living-swap-items-event-hands` | supported |
 | `SpawnClusterSizeEvent` | 0 | event class | `pumpkin_core::plugin::level::SpawnClusterSizeEvent` | supported |
 | `AnvilCraftEvent.Pre` | 0 | event class | `pumpkin_core::plugin::player::AnvilCraftEventPre` (under the screen-handler lock; a cancel skips the cost) | supported |
@@ -294,7 +294,7 @@ How to read it:
 | `PlayerFlyableFallEvent` | 0 | event class | `pumpkin_core::plugin::player::PlayerFlyableFallEvent` | supported |
 | `PlayerNegotiationEvent` | 0 | event class | `event-bus.event::player-negotiation-event` | planned |
 | `PlayerSetSpawnEvent` | 0 | event class | `event-bus.event::player-set-spawn-event` | supported |
-| `PlayerSwitchHotbarSlotEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
+| `PlayerSwitchHotbarSlotEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PlayerSwitchHotbarSlotEvent.Post` | 0 | event class | `pumpkin_core::plugin::player::PlayerSwitchHotbarSlotEventPost` | supported |
 | `PlayerSwitchHotbarSlotEvent.Pre` | 0 | event class | `event-bus.event::player-switch-hotbar-slot-event-pre` | supported |
 | `PlayerXpEvent.LevelChange` | 0 | event class | `event-bus.event::player-xp-event-level-change` | supported |
@@ -305,9 +305,9 @@ How to read it:
 | `NoteBlockEvent.Change` | 0 | event class | `pumpkin_core::plugin::level::NoteBlockEventChange` | supported |
 | `PistonEvent.Post` | 0 | event class | `pumpkin_core::plugin::level::PistonEventPost` | supported |
 | `CreateFluidSourceEvent` | 0 | event class | `pumpkin_core::plugin::level::CreateFluidSourceEvent` | supported |
-| `RegisterRpcSchemaEvent` | 0 | event class | `event-bus.event::register-rpc-schema-event` (resource `lifecycle.register-rpc-schema-event`) | planned |
-| `ServerLifecycleEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `ModLifecycleEvent` | 0 | event class | no method (abstract); the `NativeMod` lifecycle methods run in `lifecycle` order | planned |
+| `RegisterRpcSchemaEvent` | 0 | event class | gap: the management server serves a fixed schema; M5 | planned |
+| `ServerLifecycleEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
+| `ModLifecycleEvent` | 0 | event class | no method (abstract); the `NativeMod` lifecycle methods run in `lifecycle` order | supported |
 | `GatherDataEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `GatherDataEvent.Client` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `GatherDataEvent.Server` | 0 | event class | `event-bus` doc, not supported | not supported |
@@ -325,14 +325,14 @@ How to read it:
 | `item` | 132 | Static registries a `DeferredRegister` can target | `ModInit::register_item`, `content::RegisterEventExt::register_item` | supported |
 | `data_component_type` | 113 | Static registries a `DeferredRegister` can target | `ModInit::register_data_component_type`, `data_components::RegisterDataComponentType`; values through `data_components::DataComponentType` | supported |
 | `creative_mode_tab` | 112 | Static registries a `DeferredRegister` can target | `ModInit::register_creative_mode_tab` (contract only: the host logs the entry and ignores it) | not supported |
-| `NeoForgeRegistries` | 111 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
+| `NeoForgeRegistries` | 111 | Registration API | partial: `attachment_types` and `global_loot_modifier_serializers`; the other registries are a gap (M5), see the NeoForge registries table | planned |
 | `DeferredItem` | 104 | Registration API | no handle type: the name, looked up with `Item::from_registry_key` or `registry::id_of` after the freeze | supported |
 | `block` | 98 | Static registries a `DeferredRegister` can target | `ModInit::register_block`, `content::RegisterEventExt::register_block` | supported |
-| `block_entity_type` | 90 | Static registries a `DeferredRegister` can target | `registration.entry-definition::block-entity-type` | planned |
+| `block_entity_type` | 90 | Static registries a `DeferredRegister` can target | gap: no registration API for a new block entity type; M5 | planned |
 | `DeferredRegister#createItems` | 85 | Registration API | `ModInit::register_item` with `content::ItemBuilder` | supported |
 | `DeferredBlock` | 78 | Registration API | no handle type: the name, looked up with `Block::from_name` or `registry::id_of` after the freeze | supported |
-| `menu` | 78 | Static registries a `DeferredRegister` can target | `registration.entry-definition::menu` | planned |
-| `NeoForgeRegistries.Keys` | 77 | Registration API | `registration` registry ids (`neoforge:*`) | planned |
+| `menu` | 78 | Static registries a `DeferredRegister` can target | gap: no registration API for a mod menu type; M5 | planned |
+| `NeoForgeRegistries.Keys` | 77 | Registration API | partial: `attachment_types` and `global_loot_modifier_serializers`; the other registries are a gap (M5), see the NeoForge registries table | planned |
 | `DeferredRegister.Items#register` | 76 | Registration API | `ModInit::register_item` with `content::ItemBuilder` | supported |
 | `recipe_serializer` | 74 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DeferredRegister#createBlocks` | 66 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
@@ -344,10 +344,10 @@ How to read it:
 | `entity_type` | 46 | Static registries a `DeferredRegister` can target | `ModInit::register_entity_type`, `content::RegisterEventExt::register_entity_type` | supported |
 | `DeferredRegister#createDataComponents` | 45 | Registration API | `ModInit::register_data_component_type` with `data_components::DataComponentTypeBuilder` | supported |
 | `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#getEntries` | 36 | Registration API | `registration.deferred-register.get-entries` | planned |
-| `IRegistryExtension` | 31 | Registration API | `registry::contains`, `id_of`, `key_of`; the alias and max id queries are a gap | planned |
+| `DeferredRegister#getEntries` | 36 | Registration API | `ModInit::entries` | supported |
+| `IRegistryExtension` | 31 | Registration API | partial: `registry::contains`, `id_of`, `key_of`, `keys`; the alias, max id, sync and callback methods are a gap (M5) | planned |
 | `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `ModInit::register_data_component_type` with `DataComponentTypeBuilder::<T>::new`, the codec is `T`; values through `data_components::DataComponentType` | supported |
-| `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `loot.register-loot-modifier-type` | planned |
+| `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `ModInit::register_loot_modifier_type` | supported |
 | `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `mob_effect` | 19 | Static registries a `DeferredRegister` can target | `ModInit::register_mob_effect`, `mob_effects::RegisterMobEffect`; applied through `mob_effects::add_effect` | supported |
 | `trigger_type` | 19 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -360,7 +360,7 @@ How to read it:
 | `loot_function_type` | 16 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `attribute` | 13 | Static registries a `DeferredRegister` can target | `ModInit::register_attribute`, `entity_attributes::RegisterAttribute`; values through `entity_attributes` | supported |
 | `DeferredRegister#makeRegistry` | 12 | Registration API | `registration` doc, not supported | planned |
-| `DeferredRegister#addAlias` | 11 | Registration API | `registration.deferred-register.add-alias` | planned |
+| `DeferredRegister#addAlias` | 11 | Registration API | gap: the content registry has no alias map; M5 | planned |
 | `neoforge:biome_modifier_serializers` | 10 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `DeferredRegister.Blocks#registerBlock` | 9 | Registration API | `ModInit::register_block` with `BlockBuilder::behaviour` | supported |
 | `neoforge:entity_data_serializers` | 9 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -378,10 +378,10 @@ How to read it:
 | `custom_stat` | 5 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `registries.holdersets` | 5 | Other registry packages | `registration` doc, not supported | planned |
 | `worldgen/chunk_generator` | 4 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#getRegistry` | 3 | Registration API | `registry::*` functions | planned |
+| `DeferredRegister#getRegistry` | 3 | Registration API | `ModInit::registry`, a `registry::Registry` handle | supported |
 | `worldgen/structure_placement` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `enchantment_effect_component_type` | 3 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#getNamespace` | 2 | Registration API | `registration.deferred-register.get-namespace` | planned |
+| `DeferredRegister#getNamespace` | 2 | Registration API | `ModInit::namespace` | supported |
 | `DeferredRegister.Blocks#registerSimpleBlock` | 2 | Registration API | `ModInit::register_block` with `BlockBuilder::new` | supported |
 | `memory_module_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `sensor_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -390,10 +390,10 @@ How to read it:
 | `worldgen/structure_pool_element` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `map_decoration_type` | 2 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `DataPackRegistriesHooks` | 1 | Registration API | `registration` doc, not supported | not supported |
-| `DeferredRegister#getRegistryKey` | 1 | Registration API | `registration.deferred-register.get-registry-name` | planned |
+| `DeferredRegister#getRegistryKey` | 1 | Registration API | `ModInit::registry_key` | supported |
 | `DeferredRegister.Items#registerSimpleItem` | 1 | Registration API | `ModInit::register_item` with `ItemBuilder::new` | supported |
 | `RegistryManager` | 1 | Registration API | `registration` doc, not supported | not supported |
-| `RegistrySnapshot` | 1 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
+| `RegistrySnapshot` | 1 | Registration API | `pumpkin_protocol::java::neoforge::RegistrySnapshot` (host-side `frozen_registry` sync; no mod API) | supported |
 | `neoforge:structure_modifier_serializers` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:holder_set_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:fluid_ingredient_type` | 1 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -411,10 +411,10 @@ How to read it:
 | `DatapackRegistryBuilder` | 0 | Registration API | `registration` doc, not supported | planned |
 | `DeferredRegister#createEntities` | 0 | Registration API | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | supported |
 | `DeferredRegister#createTagKey` | 0 | Registration API | the tag name: `content::TagBuilder`, `registry::is_in_tag`, `registry::tag_entries` | supported |
-| `DeferredRegister#getRegistryName` | 0 | Registration API | `registration.deferred-register.get-registry-name` | planned |
+| `DeferredRegister#getRegistryName` | 0 | Registration API | `ModInit::registry_name` | supported |
 | `DeferredRegister.Entities#registerEntityType` | 0 | Registration API | `ModInit::register_entity_type` with `content::EntityTypeBuilder` | supported |
 | `NeoForgeRegistriesSetup` | 0 | Registration API | `registration` doc, not supported | not supported |
-| `RegistryManager.SnapshotType` | 0 | Registration API | host-side M3 `frozen_registry` sync; no mod API | planned |
+| `RegistryManager.SnapshotType` | 0 | Registration API | not supported: member of an internal class; `SYNCED_REGISTRIES` is the sync snapshot | not supported |
 | `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:biome_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:structure_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
@@ -453,8 +453,8 @@ How to read it:
 | `slot_display` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `recipe_book_category` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `ticket_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `incoming_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | `lifecycle.register-rpc-schema-event` | planned |
-| `outgoing_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | `lifecycle.register-rpc-schema-event` | planned |
+| `incoming_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | gap: the management server has a fixed method set; M5 | planned |
+| `outgoing_rpc_methods` | 0 | Static registries a `DeferredRegister` can target | gap: the management server has a fixed notification set; M5 | planned |
 | `test_environment_definition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 | `test_instance_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 | `spawn_condition_type` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -621,7 +621,7 @@ How to read it:
 | `PayloadRegistrar#playToClient` | 125 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_client` | supported |
 | `PayloadRegistrar#playToServer` | 123 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_server` | supported |
 | `PacketDistributor#sendToPlayer` | 121 | Payload registration and sending | `ironpumpkin_mods::network::send_to_player` | supported |
-| `IContainerFactory` | 84 | Configuration tasks and other network types | `registration.menu-type-definition.extra-data` and the extra data of `menus::open_menu`, both M5 (`neoforge:advanced_open_screen`) | planned |
+| `IContainerFactory` | 84 | Configuration tasks and other network types | gap: the extra data of `menus::open_menu` and mod menu types, both M5 (`neoforge:advanced_open_screen`) | planned |
 | `PayloadRegistrar#versioned` | 54 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::versioned` | supported |
 | `PacketDistributor#sendToPlayersTrackingChunk` | 43 | Payload registration and sending | `network.send-to-players-tracking-chunk` | planned |
 | `PayloadRegistrar#optional` | 42 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::optional` | supported |
@@ -654,40 +654,40 @@ How to read it:
 | `PayloadRegistrar#configurationBidirectional` | 0 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::configuration_bidirectional` | supported |
 | `IPayloadContext#handle` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
 | `IPayloadContext#channelHandlerContext` | 0 | Payload registration and sending | `network` doc, not supported | not supported |
-| `neoforge:advanced_add_entity` | 0 | Payloads | `registration.entity-type-builder` (host payload, M3) | planned |
-| `neoforge:advanced_container_set_data` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
-| `neoforge:advanced_open_screen` | 0 | Payloads | `registration.menu-type-definition` (host payload, M5) | planned |
+| `neoforge:advanced_add_entity` | 0 | Payloads | gap: spawn data of a mod entity type; M5 (`neoforge:advanced_add_entity`) | planned |
+| `neoforge:advanced_container_set_data` | 0 | Payloads | gap: 32-bit data slots of a mod menu; M5 | planned |
+| `neoforge:advanced_open_screen` | 0 | Payloads | gap: extra data of `openMenu` and mod menu types; M5 | planned |
 | `neoforge:auxiliary_light_data` | 0 | Payloads | `network` doc, not supported | planned |
-| `c:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `c:version` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:config_file` | 0 | Payloads | `ironpumpkin_mods::config::ConfigType::Synced` (host payload, the file of each synced config) | planned |
-| `neoforge:extensible_enum_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:extensible_enum_data` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:feature_flags_ack` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:feature_flags` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:frozen_registry` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:frozen_registry_sync_completed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:frozen_registry_sync_start` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `c:register` | 0 | Payloads | `ConfigurationTask::CommonRegister` (host-side wire protocol; no mod API) | supported |
+| `c:version` | 0 | Payloads | `ConfigurationTask::CommonVersion` (host-side wire protocol; no mod API) | supported |
+| `neoforge:config_file` | 0 | Payloads | `ConfigurationTask::SyncConfig` (host payload, the file of each synced config of `ironpumpkin_mods::config::ConfigType::Synced`) | supported |
+| `neoforge:extensible_enum_ack` | 0 | Payloads | `ConfigurationTask::ExtensibleEnums` (host-side wire protocol; no mod API) | supported |
+| `neoforge:extensible_enum_data` | 0 | Payloads | `ConfigurationTask::ExtensibleEnums` (host-side wire protocol; no mod API) | supported |
+| `neoforge:feature_flags_ack` | 0 | Payloads | `ConfigurationTask::FeatureFlags` (host-side wire protocol; no mod API) | supported |
+| `neoforge:feature_flags` | 0 | Payloads | `ConfigurationTask::FeatureFlags` (host-side wire protocol; no mod API) | supported |
+| `neoforge:frozen_registry` | 0 | Payloads | `ConfigurationTask::RegistrySync` (host-side wire protocol; no mod API) | supported |
+| `neoforge:frozen_registry_sync_completed` | 0 | Payloads | `ConfigurationTask::RegistrySync` (host-side wire protocol; no mod API) | supported |
+| `neoforge:frozen_registry_sync_start` | 0 | Payloads | `ConfigurationTask::RegistrySync` (host-side wire protocol; no mod API) | supported |
 | `neoforge:known_registry_data_maps` | 0 | Payloads | `pumpkin_protocol::java::neoforge::KnownRegistryDataMapsPayload` (host payload) | supported |
 | `neoforge:known_registry_data_maps_reply` | 0 | Payloads | `pumpkin_protocol::java::neoforge::KnownRegistryDataMapsReplyPayload` (host payload) | supported |
 | `minecraft:register` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
 | `minecraft:unregister` | 0 | Payloads | `pumpkin:plugin/event` channel events; `network.has-channel` | supported |
-| `neoforge:network` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:network` | 0 | Payloads | channel negotiation (host-side wire protocol; no mod API) | supported |
 | `neoforge:register` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | supported |
-| `neoforge:modded_network_setup_failed` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
+| `neoforge:modded_network_setup_failed` | 0 | Payloads | channel negotiation (host-side wire protocol; no mod API) | supported |
 | `neoforge:recipe_content` | 0 | Payloads | `network` doc, not supported | not supported |
 | `neoforge:registry_data_map_sync` | 0 | Payloads | `pumpkin_protocol::java::neoforge::RegistryDataMapSyncPayload` (host payload) | supported |
-| `neoforge:split` | 0 | Payloads | host-side wire protocol (phase 1 codec, M3); no mod API | planned |
-| `neoforge:sync_attachments` | 0 | Payloads | `attachments.attachment-sync` (host payload) | planned |
-| `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
-| `CheckExtensibleEnums.EnumEntry` | 0 | Configuration tasks and other network types | host-side M3; no mod API | planned |
-| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | host-side M3; no mod API | planned |
-| `CheckFeatureFlags` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
-| `CommonRegisterTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
-| `CommonVersionTask` | 0 | Configuration tasks and other network types | host-side M3 configuration task; no mod API | planned |
+| `neoforge:split` | 0 | Payloads | split and join of large packets (host-side wire protocol; no mod API) | supported |
+| `neoforge:sync_attachments` | 0 | Payloads | `ironpumpkin_mods::attachments` (host payload; `ModInit::register_attachment_type` with a sync handler) | supported |
+| `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | `ConfigurationTask::ExtensibleEnums` (host-side configuration task; no mod API) | supported |
+| `CheckExtensibleEnums.EnumEntry` | 0 | Configuration tasks and other network types | `pumpkin_protocol::java::neoforge::EnumEntry` (host-side; no mod API) | supported |
+| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | not supported: extensible enums stay excluded, the server never sends the data | not supported |
+| `CheckFeatureFlags` | 0 | Configuration tasks and other network types | `ConfigurationTask::FeatureFlags` (host-side configuration task; no mod API) | supported |
+| `CommonRegisterTask` | 0 | Configuration tasks and other network types | `ConfigurationTask::CommonRegister` (host-side configuration task; no mod API) | supported |
+| `CommonVersionTask` | 0 | Configuration tasks and other network types | `ConfigurationTask::CommonVersion` (host-side configuration task; no mod API) | supported |
 | `RegistryDataMapNegotiation` | 0 | Configuration tasks and other network types | host configuration task (`pumpkin_core::plugin::data_maps`); no mod API | supported |
-| `SyncConfig` | 0 | Configuration tasks and other network types | host-side task: `ConfigurationTask::SyncConfig` reads `pumpkin_core::plugin::startup::synced_configs` for `ironpumpkin_mods::config::ConfigType::Synced` | planned |
-| `SyncRegistries` | 0 | Configuration tasks and other network types | host-side M3 task; no mod API | planned |
+| `SyncConfig` | 0 | Configuration tasks and other network types | `ConfigurationTask::SyncConfig` reads `pumpkin_core::plugin::startup::synced_configs` for `ironpumpkin_mods::config::ConfigType::Synced` | supported |
+| `SyncRegistries` | 0 | Configuration tasks and other network types | `ConfigurationTask::RegistrySync` with `SYNCED_REGISTRIES` (host-side configuration task; no mod API) | supported |
 | `QueuedPacket` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
 | `QueuedPacket.CustomPayload` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
 | `ServerPayloadContext` | 0 | Configuration tasks and other network types | `network` doc, not supported | not supported |
@@ -878,7 +878,7 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `NeoForge` | 219 | Types in the root `common` package | `event-bus.bus::game` | planned |
+| `NeoForge` | 219 | Types in the root `common` package | `ModInit::register_event` (`NeoForge.EVENT_BUS`) | supported |
 | `transfer` | 189 | Packages outside the families above | `ironpumpkin_mods::transfer::ResourceHandler`, `CombinedResourceHandler`, `ResourceStacksResourceHandler` | planned |
 | `ModConfigSpec` | 182 | Types in the root `common` package | `ironpumpkin_mods::config::ConfigSpec` | supported |
 | `transfer.item` | 149 | Packages outside the families above | `ironpumpkin_mods::transfer::ItemResource`, `ItemStacksResourceHandler`, `transfer::inventory` | planned |
@@ -886,7 +886,7 @@ How to read it:
 | `transfer.fluid` | 130 | Packages outside the families above | `ironpumpkin_mods::transfer::FluidResource`, `FluidStacksResourceHandler` | planned |
 | `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `transfer.energy` | 78 | Packages outside the families above | `ironpumpkin_mods::transfer::EnergyHandler`, `SimpleEnergyHandler` | planned |
-| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
@@ -899,13 +899,13 @@ How to read it:
 | `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `entity` | 20 | Packages outside the families above | gap: `IEntityWithComplexSpawn` spawn data needs the M3 `advanced_add_entity` payload; `PartEntity` has no target (documented in `types`) | planned |
-| `MutableDataComponentHolder` | 20 | Types in the root `common` package | `pumpkin:plugin/item-stack` component methods; `types.component-value` | planned |
+| `MutableDataComponentHolder` | 20 | Types in the root `common` package | `ItemStack::{get_data_component, set_data_component, remove_data_component, has_data_component}`; `data_components::DataComponentType::{get, set, remove, has}` for mod components | supported |
 | `SoundActions` | 20 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `Tags.EntityTypes` | 20 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `common.damagesource` | 18 | Packages outside the families above | `types.damage-container`, `damage-reduction`, `event-bus.reduction-modifier`, `callbacks.apply-reduction-modifier` | planned |
 | `common.world.chunk` | 13 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `Tags.Fluids` | 12 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
-| `IShearable` | 11 | Types in the root `common` package | gap: shear behaviour hook; documented in `types` (extension interfaces) | planned |
+| `IShearable` | 11 | Types in the root `common` package | gap: shear hook for mod blocks and entities; M5 | planned |
 | `Tags.DamageTypes` | 11 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `UsernameCache` | 10 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `server.command` | 9 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
