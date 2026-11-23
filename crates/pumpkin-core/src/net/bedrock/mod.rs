@@ -1439,13 +1439,15 @@ impl BedrockClient {
         };
 
         if let Some((player, world, online_profile)) = admission_result {
-            if !self.is_closed() {
+            // A player that never joined is neither announced as leaving nor saved.
+            let joined = !self.is_closed();
+            if joined {
                 world
                     .spawn_bedrock_player(&server.basic_config, player.clone(), &server)
                     .await;
                 self.progress_player_packets(&player).await;
             }
-            self.teardown_sub_client_player(parent.as_deref(), &server, &player)
+            self.teardown_sub_client_player(parent.as_deref(), &server, &player, joined)
                 .await;
             drop(online_profile);
         } else {
@@ -1459,6 +1461,7 @@ impl BedrockClient {
         parent: Option<&Self>,
         server: &Arc<Server>,
         player: &Arc<Player>,
+        joined: bool,
     ) {
         if let Some(parent) = parent {
             parent
@@ -1469,9 +1472,9 @@ impl BedrockClient {
         }
         self.close().await;
         self.await_tasks().await;
-        player.remove(true).await;
+        player.remove(joined).await;
         server.remove_player(player);
-        if let Err(error) = server.player_data_storage.handle_player_leave(player) {
+        if joined && let Err(error) = server.player_data_storage.handle_player_leave(player) {
             error!("Failed to save sub-client player data on disconnect: {error}");
         }
         if let Some(parent) = parent {
