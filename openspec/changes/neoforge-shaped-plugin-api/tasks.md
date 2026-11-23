@@ -60,6 +60,15 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [x] 2.28 (#136) The events of tasks 2.3 and 2.12 for v0.2 Wasm plugins (follows 2.27): the player events of #112, `PotionBrewEventPost`, `PlayerEnchantItemEvent`, `GrindstoneEventOnTakeItem`, `LevelTickEventPre` and `LevelTickEventPost` as WIT v0.2 records in `neoforge-events.wit`, with the settable fields written back and the others kept by the host; the server lifecycle, registration and network events stay native-only because they fire before the Wasm plugins load or have no Wasm use; verify: a v0.2 round trip per event in `crates/pumpkin-wasm-host-v0_2/tests` that asserts an empty resource table, the routing test of the new `EventType`s, and the level tick cost with no handler
 - [x] 2.29 (#165) Mod data packs (follows 2.1.1; 2.16 and 2.17 read their files through it): a native mod ships the `data/` files of its crate, embedded in the pack binary, and they load as mod resources in mod load order, in the position NeoForge gives them relative to the vanilla pack and the world data packs, through the existing loaders of `DatapackManager`; verify: a test mod ships a loot table or a tag and the server sees it, and the override order against a world data pack
 
+### 2.30 to 2.35 M4 close
+
+- [ ] 2.30 (#170) Data map consumers (follows 2.17): the vanilla behaviours read the NeoForge built-in data maps where NeoForge reads them, and the NeoForge default values load at the lowest priority from a GPL-3.0 server crate; verify: one test per consumer, the copper, wax and composter parity tests
+- [ ] 2.31 (#171) Loot context parameters (follows 2.16): the parameters that vanilla 26.3 sets and mods read, filled at each vanilla call site; verify: one test per call site, the vanilla loot parity dump
+- [ ] 2.32 (#175) Inventory rows that M3, the content registry and wave 8 already cover, the `DeferredRegister` getters, and the abstract event rule; verify: each listed row has a test, an `M5 engine extension:` reason or a `not supported` reason, `mapping_status.py --check`, `openspec validate --all`
+- [ ] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
+- [ ] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
+- [ ] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
+
 ## Workflow follow-up
 
 - Plan the implementation waves from design.md, `modpack-usage.md` and `mapping-table.md`, then give each section 2 item its issue number.
