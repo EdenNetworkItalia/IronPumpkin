@@ -11,6 +11,7 @@ interface neoforge-events {
     use %world.{%world, entity, block-direction};
     use game-rules.{game-rule, game-rule-value};
     use damage-types.{damage-type};
+    use permission.{permission-level};
 
     /// NeoForge `TriState`: allow, let vanilla decide, or refuse.
     enum tri-state {
@@ -877,5 +878,45 @@ interface neoforge-events {
     record level-tick-event-post-data {
         target-world: %world,
         has-time: bool,
+    }
+
+    /// NeoForge `CommandEvent`: a command is about to run, after the leading slash is removed
+    /// and before the parse. Settable: `command`, which replaces the parse result with the parse
+    /// of the new command, and `exception`. A cancel stops the command. With an `exception`, a
+    /// cancel also sends the message to the sender as a failure.
+    record command-event-data {
+        /// The player who sends the command, or none for the console, a command block and the
+        /// other senders.
+        player: option<player>,
+        /// The name of the sender.
+        sender-name: string,
+        command: string,
+        exception: option<string>,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PermissionsChangedEvent`: an online player is opped or deopped, before the op
+    /// list changes. A cancel keeps the old level.
+    record permissions-changed-event-data {
+        player: player,
+        new-level: permission-level,
+        /// The level in the op list before the change.
+        old-level: permission-level,
+        cancelled: bool,
+    }
+
+    /// NeoForge `OnDatapackSyncEvent`: the server sends data pack content to one player (a join)
+    /// or to all players (a reload), before it sends the tags and the data maps.
+    record on-datapack-sync-event-data {
+        /// The joining player, or none when the event syncs all players.
+        player: option<player>,
+    }
+
+    /// NeoForge `LootTableLoadEvent`: a loot table of a data pack loaded. Settable: `cancelled`,
+    /// which loads an empty table. A Wasm plugin cannot replace the table.
+    record loot-table-load-event-data {
+        /// The id of the table, such as `mymod:blocks/ruby_ore`.
+        name: string,
+        cancelled: bool,
     }
 }

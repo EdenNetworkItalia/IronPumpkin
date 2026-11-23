@@ -1786,6 +1786,16 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
                     ctx, &handler, priority, blocking, event_type,
                 );
             }
+            event_type @ (EventType::CommandEvent
+            | EventType::PermissionsChangedEvent
+            | EventType::TagsUpdatedEventServerDataLoad
+            | EventType::OnDatapackSyncEvent
+            | EventType::LootTableLoadEvent
+            | EventType::GameShuttingDownEvent) => {
+                crate::events::neoforge_server::register_neoforge_server_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type => {
                 register_player_event(ctx, &handler, priority, blocking, event_type);
             }

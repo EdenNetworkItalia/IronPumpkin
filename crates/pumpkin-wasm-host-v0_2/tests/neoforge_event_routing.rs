@@ -33,11 +33,16 @@ use pumpkin_core::plugin::{
     player::{
         AnvilCraftEventPost, AnvilCraftEventPre, ArrowLooseEvent, ArrowNockEvent,
         ClientInformationUpdatedEvent, CriticalHitEvent, ItemEntityPickupEventPost,
-        ItemEntityPickupEventPre, PlayerEventBreakSpeed, PlayerEventHarvestCheck,
-        PlayerEventLoadFromFile, PlayerEventNameFormat, PlayerEventSaveToFile,
-        PlayerEventStartTracking, PlayerEventStopTracking, PlayerEventTabListNameFormat,
-        PlayerFlyableFallEvent, PlayerSwitchHotbarSlotEventPost, PlayerXpEventPickupXp,
-        SweepAttackEvent, TradeWithVillagerEvent, use_item_on_block::UseItemOnBlockEvent,
+        ItemEntityPickupEventPre, PermissionsChangedEvent, PlayerEventBreakSpeed,
+        PlayerEventHarvestCheck, PlayerEventLoadFromFile, PlayerEventNameFormat,
+        PlayerEventSaveToFile, PlayerEventStartTracking, PlayerEventStopTracking,
+        PlayerEventTabListNameFormat, PlayerFlyableFallEvent, PlayerSwitchHotbarSlotEventPost,
+        PlayerXpEventPickupXp, SweepAttackEvent, TradeWithVillagerEvent,
+        use_item_on_block::UseItemOnBlockEvent,
+    },
+    server::{
+        CommandEvent, GameShuttingDownEvent, LootTableLoadEvent, OnDatapackSyncEvent,
+        TagsUpdatedEventServerDataLoad,
     },
     startup::create_context,
     world::{LevelTickEventPost, LevelTickEventPre},
@@ -61,6 +66,7 @@ use pumpkin_wasm_host_v0_2::{
         neoforge_entity::register_neoforge_entity_event,
         neoforge_living::register_neoforge_living_event,
         neoforge_player::register_neoforge_player_event,
+        neoforge_server::register_neoforge_server_event,
     },
     pumpkin::plugin::event::EventType,
 };
@@ -444,4 +450,35 @@ fn each_entity_event_type_registers_its_own_event() {
             );
         }
     }
+}
+
+/// The server, data pack and command events route through `register_neoforge_server_event` the
+/// same way.
+#[test]
+fn each_server_event_type_registers_its_own_event() {
+    let cases: [(EventType, Listens); 6] = [
+        (EventType::CommandEvent, listens::<CommandEvent>),
+        (
+            EventType::PermissionsChangedEvent,
+            listens::<PermissionsChangedEvent>,
+        ),
+        (
+            EventType::TagsUpdatedEventServerDataLoad,
+            listens::<TagsUpdatedEventServerDataLoad>,
+        ),
+        (
+            EventType::OnDatapackSyncEvent,
+            listens::<OnDatapackSyncEvent>,
+        ),
+        (EventType::LootTableLoadEvent, listens::<LootTableLoadEvent>),
+        (
+            EventType::GameShuttingDownEvent,
+            listens::<GameShuttingDownEvent>,
+        ),
+    ];
+    assert_each_registers_its_own_event(
+        "v0.2-server-routing-plugin",
+        &cases,
+        register_neoforge_server_event,
+    );
 }

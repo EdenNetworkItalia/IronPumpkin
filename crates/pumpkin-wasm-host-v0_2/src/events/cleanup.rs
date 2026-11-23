@@ -798,5 +798,13 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::GrindstoneEventOnTakeItem(_)) => {
             super::neoforge_player::cleanup_neoforge_player_event(event, state);
         }
+        event @ (Event::CommandEvent(_)
+        | Event::PermissionsChangedEvent(_)
+        | Event::TagsUpdatedEventServerDataLoad
+        | Event::OnDatapackSyncEvent(_)
+        | Event::LootTableLoadEvent(_)
+        | Event::GameShuttingDownEvent) => {
+            super::neoforge_server::cleanup_neoforge_server_event(event, state);
+        }
     }
 }
