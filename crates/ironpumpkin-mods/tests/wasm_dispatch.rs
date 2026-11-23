@@ -401,37 +401,41 @@ impl EventHandler<EntitySpawnEvent> for Watch {
 /// Builds both guest targets into `target`, and returns their release directory. The nested
 /// build needs a target directory of its own: the outer `cargo test` holds the lock of the main
 /// one until the tests end. Cargo makes the build a no-op when the guests are fresh.
+///
+/// The two guests build one after the other: each rustc takes ~8 GB for the v0.2 bindings, and
+/// two in parallel ran a 16 GB CI runner out of memory.
 fn build_guests(target: &Path) -> PathBuf {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let output = Command::new(&cargo)
-        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-        .env("CARGO_TARGET_DIR", target)
-        .args([
-            "build",
-            "--manifest-path",
-            "crates/ironpumpkin-test-guest/Cargo.toml",
-            "--target",
-            "wasm32-wasip1",
-            "--release",
-            "--locked",
-            "--lib",
-            "--examples",
-        ])
-        .output();
-    assert!(
-        output.is_ok(),
-        "{} does not start: {:?}",
-        Path::new(&cargo).display(),
-        output.as_ref().err()
-    );
-    let output = output.unwrap();
-    assert!(
-        output.status.success(),
-        "the build of the v0.2 test guests failed. If `std` is missing for `wasm32-wasip1`, run \
-         `rustup target add wasm32-wasip1`, or on Fedora install \
-         `rust-std-static-wasm32-wasip1`:\n{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    for guest in ["--lib", "--examples"] {
+        let output = Command::new(&cargo)
+            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .env("CARGO_TARGET_DIR", target)
+            .args([
+                "build",
+                "--manifest-path",
+                "crates/ironpumpkin-test-guest/Cargo.toml",
+                "--target",
+                "wasm32-wasip1",
+                "--release",
+                "--locked",
+                guest,
+            ])
+            .output();
+        assert!(
+            output.is_ok(),
+            "{} does not start: {:?}",
+            Path::new(&cargo).display(),
+            output.as_ref().err()
+        );
+        let output = output.unwrap();
+        assert!(
+            output.status.success(),
+            "the build of the v0.2 test guests failed. If `std` is missing for `wasm32-wasip1`, \
+             run `rustup target add wasm32-wasip1`, or on Fedora install \
+             `rust-std-static-wasm32-wasip1`:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
     target.join("wasm32-wasip1/release")
 }
 
