@@ -545,7 +545,7 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `DataMapType` | 27 | Data map API | `ironpumpkin_mods::data_maps::DataMapType` (`get_data`, `data_map`) | supported |
+| `DataMapType` | 27 | Data map API | `ironpumpkin_mods::data_maps::DataMapType` (`get_data`, `with_data`, `data_map`) | supported |
 | `DataMapType.Builder` | 18 | Data map API | `ironpumpkin_mods::data_maps::DataMapTypeBuilder` | supported |
 | `WAXABLES` | 5 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin::WAXABLES` | supported |
 | `registries.datamaps.builtin` | 5 | Built-in data maps | `ironpumpkin_mods::data_maps::builtin` (value types) | supported |
