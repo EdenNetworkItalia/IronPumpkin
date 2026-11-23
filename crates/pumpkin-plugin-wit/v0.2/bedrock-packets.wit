@@ -179,6 +179,17 @@ interface bedrock-packets {
     /// Drag operation state (`0` for start, `1` for stop).
     state: u8,
   }
+  /// Sent by a Bedrock client (including split-screen sub-clients) when cleanly leaving the server.
+  record s-disconnect {
+    /// Disconnect reason code reported by the client.
+    reason: s32,
+    /// Whether the message fields are omitted on the wire.
+    skip-message: bool,
+    /// Optional disconnect explanation message.
+    message: string,
+    /// Optional profanity-filtered disconnect message.
+    filtered-message: string,
+  }
   /// Transmits player emote animations to the server and broadcasts them to nearby players.
   record s-emote {
     /// Runtime entity ID of the emoting player.
@@ -892,6 +903,13 @@ interface bedrock-packets {
     /// Selected recipe index.
     recipe-index: s32,
   }
+  /// Sent by a split-screen sub-client over an existing Bedrock connection to authenticate and join.
+  record s-sub-client-login {
+    /// Identity and authentication JSON/JWT payload.
+    jwt: list<u8>,
+    /// Raw client data JWT carrying skin parameters, device details, and locale settings.
+    raw-token: list<u8>,
+  }
   /// Transmits in-game chat messages, system alerts, popups, and raw JSON text between client and server.
   record s-text {
     /// Whether translation is requested for localization strings in the message.
@@ -1361,9 +1379,9 @@ interface bedrock-packets {
   }
   /// Sent by the server to send all crafting and smelting recipes available in the world.
   record c-crafting-data {
-    /// List of shaped and shapeless crafting recipes.
+    /// Additional shaped and shapeless recipes (or incremental recipes when `clean_recipes` is false).
     recipes: list<bedrock-recipe>,
-    /// Whether previous recipe entries should be cleared on the client.
+    /// Whether previous recipe entries should be cleared and replaced with the full static + dynamic set.
     clean-recipes: bool,
   }
   /// Sent by the server to populate the creative inventory menu with item categories, groups, and items.
@@ -2593,6 +2611,8 @@ interface bedrock-packets {
     s-container-close(s-container-close),
     /// Sent by the client to signal the start and stop of a cursor item drag operation across inventory slots.
     s-cursor-item-drag(s-cursor-item-drag),
+    /// Sent by a Bedrock client (including split-screen sub-clients) when cleanly leaving the server.
+    s-disconnect(s-disconnect),
     /// Transmits player emote animations to the server and broadcasts them to nearby players.
     s-emote(s-emote),
     /// Sent by the client to provide the server with a list of all emotes unlocked and equipped by the player.
@@ -2641,6 +2661,8 @@ interface bedrock-packets {
     s-set-player-inventory-options(s-set-player-inventory-options),
     /// Sent by the client when selecting a recipe in the stonecutter container.
     s-stonecutter-set-recipe(s-stonecutter-set-recipe),
+    /// Sent by a split-screen sub-client over an existing Bedrock connection to authenticate and join.
+    s-sub-client-login(s-sub-client-login),
     /// Transmits in-game chat messages, system alerts, popups, and raw JSON text between client and server.
     s-text(s-text),
     unknown,
@@ -2784,7 +2806,7 @@ interface bedrock-packets {
     c-update-equip(c-update-equip),
     /// Opens or refreshes a Bedrock merchant screen with its complete offer list.
     c-update-trade(c-update-trade),
-    /// Sends custom collision and selection voxel shapes to the client.
+    /// Sends collision and selection voxel shapes to the client before `CStartGame`.
     c-voxel-shapes,
     unknown,
   }

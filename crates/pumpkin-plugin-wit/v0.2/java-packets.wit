@@ -540,8 +540,7 @@ interface java-packets {
   enum test-instance-block-status {
     cleared,
     running,
-    success,
-    failed,
+    finished,
   }
   record s-update-sign {
     location: tuple<s32, s32, s32>,
@@ -2149,9 +2148,8 @@ interface java-packets {
     on-ground: bool,
   }
   record c-test-instance-block-status {
-    pos: tuple<s32, s32, s32>,
-    status: s32,
-    message: option<string>,
+    status: string,
+    size: option<list<s32>>,
   }
   record c-ticking-state {
     tick-rate: f32,

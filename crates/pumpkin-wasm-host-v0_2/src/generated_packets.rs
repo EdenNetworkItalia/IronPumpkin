@@ -3514,6 +3514,16 @@ pub fn deserialize_bedrock_serverbound_packet(
                 state: p.state.try_into().ok()?,
             }))
         }
+        id if id == <pumpkin_protocol::bedrock::server::SDisconnect as pumpkin_protocol::Packet>::PACKET_ID as i32 => {
+            use pumpkin_protocol::BServerPacket;
+            let p = <pumpkin_protocol::bedrock::server::SDisconnect as pumpkin_protocol::BServerPacket>::read(&mut Cursor::new(payload)).ok()?;
+            Some(BServerboundPacket::SDisconnect(crate::pumpkin::plugin::bedrock_packets::SDisconnect {
+                reason: p.reason.0.try_into().ok()?,
+                skip_message: p.skip_message.try_into().ok()?,
+                message: p.message.into(),
+                filtered_message: p.filtered_message.into(),
+            }))
+        }
         id if id == <pumpkin_protocol::bedrock::server::SPacketViolationWarning as pumpkin_protocol::Packet>::PACKET_ID as i32 => {
             use pumpkin_protocol::BServerPacket;
             let p = <pumpkin_protocol::bedrock::server::SPacketViolationWarning as pumpkin_protocol::BServerPacket>::read(&mut Cursor::new(payload)).ok()?;
