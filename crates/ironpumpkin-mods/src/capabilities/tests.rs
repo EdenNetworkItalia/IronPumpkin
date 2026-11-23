@@ -35,6 +35,7 @@ use pumpkin_data::{
         ChestLikeProperties, ChestType, DispenserLikeProperties, Facing, HorizontalFacing,
     },
     dimension::Dimension,
+    entity::EntityType,
     item::Item,
     item_stack::ItemStack,
 };
@@ -717,6 +718,65 @@ fn a_hopper_pushes_into_the_item_capability_of_a_plain_block() {
     hopper.tick(&test.world);
     assert_eq!(handler.get_amount_as_long(0), 1);
     assert_eq!(hopper.get_stack(0).item_count, 2);
+}
+
+/// The item entities in `world`.
+fn items_in(test: &TestWorld) -> usize {
+    test.world
+        .entities
+        .load()
+        .iter()
+        .filter(|entity| entity.get_entity().entity_type.id == EntityType::ITEM.id)
+        .count()
+}
+
+/// `VanillaInventoryCodeHooks.insertHook` with a refused insert: the item goes back to the
+/// hopper and to the dropper, and none drops into the world.
+#[test]
+fn a_refused_capability_insert_keeps_the_item() {
+    use pumpkin_core::block::entities::dropper::DropperBlockEntity;
+
+    let test = TestWorld::new();
+    let target = pos(8, 63, 12);
+    test.place(target, Block::DRIED_KELP_BLOCK.default_state.id);
+    // The one slot holds an emerald, so it refuses a diamond and a gold ingot.
+    let handler = plain_block(target, Some(ItemStack::new(1, &Item::EMERALD)));
+    let hopper = hopper_at(&test, target.up(), Some(ItemStack::new(3, &Item::DIAMOND)));
+    let items_before = items_in(&test);
+    hopper.tick(&test.world);
+    assert_eq!(handler.get_amount_as_long(0), 1);
+    let kept = hopper.get_stack(0);
+    assert_eq!((kept.item.id, kept.item_count), (Item::DIAMOND.id, 3));
+
+    let at = pos(10, 64, 12);
+    test.place(at.down(), Block::DRIED_KELP_BLOCK.default_state.id);
+    let dropper_target = plain_block(at.down(), Some(ItemStack::new(1, &Item::EMERALD)));
+    let mut props = DispenserLikeProperties::from_state_id(Block::DROPPER.default_state.id);
+    props.facing = Facing::Down;
+    test.place(at, props.to_state_id(&Block::DROPPER));
+    let dropper = Arc::new(DropperBlockEntity::new(at));
+    dropper.set_stack(0, ItemStack::new(2, &Item::GOLD_INGOT));
+    test.world.add_block_entity(dropper.clone());
+    let Some(behaviour) = test
+        .world
+        .block_registry
+        .get_pumpkin_block(Block::DROPPER.id)
+    else {
+        panic!("the dropper has no behaviour");
+    };
+    behaviour.on_scheduled_tick(OnScheduledTickArgs {
+        world: &test.world,
+        block: &Block::DROPPER,
+        position: &at,
+    });
+    assert_eq!(dropper_target.get_amount_as_long(0), 1);
+    let kept = dropper.get_stack(0);
+    assert_eq!((kept.item.id, kept.item_count), (Item::GOLD_INGOT.id, 2));
+    assert_eq!(
+        items_in(&test),
+        items_before,
+        "an item dropped into the world"
+    );
 }
 
 #[test]
