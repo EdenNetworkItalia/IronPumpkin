@@ -66,6 +66,7 @@ use tracing::{error, info};
 #[doc(hidden)]
 pub use inventory;
 
+pub use pumpkin_codecs;
 pub use pumpkin_core;
 pub use pumpkin_data;
 pub use pumpkin_macros;
@@ -159,6 +160,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/capabilities.md")]
     struct Capabilities;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/data-maps.md")]
+    struct DataMaps;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/shapes.md")]
     struct Shapes;
