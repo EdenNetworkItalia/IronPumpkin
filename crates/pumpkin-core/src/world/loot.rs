@@ -15,6 +15,7 @@ pub use pumpkin_util::loot_table::{
 use pumpkin_util::random::{RandomImpl, xoroshiro128::Xoroshiro};
 
 mod generation;
+pub mod modifiers;
 mod predicates;
 
 #[derive(Default, Clone)]
@@ -418,22 +419,46 @@ pub fn generate_dynamic_loot_with_context(
     generation::generate(generation::Table::Dynamic(table), seed, params)
 }
 
-/// A handle to either a compile-time static loot table or a datapack dynamic loot table.
+/// Either a compile-time static loot table or a datapack dynamic loot table.
 #[derive(Clone, Debug)]
-pub enum LootTableHandle {
+pub enum LootTableRef {
     Static(&'static LootTable),
     Dynamic(std::sync::Arc<DynamicLootTable>),
 }
 
+/// A loot table and the id it was looked up by, which loot modifiers test.
+#[derive(Clone, Debug)]
+pub struct LootTableHandle {
+    pub table: LootTableRef,
+    /// `None` for a table that no id names.
+    pub id: Option<String>,
+}
+
+impl LootTableHandle {
+    #[must_use]
+    pub const fn new(table: LootTableRef, id: String) -> Self {
+        Self {
+            table,
+            id: Some(id),
+        }
+    }
+}
+
 impl From<&'static LootTable> for LootTableHandle {
     fn from(t: &'static LootTable) -> Self {
-        Self::Static(t)
+        Self {
+            table: LootTableRef::Static(t),
+            id: None,
+        }
     }
 }
 
 impl From<std::sync::Arc<DynamicLootTable>> for LootTableHandle {
     fn from(t: std::sync::Arc<DynamicLootTable>) -> Self {
-        Self::Dynamic(t)
+        Self {
+            table: LootTableRef::Dynamic(t),
+            id: None,
+        }
     }
 }
 
@@ -533,9 +558,9 @@ pub fn get_loot_table(key: &str) -> Option<LootTableHandle> {
     } else {
         format!("minecraft:{key}")
     };
-    pumpkin_data::loot_table::get_loot_table(key)
-        .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))
-        .map(LootTableHandle::Static)
+    let table = pumpkin_data::loot_table::get_loot_table(key)
+        .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))?;
+    Some(LootTableHandle::new(LootTableRef::Static(table), full_key))
 }
 
 #[must_use]
@@ -544,9 +569,12 @@ pub fn generate_loot_from_handle(
     seed: i64,
     params: &LootContextParameters,
 ) -> Vec<ItemStack> {
-    match handle {
-        LootTableHandle::Static(table) => generate_loot_with_context(table, seed, params),
-        LootTableHandle::Dynamic(table) => generate_dynamic_loot_with_context(table, seed, params),
+    if let Some(modifiers) = modifiers::active(params) {
+        return modifiers::generate(handle, seed, params, &modifiers);
+    }
+    match &handle.table {
+        LootTableRef::Static(table) => generate_loot_with_context(table, seed, params),
+        LootTableRef::Dynamic(table) => generate_dynamic_loot_with_context(table, seed, params),
     }
 }
 

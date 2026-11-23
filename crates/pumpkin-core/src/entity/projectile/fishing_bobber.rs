@@ -7,7 +7,9 @@ use crate::entity::item::ItemEntity;
 use crate::entity::projectile::{
     ProjectileHit, get_hit_result_on_move_vector, hit_target_or_deflect_self,
 };
-use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
+use crate::world::loot::{
+    LootContextParameters, LootTableHandle, LootTableRef, generate_loot_from_handle,
+};
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
@@ -106,9 +108,12 @@ impl FishingBobberEntity {
                     s.datapack_manager
                         .get_loot_table("minecraft:gameplay/fishing")
                 })
-                .unwrap_or(LootTableHandle::Static(
-                    &pumpkin_data::loot_table::GAMEPLAY_FISHING,
-                ));
+                .unwrap_or_else(|| {
+                    LootTableHandle::new(
+                        LootTableRef::Static(&pumpkin_data::loot_table::GAMEPLAY_FISHING),
+                        "minecraft:gameplay/fishing".to_owned(),
+                    )
+                });
             let items = generate_loot_from_handle(&handle, 0, &params);
             let delta = player_pos - bobber_pos;
             let vy = delta.y * 0.1 + delta.length().sqrt() * 0.08;

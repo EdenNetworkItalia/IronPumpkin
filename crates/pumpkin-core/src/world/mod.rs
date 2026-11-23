@@ -8283,9 +8283,12 @@ impl World {
                 } else {
                     format!("minecraft:{key}")
                 };
-                pumpkin_data::loot_table::get_loot_table(key)
-                    .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))
-                    .map(crate::world::loot::LootTableHandle::Static)
+                let table = pumpkin_data::loot_table::get_loot_table(key)
+                    .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))?;
+                Some(crate::world::loot::LootTableHandle::new(
+                    crate::world::loot::LootTableRef::Static(table),
+                    full_key,
+                ))
             },
             |server| server.datapack_manager.get_loot_table(key),
         )

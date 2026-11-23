@@ -5,6 +5,7 @@ pub mod dynamic_registry_loader;
 pub mod dynamic_registry_manager;
 pub mod function_loader;
 pub mod item_modifier_loader;
+pub mod loot_modifier_loader;
 pub mod loot_table_loader;
 pub mod predicate_loader;
 pub mod recipe_loader;
@@ -30,7 +31,8 @@ use pumpkin_util::loot_table::DynamicLootTable;
 use crate::command::context::command_source::CommandSource;
 use crate::server::Server;
 use crate::server::recipe::RecipeManager;
-use crate::world::loot::LootTableHandle;
+use crate::world::loot::modifiers::LootModifiers;
+use crate::world::loot::{LootTableHandle, LootTableRef};
 
 use self::context_provider_loader::ContextProviderRegistry;
 use self::damage_type_loader::{DamageTypeDefinition, DamageTypeEntry, DamageTypeRegistry};
@@ -86,6 +88,7 @@ pub struct DatapackManager {
     context_float_providers: RwLock<ContextProviderRegistry>,
     damage_types: RwLock<DamageTypeRegistry>,
     loot_tables: RwLock<HashMap<String, Arc<DynamicLootTable>>>,
+    loot_modifiers: RwLock<Arc<LootModifiers>>,
     dynamic_registries: RwLock<HashMap<String, HashMap<String, RegistryEntryData>>>,
     pub dynamic_registry_manager: Arc<dynamic_registry_manager::DynamicRegistryManager>,
     trade_registry: RwLock<TradeRegistry>,
@@ -123,6 +126,7 @@ impl DatapackManager {
             context_float_providers: RwLock::new(HashMap::new()),
             damage_types: RwLock::new(HashMap::new()),
             loot_tables: RwLock::new(HashMap::new()),
+            loot_modifiers: RwLock::default(),
             dynamic_registries: RwLock::new(HashMap::new()),
             dynamic_registry_manager: Arc::new(
                 dynamic_registry_manager::DynamicRegistryManager::new(
@@ -156,6 +160,7 @@ impl DatapackManager {
         let mut all_context_float_providers: ContextProviderRegistry = HashMap::new();
         let mut all_damage_type_defs: HashMap<String, DamageTypeDefinition> = HashMap::new();
         let mut all_loot_tables: HashMap<String, Arc<DynamicLootTable>> = HashMap::new();
+        let mut all_loot_modifiers = loot_modifier_loader::LootModifierFiles::new();
 
         // Embedded test instances are compile-time constants and always load,
         // so on-disk packs can override them by id.
@@ -195,6 +200,7 @@ impl DatapackManager {
             context_int_providers: &mut all_context_int_providers,
             context_float_providers: &mut all_context_float_providers,
             loot_tables: &mut all_loot_tables,
+            loot_modifiers: &mut all_loot_modifiers,
             dynamic_registries: &mut all_dynamic_registries,
             trade_registry: &mut all_trade_registry,
             advancements: &mut all_advancements,
@@ -258,6 +264,12 @@ impl DatapackManager {
             .loot_tables
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = all_loot_tables;
+        let loot_modifiers =
+            loot_modifier_loader::decode_loot_modifiers(all_loot_modifiers, &all_predicates);
+        *self
+            .loot_modifiers
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Arc::new(loot_modifiers);
         *self
             .dynamic_registries
             .write()
@@ -526,12 +538,24 @@ impl DatapackManager {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
         if let Some(table) = guard.get(&full_key).or_else(|| guard.get(key)) {
-            return Some(LootTableHandle::Dynamic(table.clone()));
+            return Some(LootTableHandle::new(
+                LootTableRef::Dynamic(table.clone()),
+                full_key,
+            ));
         }
 
-        pumpkin_data::loot_table::get_loot_table(key)
-            .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))
-            .map(LootTableHandle::Static)
+        let table = pumpkin_data::loot_table::get_loot_table(key)
+            .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))?;
+        Some(LootTableHandle::new(LootTableRef::Static(table), full_key))
+    }
+
+    /// The global loot modifiers of the last data load, in application order.
+    #[must_use]
+    pub fn get_loot_modifiers(&self) -> Arc<LootModifiers> {
+        self.loot_modifiers
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 
     #[must_use]
@@ -1520,6 +1544,7 @@ struct PackContentAccumulators<'a> {
     context_int_providers: &'a mut ContextProviderRegistry,
     context_float_providers: &'a mut ContextProviderRegistry,
     loot_tables: &'a mut HashMap<String, Arc<DynamicLootTable>>,
+    loot_modifiers: &'a mut loot_modifier_loader::LootModifierFiles,
     dynamic_registries: &'a mut HashMap<String, HashMap<String, RegistryEntryData>>,
     trade_registry: &'a mut TradeRegistry,
     advancements: &'a mut HashMap<String, advancement_loader::DynamicAdvancementDefinition>,
@@ -1825,6 +1850,15 @@ fn load_pack_contents(
                         acc.loot_tables,
                     );
                 }
+            }
+
+            let lm_dir = ns_path.join("loot_modifiers");
+            if lm_dir.is_dir() {
+                loot_modifier_loader::load_loot_modifiers_from_dir(
+                    &namespace,
+                    &lm_dir,
+                    acc.loot_modifiers,
+                );
             }
 
             // Load advancements
@@ -2295,6 +2329,7 @@ mod tests {
         let mut context_int_providers = std::collections::HashMap::new();
         let mut context_float_providers = std::collections::HashMap::new();
         let mut loot_tables = std::collections::HashMap::new();
+        let mut loot_modifiers = std::collections::HashMap::new();
         let mut dynamic_registries = std::collections::HashMap::new();
         let mut trade_registry = super::TradeRegistry::new();
         let mut advancements = std::collections::HashMap::new();
@@ -2312,6 +2347,7 @@ mod tests {
             context_int_providers: &mut context_int_providers,
             context_float_providers: &mut context_float_providers,
             loot_tables: &mut loot_tables,
+            loot_modifiers: &mut loot_modifiers,
             dynamic_registries: &mut dynamic_registries,
             trade_registry: &mut trade_registry,
             advancements: &mut advancements,
@@ -2375,6 +2411,7 @@ mod tests {
             let mut context_int_providers = std::collections::HashMap::new();
             let mut context_float_providers = std::collections::HashMap::new();
             let mut loot_tables = std::collections::HashMap::new();
+            let mut loot_modifiers = std::collections::HashMap::new();
             let mut dynamic_registries = std::collections::HashMap::new();
             let mut trade_registry = super::TradeRegistry::new();
             let mut advancements = std::collections::HashMap::new();
@@ -2392,6 +2429,7 @@ mod tests {
                 context_int_providers: &mut context_int_providers,
                 context_float_providers: &mut context_float_providers,
                 loot_tables: &mut loot_tables,
+                loot_modifiers: &mut loot_modifiers,
                 dynamic_registries: &mut dynamic_registries,
                 trade_registry: &mut trade_registry,
                 advancements: &mut advancements,
