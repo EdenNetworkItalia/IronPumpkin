@@ -1,3 +1,6 @@
+use std::sync::LazyLock;
+
+use arc_swap::ArcSwapOption;
 use pumpkin_data::{Block, BlockDirection};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::{
@@ -7,12 +10,62 @@ use pumpkin_util::{
 
 use crate::generation::proto_chunk::GenerationCache;
 
-const DUNGEON_MOBS: [&str; 4] = [
+/// `MonsterRoomFeature.MOBS`.
+pub const DUNGEON_MOBS: [&str; 4] = [
     "minecraft:skeleton",
     "minecraft:zombie",
     "minecraft:zombie",
     "minecraft:spider",
 ];
+
+/// The weight that `NeoForge` gives each entry of `DUNGEON_MOBS` in its `monster_room_mobs` data
+/// map.
+pub const DUNGEON_MOB_WEIGHT: i32 = 100;
+
+/// The weighted mobs of the `monster_room_mobs` data map, or `None` for the vanilla pick.
+static MONSTER_ROOM_MOBS: LazyLock<ArcSwapOption<Vec<(String, i32)>>> =
+    LazyLock::new(ArcSwapOption::empty);
+
+/// The mobs of `DUNGEON_MOBS` with the weights of the `NeoForge` default data map, ordered by name.
+#[must_use]
+pub fn vanilla_monster_room_mobs() -> Vec<(String, i32)> {
+    let mut mobs: Vec<(String, i32)> = Vec::new();
+    for mob in DUNGEON_MOBS {
+        match mobs.iter_mut().find(|(name, _)| name == mob) {
+            Some((_, weight)) => *weight += DUNGEON_MOB_WEIGHT,
+            None => mobs.push((mob.to_owned(), DUNGEON_MOB_WEIGHT)),
+        }
+    }
+    mobs.sort();
+    mobs
+}
+
+/// Sets the mobs of `MonsterRoomHooks.onDataMapsUpdated`.
+///
+/// A list that is empty, has no weight or equals the vanilla list keeps the vanilla pick, so a
+/// world with no override generates the same dungeons as vanilla for a seed.
+pub fn set_monster_room_mobs(mut mobs: Vec<(String, i32)>) {
+    mobs.sort();
+    let total: i64 = mobs.iter().map(|(_, weight)| i64::from(*weight)).sum();
+    let custom = total > 0 && total <= i64::from(i32::MAX) && mobs != vanilla_monster_room_mobs();
+    MONSTER_ROOM_MOBS.store(custom.then(|| std::sync::Arc::new(mobs)));
+}
+
+/// `MonsterRoomHooks.getRandomMonsterRoomMob`: a mob of the data map by weight, as
+/// `WeightedList.getRandomOrThrow` picks, or the vanilla pick.
+fn random_mob(random: &mut RandomGenerator) -> String {
+    if let Some(mobs) = MONSTER_ROOM_MOBS.load_full() {
+        let total: i32 = mobs.iter().map(|(_, weight)| *weight).sum();
+        let mut selection = random.next_bounded_i32(total);
+        for (mob, weight) in mobs.iter() {
+            if selection < *weight {
+                return mob.clone();
+            }
+            selection -= weight;
+        }
+    }
+    DUNGEON_MOBS[random.next_bounded_i32(DUNGEON_MOBS.len() as i32) as usize].to_owned()
+}
 
 pub struct DungeonFeature;
 
@@ -159,7 +212,7 @@ impl DungeonFeature {
             }
         }
 
-        let mob = DUNGEON_MOBS[random.next_bounded_i32(DUNGEON_MOBS.len() as i32) as usize];
+        let mob = random_mob(random);
         chunk.set_block_state(&pos.0, Block::SPAWNER.default_state);
 
         let mut entity_nbt = NbtCompound::new();
@@ -170,12 +223,73 @@ impl DungeonFeature {
 
         let mut spawn_entry = NbtCompound::new();
         let mut entity_nbt_inner = NbtCompound::new();
-        entity_nbt_inner.put_string("id", mob.to_string());
+        entity_nbt_inner.put_string("id", mob);
         spawn_entry.put_compound("entity", entity_nbt_inner);
         entity_nbt.put_compound("SpawnData", spawn_entry);
 
         chunk.add_block_entity(&pos.0, entity_nbt);
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use pumpkin_util::random::legacy_rand::LegacyRand;
+
+    use super::*;
+
+    /// The mob table is a process-wide static: the tests that set it run one at a time.
+    static TABLE: Mutex<()> = Mutex::new(());
+
+    fn picks(seed: i64, count: usize) -> Vec<String> {
+        let mut random = RandomGenerator::Legacy(LegacyRand::from_seed(seed as u64));
+        (0..count).map(|_| random_mob(&mut random)).collect()
+    }
+
+    #[test]
+    fn a_data_pack_weight_changes_the_spawner_mob() {
+        let _guard = TABLE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_monster_room_mobs(Vec::new());
+        let vanilla = picks(7, 64);
+        assert!(vanilla.iter().any(|mob| mob == "minecraft:skeleton"));
+        set_monster_room_mobs(vec![("mymod:crab".to_owned(), 5)]);
+        assert!(picks(7, 64).iter().all(|mob| mob == "mymod:crab"));
+        set_monster_room_mobs(Vec::new());
+        assert_eq!(picks(7, 64), vanilla);
+    }
+
+    #[test]
+    fn the_default_data_map_keeps_the_vanilla_pick_for_a_seed() {
+        let _guard = TABLE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_monster_room_mobs(Vec::new());
+        let vanilla = picks(11, 64);
+        set_monster_room_mobs(vanilla_monster_room_mobs());
+        assert_eq!(picks(11, 64), vanilla);
+        // A list with no weight cannot pick: the vanilla pick stays.
+        set_monster_room_mobs(vec![("mymod:crab".to_owned(), 0)]);
+        assert_eq!(picks(11, 64), vanilla);
+        set_monster_room_mobs(Vec::new());
+    }
+
+    #[test]
+    fn the_pick_follows_the_weights() {
+        let _guard = TABLE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_monster_room_mobs(vec![
+            ("mymod:rare".to_owned(), 1),
+            ("mymod:common".to_owned(), 9),
+        ]);
+        let picked = picks(3, 2000);
+        let rare = picked.iter().filter(|mob| *mob == "mymod:rare").count();
+        assert!((100..300).contains(&rare), "rare picked {rare} of 2000");
+        set_monster_room_mobs(Vec::new());
     }
 }
