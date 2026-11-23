@@ -7,7 +7,10 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, OnceLock},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use pumpkin_macros::Event;
@@ -103,11 +106,54 @@ pub(crate) fn known_data_maps() -> KnownRegistryDataMapsPayload {
         })
 }
 
+/// The data maps with `mandatorySync`, each as `id (registry)`; empty without a host.
+pub(crate) fn mandatory_data_maps() -> Vec<String> {
+    HOST.get()
+        .map(|host| host.mandatory_data_maps())
+        .unwrap_or_default()
+}
+
 /// The disconnect reason of `RegistryDataMapNegotiation.run` for a client without the channel,
 /// or `None` when no data map has `mandatorySync`.
 pub(crate) fn vanilla_refusal() -> Option<TextComponent> {
-    refusal(&HOST.get()?.mandatory_data_maps())
+    refusal(&mandatory_data_maps())
 }
+
+/// Whether the join sync of a player read the data map values. A `/reload` syncs only the
+/// players with the flag: a player without it reads the new values in its own join sync.
+#[derive(Debug, Default)]
+pub struct JoinedFlag(AtomicBool);
+
+impl JoinedFlag {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    /// The flag is set before the values are read and checked after they are stored, both
+    /// `SeqCst`: a join and a `/reload` that run at once cannot both miss the new values.
+    fn set(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    fn is_set(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl Clone for JoinedFlag {
+    fn clone(&self) -> Self {
+        Self(AtomicBool::new(self.is_set()))
+    }
+}
+
+impl PartialEq for JoinedFlag {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_set() == other.is_set()
+    }
+}
+
+impl Eq for JoinedFlag {}
 
 /// Whether the client gets the sync payloads: a `NeoForge` client with the play channel that
 /// named data maps in its reply.
@@ -142,17 +188,25 @@ pub(crate) fn after_load(server: &Arc<Server>, reload: bool) {
     host.load(server);
     if reload {
         for player in server.get_all_players() {
-            sync_player(&player);
+            if player.negotiated_state().data_maps_joined.is_set() {
+                send_sync(*host, &player);
+            }
         }
     }
 }
 
-/// Sends the synced data maps to the client of `player`, as `NeoForgeEventHandler.onDpSync`
-/// does: only to a client with the channel that answered the negotiation.
+/// The join sync: sends the synced data maps to the client of `player`, as
+/// `NeoForgeEventHandler.onDpSync` does on `PlayerList.placeNewPlayer`.
 pub(crate) fn sync_player(player: &Player) {
     let Some(host) = HOST.get() else {
         return;
     };
+    player.negotiated_state().data_maps_joined.set();
+    send_sync(*host, player);
+}
+
+/// Sends the values only to a client with the channel that answered the negotiation.
+fn send_sync(host: &dyn DataMapHost, player: &Player) {
     let state = player.negotiated_state();
     if !syncs(state) {
         return;
@@ -216,6 +270,19 @@ mod tests {
         state.known_data_maps = known;
         state.connection_type = ConnectionType::Other;
         assert!(!syncs(&state), "a vanilla client");
+    }
+
+    #[test]
+    fn the_joined_flag_starts_clear_and_clones_its_value() {
+        let flag = JoinedFlag::new();
+        assert!(!flag.is_set());
+        assert_eq!(flag, JoinedFlag::default());
+        flag.set();
+        assert!(flag.is_set());
+        let copy = flag.clone();
+        assert!(copy.is_set());
+        assert_ne!(flag, JoinedFlag::new());
+        assert!(!NegotiatedState::default().data_maps_joined.is_set());
     }
 
     #[test]
