@@ -3369,6 +3369,7 @@ impl Player {
                             sender.commit_batch(&batch, &encoded, &self.client, current_epoch)
                         },
                     );
+                    crate::plugin::attachments::sync_chunks(&world, self, &sent);
                     self.pair_entities_in_chunks(&world, &sent);
                 }
                 ClientPlatform::Bedrock(bedrock) => {
@@ -4993,6 +4994,7 @@ impl Player {
                 self.send_health();
 
                 new_world.send_world_info(&player);
+                crate::plugin::attachments::sync_player(&player);
                 new_world.send_center_chunk(&player).await;
 
                 player.request_teleport(position, yaw, pitch);

@@ -478,6 +478,7 @@ impl Server {
                 block_registry.clone(),
                 Arc::downgrade(&server),
             ));
+            crate::plugin::attachments::load_level(&world);
             let portal: Arc<dyn WorldPortalExt> = Arc::new(WorldPortal(world.clone()));
             level.world_portal.store(Arc::new(Some(portal)));
             worlds_vec.push(world);
@@ -562,6 +563,7 @@ impl Server {
             pumpkin_world::dimension::into_level(dimension.clone(), &config, world_path, seed);
         let world: World = World::load(level.clone(), l_info, dimension, registry, weak);
         let world = Arc::new(world);
+        crate::plugin::attachments::load_level(&world);
         let portal: Arc<dyn WorldPortalExt> = Arc::new(WorldPortal(world.clone()));
         level.world_portal.store(Arc::new(Some(portal)));
         self.worlds.rcu(|worlds| {

@@ -1732,6 +1732,8 @@ pub struct Entity {
     pub last_sent_velocity: AtomicCell<Vector3<f64>>,
     /// Persistent custom data container for plugins
     pub custom_data: std::sync::Mutex<NbtCompound>,
+    /// The `NeoForge` data attachments of the entity.
+    pub attachments: crate::plugin::attachments::Attachments,
 }
 
 /// Entity bounds that keep the world's spatial queries current when written.
@@ -1994,6 +1996,7 @@ impl Entity {
             last_sent_pos: AtomicCell::new(position),
             last_sent_velocity: AtomicCell::new(Vector3::default()),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
+            attachments: crate::plugin::attachments::Attachments::default(),
         }
     }
 
@@ -6376,6 +6379,8 @@ impl Entity {
         if !custom_data.is_empty() {
             nbt.put_compound("data", custom_data.clone());
         }
+        drop(custom_data);
+        crate::plugin::attachments::write_entity(self, nbt);
     }
 
     fn read_placement_nbt(&self, nbt: &NbtCompound) {
@@ -6486,6 +6491,7 @@ impl Entity {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             custom_data.cloned().unwrap_or_default();
+        crate::plugin::attachments::read_entity(self, nbt);
 
         {
             let mut tags = self

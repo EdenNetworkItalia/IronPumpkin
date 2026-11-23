@@ -44,3 +44,8 @@ ids = 123
 first = "minecraft:custom_data"
 last = "test-mod:test_component"
 at = { 121 = "minecraft:cushion/color" }
+
+# No mod registers a synced attachment type.
+[[registry]]
+name = "neoforge:synced_attachment_types"
+ids = 0
