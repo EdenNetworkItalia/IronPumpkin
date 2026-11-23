@@ -831,6 +831,13 @@ impl pumpkin::plugin::server::HostOpManagerWithStore<PluginHostState> for HasSel
         plugin
             .store
             .pump_blocking(&mut host, move || {
+                if pumpkin_core::plugin::server_events::permission_change_cancelled(
+                    &server,
+                    uuid,
+                    internal_level,
+                ) {
+                    return;
+                }
                 let mut config = server
                     .data
                     .operator_config
@@ -883,6 +890,13 @@ impl pumpkin::plugin::server::HostOpManagerWithStore<PluginHostState> for HasSel
         plugin
             .store
             .pump_blocking(&mut host, move || {
+                if pumpkin_core::plugin::server_events::permission_change_cancelled(
+                    &server,
+                    uuid,
+                    pumpkin_util::PermissionLvl::Zero,
+                ) {
+                    return false;
+                }
                 let removed = {
                     let mut config = server
                         .data

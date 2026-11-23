@@ -27,7 +27,7 @@ const STOP_TIMEOUT: Duration = Duration::from_mins(1);
 /// construction, the local configs load before the common setup, `RegisterPayloadHandlersEvent`
 /// after the load complete, the synced configs after it and before `ServerAboutToStartEvent`,
 /// `ServerStartedEvent` before the first tick, and the level tick inside the server tick.
-const EVENTS: [&str; 17] = [
+const EVENTS: [&str; 18] = [
     "FMLConstructModEvent",
     "ModConfigEvent.Loading STARTUP",
     "EntityAttributeCreationEvent",
@@ -43,6 +43,7 @@ const EVENTS: [&str; 17] = [
     "LevelTickEventPre",
     "LevelTickEventPost",
     "ServerTickEventPost",
+    "GameShuttingDownEvent",
     "ServerStoppingEvent",
     "ServerStoppedEvent",
 ];

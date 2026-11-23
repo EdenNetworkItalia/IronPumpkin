@@ -575,6 +575,30 @@ impl DatapackManager {
         Some(LootTableHandle::new(LootTableRef::Static(table), full_key))
     }
 
+    /// The loot tables that the data packs loaded, sorted by id. The loot tables of the vanilla
+    /// data are compiled in and not in the list.
+    #[must_use]
+    pub fn loaded_loot_tables(&self) -> Vec<(String, Arc<DynamicLootTable>)> {
+        let guard = self
+            .loot_tables
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut tables: Vec<_> = guard
+            .iter()
+            .map(|(id, table)| (id.clone(), table.clone()))
+            .collect();
+        tables.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+        tables
+    }
+
+    /// Replaces the loaded loot tables with the tables of `replacements`, by id.
+    pub fn replace_loot_tables(&self, replacements: Vec<(String, Arc<DynamicLootTable>)>) {
+        self.loot_tables
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend(replacements);
+    }
+
     /// The global loot modifiers of the last data load, in application order.
     #[must_use]
     pub fn get_loot_modifiers(&self) -> Arc<LootModifiers> {
@@ -1101,7 +1125,7 @@ impl DatapackManager {
             server
                 .command_dispatcher
                 .load()
-                .handle_command(source, line);
+                .handle_function_command(source, line);
         })
     }
 

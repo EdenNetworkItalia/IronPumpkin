@@ -10,6 +10,8 @@
 //! 2. After `dedicated_server_setup`, in `RegistrationEvents.init`:
 //!    [`RegisterCapabilitiesEvent`](crate::capabilities::RegisterCapabilitiesEvent), once per
 //!    listener priority, then [`ExtendPoiTypesEvent`].
+//! 3. After the last lifecycle step, when the server builds its pack list:
+//!    [`AddPackFindersEvent`].
 //!
 //! Every event fires before the freeze of the content registry, so a mod names entries by
 //! `namespace:path`, as `registry` does: a mod entry has no id yet. A name without a namespace is
@@ -55,6 +57,7 @@ use std::{fmt, sync::Arc};
 
 use pumpkin_core::{
     content::{attributes, poi, spawn_placements},
+    data::datapack::mod_packs::{ModDataPack, PackFiles},
     world::World,
 };
 use pumpkin_data::{
@@ -98,6 +101,9 @@ pub enum RegistrationError {
     SpawnPlacementWithoutReplace(String),
     /// The block is already in a POI type. `NeoForge`: "is defined in more than one `PoI` type".
     DuplicatePoiBlock { block: String, poi_type: String },
+    /// A pack id must have lowercase ASCII letters, digits, `_`, `-` and `.`, and start with a
+    /// letter or a digit: it names a folder of `mod_data`.
+    InvalidPackId(String),
     /// The content registry refused the registration, for example after the freeze.
     Registry(RegistryError),
 }
@@ -123,6 +129,10 @@ impl fmt::Display for RegistrationError {
             Self::DuplicatePoiBlock { block, poi_type } => write!(
                 f,
                 "block \"{block}\" is already in the POI type \"{poi_type}\""
+            ),
+            Self::InvalidPackId(id) => write!(
+                f,
+                "pack id \"{id}\" must have lowercase letters, digits, '_', '-' and '.' and start with a letter or a digit"
             ),
             Self::Registry(error) => error.fmt(f),
         }
@@ -445,6 +455,83 @@ pub fn spawn_predicate(
     predicate: impl Fn(&'static EntityType, &World, &BlockPos) -> bool + Send + Sync + 'static,
 ) -> SpawnPredicate {
     Arc::new(predicate)
+}
+
+/// `PackType`: the kind of resources of a pack. A server reads data packs only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PackType {
+    /// The resource packs of a client. The server never fires an event for them.
+    ClientResources,
+    /// The data packs of a server.
+    ServerData,
+}
+
+/// `AddPackFindersEvent`: adds data packs to the server pack list, after the packs that the mods
+/// ship with [`NativeMod::data_pack`](crate::NativeMod::data_pack).
+///
+/// `NeoForge` fires it for each pack type when it builds the pack repository, after the mod
+/// lifecycle: here once, after `load_complete` and the payload handler registration, with
+/// [`PackType::ServerData`]. An added pack loads as a mod pack in the order of the mods and of
+/// the calls: the packs of the mods first, then the added packs, all below the data packs of the
+/// world. The server writes it to `mod_data/<pack id>/` and names it `mod/<pack id>`, as it does
+/// a pack of a mod. A pack id must not be a mod id or the id of another added pack: the server
+/// stops after the step, before the first world loads.
+#[derive(Debug)]
+pub struct AddPackFindersEvent {
+    error: FirstError,
+    packs: Vec<ModDataPack>,
+}
+
+impl RegistrationEvent for AddPackFindersEvent {
+    const NAME: &'static str = "AddPackFindersEvent";
+
+    fn new() -> Self {
+        Self {
+            error: FirstError::default(),
+            packs: Vec::new(),
+        }
+    }
+
+    fn take_error(&mut self) -> Option<RegistrationError> {
+        self.error.0.take()
+    }
+}
+
+impl AddPackFindersEvent {
+    /// The type of the packs to add (`getPackType`).
+    #[must_use]
+    pub const fn pack_type(&self) -> PackType {
+        PackType::ServerData
+    }
+
+    /// Adds the pack `files` under `pack_id` (`addRepositorySource`).
+    ///
+    /// # Errors
+    ///
+    /// [`RegistrationError::InvalidPackId`].
+    pub fn add_pack(&mut self, pack_id: &str, files: PackFiles) -> Result<(), RegistrationError> {
+        let valid = pack_id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '_' | '-' | '.'))
+            && pack_id
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit());
+        let result = if valid {
+            self.packs.push(ModDataPack {
+                mod_id: pack_id.to_owned(),
+                files,
+            });
+            Ok(())
+        } else {
+            Err(RegistrationError::InvalidPackId(pack_id.to_owned()))
+        };
+        self.error.keep(result)
+    }
+
+    pub(crate) fn take_packs(&mut self) -> Vec<ModDataPack> {
+        std::mem::take(&mut self.packs)
+    }
 }
 
 /// `BlockEntityTypeAddBlocksEvent`: adds mod blocks to the valid blocks of a vanilla block entity

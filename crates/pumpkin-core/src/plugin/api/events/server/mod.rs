@@ -1,4 +1,6 @@
+pub mod command_event;
 pub mod config_custom_payload;
+pub mod datapack_events;
 pub mod list_ping;
 pub mod map_initialize;
 pub mod packet;
@@ -14,7 +16,9 @@ pub mod service_register;
 pub mod service_unregister;
 pub mod tab_complete;
 
+pub use command_event::*;
 pub use config_custom_payload::*;
+pub use datapack_events::*;
 pub use list_ping::*;
 pub use map_initialize::*;
 pub use packet::*;

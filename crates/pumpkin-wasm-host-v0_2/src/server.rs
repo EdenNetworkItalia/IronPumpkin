@@ -689,6 +689,13 @@ impl pumpkin::plugin::server::HostOpManagerWithStore<PluginHostState> for HasSel
         let internal_level = from_wit_permission_level(level);
 
         run_blocking(accessor, move || {
+            if pumpkin_core::plugin::server_events::permission_change_cancelled(
+                &server,
+                uuid,
+                internal_level,
+            ) {
+                return;
+            }
             let mut config = server.data.operator_config.write_ignore_poison();
             if let Some(existing) = config.ops.iter_mut().find(|o| o.uuid == uuid) {
                 existing.level = internal_level;
@@ -719,6 +726,13 @@ impl pumpkin::plugin::server::HostOpManagerWithStore<PluginHostState> for HasSel
         let uuid = WitUuid::from_wit(&id);
 
         run_blocking(accessor, move || {
+            if pumpkin_core::plugin::server_events::permission_change_cancelled(
+                &server,
+                uuid,
+                pumpkin_util::PermissionLvl::Zero,
+            ) {
+                return false;
+            }
             let removed = {
                 let mut config = server.data.operator_config.write_ignore_poison();
                 config

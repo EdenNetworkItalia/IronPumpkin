@@ -24,7 +24,7 @@ use crate::plugin::loader::PluginLoader;
 use crate::plugin::server::server_command::ServerCommandEvent;
 use crate::server::{Server, ticker::Ticker};
 use plugin::server::server_lifecycle::{
-    ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
+    GameShuttingDownEvent, ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
 };
 use plugin::server::server_load::{LoadType, ServerLoadEvent};
 use pumpkin_config::{AdvancedConfiguration, BasicConfiguration, TelemetryConfig};
@@ -607,6 +607,10 @@ impl PumpkinServer {
         if let Some(ticker) = ticker {
             join_ticker(&self.server, ticker).await;
         }
+        self.server
+            .plugin_manager
+            .fire_with(&self.server, || GameShuttingDownEvent)
+            .await;
         self.server
             .plugin_manager
             .fire_with(&self.server, || ServerStoppingEvent)

@@ -1,0 +1,531 @@
+//! The `NeoForge` server, data pack and command events of the root `event` package (issue #178):
+//! `CommandEvent`, `PermissionsChangedEvent`, `TagsUpdatedEvent.ServerDataLoad`,
+//! `OnDatapackSyncEvent`, `LootTableLoadEvent` and `AddServerReloadListenersEvent`, against a
+//! server of the support module.
+//!
+//! The handlers stay registered on the shared server, so each test filters the events that it
+//! owns by the command, the player name or the loot table id.
+#![expect(
+    clippy::unwrap_used,
+    reason = "a test fails on the first missing value"
+)]
+
+mod support;
+
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use pumpkin_core::{
+    command::CommandSender,
+    data::datapack::mod_packs::{ModDataPack, PackFiles},
+    entity::player::Player,
+    net::java::neoforge::NegotiatedState,
+    plugin::{
+        BoxFuture, EventHandler, EventPriority, ParentEventHandler, Payload,
+        player::PermissionsChangedEvent,
+        server::{
+            AddServerReloadListenersEvent, CommandEvent, LootTableLoadEvent, OnDatapackSyncEvent,
+            ReloadListener, ReloadListenerError, TagsUpdatedEvent, TagsUpdatedEventServerDataLoad,
+        },
+        server_events,
+    },
+    server::{Server, recipe::RecipeManager},
+};
+use pumpkin_data::game_rules::GameRule;
+use pumpkin_util::PermissionLvl;
+
+type Log = Arc<Mutex<Vec<String>>>;
+
+fn log() -> Log {
+    Arc::new(Mutex::new(Vec::new()))
+}
+
+fn push(log: &Log, entry: impl Into<String>) {
+    log.lock().unwrap().push(entry.into());
+}
+
+fn entries(log: &Log) -> Vec<String> {
+    log.lock().unwrap().clone()
+}
+
+/// A blocking handler that runs a closure on the event.
+struct Blocking<E, F>(F, PhantomData<fn() -> E>);
+
+impl<E, F> EventHandler<E> for Blocking<E, F>
+where
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync,
+{
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut E,
+    ) -> BoxFuture<'a, ()> {
+        (self.0)(event);
+        Box::pin(async {})
+    }
+}
+
+/// Registers a blocking handler for `E` with priority `Normal`.
+fn on<E, F>(handler: F)
+where
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync + 'static,
+{
+    support::server().plugin_manager.register_with::<E, _>(
+        Arc::new(Blocking(handler, PhantomData)),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+}
+
+fn rule_value(rule: &GameRule) -> String {
+    support::world().get_game_rule(rule).to_string()
+}
+
+/// Runs `command` as the console, without feedback.
+fn run_as_console(command: &str) {
+    let server = support::server();
+    let source = CommandSender::Console.into_source(server).with_silent();
+    server
+        .command_dispatcher
+        .load()
+        .handle_command(&source, command);
+}
+
+/// `CommandEvent` fires for a console command, with the command and the sender, before the
+/// parse. A cancel stops the command.
+#[test]
+fn cancel_command_event() {
+    let _serial = support::serial();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    let command = format!("gamerule {} true", GameRule::KeepInventory);
+    let watched = command.clone();
+    on::<CommandEvent, _>(move |event| {
+        if event.command == watched {
+            push(
+                &seen_by_handler,
+                format!("{} {}", event.source.name, event.source.output),
+            );
+            event.cancelled = true;
+        }
+    });
+    support::world().set_game_rule(
+        &GameRule::KeepInventory,
+        pumpkin_data::game_rules::GameRuleValue::Bool(false),
+    );
+
+    run_as_console(&command);
+
+    assert_eq!(entries(&seen), ["Server Server"]);
+    assert_eq!(rule_value(&GameRule::KeepInventory), "false");
+}
+
+/// A handler replaces the parse result: it sets `command`, and the dispatcher parses and runs the
+/// new command. A leading slash is not part of `command`.
+#[test]
+fn replace_the_command_of_a_command_event() {
+    let _serial = support::serial();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    let rule = GameRule::RandomTickSpeed;
+    let old_command = format!("gamerule {rule} 11");
+    let new_command = format!("gamerule {rule} 12");
+    let (watched, replacement) = (old_command.clone(), new_command);
+    on::<CommandEvent, _>(move |event| {
+        if event.command == watched {
+            push(&seen_by_handler, event.command.clone());
+            event.command.clone_from(&replacement);
+        }
+    });
+
+    run_as_console(&format!("/{old_command}"));
+
+    assert_eq!(entries(&seen), [old_command]);
+    assert_eq!(rule_value(&GameRule::RandomTickSpeed), "12");
+}
+
+/// A player command reaches the event with the player as the sender. A cancel with an exception
+/// stops the command and sends the message to the sender.
+#[test]
+fn command_event_from_a_player_with_an_exception() {
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("CommandEventPlayer");
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    let command = format!("gamerule {} false", GameRule::FireDamage);
+    let watched = command.clone();
+    on::<CommandEvent, _>(move |event| {
+        if event.command == watched {
+            let name = event
+                .source
+                .output
+                .as_player()
+                .map(|player| player.gameprofile.name.clone());
+            push(&seen_by_handler, format!("{name:?}"));
+            event.exception = Some("blocked by a mod".to_owned());
+            event.cancelled = true;
+        }
+    });
+
+    let source = CommandSender::Player(player).into_source(server);
+    server
+        .command_dispatcher
+        .load()
+        .handle_command(&source, &command);
+
+    assert_eq!(entries(&seen), ["Some(\"CommandEventPlayer\")"]);
+    assert_eq!(rule_value(&GameRule::FireDamage), "true");
+}
+
+/// A command of a function is not a command that a sender performs: it fires no `CommandEvent`.
+#[test]
+fn a_function_line_fires_no_command_event() {
+    let _serial = support::serial();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    let command = format!("gamerule {} true", GameRule::FreezeDamage);
+    let watched = command.clone();
+    on::<CommandEvent, _>(move |event| {
+        if event.command == watched {
+            push(&seen_by_handler, event.command.clone());
+        }
+    });
+    let server = support::server();
+    let source = CommandSender::Console.into_source(server).with_silent();
+
+    server
+        .command_dispatcher
+        .load()
+        .handle_function_command(&source, &command);
+    assert!(entries(&seen).is_empty());
+
+    server
+        .command_dispatcher
+        .load()
+        .handle_command(&source, &command);
+    assert_eq!(entries(&seen).len(), 1);
+}
+
+/// `PlayerCommandPreprocessEvent` fires for a player command before `CommandEvent`; a handler
+/// replaces or cancels the command.
+#[test]
+fn player_command_preprocess_event_replaces_and_cancels() {
+    use pumpkin_core::plugin::player::PlayerCommandPreprocessEvent;
+
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("PreprocessPlayer");
+    on::<PlayerCommandPreprocessEvent, _>(|event| {
+        if event.player.gameprofile.name == "PreprocessPlayer" {
+            if event.command == "old" {
+                event.command = "new".to_owned();
+            } else if event.command == "stop" {
+                event.cancelled = true;
+            }
+        }
+    });
+
+    let run = |command: &str| {
+        support::RUNTIME.block_on(server_events::preprocess_command(server, &player, command))
+    };
+
+    assert_eq!(run("old").as_deref(), Some("new"));
+    assert_eq!(run("stop"), None);
+    assert_eq!(run("other").as_deref(), Some("other"));
+}
+
+fn op_level(server: &Server, player: &Player) -> Option<PermissionLvl> {
+    server
+        .data
+        .operator_config
+        .read()
+        .unwrap()
+        .get_entry(&player.gameprofile.id)
+        .map(|entry| entry.level)
+}
+
+/// `PermissionsChangedEvent` fires on `/op` and `/deop` of an online player, with the old and
+/// the new level. A cancel keeps the old level.
+#[test]
+fn permissions_changed_event_of_op_and_deop() {
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("PermissionPlayer");
+    let op_level_of_server = server.basic_config.op_permission_level;
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<PermissionsChangedEvent, _>(move |event| {
+        if event.player.gameprofile.name == "PermissionPlayer" {
+            push(
+                &seen_by_handler,
+                format!("{:?} -> {:?}", event.old_level, event.new_level),
+            );
+        }
+    });
+
+    run_as_console("op PermissionPlayer");
+    assert_eq!(op_level(server, &player), Some(op_level_of_server));
+    run_as_console("deop PermissionPlayer");
+    assert_eq!(op_level(server, &player), None);
+
+    assert_eq!(
+        entries(&seen),
+        [
+            format!("{:?} -> {op_level_of_server:?}", PermissionLvl::Zero),
+            format!("{op_level_of_server:?} -> {:?}", PermissionLvl::Zero),
+        ]
+    );
+}
+
+/// A cancel of `PermissionsChangedEvent` stops the op and the deop: the op list and the level of
+/// the player stay as they are.
+#[test]
+fn cancel_permissions_changed_event() {
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("CancelledOp");
+    on::<PermissionsChangedEvent, _>(|event| {
+        if event.player.gameprofile.name == "CancelledOp" {
+            event.cancelled = true;
+        }
+    });
+
+    run_as_console("op CancelledOp");
+
+    assert_eq!(op_level(server, &player), None);
+    assert_eq!(player.permission_lvl.load(), PermissionLvl::Zero);
+}
+
+/// `TagsUpdatedEvent.ServerDataLoad` fires after a reload of the data packs, and a handler on
+/// the parent `TagsUpdatedEvent` gets it. `OnDatapackSyncEvent` fires for all players at the same
+/// reload.
+#[test]
+fn tags_updated_and_datapack_sync_events_after_a_reload() {
+    let _serial = support::serial();
+    let server = support::server();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<TagsUpdatedEventServerDataLoad, _>(move |_event| push(&seen_by_handler, "load"));
+    let seen_by_parent = seen.clone();
+    server
+        .plugin_manager
+        .register_parent::<TagsUpdatedEvent, _>(
+            Arc::new(ParentProbe(seen_by_parent)),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+    let seen_by_sync = seen.clone();
+    on::<OnDatapackSyncEvent, _>(move |event| {
+        push(&seen_by_sync, format!("sync {}", event.player.is_none()));
+    });
+
+    server.reload_datapacks(server);
+
+    assert_eq!(entries(&seen), ["load", "parent", "sync true"]);
+}
+
+struct ParentProbe(Log);
+
+impl ParentEventHandler for ParentProbe {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut (dyn Payload + Send + Sync),
+    ) -> BoxFuture<'a, ()> {
+        if <dyn Payload>::downcast_ref::<TagsUpdatedEventServerDataLoad>(event).is_some() {
+            push(&self.0, "parent");
+        }
+        Box::pin(async {})
+    }
+}
+
+/// `OnDatapackSyncEvent` fires for a joining player before the data maps, with the player.
+#[test]
+fn datapack_sync_event_of_a_join() {
+    let _serial = support::serial();
+    let server = support::server();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<OnDatapackSyncEvent, _>(move |event| {
+        if let Some(player) = &event.player {
+            push(
+                &seen_by_handler,
+                format!(
+                    "{} {}",
+                    player.gameprofile.name,
+                    event.relevant_players(&support::server().clone()).len()
+                ),
+            );
+        }
+    });
+    let (player, _peer) = support::player_with_peer("SyncJoin", NegotiatedState::default());
+    let world = support::world();
+
+    let joined = support::RUNTIME.block_on(async {
+        tokio::time::timeout(
+            Duration::from_secs(120),
+            world.spawn_java_player(&server.basic_config, &player, server),
+        )
+        .await
+    });
+    assert!(joined.is_ok(), "spawn_java_player timed out");
+    support::RUNTIME.block_on(world.remove_player(&player, false));
+
+    assert_eq!(entries(&seen), ["SyncJoin 1"]);
+}
+
+const POOL: &[u8] = br#"{"type":"minecraft:block","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]}"#;
+
+const LOOT_FILES: PackFiles = &[
+    ("data/events/loot_table/kept.json", POOL),
+    ("data/events/loot_table/cancelled.json", POOL),
+    ("data/events/loot_table/replaced.json", POOL),
+];
+
+fn pools(server: &Server, id: &str) -> usize {
+    match server.datapack_manager.get_loot_table(id).unwrap().table {
+        pumpkin_core::world::loot::LootTableRef::Dynamic(table) => table.pools.len(),
+        pumpkin_core::world::loot::LootTableRef::Static(table) => table.pools.len(),
+    }
+}
+
+/// `LootTableLoadEvent` fires once for each loaded table with its id. A cancel loads an empty
+/// table, a replaced table loads as the handler left it, and a table that no handler touches
+/// stays.
+#[test]
+fn loot_table_load_event_replaces_and_cancels() {
+    let _serial = support::serial();
+    let server = support::server();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<LootTableLoadEvent, _>(move |event| {
+        if !event.name.starts_with("events:") {
+            return;
+        }
+        push(&seen_by_handler, event.name.clone());
+        match event.name.as_str() {
+            "events:cancelled" => event.cancelled = true,
+            "events:replaced" => {
+                let mut table = (*event.table).clone();
+                table.pools.clear();
+                event.table = Arc::new(table);
+            }
+            _ => {}
+        }
+    });
+    let world = tempfile::tempdir().unwrap();
+    let mod_root = tempfile::tempdir().unwrap();
+    let pack = ModDataPack {
+        mod_id: "events".to_owned(),
+        files: LOOT_FILES,
+    };
+    server.datapack_manager.load_all_with_mod_packs(
+        world.path(),
+        &[],
+        &RecipeManager::default(),
+        &[pack],
+        mod_root.path(),
+    );
+    assert_eq!(pools(server, "events:kept"), 1);
+
+    server_events::server_data_loaded(server);
+
+    assert_eq!(
+        entries(&seen),
+        ["events:cancelled", "events:kept", "events:replaced"]
+    );
+    assert_eq!(pools(server, "events:kept"), 1);
+    assert_eq!(pools(server, "events:cancelled"), 0);
+    assert_eq!(pools(server, "events:replaced"), 0);
+}
+
+struct Listener(Log, &'static str);
+
+impl ReloadListener for Listener {
+    fn reload(
+        &self,
+        _server: &Arc<Server>,
+        packs: &[pumpkin_core::data::datapack::LoadedDatapack],
+    ) {
+        push(&self.0, format!("{} {}", self.1, packs.len()));
+    }
+}
+
+/// `AddServerReloadListenersEvent` fires at each load: the listeners run in registration order,
+/// a dependency moves a listener behind the one it needs, and a duplicate key, an unknown key
+/// and a cycle are errors.
+#[test]
+fn add_server_reload_listeners_event_runs_the_listeners_in_order() {
+    let _serial = support::serial();
+    let server = support::server();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<AddServerReloadListenersEvent, _>(move |event| {
+        if event
+            .add_listener(
+                "events:late",
+                Arc::new(Listener(seen_by_handler.clone(), "late")),
+            )
+            .is_err()
+        {
+            return;
+        }
+        event
+            .add_listener(
+                "events:early",
+                Arc::new(Listener(seen_by_handler.clone(), "early")),
+            )
+            .unwrap();
+        assert_eq!(
+            event
+                .add_listener(
+                    "events:early",
+                    Arc::new(Listener(seen_by_handler.clone(), "x"))
+                )
+                .unwrap_err(),
+            ReloadListenerError::DuplicateKey("events:early".to_owned())
+        );
+        assert_eq!(
+            event
+                .add_dependency("events:none", "events:late")
+                .unwrap_err(),
+            ReloadListenerError::UnknownKey("events:none".to_owned())
+        );
+        event.add_dependency("events:early", "events:late").unwrap();
+        assert_eq!(event.keys(), ["events:late", "events:early"]);
+    });
+
+    server_events::server_data_loaded(server);
+
+    assert_eq!(
+        entries(&seen),
+        [
+            format!("early {}", server.datapack_manager.get_loaded_packs().len()),
+            format!("late {}", server.datapack_manager.get_loaded_packs().len()),
+        ]
+    );
+}
+
+#[test]
+fn a_cycle_of_reload_listener_dependencies_fails_the_sort() {
+    let mut event = AddServerReloadListenersEvent::default();
+    let seen = log();
+    event
+        .add_listener("a:one", Arc::new(Listener(seen.clone(), "one")))
+        .unwrap();
+    event
+        .add_listener("a:two", Arc::new(Listener(seen, "two")))
+        .unwrap();
+    event.add_dependency("a:one", "a:two").unwrap();
+    event.add_dependency("a:two", "a:one").unwrap();
+
+    assert!(matches!(event.sorted(), Err(ReloadListenerError::Cycle)));
+}

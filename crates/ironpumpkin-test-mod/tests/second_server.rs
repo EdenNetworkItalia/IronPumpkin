@@ -55,11 +55,12 @@ const ONCE: [&str; 7] = [
 
 /// The events of each server, a run of the mod's command, an echo payload and a reload of the
 /// synced config on each server.
-const PER_SERVER: [&str; 9] = [
+const PER_SERVER: [&str; 10] = [
     "ModConfigEvent.Loading SYNCED",
     "ServerAboutToStartEvent",
     "ServerStartingEvent",
     "ServerStartedEvent",
+    "GameShuttingDownEvent",
     "ServerStoppingEvent",
     "ServerStoppedEvent",
     "command",
