@@ -20,9 +20,9 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 327 | 327 | 0 | 0 | 0 | 287 | 73 |
-| Inventory, planned | 408 | 363 | 43 | 2 | 0 | 266 | 50 |
-| Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
+| Inventory, supported | 332 | 332 | 0 | 0 | 0 | 292 | 73 |
+| Inventory, planned | 402 | 357 | 43 | 2 | 0 | 260 | 50 |
+| Inventory, not supported | 149 | 0 | 0 | 1 | 148 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
 
@@ -787,17 +787,17 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `ICondition` | 42 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `ICondition.IContext` | 32 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
-| `IGlobalLootModifier` | 29 | Loot modifiers, loot conditions and data conditions | `callbacks.decode-loot-modifier`, `callbacks.apply-loot-modifier` | planned |
-| `LootModifier` | 25 | Loot modifiers, loot conditions and data conditions | `loot.loot-modifier-entry` (`conditions`, `priority` in the JSON) | planned |
+| `IGlobalLootModifier` | 29 | Loot modifiers, loot conditions and data conditions | `ironpumpkin_mods::loot::GlobalLootModifier` and the decode callback of `ModInit::register_loot_modifier_type` | supported |
+| `LootModifier` | 25 | Loot modifiers, loot conditions and data conditions | the host reads `condition` and `priority` from the modifier file (`ironpumpkin_mods::loot`) | supported |
 | `ConditionalOps` | 12 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `WithConditions` | 8 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `ModLoadedCondition` | 7 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
-| `AddTableLootModifier` | 2 | Loot modifiers, loot conditions and data conditions | `loot` built-in type `neoforge:add_table`; `loot.roll-loot-table` | planned |
+| `AddTableLootModifier` | 2 | Loot modifiers, loot conditions and data conditions | `ironpumpkin_mods::loot` built-in type `neoforge:add_table`; `LootContext::roll_loot_table_raw` | supported |
 | `CanItemPerformAbility` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
-| `LootTableIdCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` built-in condition `neoforge:loot_table_id` | planned |
+| `LootTableIdCondition` | 2 | Loot modifiers, loot conditions and data conditions | `ironpumpkin_mods::loot` built-in condition `neoforge:loot_table_id` (modifier conditions only) | supported |
 | `AndCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
-| `LootModifierManager` | 1 | Loot modifiers, loot conditions and data conditions | `loot.get-loot-modifiers` (host loader) | planned |
-| `LootTableIdCondition.Builder` | 1 | Loot modifiers, loot conditions and data conditions | `loot` built-in condition `neoforge:loot_table_id` | planned |
+| `LootModifierManager` | 1 | Loot modifiers, loot conditions and data conditions | loader of `data/<namespace>/loot_modifiers/` in `DatapackManager` | supported |
+| `LootTableIdCondition.Builder` | 1 | Loot modifiers, loot conditions and data conditions | gap: Java datagen or `LootTableLoadEvent` code; write the JSON condition `neoforge:loot_table_id` | not supported |
 | `ConditionContext` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `NotCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `OrCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
@@ -1156,8 +1156,8 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 
 | Class | Mods | 26.3 | Counterpart or gap |
 |:--|--:|:--|:--|
-| `net.neoforged.neoforge.common.loot.IGlobalLootModifier` | 29 | same | `callbacks.decode-loot-modifier`, `apply-loot-modifier` |
-| `net.neoforged.neoforge.common.loot.LootModifier` | 25 | same | `loot.loot-modifier-entry` |
+| `net.neoforged.neoforge.common.loot.IGlobalLootModifier` | 29 | same | `ironpumpkin_mods::loot::GlobalLootModifier`, `ModInit::register_loot_modifier_type` |
+| `net.neoforged.neoforge.common.loot.LootModifier` | 25 | same | `condition` and `priority` read by the host (`ironpumpkin_mods::loot`) |
 | `net.neoforged.neoforge.common.world.BiomeModifier` | 14 | same | gap: not supported (world generation); documented in `loot` |
 | `net.neoforged.neoforge.common.world.BiomeModifiers` | 1 | same | gap: not supported; documented in `loot` |
 | `net.neoforged.neoforge.common.world.BiomeModifiers$AddFeaturesBiomeModifier` | 0 | same | gap: not supported; documented in `loot` |

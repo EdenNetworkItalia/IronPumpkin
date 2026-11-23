@@ -257,8 +257,7 @@ fn check_relative(path: &str) -> io::Result<()> {
 mod tests {
     use super::*;
     use crate::{
-        data::datapack::DatapackManager, server::recipe::RecipeManager,
-        world::loot::LootTableHandle,
+        data::datapack::DatapackManager, server::recipe::RecipeManager, world::loot::LootTableRef,
     };
 
     const LOOT_TABLE: &[u8] = br#"{"type":"minecraft:block","pools":[]}"#;
@@ -340,9 +339,9 @@ mod tests {
 
     /// The number of pools of a loot table that the manager resolves, or `None` when it has none.
     fn pools(manager: &DatapackManager, key: &str) -> Option<usize> {
-        match manager.get_loot_table(key)? {
-            LootTableHandle::Dynamic(table) => Some(table.pools.len()),
-            LootTableHandle::Static(table) => Some(table.pools.len()),
+        match manager.get_loot_table(key)?.table {
+            LootTableRef::Dynamic(table) => Some(table.pools.len()),
+            LootTableRef::Static(table) => Some(table.pools.len()),
         }
     }
 
@@ -678,8 +677,9 @@ mod review_tests {
 
     use super::*;
     use crate::{
-        data::datapack::DatapackManager, server::recipe::RecipeManager,
-        world::loot::LootTableHandle,
+        data::datapack::DatapackManager,
+        server::recipe::RecipeManager,
+        world::loot::{LootTableHandle, LootTableRef},
     };
 
     const LT: &[u8] = br#"{"type":"minecraft:block","pools":[]}"#;
@@ -913,7 +913,10 @@ mod review_tests {
                             .filter(|i| {
                                 matches!(
                                     manager.get_loot_table(&format!("gems:t{i}")),
-                                    Some(LootTableHandle::Dynamic(_))
+                                    Some(LootTableHandle {
+                                        table: LootTableRef::Dynamic(_),
+                                        ..
+                                    })
                                 )
                             })
                             .count();

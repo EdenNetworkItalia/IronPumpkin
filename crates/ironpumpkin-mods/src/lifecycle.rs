@@ -76,6 +76,9 @@ pub(crate) fn run(
     if let Some(error) = register_error {
         return Err(error.to_string());
     }
+    // The unit tests of `loot` register types in the same process as the lifecycle tests.
+    #[cfg(not(test))]
+    crate::loot::close_registration();
     // `GameData.postRegisterEvents` posts these after the last `RegisterEvent`.
     post(mods, |m, event| m.entity_attribute_creation(event))?;
     post(mods, |m, event| m.entity_attribute_modification(event))?;

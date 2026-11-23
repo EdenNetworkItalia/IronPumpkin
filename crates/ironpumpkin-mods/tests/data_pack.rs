@@ -11,8 +11,7 @@ use ironpumpkin_mods::{
     ModInit, NativeMod,
     data_pack::{PackFiles, data_packs, include_data_pack},
     pumpkin_core::{
-        data::datapack::DatapackManager, server::recipe::RecipeManager,
-        world::loot::LootTableHandle,
+        data::datapack::DatapackManager, server::recipe::RecipeManager, world::loot::LootTableRef,
     },
     register_mod,
 };
@@ -70,9 +69,9 @@ const WORLD_LOOT_TABLE: &str = r#"{
 }"#;
 
 fn pools(manager: &DatapackManager, key: &str) -> usize {
-    match manager.get_loot_table(key).unwrap() {
-        LootTableHandle::Dynamic(table) => table.pools.len(),
-        LootTableHandle::Static(table) => table.pools.len(),
+    match manager.get_loot_table(key).unwrap().table {
+        LootTableRef::Dynamic(table) => table.pools.len(),
+        LootTableRef::Static(table) => table.pools.len(),
     }
 }
 

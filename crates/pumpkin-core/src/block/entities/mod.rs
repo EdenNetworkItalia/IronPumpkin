@@ -83,7 +83,14 @@ pub trait BlockEntity: Any + Send + Sync {
     /// before generation, then place into still-empty slots.
     // TODO vanilla `RandomizableContainerBlockEntity`: barrels, shulker boxes, dispensers, droppers, hoppers,
     // crafters and decorated pots hold loot tables too. Only chests implement this.
-    fn unpack_loot_table_with(&self, _generate: &mut dyn FnMut(String, i64) -> Vec<ItemStack>) {}
+    fn unpack_loot_table_with(
+        &self,
+        _generate: &mut dyn FnMut(
+            String,
+            &mut pumpkin_util::random::xoroshiro128::Xoroshiro,
+        ) -> Vec<ItemStack>,
+    ) {
+    }
 
     /// Returns `true` if this block entity has a pending deferred loot table that has
     /// not yet been unpacked. Does not consume the loot table.

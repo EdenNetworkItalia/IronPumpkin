@@ -988,7 +988,11 @@ fn loot_fill_skips_occupied_slots() {
         ItemStack::EMPTY.clone(),
         ItemStack::EMPTY.clone(),
     ];
-    place_items_in_slots(&mut slots, vec![ItemStack::new(1, &Item::STONE)], 1);
+    place_items_in_slots(
+        &mut slots,
+        vec![ItemStack::new(1, &Item::STONE)],
+        &mut Xoroshiro::from_seed(1),
+    );
     assert_eq!(slots[0].item.id, Item::DIAMOND.id);
     assert_eq!(slots[0].item_count, 8);
     let placed = slots
@@ -1008,7 +1012,7 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
         ItemStack::EMPTY.clone(),
         ItemStack::EMPTY.clone(),
     ]);
-    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, _seed| {
+    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, _rng| {
         assert_eq!(key, "minecraft:chests/simple_dungeon");
         vec![ItemStack::new(1, &Item::STONE)]
     });
@@ -1036,4 +1040,41 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
             .iter()
             .all(|stack| stack.item.id != Item::GOLD_INGOT.id)
     );
+}
+
+/// The slot that receives one stone in 27 empty slots, placed with `rng`.
+fn stone_slot(rng: &mut Xoroshiro) -> usize {
+    let mut slots = vec![ItemStack::EMPTY.clone(); 27];
+    place_items_in_slots(&mut slots, vec![ItemStack::new(1, &Item::STONE)], rng);
+    slots.iter().position(|stack| !stack.is_empty()).unwrap()
+}
+
+#[test]
+fn fill_places_with_the_random_source_of_the_roll() {
+    use std::sync::{Mutex, RwLock};
+
+    let mut moved = false;
+    for seed in 1..17 {
+        let loot_table = Mutex::new(Some("minecraft:chests/simple_dungeon".to_string()));
+        let items = RwLock::new(std::array::from_fn::<_, 27, _>(|_| {
+            ItemStack::EMPTY.clone()
+        }));
+        // The roll draws once, as `LootTable.fill` rolls before it shuffles.
+        unpack_loot_into_slots(&loot_table, seed, &items, |_, rng| {
+            rng.next_i64();
+            vec![ItemStack::new(1, &Item::STONE)]
+        });
+        let placed = items
+            .read()
+            .unwrap()
+            .iter()
+            .position(|stack| !stack.is_empty())
+            .unwrap();
+
+        let mut after_roll = Xoroshiro::from_seed(seed as u64);
+        after_roll.next_i64();
+        assert_eq!(placed, stone_slot(&mut after_roll), "seed {seed}");
+        moved |= placed != stone_slot(&mut Xoroshiro::from_seed(seed as u64));
+    }
+    assert!(moved, "no seed tells the two random sources apart");
 }

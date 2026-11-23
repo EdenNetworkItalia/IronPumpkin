@@ -7,7 +7,9 @@ use crate::entity::item::ItemEntity;
 use crate::entity::projectile::{
     ProjectileHit, get_hit_result_on_move_vector, hit_target_or_deflect_self,
 };
-use crate::world::loot::{LootContextParameters, LootTableHandle, generate_loot_from_handle};
+use crate::world::loot::{
+    LootContextParameters, generate_loot_from_handle, get_context_loot_table,
+};
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
@@ -99,17 +101,7 @@ impl FishingBobberEntity {
                 luck,
                 ..Default::default()
             };
-            let handle = world
-                .server
-                .upgrade()
-                .and_then(|s| {
-                    s.datapack_manager
-                        .get_loot_table("minecraft:gameplay/fishing")
-                })
-                .unwrap_or(LootTableHandle::Static(
-                    &pumpkin_data::loot_table::GAMEPLAY_FISHING,
-                ));
-            let items = generate_loot_from_handle(&handle, 0, &params);
+            let items = fishing_loot(&params);
             let delta = player_pos - bobber_pos;
             let vy = delta.y * 0.1 + delta.length().sqrt() * 0.08;
 
@@ -313,5 +305,33 @@ impl EntityBase for FishingBobberEntity {
 
     fn tick(&self, caller: &dyn EntityBase, server: &Server) {
         self.process_tick(caller, server);
+    }
+}
+
+/// `FishingHook.retrieve` rolls `gameplay/fishing` with no seed, so vanilla takes the table's
+/// random sequence and each catch differs.
+fn fishing_loot(params: &LootContextParameters<'_>) -> Vec<ItemStack> {
+    get_context_loot_table(params, "minecraft:gameplay/fishing").map_or_else(Vec::new, |handle| {
+        generate_loot_from_handle(&handle, rand::random(), params)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_catch_rolls_with_a_new_seed() {
+        let params = LootContextParameters::default();
+        let items = || -> Vec<&'static str> {
+            fishing_loot(&params)
+                .iter()
+                .map(|stack| stack.item.registry_key)
+                .collect()
+        };
+        let first = items();
+        assert!(!first.is_empty());
+        // The fish pool alone has four entries: 64 equal rolls in a row do not happen.
+        assert!((0..64).any(|_| items() != first));
     }
 }
