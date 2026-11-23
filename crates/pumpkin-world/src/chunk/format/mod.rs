@@ -525,7 +525,7 @@ impl ChunkData {
             .cloned()
             .unwrap_or_default();
 
-        Ok(Self {
+        let chunk = Self {
             section,
             heightmap: std::sync::Mutex::new(heightmaps),
             x: position.x,
@@ -542,7 +542,10 @@ impl ChunkData {
             inhabited_time: AtomicU64::new(root_tag.get_long("InhabitedTime").unwrap_or(0) as u64),
             custom_data: std::sync::Mutex::new(custom_data),
             structures,
-        })
+            attachments: crate::attachments::Attachments::default(),
+        };
+        crate::attachments::read_chunk(&chunk, &root_tag);
+        Ok(chunk)
     }
 
     #[allow(clippy::too_many_lines)]
@@ -727,6 +730,7 @@ impl ChunkData {
         if !self.structures.is_empty() {
             root_compound.put_compound("structures", self.structures.clone());
         }
+        crate::attachments::write_chunk(self, &mut root_compound);
 
         let nbt = pumpkin_nbt::Nbt::from(root_compound);
         nbt.write()
@@ -1183,6 +1187,7 @@ impl ChunkData {
             blending_data: None,
             inhabited_time: AtomicU64::new(inhabited_time),
             custom_data: std::sync::Mutex::new(custom_data),
+            attachments: crate::attachments::Attachments::default(),
             // The pump format has no structure starts or references.
             structures: NbtCompound::new(),
         })

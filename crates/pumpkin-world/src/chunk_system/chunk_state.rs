@@ -289,6 +289,7 @@ impl Chunk {
                 dirty: AtomicBool::new(false),
                 inhabited_time: AtomicU64::new(0),
                 custom_data: Mutex::new(NbtCompound::new()),
+                attachments: crate::attachments::Attachments::default(),
                 structures: NbtCompound::new(),
             })),
         ) {
@@ -338,6 +339,7 @@ impl Chunk {
             blending_data: proto_chunk.blending_data,
             inhabited_time: AtomicU64::new(0),
             custom_data: Mutex::new(NbtCompound::new()),
+            attachments: crate::attachments::Attachments::default(),
             structures,
         };
 
