@@ -168,7 +168,9 @@ A file then removes one number with `"remove": { "minecraft:stone": 2 }` or `"re
 
 The server reads the data map files of every enabled data pack at startup and on `/reload`: the mod data packs, the vanilla data and the world data packs, in the order of [Data packs](./data-packs.md). A mod ships its own values in its mod data pack. After each load, `DataMapsUpdatedEvent` fires for every registry that had a data map file, with cause `UpdateCause::ServerReload`. A registry with no file keeps its values, as on NeoForge.
 
-A synced map goes to NeoForge clients that know it, on join and to every player after `/reload`. A vanilla client gets nothing. When a map is mandatory, the server refuses a vanilla client, and a NeoForge client that lacks the map refuses itself, as on NeoForge.
+A synced map goes to NeoForge clients that know it, on join and to every player after `/reload`. A vanilla client gets nothing. When a map is mandatory, the server refuses a vanilla client, and a NeoForge client that lacks the map refuses itself, as on NeoForge. A mandatory map turns on the NeoForge client detection even when `detect_neoforge_clients` is `false`, with a warning at startup, as a client-required mod does.
+
+The loader drops a value of a synced map whose JSON is longer than 32767 characters, with an error that names the map and the entry: the sync payload cannot carry it.
 
 ---
 
@@ -181,7 +183,7 @@ The host registers the eleven types of `NeoForgeDataMaps` in `data_maps::builtin
 ## Differences from NeoForge
 
 - A value with `neoforge:conditions` does not load, with a warning: IronPumpkin evaluates no load conditions yet.
-- A block transform (`BlockTransformData`) is kept as its JSON object.
+- A block transform (`BlockTransformData`) is kept as its JSON object, after the check of every field that `BlockTransformData.CODEC` reads. Inside a block state provider, a block predicate and a typed int provider get only a check of their `type`.
 - A registry whose entries the server does not know cannot carry a data map.
 
 ## Do and don't
