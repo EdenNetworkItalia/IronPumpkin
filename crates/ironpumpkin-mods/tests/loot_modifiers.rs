@@ -1,6 +1,7 @@
 //! Scenarios of the spec `neoforge-loot` (`openspec/changes/neoforge-shaped-plugin-api`) on a real
 //! server: a mod registers a modifier type, a world data pack ships the modifier files, and the
-//! rolls of the server see them, after startup and after `/reload`. The modifier types freeze once
+//! rolls of the server see them, after startup and after `/reload`. A loot table of the same pack
+//! checks the table lookup of the loot context. The modifier types freeze once
 //! per process, so this file is its own test binary.
 #![expect(
     clippy::unwrap_used,
@@ -23,7 +24,9 @@ use ironpumpkin_mods::{
     pumpkin_core::{
         block::collect_loot,
         plugin::startup::STARTUP_HOOK,
-        world::loot::{generate_loot_from_handle, generate_loot_with_context},
+        world::loot::{
+            generate_loot_from_handle, generate_loot_with_context, get_context_loot_table,
+        },
     },
     pumpkin_data::{Block, item::Item, loot_table},
     pumpkin_util::math::position::BlockPos,
@@ -118,6 +121,11 @@ fn write_pack(datapacks: &Path) -> PathBuf {
         "unknown_condition",
         r#"{"type": "lootmod:remove_item", "item": "minecraft:stone", "condition": {"type": "lootmod:nope"}}"#,
     );
+    write(
+        &pack.join("data/minecraft/loot_table"),
+        "chests/abandoned_mineshaft",
+        r#"{"type": "minecraft:chest", "pools": [{"rolls": 1, "entries": [{"type": "minecraft:item", "name": "minecraft:emerald"}]}]}"#,
+    );
     std::fs::write(
         pack.join("pack.mcmeta"),
         r#"{"pack": {"pack_format": 94, "description": "loot modifiers"}}"#,
@@ -164,6 +172,13 @@ fn modifiers_load_from_world_data_packs_and_change_the_rolls() {
         world: Some(&world),
         ..Default::default()
     };
+    // The lookup of chest minecarts and boats: the world's table, with the data pack override.
+    let mineshaft =
+        get_context_loot_table(&params, "minecraft:chests/abandoned_mineshaft").unwrap();
+    assert_eq!(
+        names(&generate_loot_from_handle(&mineshaft, 1, &params)),
+        ["emerald"]
+    );
     let pos = BlockPos::new(0, 64, 0);
     for _ in 0..8 {
         assert_eq!(

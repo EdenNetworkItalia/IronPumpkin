@@ -106,7 +106,7 @@ impl MinecartInventory {
         let Some((loot_table, seed)) = loot_table else {
             return;
         };
-        let Some(table) = crate::world::loot::get_loot_table(&loot_table) else {
+        let Some(table) = crate::world::loot::get_context_loot_table(params, &loot_table) else {
             *self
                 .loot_table
                 .lock()
