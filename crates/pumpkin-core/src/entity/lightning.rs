@@ -15,6 +15,7 @@ use pumpkin_world::world::BlockFlags;
 use rand::RngExt;
 
 use crate::block::blocks::fire::FireBlockBase;
+use crate::block::blocks::weathering_copper::{get_next, get_previous};
 use crate::entity::player::Player;
 use crate::entity::{Entity, EntityBase};
 use crate::server::Server;
@@ -323,24 +324,24 @@ pub const fn is_waxed_copper(id: BlockId) -> bool {
 }
 
 #[must_use]
-pub const fn is_weathering_copper(id: BlockId) -> bool {
-    pumpkin_data::block_transformer::get_previous_weathering(id).is_some()
-        || pumpkin_data::block_transformer::get_next_weathering(id).is_some()
+pub fn is_weathering_copper(id: BlockId) -> bool {
+    let block = id.to_block();
+    get_previous(block).is_some() || get_next(block).is_some()
 }
 
 #[must_use]
-pub const fn get_first_stage_copper(id: BlockId) -> Option<BlockId> {
+pub fn get_first_stage_copper(id: BlockId) -> Option<BlockId> {
     if !is_weathering_copper(id) {
         return None;
     }
     let mut cur = id;
-    while let Some(prev) = pumpkin_data::block_transformer::get_previous_weathering(cur) {
+    while let Some(prev) = get_previous_stage_copper(cur) {
         cur = prev;
     }
     Some(cur)
 }
 
 #[must_use]
-pub const fn get_previous_stage_copper(id: BlockId) -> Option<BlockId> {
-    pumpkin_data::block_transformer::get_previous_weathering(id)
+pub fn get_previous_stage_copper(id: BlockId) -> Option<BlockId> {
+    get_previous(id.to_block()).map(|block| block.id)
 }

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use crate::plugin::data_maps::builtin::{next_oxidized_stage, previous_oxidized_stage};
 use pumpkin_data::block_properties::{
     ChestLikeProperties, ChestType, CopperGolemPose, CopperGolemStatueLikeProperties,
     DoubleBlockHalf, EnumVariants, HorizontalFacing, MangroveRootsLikeProperties,
     OakDoorLikeProperties,
 };
-use pumpkin_data::block_transformer::{get_next_weathering, get_previous_weathering};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
@@ -150,13 +150,13 @@ pub trait WeatheringCopper: ChangeOverTimeBlock<WeatherState> {
 /// Returns the next oxidized block in sequence, or `None` if already oxidized or not a weathering copper block.
 #[must_use]
 pub fn get_next(block: &Block) -> Option<&'static Block> {
-    get_next_weathering(block.id).map(BlockId::to_block)
+    next_oxidized_stage(block).map(BlockId::to_block)
 }
 
 /// Returns the previous deoxidized block in sequence, or `None` if unaffected or not a weathering copper block.
 #[must_use]
 pub fn get_previous(block: &Block) -> Option<&'static Block> {
-    get_previous_weathering(block.id).map(BlockId::to_block)
+    previous_oxidized_stage(block).map(BlockId::to_block)
 }
 
 /// Returns the first unaffected block in this copper family, or `None` if not a weathering copper block.
