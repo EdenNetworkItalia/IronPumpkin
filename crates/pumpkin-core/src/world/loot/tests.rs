@@ -1078,3 +1078,117 @@ fn fill_places_with_the_random_source_of_the_roll() {
     }
     assert!(moved, "no seed tells the two random sources apart");
 }
+
+/// Rolls every vanilla table with 15 seeds in 9 contexts and writes one line per roll to the file
+/// that `LOOT_PARITY_DUMP` names. Diff the files of two builds to prove that a change to the loot
+/// context leaves the loot of the vanilla tables alone:
+/// `LOOT_PARITY_DUMP=target/scratch/parity.txt tools/cargo-slot.sh nextest run -p pumpkin-core --lib --run-ignored only vanilla_tables_dump`.
+#[test]
+#[ignore = "writes the dump that LOOT_PARITY_DUMP names"]
+fn vanilla_tables_dump() {
+    use std::fmt::Write as _;
+
+    let path = std::env::var("LOOT_PARITY_DUMP").expect("LOOT_PARITY_DUMP names the dump file");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../assets/datapack/data/minecraft/loot_table");
+    let mut keys = Vec::new();
+    let mut dirs = vec![root.clone()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if let Some(name) = path.strip_prefix(&root).unwrap().to_str()
+                && let Some(name) = name.strip_suffix(".json")
+            {
+                keys.push(format!("minecraft:{name}"));
+            }
+        }
+    }
+    keys.sort();
+    assert!(keys.len() > 1400, "{} tables", keys.len());
+
+    let tool = |item: &'static Item| ItemStack::new(1, item);
+    let contexts: Vec<(&str, LootContextParameters<'static>)> = vec![
+        ("default", LootContextParameters::default()),
+        (
+            "pickaxe",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::STONE.default_state),
+                tool: Some(tool(&Item::DIAMOND_PICKAXE)),
+                ..Default::default()
+            },
+        ),
+        (
+            "shears",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::OAK_LEAVES.default_state),
+                tool: Some(tool(&Item::SHEARS)),
+                ..Default::default()
+            },
+        ),
+        (
+            "empty_tool",
+            LootContextParameters {
+                tool: Some(ItemStack::EMPTY.clone()),
+                ..Default::default()
+            },
+        ),
+        (
+            "luck",
+            LootContextParameters {
+                luck: 3.0,
+                ..Default::default()
+            },
+        ),
+        (
+            "player_kill",
+            LootContextParameters {
+                killed_by_player: Some(true),
+                damage_type: Some(DamageType::PLAYER_ATTACK),
+                direct_attacker_weapon: Some(tool(&Item::DIAMOND_SWORD)),
+                ..Default::default()
+            },
+        ),
+        (
+            "explosion",
+            LootContextParameters {
+                explosion_radius: Some(4.0),
+                block_state: Some(pumpkin_data::Block::STONE.default_state),
+                ..Default::default()
+            },
+        ),
+        (
+            "fire_kill",
+            LootContextParameters {
+                is_on_fire: Some(true),
+                damage_type: Some(DamageType::ON_FIRE),
+                ..Default::default()
+            },
+        ),
+        (
+            "rain",
+            LootContextParameters {
+                is_raining: Some(true),
+                is_thundering: Some(true),
+                world_time: 6000,
+                ..Default::default()
+            },
+        ),
+    ];
+
+    let mut dump = String::new();
+    for key in &keys {
+        let handle = get_loot_table(key).unwrap_or_else(|| panic!("no table {key}"));
+        for (name, params) in &contexts {
+            for seed in 0..15 {
+                write!(dump, "{key} {name} {seed}:").unwrap();
+                for stack in generate_loot_from_handle(&handle, seed, params) {
+                    write!(dump, " {}*{}", stack.item.registry_key, stack.item_count).unwrap();
+                }
+                dump.push('\n');
+            }
+        }
+    }
+    std::fs::write(path, dump).unwrap();
+}
