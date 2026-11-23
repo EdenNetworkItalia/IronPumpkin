@@ -140,6 +140,31 @@ reviewer with the tasks' acceptance criteria, the reference sources and the ques
 must answer. The session fixes small findings itself; larger findings go back to the implementing
 agent or into a follow-up task.
 
+## Test levels
+
+The owner decided (2026-11-23) that nobody waits for the full suite during development: a full
+CI run takes about an hour and repeats tests that ran minutes before.
+
+- During a wave, an agent runs the tests it adds or changes and the unit tests of the crates it
+  touches (`cargo nextest run -p <crate> --lib`, plus `--test <file>` for its own integration
+  tests), and clippy on those crates.
+- A push to master runs the unit CI: lints, format, WIT, unit tests (`--lib --bins`) and the
+  modpack blueprint. Do not wait for it before the next task. Read its result at the next commit.
+- The full round runs only when a big chapter closes: a milestone, or an upstream merge. It is the
+  whole local gate (workspace clippy, `cargo nextest run --workspace`, `cargo run -p
+  pumpkin-tester`, typos, `mapping_status.py --check`, `openspec validate --all`) and the full CI
+  (`gh workflow run rust.yml -R EdenNetworkItalia/IronPumpkin --ref master -f full=true`), which
+  adds the integration tests, the doc tests, GameTest and the bot harness.
+- The nightly CI is full. Read its result when a session starts, and open an issue for a failure.
+
+## Builds and memory
+
+The workstation has 62 GB of RAM, and `/tmp` is a tmpfs that uses it. Run every cargo command
+through `tools/cargo-slot.sh` (for example `tools/cargo-slot.sh nextest run -p pumpkin-core
+--lib --test-threads 4`). The script lets at most two cargo commands run at once across all
+checkouts and worktrees, with `CARGO_BUILD_JOBS=5`. Give nextest `--test-threads 4`. A test of
+`wasm_dispatch` builds its Wasm guests at ~8 GB of rustc memory, inside the slot of its test run.
+
 ## Resuming after a context reset
 
 The repo carries the whole state. A new session (or one after `/clear`) needs no explanation
@@ -168,7 +193,11 @@ the working tree, trust the working tree and fix the issues. Then pick only free
 
 ## Disk hygiene
 
-Agents must not copy the repo or build it in a second location. Boot tests use the shared
-`target/` of this checkout (`cargo run --manifest-path <repo>/Cargo.toml -p pumpkin` from a small
-scratch directory). A separate build copy costs about 9 GB. Delete downloads, server installs and
-captures from the scratchpad when the task that needed them is done, and say what was left behind.
+Parallel agents work in git worktrees (T3 puts them under `~/.t3/worktrees/`), each with the `target/` of its
+own worktree (the cargo default). Never point a worktree at the `target/` of another checkout:
+cargo then serves the artifacts of one worktree to another. A worktree lacks the gitignored
+`assets/datapack/` (44 MB): copy it from the main checkout before the first build. Boot tests run
+`cargo run --manifest-path <worktree>/Cargo.toml -p pumpkin` from a small scratch directory.
+Temporary files go under `target/scratch/<task>` on disk, never under `/tmp`. When a branch lands,
+remove its worktree and its `target/`. Delete downloads, server installs and captures when the
+task that needed them is done, and say what was left behind.
