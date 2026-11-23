@@ -797,7 +797,7 @@ How to read it:
 | `LootTableIdCondition` | 2 | Loot modifiers, loot conditions and data conditions | `ironpumpkin_mods::loot` built-in condition `neoforge:loot_table_id` (modifier conditions only) | supported |
 | `AndCondition` | 2 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `LootModifierManager` | 1 | Loot modifiers, loot conditions and data conditions | loader of `data/<namespace>/loot_modifiers/` in `DatapackManager` | supported |
-| `LootTableIdCondition.Builder` | 1 | Loot modifiers, loot conditions and data conditions | gap: Java data generation; write the JSON condition `neoforge:loot_table_id` | not supported |
+| `LootTableIdCondition.Builder` | 1 | Loot modifiers, loot conditions and data conditions | gap: Java datagen or `LootTableLoadEvent` code; write the JSON condition `neoforge:loot_table_id` | not supported |
 | `ConditionContext` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `NotCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |
 | `OrCondition` | 1 | Loot modifiers, loot conditions and data conditions | `loot` doc, not supported | planned |

@@ -1489,7 +1489,7 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | `LootModifier` | common.loot | class, 2 public methods | both | supported | the host reads `condition` and `priority` and calls `GlobalLootModifier::apply` when the condition passes | task 2.16 (#166) |
 | `LootModifierManager` | common.loot | class, 3 public methods | both | supported | loader for `data/<ns>/loot_modifiers/<path>.json` in `DatapackManager`, on startup and `/reload` | task 2.16 (#166) |
 | `LootTableIdCondition` | common.loot | class, 3 public methods | both | supported | condition `neoforge:loot_table_id` in modifier conditions | task 2.16 (#166); modifier conditions only, not inside loot tables |
-| `LootTableIdCondition.Builder` | common.loot | class, 1 public method | both | not supported | - | builds the condition in Java data generation; a data file writes the JSON condition `neoforge:loot_table_id` |
+| `LootTableIdCondition.Builder` | common.loot | class, 1 public method | both | not supported | - | builds the condition in Java datagen or `LootTableLoadEvent` code; a data file writes the JSON condition `neoforge:loot_table_id` |
 | `NeoForgeLootContextParams` | common.loot | class, 0 public methods | both | planned | engine extension point (M5) | M5 engine extension: extra loot context key (queried stack); Pumpkin loot context is fixed |
 | `AlwaysCondition` | common.conditions | class, 3 public methods | both | planned | engine extension point (M5) | M5 engine extension: the datapack loader does not read `neoforge:conditions`; data with conditions loads as if they were absent |
 | `AndCondition` | common.conditions | record, 3 public methods | both | planned | engine extension point (M5) | M5 engine extension: the datapack loader does not read `neoforge:conditions`; data with conditions loads as if they were absent |
@@ -1515,7 +1515,8 @@ The global loot modifiers (task 2.16, #166) keep the NeoForge 26.3 behaviour wit
 
 - Modifiers with the same `priority` run by modifier id. NeoForge leaves their order undefined (the order of a `HashMap`), so a fixed order breaks no mod and keeps the loot the same on each start.
 - `neoforge:loot_table_id` works in the `condition` of a modifier, also inside `all_of`, `any_of`, `inverted` and a named predicate. The loot table parser of Pumpkin does not know it, so it does not work inside a loot table.
-- `GlobalLootModifier::apply` has no error path. NeoForge catches an exception of one modifier, logs it and goes on; a Rust modifier returns the list unchanged instead.
+- `GlobalLootModifier::apply` has no error path: a modifier that cannot act returns the list unchanged. A panic in `apply` or in a decoder is caught and logged by modifier id, as NeoForge catches an exception. After a panic the next modifier gets a copy of the loot from before the failed one; NeoForge goes on with the list object, which the failed modifier may have changed.
+- `LootTableHandle` in the upstream file `world/loot.rs` became a struct with the table and its id, and the roll in `world/loot/generation.rs` borrows its random source. The modifiers need the table id at the roll, and the roll and the modifiers share one random source as in NeoForge. An upstream merge that touches these lines fails at compile time and is cheap to fix.
 - `neoforge:conditions` in a modifier file is ignored and the file loads, as the data conditions row states. NeoForge skips the file when a condition fails.
 - The modifiers run on every roll of a table by its id, through `generate_loot_from_handle`, as `CommonHooks.modifyLoot` runs in `LootTable.getRandomItems`. The rolls of Pumpkin that take a generated table directly (`generate_loot`, `generate_loot_with_context`) have no table id and run no modifiers.
 

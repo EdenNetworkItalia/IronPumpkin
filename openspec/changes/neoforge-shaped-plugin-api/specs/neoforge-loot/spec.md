@@ -7,7 +7,7 @@ Lets a ported mod change generated loot with the behaviour of NeoForge global lo
 ## ADDED Requirements
 
 ### Requirement: Modifier types
-`ModInit::register_loot_modifier_type` SHALL register a modifier type id with the callback that decodes its JSON, and SHALL fail with `LootModifierError::Duplicate` for an existing id and with `LootModifierError::RegistrationClosed` after the registration phase ends with the last `RegisterEvent`. Status: supported (task 2.16, #166, tests `registration_fails_for_a_duplicate_an_invalid_id_and_after_close`, `a_duplicate_type_fails`, `modifiers_load_from_world_data_packs_and_change_the_rolls`).
+`ModInit::register_loot_modifier_type` SHALL register a modifier type id with the callback that decodes its JSON, and SHALL fail with `LootModifierError::ReservedNamespace` for an id without a namespace or in `minecraft`, with `LootModifierError::Duplicate` for an existing id and with `LootModifierError::RegistrationClosed` after the registration phase ends with the last `RegisterEvent`. Status: supported (task 2.16, #166, tests `registration_fails_for_a_duplicate_an_invalid_id_and_after_close`, `a_duplicate_type_fails`, `modifiers_load_from_world_data_packs_and_change_the_rolls`).
 
 #### Scenario: Duplicate type
 - **WHEN** a mod registers `examplemod:remove_items` twice
@@ -28,14 +28,14 @@ The host SHALL read the `LootModifier` fields of a file: `type`, the optional `c
 - **THEN** the modifier has the priority 1000
 
 ### Requirement: Bad modifier files
-The host SHALL log by modifier id and skip a file that does not parse, whose type is unknown, whose condition has an unknown type, or whose decode fails. The other files SHALL load. Status: supported (task 2.16, #166, test `bad_files_are_skipped_and_the_others_load`).
+The host SHALL log by modifier id and skip a file whose name is not a resource location, that does not parse, whose type is unknown, whose condition has an unknown type, or whose decode fails or panics. The other files SHALL load. Status: supported (task 2.16, #166, tests `bad_files_are_skipped_and_the_others_load`, `review_a_panicking_decoder_escapes_the_load`).
 
 #### Scenario: Bad file
 - **WHEN** the decode callback returns an error for `data/examplemod/loot_modifiers/broken.json`
 - **THEN** the log names `examplemod:broken` and the other modifiers still load
 
 ### Requirement: Applying modifiers
-After each roll of a loot table by its id (`LootTable.getRandomItems`), the host SHALL run each loaded modifier whose `condition` passes through `GlobalLootModifier::apply`: highest `priority` first, by id inside one priority, each on the list of the one before. The last list SHALL be the loot. Status: supported (task 2.16, #166, tests `modifiers_run_by_priority_then_id`, `modifiers_load_from_world_data_packs_and_change_the_rolls`).
+After each roll of a loot table by its id (`LootTable.getRandomItems`), the host SHALL run each loaded modifier whose `condition` passes through `GlobalLootModifier::apply`: highest `priority` first, by id inside one priority, each on the list of the one before. The last list SHALL be the loot. A modifier that panics SHALL be logged by modifier id and table id, and the next modifier SHALL get the loot from before it. Status: supported (task 2.16, #166, tests `modifiers_run_by_priority_then_id`, `review_a_panicking_modifier_escapes_the_roll`, `modifiers_load_from_world_data_packs_and_change_the_rolls`).
 
 #### Scenario: Remove an item
 - **WHEN** a modifier returns the loot without `minecraft:diamond`
