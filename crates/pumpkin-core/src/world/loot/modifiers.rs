@@ -15,9 +15,10 @@
 use std::{
     collections::HashMap,
     fmt,
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc, LazyLock, PoisonError, RwLock,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -30,7 +31,7 @@ use tracing::error;
 
 use super::{
     DynamicLootCondition, Item, LootContextParameters, LootTableHandle, check_dynamic_condition,
-    generation, get_loot_table,
+    generation, get_context_loot_table,
 };
 
 /// `IGlobalLootModifier.DEFAULT_PRIORITY`.
@@ -71,6 +72,8 @@ pub enum LootModifierError {
     RegistrationClosed,
     /// The id is not a valid resource location.
     InvalidId(String),
+    /// The id has no namespace or the `minecraft` namespace.
+    ReservedNamespace(String),
 }
 
 impl fmt::Display for LootModifierError {
@@ -79,6 +82,12 @@ impl fmt::Display for LootModifierError {
             Self::Duplicate(id) => write!(f, "the loot modifier type \"{id}\" is registered twice"),
             Self::RegistrationClosed => f.write_str("the loot modifier types are frozen"),
             Self::InvalidId(id) => write!(f, "invalid loot modifier type id \"{id}\""),
+            Self::ReservedNamespace(id) => {
+                write!(
+                    f,
+                    "the loot modifier type \"{id}\" must use its own namespace"
+                )
+            }
         }
     }
 }
@@ -111,6 +120,7 @@ impl LootModifierTypes {
     /// # Errors
     ///
     /// [`LootModifierError::InvalidId`] for an id that is not a resource location,
+    /// [`LootModifierError::ReservedNamespace`] for an id without a namespace or in `minecraft`,
     /// [`LootModifierError::Duplicate`] for an existing id and
     /// [`LootModifierError::RegistrationClosed`] after [`close`](Self::close).
     pub fn register(
@@ -118,6 +128,15 @@ impl LootModifierTypes {
         id: &str,
         decoder: LootModifierDecoder,
     ) -> Result<(), LootModifierError> {
+        // Before the lock: a decoder that registers during a load would wait for itself.
+        if self.closed.load(Ordering::Acquire) {
+            return Err(LootModifierError::RegistrationClosed);
+        }
+        // As the content registries of `pumpkin_data::dynamic` do.
+        match id.split_once(':') {
+            Some((namespace, _)) if !namespace.is_empty() && namespace != "minecraft" => {}
+            _ => return Err(LootModifierError::ReservedNamespace(id.to_owned())),
+        }
         let id = normalize_id(id).ok_or_else(|| LootModifierError::InvalidId(id.to_owned()))?;
         let mut decoders = self
             .decoders
@@ -170,7 +189,7 @@ impl LootModifierTypes {
             .collect();
         sorted.sort_by(|a, b| b.priority.cmp(&a.priority).then_with(|| a.id.cmp(&b.id)));
         if !sorted.is_empty() {
-            ANY_LOADED.store(true, Ordering::Relaxed);
+            LIVE_SETS.fetch_add(1, Ordering::Relaxed);
         }
         LootModifiers { sorted }
     }
@@ -203,10 +222,7 @@ fn decode(
         .ok_or_else(|| format!("unknown modifier type \"{kind}\""))?;
     let priority = match json.get("priority") {
         None => DEFAULT_PRIORITY,
-        Some(priority) => priority
-            .as_i64()
-            .and_then(|priority| i32::try_from(priority).ok())
-            .ok_or("the priority is not an int")?,
+        Some(priority) => int_value(priority).ok_or("the priority is not an int")?,
     };
     let condition = json
         .get("condition")
@@ -214,12 +230,24 @@ fn decode(
             ModifierCondition::parse(condition, predicates, 0).ok_or("unknown or invalid condition")
         })
         .transpose()?;
-    Ok((priority, condition, decoder(json)?))
+    let modifier = catch_unwind(AssertUnwindSafe(|| decoder(json)))
+        .map_err(|_| "the decoder panicked".to_owned())??;
+    Ok((priority, condition, modifier))
 }
 
-/// Set when a data load of any server of the process yields a modifier, so the rolls skip the
-/// modifier lookup until then.
-static ANY_LOADED: AtomicBool = AtomicBool::new(false);
+/// `PrimitiveCodec.INT` over `JsonOps` reads `Number.intValue()`: a fraction truncates toward
+/// zero. A value outside the `i32` range fails.
+fn int_value(value: &Value) -> Option<i32> {
+    if let Some(int) = value.as_i64() {
+        return i32::try_from(int).ok();
+    }
+    let float = value.as_f64()?.trunc();
+    (float >= f64::from(i32::MIN) && float <= f64::from(i32::MAX)).then_some(float as i32)
+}
+
+/// The live [`LootModifiers`] of the process that hold a modifier. While it is 0, a roll skips
+/// the modifier lookup.
+static LIVE_SETS: AtomicUsize = AtomicUsize::new(0);
 
 struct LoadedLootModifier {
     id: String,
@@ -250,7 +278,8 @@ impl LootModifiers {
         self.sorted.iter().map(|modifier| modifier.id.as_str())
     }
 
-    /// `CommonHooks.modifyLoot`.
+    /// `CommonHooks.modifyLoot`. A modifier that panics is logged, and the next one gets the
+    /// loot from before it.
     pub fn apply(
         &self,
         mut generated_loot: Vec<ItemStack>,
@@ -262,16 +291,35 @@ impl LootModifiers {
                 .as_ref()
                 .is_none_or(|condition| context.test(condition))
             {
-                generated_loot = loaded.modifier.apply(generated_loot, context);
+                let before = generated_loot.clone();
+                generated_loot = catch_unwind(AssertUnwindSafe(|| {
+                    loaded.modifier.apply(generated_loot, context)
+                }))
+                .unwrap_or_else(|_| {
+                    error!(
+                        "Error applying global loot modifier {} for loot table {}!",
+                        loaded.id,
+                        context.queried_loot_table_id()
+                    );
+                    before
+                });
             }
         }
         generated_loot
     }
 }
 
+impl Drop for LootModifiers {
+    fn drop(&mut self) {
+        if !self.sorted.is_empty() {
+            LIVE_SETS.fetch_sub(1, Ordering::Relaxed);
+        }
+    }
+}
+
 /// The modifiers of the server of `params`, when it has any.
 pub(super) fn active(params: &LootContextParameters<'_>) -> Option<Arc<LootModifiers>> {
-    if !ANY_LOADED.load(Ordering::Relaxed) {
+    if LIVE_SETS.load(Ordering::Relaxed) == 0 {
         return None;
     }
     let modifiers = params
@@ -343,11 +391,7 @@ impl<'a, 'b> LootContext<'a, 'b> {
     /// `LootTable.getRandomItemsRaw` of the table `id` with this context: no modifiers run on the
     /// result. An unknown table yields nothing.
     pub fn roll_loot_table_raw(&mut self, id: &str) -> Vec<ItemStack> {
-        let handle = self
-            .params
-            .world
-            .map_or_else(|| get_loot_table(id), |world| world.get_loot_table(id));
-        handle.map_or_else(Vec::new, |handle| {
+        get_context_loot_table(self.params, id).map_or_else(Vec::new, |handle| {
             generation::generate_with_rng((&handle).into(), self.random, self.params)
         })
     }
@@ -392,8 +436,10 @@ impl ModifierCondition {
         if depth >= MAX_CONDITION_DEPTH {
             return None;
         }
+        let reference =
+            |id: &str| Self::parse(&predicates(&normalize_id(id)?)?, predicates, depth + 1);
         if let Some(id) = value.as_str() {
-            return Self::parse(&predicates(&normalize_id(id)?)?, predicates, depth + 1);
+            return reference(id);
         }
         let terms = |key| -> Option<Vec<Self>> {
             value
@@ -416,6 +462,7 @@ impl ModifierCondition {
             Some(kind) if kind == "minecraft:inverted" => Some(Self::Inverted(Box::new(
                 Self::parse(value.get("term")?, predicates, depth + 1)?,
             ))),
+            Some(kind) if kind == "minecraft:reference" => reference(value.get("name")?.as_str()?),
             _ => parse_condition_with_predicates(value, &|name| {
                 normalize_id(name).and_then(|name| predicates(&name))
             })

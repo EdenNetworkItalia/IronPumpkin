@@ -551,6 +551,18 @@ pub fn evaluate_predicate_value(
     )
 }
 
+/// The table `key` of the world of `params`, so data pack tables apply, or the vanilla table
+/// when `params` has no world.
+#[must_use]
+pub fn get_context_loot_table(
+    params: &LootContextParameters<'_>,
+    key: &str,
+) -> Option<LootTableHandle> {
+    params
+        .world
+        .map_or_else(|| get_loot_table(key), |world| world.get_loot_table(key))
+}
+
 #[must_use]
 pub fn get_loot_table(key: &str) -> Option<LootTableHandle> {
     let full_key = if key.contains(':') {

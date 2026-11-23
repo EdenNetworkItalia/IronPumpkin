@@ -204,4 +204,23 @@ fn modifiers_load_from_world_data_packs_and_change_the_rolls() {
         names(&collect_loot(&world, &Block::DIAMOND_ORE, &pos, &params)),
         ["diamond"]
     );
+
+    // Review 166: a reload that removes every modifier gives the raw rolls again.
+    std::fs::remove_file(modifiers.join("chests/extra_dirt.json")).unwrap();
+    for name in ["unknown_type", "failed_decode", "unknown_condition"] {
+        let _ = std::fs::remove_file(modifiers.join(format!("{name}.json")));
+    }
+    server.reload_datapacks(server);
+    assert!(server.datapack_manager.get_loot_modifiers().is_empty());
+    let dungeon = world.get_loot_table("chests/simple_dungeon").unwrap();
+    for seed in 0..8 {
+        assert_eq!(
+            names(&generate_loot_from_handle(&dungeon, seed, &params)),
+            names(&generate_loot_with_context(
+                &loot_table::CHESTS_SIMPLE_DUNGEON,
+                seed,
+                &params,
+            ))
+        );
+    }
 }

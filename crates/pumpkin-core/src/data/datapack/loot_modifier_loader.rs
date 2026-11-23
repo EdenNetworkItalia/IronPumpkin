@@ -6,7 +6,9 @@ use std::fs;
 use std::hash::BuildHasher;
 use std::path::Path;
 
+use pumpkin_util::identifier::Identifier;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::world::loot::modifiers::{LOOT_MODIFIER_TYPES, LootModifiers};
 
@@ -41,6 +43,11 @@ fn load_recursive(
             let Some(stem) = rel_path.strip_suffix(".json") else {
                 continue;
             };
+            // `PathPackResources` skips a file whose name is not a resource location.
+            if !Identifier::is_valid_namespace(namespace) || !Identifier::is_valid_path(stem) {
+                warn!("Invalid path in pack: {namespace}:{stem}, ignoring");
+                continue;
+            }
             let file = fs::read_to_string(&path)
                 .map_err(|error| error.to_string())
                 .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()));
@@ -80,6 +87,7 @@ mod tests {
         .expect("write");
         fs::write(dir.join("broken.json"), "{").expect("write");
         fs::write(dir.join("notes.txt"), "{}").expect("write");
+        fs::write(dir.join("Upper Case.json"), "{}").expect("write");
 
         let mut files = HashMap::new();
         load_loot_modifiers_from_dir("examplemod", &dir, &mut files);

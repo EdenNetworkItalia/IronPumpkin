@@ -8277,19 +8277,7 @@ impl World {
     #[must_use]
     pub fn get_loot_table(&self, key: &str) -> Option<crate::world::loot::LootTableHandle> {
         self.server.upgrade().map_or_else(
-            || {
-                let full_key = if key.contains(':') {
-                    key.to_string()
-                } else {
-                    format!("minecraft:{key}")
-                };
-                let table = pumpkin_data::loot_table::get_loot_table(key)
-                    .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))?;
-                Some(crate::world::loot::LootTableHandle::new(
-                    crate::world::loot::LootTableRef::Static(table),
-                    full_key,
-                ))
-            },
+            || crate::world::loot::get_loot_table(key),
             |server| server.datapack_manager.get_loot_table(key),
         )
     }

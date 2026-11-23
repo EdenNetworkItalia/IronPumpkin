@@ -85,7 +85,8 @@ impl ModInit {
     /// # Errors
     ///
     /// [`LootModifierError::Duplicate`] for an existing id, [`LootModifierError::InvalidId`] for
-    /// an id that is not a resource location, and [`LootModifierError::RegistrationClosed`] after
+    /// an id that is not a resource location, [`LootModifierError::ReservedNamespace`] for an id
+    /// without a namespace or in `minecraft`, and [`LootModifierError::RegistrationClosed`] after
     /// the registration phase, which ends with the last `RegisterEvent`.
     pub fn register_loot_modifier_type<F>(
         &mut self,
