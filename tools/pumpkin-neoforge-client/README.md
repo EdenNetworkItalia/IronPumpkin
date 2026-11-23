@@ -241,6 +241,7 @@ crate uses it.
 
 A registry expectation file is TOML with one `[[registry]]` table per `frozen_registry` payload,
 in the order the server sends them. The ids of a registry must be `0` to `ids - 1` without gaps.
+An empty registry has `ids = 0` and no `first` and `last`.
 
 ```toml
 [[registry]]

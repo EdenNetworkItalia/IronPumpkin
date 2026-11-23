@@ -40,7 +40,10 @@ struct File {
 struct Registry {
     name: String,
     ids: usize,
+    // An empty registry (`ids = 0`) names no first and last entry.
+    #[serde(default)]
     first: String,
+    #[serde(default)]
     last: String,
     // TOML keys are strings, so the ids are parsed after the deserialization.
     #[serde(default)]
@@ -101,7 +104,12 @@ impl RegistryExpectation {
             failures.push(format!("registry {name}: the ids are not 0..{}", ids.len()));
         }
         let last = i32::try_from(self.ids).unwrap_or(i32::MAX) - 1;
-        let named = [(0, &self.first), (last, &self.last)]
+        let ends = if self.ids == 0 {
+            Vec::new()
+        } else {
+            vec![(0, &self.first), (last, &self.last)]
+        };
+        let named = ends
             .into_iter()
             .chain(self.at.iter().map(|(id, expected)| (*id, expected)));
         for (id, expected) in named {
