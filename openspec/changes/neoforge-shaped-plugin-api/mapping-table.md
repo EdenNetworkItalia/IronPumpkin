@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 388 | 388 | 0 | 0 | 0 | 335 | 81 |
-| Inventory, planned | 346 | 301 | 43 | 2 | 0 | 217 | 42 |
+| Inventory, supported | 393 | 393 | 0 | 0 | 0 | 340 | 82 |
+| Inventory, planned | 341 | 296 | 43 | 2 | 0 | 212 | 41 |
 | Inventory, not supported | 149 | 0 | 0 | 1 | 148 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -617,21 +617,21 @@ How to read it:
 |:--|--:|:--|:--|:--|
 | `IPayloadHandler` | 166 | Configuration tasks and other network types | `ironpumpkin_mods::network::PayloadHandler` (a closure `Fn(&[u8], &mut PayloadContext)`) | supported |
 | `IPayloadContext#player` | 154 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::player` | supported |
-| `IPayloadContext#enqueueWork` | 151 | Payload registration and sending | `pumpkin:plugin/scheduler`; a handler on `HandlerThread::Main` already runs on the world tick | planned |
+| `IPayloadContext#enqueueWork` | 151 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::enqueue_work` (a `PayloadWork`; a handler on `HandlerThread::Main` already runs on the world tick) | supported |
 | `PayloadRegistrar#playToClient` | 125 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_client` | supported |
 | `PayloadRegistrar#playToServer` | 123 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_to_server` | supported |
 | `PacketDistributor#sendToPlayer` | 121 | Payload registration and sending | `ironpumpkin_mods::network::send_to_player` | supported |
 | `IContainerFactory` | 84 | Configuration tasks and other network types | `registration.menu-type-definition.extra-data` and the extra data of `menus::open_menu`, both M5 (`neoforge:advanced_open_screen`) | planned |
 | `PayloadRegistrar#versioned` | 54 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::versioned` | supported |
-| `PacketDistributor#sendToPlayersTrackingChunk` | 43 | Payload registration and sending | `network.send-to-players-tracking-chunk` | planned |
+| `PacketDistributor#sendToPlayersTrackingChunk` | 43 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_tracking_chunk` | supported |
 | `PayloadRegistrar#optional` | 42 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::optional` | supported |
 | `IPayloadContext#flow` | 41 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::flow` | supported |
 | `PacketDistributor#sendToAllPlayers` | 39 | Payload registration and sending | `ironpumpkin_mods::network::send_to_all_players` | supported |
 | `network.codec` | 34 | Other network packages | `network` doc, not supported | not supported |
 | `PayloadRegistrar#playBidirectional` | 32 | Payload registration and sending | `ironpumpkin_mods::network::PayloadRegistrar::play_bidirectional` | supported |
-| `PacketDistributor#sendToPlayersTrackingEntity` | 27 | Payload registration and sending | `network.send-to-players-tracking-entity` | planned |
-| `PacketDistributor#sendToPlayersNear` | 20 | Payload registration and sending | `network.send-to-players-near` | planned |
-| `PacketDistributor#sendToPlayersTrackingEntityAndSelf` | 19 | Payload registration and sending | `network.send-to-players-tracking-entity-and-self` | planned |
+| `PacketDistributor#sendToPlayersTrackingEntity` | 27 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_tracking_entity` | supported |
+| `PacketDistributor#sendToPlayersNear` | 20 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_near` | supported |
+| `PacketDistributor#sendToPlayersTrackingEntityAndSelf` | 19 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_tracking_entity_and_self` | supported |
 | `IPayloadContext#disconnect` | 17 | Payload registration and sending | `ironpumpkin_mods::network::PayloadContext::disconnect` | supported |
 | `HandlerThread` | 12 | Configuration tasks and other network types | `ironpumpkin_mods::network::HandlerThread` | supported |
 | `PacketDistributor#sendToPlayersInDimension` | 11 | Payload registration and sending | `ironpumpkin_mods::network::send_to_players_in_dimension` | supported |
