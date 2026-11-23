@@ -83,6 +83,8 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.48 (#189) World generation adds the vanilla placement modifiers `cuboid`, `random_chance` and `randomly_selected`, and the codegen fails on an unknown modifier; verify: a test per modifier, a fixed-seed chunk test, a codegen rerun changes nothing, the world generation benches
 - [ ] 2.49 (#190) Forced chunks save and load in the vanilla format, and the fluid spread event carries the source, the destination and the fluid block; verify: a save and reload test, a test for water and lava
 - [ ] 2.50 (#191) The vanilla recipe sync is sent, data pack cooking recipes cook, and `"#tag"` ingredient strings parse as tags; verify: the packet bytes against the decompiled codec, a headless client test, a test per cooking block
+- [ ] 2.51 (#192) The chunk packet carries the vanilla update tag of each block entity, pending or live, and no saved NBT; the type id matches the full name; verify: the reproducer test, a test per block entity kind, an upstream PR draft
+- [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
 
