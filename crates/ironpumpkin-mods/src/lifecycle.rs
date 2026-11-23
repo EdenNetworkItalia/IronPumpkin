@@ -76,6 +76,11 @@ pub(crate) fn run(
     if let Some(error) = register_error {
         return Err(error.to_string());
     }
+    // `neoforge:attachment_types` freezes with the registries after the last `RegisterEvent`.
+    // The unit tests of `attachments` freeze their own tables, so the lifecycle tests leave the
+    // process registry open.
+    #[cfg(not(test))]
+    crate::attachments::freeze()?;
     // `GameData.postRegisterEvents` posts these after the last `RegisterEvent`.
     post(mods, |m, event| m.entity_attribute_creation(event))?;
     post(mods, |m, event| m.entity_attribute_modification(event))?;

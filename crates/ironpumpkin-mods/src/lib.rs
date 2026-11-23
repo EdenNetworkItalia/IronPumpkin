@@ -76,6 +76,7 @@ pub use tracing;
 pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
 
+pub mod attachments;
 pub mod capabilities;
 pub mod config;
 pub mod content;
