@@ -151,6 +151,9 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/configuration.md")]
     struct Configuration;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/attachments.md")]
+    struct Attachments;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/events.md")]
     struct Events;
 

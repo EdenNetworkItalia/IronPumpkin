@@ -12,7 +12,7 @@ IronPumpkin replaces all three with a source patch. A source patch is a unified 
 | :--- | :--- | :--- |
 | **Change a method** | `@Inject`, `@Redirect`, `@ModifyVariable` or `@Overwrite` in a mixin | A handler of the NeoForge event, if the inventory has one for the point. Else a source patch. |
 | **Open a private member** | Access transformer, `@Accessor`, `@Invoker`, reflection | A source patch that makes the member `pub` or adds an accessor |
-| **State added to a vanilla class** | A `@Unique` field | An attachment of the entity, block entity, chunk or level. Planned (task 2.14). |
+| **State added to a vanilla class** | A `@Unique` field | An attachment of the entity, block entity, chunk or level. See [Data attachments](./attachments.md). |
 | **Condition on a mixin** | A mixin plugin | A Cargo feature or the mod config |
 | **Declaration** | `[[mixins]]` and `[[accessTransformers]]` in `neoforge.mods.toml` | `patches/<name>.patch` and `patches/<name>.md` in the mod crate |
 | **When it applies** | When the game loads the class | At build time, before the compile |
@@ -29,7 +29,7 @@ Go down the list. Stop at the first line that fits.
 
 1. A NeoForge event of the inventory fires at the point that the mixin changes. Handle the event. See [Events](./events.md). `mapping-table.md` lists the Pumpkin event for each NeoForge event.
 2. An `ironpumpkin-mods` function, or a Pumpkin function that the crate re-exports, does the work. Call it.
-3. The mixin only adds state to a vanilla class. Use an attachment. Planned (task 2.14).
+3. The mixin only adds state to a vanilla class. Use an attachment. See [Data attachments](./attachments.md).
 4. None of the above. Write a source patch.
 
 A patch cannot do four things. It cannot change a client class, because the server has none. It cannot apply a mixin conditionally, because there is no mixin plugin. It cannot change a generated file. It cannot reach into another mod.

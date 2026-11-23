@@ -32,13 +32,12 @@ The inventory in `design.md` of the change folder has one row for each element o
 **Planned, with a task.** The API has a task in `tasks.md` of the change. The page of this guide for that API is written when the task lands. These are the tasks for the families that mods use most:
 
 - 2.12: the player rows that stay planned, listed below.
-- 2.14: attachments.
 - 2.16: loot modifiers.
 - 2.17: data maps.
 
 The player events landed with task 2.12. These player rows stay planned, each for its own reason:
 
-- `PlayerEvent.Clone`: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. The copy on death belongs to attachments (task 2.14).
+- `PlayerEvent.Clone`: Pumpkin keeps the same `Player` across a respawn, so there is no old player to pair with the new one. The attachment copy rules of the event run on that player. See [Data attachments](./attachments.md).
 - `PermissionsChangedEvent`: the op and deop commands change the op list before the permission level of the player changes. A cancel needs a check in each caller before the list changes.
 - `CanContinueSleepingEvent`: Pumpkin has no check that wakes a sleeping player, so the event has no decision to change.
 - `PlayerNegotiationEvent`: it delays a login until async work ends, and it has no fire site yet. A mod delays a login with a configuration task of `RegisterConfigurationTasksEvent` instead. See [Network payloads](./network.md).
