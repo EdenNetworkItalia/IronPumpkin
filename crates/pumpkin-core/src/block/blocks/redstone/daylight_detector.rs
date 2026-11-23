@@ -90,6 +90,11 @@ impl DaylightDetectorBlock {
 
     pub fn update_signal_strength(world: &Arc<World>, block_pos: &BlockPos) {
         let (block, state) = world.get_block_and_state(block_pos);
+        // Vanilla ticks a block entity only while `BlockEntityType.isValid(state)`: the block entity
+        // tick runs on a snapshot, so the detector can be gone by the time it ticks.
+        if block != &pumpkin_data::Block::DAYLIGHT_DETECTOR {
+            return;
+        }
         let mut props = DaylightDetectorProperties::from_state_id(state.id);
 
         let target = Self::calculate_signal_strength(
