@@ -347,9 +347,32 @@ pub(super) fn build(info: &TypeInfo, files: Vec<DataMapFile>, lookup: &dyn Looku
         .collect()
 }
 
+/// Where the text of a data map file comes from.
+enum FileSource {
+    Path(PathBuf),
+    Text(String),
+}
+
+impl FileSource {
+    fn read(&self) -> Result<String, String> {
+        match self {
+            Self::Path(path) => fs::read_to_string(path).map_err(|error| error.to_string()),
+            Self::Text(text) => Ok(text.clone()),
+        }
+    }
+}
+
 /// The data map files of one registry folder in one pack, by map id: `<namespace>:<path>`.
-fn pack_files(root: &Path, folder: &str) -> BTreeMap<Identifier, PathBuf> {
-    let mut files = BTreeMap::new();
+fn pack_files(pack: &Pack, folder: &str) -> BTreeMap<Identifier, FileSource> {
+    let mut files: BTreeMap<Identifier, FileSource> = pack
+        .memory
+        .iter()
+        .filter(|file| file.folder == folder)
+        .map(|file| (file.map.clone(), FileSource::Text(file.text.clone())))
+        .collect();
+    let Some(root) = &pack.root else {
+        return files;
+    };
     let Ok(namespaces) = fs::read_dir(root.join("data")) else {
         return files;
     };
@@ -365,7 +388,7 @@ fn collect_json(
     base: &Path,
     dir: &Path,
     namespace: &str,
-    files: &mut BTreeMap<Identifier, PathBuf>,
+    files: &mut BTreeMap<Identifier, FileSource>,
 ) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -379,16 +402,27 @@ fn collect_json(
         {
             let map = relative.to_string_lossy().replace('\\', "/");
             if let Ok(id) = Identifier::parse(&format!("{namespace}:{map}")) {
-                files.insert(id, path);
+                files.insert(id, FileSource::Path(path));
             }
         }
     }
 }
 
-/// A data pack, as the loader reads it.
+/// A data map file that the server holds in memory.
+pub(super) struct MemoryFile {
+    /// The registry folder (`block`, `worldgen/biome`).
+    pub(super) folder: String,
+    /// The map id (`neoforge:oxidizables`).
+    pub(super) map: Identifier,
+    pub(super) text: String,
+}
+
+/// A data pack, as the loader reads it: the files of a directory, and the files in memory.
 pub(super) struct Pack {
     pub(super) id: String,
-    pub(super) root: PathBuf,
+    /// The directory of the pack, or `None` for a pack that has only memory files.
+    pub(super) root: Option<PathBuf>,
+    pub(super) memory: Vec<MemoryFile>,
 }
 
 /// `DataMapLoader.load` and `apply`: reads the files of `packs` (lowest priority first) for
@@ -407,7 +441,7 @@ pub(super) fn load(
         // that does not parse.
         let mut had_file = false;
         for pack in packs {
-            for (map, path) in pack_files(&pack.root, &folder) {
+            for (map, source) in pack_files(pack, &folder) {
                 let Some(info) = types.iter().find(|info| info.id == map) else {
                     warn!(
                         "Found data map file for non-existent data map type '{map}' on registry '{registry}'."
@@ -415,9 +449,7 @@ pub(super) fn load(
                     continue;
                 };
                 had_file = true;
-                let file = fs::read_to_string(&path)
-                    .map_err(|error| error.to_string())
-                    .and_then(|text| parse_file(info, &text));
+                let file = source.read().and_then(|text| parse_file(info, &text));
                 let file = match file {
                     Ok(file) => check_tag_usage(info, file, &pack.id),
                     Err(message) => {

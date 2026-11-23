@@ -230,8 +230,9 @@ fn neoforge_client_gets_the_data_maps_on_join_and_reload() {
     const SYNC: &str = "neoforge:registry_data_map_sync";
     // block, block_transformer, entity_type, game_event, villager_profession, worldgen/biome.
     const REGISTRIES: usize = 6;
-    // `review_a_neoforge_client_with_only_the_builtin_maps_gets_six_empty_payloads`.
-    const BUILTIN_BYTES: usize = 429;
+    // `the_sync_of_the_defaults_has_the_size_of_the_play_boot_test`: the values of vanilla that the
+    // server gives the loader.
+    const BUILTIN_BYTES: usize = 19152;
 
     if std::env::var_os(SERVER_DIR).is_some() {
         return;

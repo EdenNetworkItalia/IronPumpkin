@@ -75,6 +75,9 @@
 
 mod block_transform;
 pub mod builtin;
+mod consumers;
+#[cfg(test)]
+mod consumers_tests;
 mod loader;
 mod registries;
 #[cfg(test)]
@@ -82,6 +85,7 @@ mod review_tests;
 mod sync;
 #[cfg(test)]
 mod tests;
+mod transform_entry;
 
 use arc_swap::ArcSwap;
 use std::{
