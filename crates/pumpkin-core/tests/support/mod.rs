@@ -28,7 +28,7 @@ use pumpkin_core::{
     server::Server,
     world::World,
 };
-use pumpkin_util::GameMode;
+use pumpkin_util::{GameMode, world_seed::Seed};
 use tokio::runtime::Runtime;
 
 /// Deadline for waits on chunk generation or a server round trip: debug build, parallel tests, CI.
@@ -104,6 +104,9 @@ static SERVER: LazyLock<Arc<Server>> = LazyLock::new(|| {
     std::env::set_current_dir(&dir).unwrap();
 
     let basic = BasicConfiguration {
+        // The tests work in the air above y = 120. A random seed puts terrain there in some
+        // processes, and the tests that need air there fail.
+        seed: Seed(0),
         default_level_name: dir.join("world").to_string_lossy().into_owned(),
         allow_nether: false,
         allow_end: false,
