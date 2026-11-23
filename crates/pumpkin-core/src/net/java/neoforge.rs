@@ -856,6 +856,10 @@ impl PendingConnection {
         if !self.admit_client_without_neoforge(server).await {
             return false;
         }
+        if let Some(reason) = crate::plugin::data_maps::vanilla_refusal() {
+            self.kick(reason).await;
+            return false;
+        }
         let mut channels = BTreeSet::from(BUILTIN_CHANNELS);
         channels.extend(
             server

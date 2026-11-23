@@ -500,7 +500,7 @@ impl PendingConnection {
                     }
                 }
                 ConfigurationTask::DataMaps => {
-                    let data_maps = configuration_payloads::known_registry_data_maps();
+                    let data_maps = crate::plugin::data_maps::known_data_maps();
                     self.send_neoforge_payload(KnownRegistryDataMapsPayload::CHANNEL, |data| {
                         data_maps.write(data)
                     })
