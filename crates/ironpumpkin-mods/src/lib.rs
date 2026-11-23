@@ -156,6 +156,12 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/network.md")]
     struct Network;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/capabilities.md")]
+    struct Capabilities;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/shapes.md")]
+    struct Shapes;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/menus.md")]
     struct Menus;
 

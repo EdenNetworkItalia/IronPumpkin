@@ -52,14 +52,38 @@ if (handler != null) {
 ### 2. IronPumpkin implementation (Rust)
 
 ```rust
+# use std::sync::Arc;
 use ironpumpkin_mods::{
+    NativeMod,
     capabilities::{RegisterCapabilitiesEvent, fluid},
     event::EventPriority,
-    transfer::{BUCKET_VOLUME, FluidResource, ResourceHandler, Transaction},
+    math::position::BlockPos,
+    pumpkin_data::{BlockDirection, fluid::Fluid},
+    transfer::{
+        BUCKET_VOLUME, FluidResource, FluidStacksResourceHandler, ResourceHandler, Transaction,
+        TransactionError,
+    },
+    world::World,
 };
 
+# struct ExampleMod;
+#
+# fn tank_storage(_world: &Arc<World>, _pos: BlockPos) -> Arc<dyn ResourceHandler<FluidResource>> {
+#     Arc::new(FluidStacksResourceHandler::new(1, 16 * BUCKET_VOLUME))
+# }
+#
 impl NativeMod for ExampleMod {
     // id, display_name, version and init as usual.
+#     fn id(&self) -> &'static str {
+#         "examplemod"
+#     }
+#     fn display_name(&self) -> &'static str {
+#         "Example Mod"
+#     }
+#     fn version(&self) -> &'static str {
+#         "1.0.0"
+#     }
+#     fn init(&self, _cx: &mut ironpumpkin_mods::ModInit) {}
 
     fn register_capabilities(&self, event: &mut RegisterCapabilitiesEvent) {
         if *event.phase() != EventPriority::Normal {
@@ -68,21 +92,21 @@ impl NativeMod for ExampleMod {
         // The event keeps a failed call, and the server does not start.
         let _ = event.register_block(
             &fluid::BLOCK,
-            |world, pos, _state, _block_entity, _side| {
-                let tank: Arc<dyn ResourceHandler<FluidResource>> = tank_storage(world, *pos);
-                Some(tank)
-            },
+            |world, pos, _state, _block_entity, _side| Some(tank_storage(world, *pos)),
             &["examplemod:tank"],
         );
     }
 }
 
 // Another mod pours a bucket into whatever is below.
-if let Some(handler) = fluid::BLOCK.get_capability(&world, &pos.down(), Some(BlockDirection::Up)) {
-    let mut tx = Transaction::open_root()?;
-    if handler.insert(&FluidResource::of(&Fluid::WATER), BUCKET_VOLUME, &mut tx) == BUCKET_VOLUME {
-        tx.commit();
+fn pour_below(world: &Arc<World>, pos: &BlockPos) -> Result<(), TransactionError> {
+    if let Some(handler) = fluid::BLOCK.get_capability(world, &pos.down(), Some(BlockDirection::Up)) {
+        let mut tx = Transaction::open_root()?;
+        if handler.insert(&FluidResource::of(&Fluid::WATER), BUCKET_VOLUME, &mut tx) == BUCKET_VOLUME {
+            tx.commit();
+        }
     }
+    Ok(())
 }
 ```
 
