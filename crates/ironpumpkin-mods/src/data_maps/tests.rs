@@ -768,7 +768,7 @@ fn builtin_values_read_both_forms_and_write_the_network_form() {
 
 #[test]
 fn transformables_read_both_forms_and_their_remover_drops_one_transformer() {
-    let data = json!({ "block_state_provider": { "type": "minecraft:simple_state_provider" } });
+    let data = json!({ "block_state_provider": { "type": "minecraft:simple", "state": "minecraft:stone" } });
     let short: Transformable =
         parse(json!({ "transformer": "minecraft:axe", "transform_data": data })).unwrap();
     let long: Transformable =
@@ -832,4 +832,628 @@ fn a_replaced_pack_tag_hides_the_builtin_values() {
         registries::merge_tag_values(builtin, None, false),
         ["minecraft:oak_planks"]
     );
+}
+
+// ---- review 167 (wire slice): hand decoder written from `RegistryDataMapSyncPayload.decode` ----
+
+/// `readRegistryKey`, then `readMap(readIdentifier, readMap(readResourceKey, readUtf))`, read by
+/// hand from the Java source, independent of `RegistryDataMapSyncPayload::read`.
+/// Per data map its id and its entries, each the entry key and the JSON text.
+type SyncMaps = Vec<(String, Vec<(String, String)>)>;
+
+fn java_read_sync(mut body: &[u8]) -> (String, SyncMaps) {
+    fn var_int(body: &mut &[u8]) -> usize {
+        let mut value = 0usize;
+        for shift in (0..35).step_by(7) {
+            let byte = body[0];
+            *body = &body[1..];
+            value |= usize::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return value;
+            }
+        }
+        panic!("VarInt too big");
+    }
+    fn utf(body: &mut &[u8]) -> String {
+        let len = var_int(body);
+        let (text, rest) = body.split_at(len);
+        *body = rest;
+        let text = String::from_utf8(text.to_vec()).unwrap();
+        assert!(text.encode_utf16().count() <= 32767, "readUtf limit");
+        text
+    }
+    let registry = utf(&mut body);
+    let mut maps = Vec::new();
+    for _ in 0..var_int(&mut body) {
+        let map = utf(&mut body);
+        let mut entries = Vec::new();
+        for _ in 0..var_int(&mut body) {
+            let key = utf(&mut body);
+            let json = utf(&mut body);
+            entries.push((key, json));
+        }
+        maps.push((map, entries));
+    }
+    assert!(body.is_empty(), "trailing bytes after the payload");
+    (registry, maps)
+}
+
+fn review_synced<T: DataMapValue>(
+    path: &'static str,
+    registry: &'static str,
+    values: Vec<(&'static str, T)>,
+) -> DataMapType<T> {
+    let data_map = DataMapType::builder(id(path), id(registry))
+        .synced(false)
+        .build();
+    data_map.info.set_values(
+        values
+            .into_iter()
+            .map(|(entry, value)| (id(entry), Arc::new(value) as Stored))
+            .collect(),
+    );
+    data_map
+}
+
+#[test]
+#[expect(clippy::too_many_lines, reason = "one case per built-in type")]
+fn review_builtin_network_forms_decode_as_the_neoforge_network_codecs() {
+    let distance = review_synced(
+        "neoforge:acceptable_villager_distances",
+        "minecraft:entity_type",
+        vec![
+            (
+                "minecraft:zombie",
+                parse::<AcceptableVillagerDistance>(json!({ "acceptable_villager_distance": 0.1 }))
+                    .unwrap(),
+            ),
+            ("minecraft:husk", parse(json!(2.5)).unwrap()),
+        ],
+    );
+    let monster = review_synced(
+        "neoforge:monster_room_mobs",
+        "minecraft:entity_type",
+        vec![(
+            "minecraft:spider",
+            parse::<builtin::MonsterRoomMob>(json!({ "weight": 100 })).unwrap(),
+        )],
+    );
+    let parrot = review_synced(
+        "neoforge:parrot_imitations",
+        "minecraft:entity_type",
+        vec![(
+            "minecraft:blaze",
+            parse::<builtin::ParrotImitation>(
+                json!({ "sound": "minecraft:entity.parrot.imitate.blaze" }),
+            )
+            .unwrap(),
+        )],
+    );
+    let biome = review_synced(
+        "neoforge:villager_types",
+        "minecraft:worldgen/biome",
+        vec![(
+            "minecraft:desert",
+            parse::<builtin::BiomeVillagerType>(json!({ "villager_type": "minecraft:desert" }))
+                .unwrap(),
+        )],
+    );
+    let vibration = review_synced(
+        "neoforge:vibration_frequencies",
+        "minecraft:game_event",
+        vec![(
+            "minecraft:step",
+            parse::<builtin::VibrationFrequency>(json!({ "frequency": 1 })).unwrap(),
+        )],
+    );
+    let gift = review_synced(
+        "neoforge:raid_hero_gifts",
+        "minecraft:villager_profession",
+        vec![(
+            "minecraft:armorer",
+            parse::<builtin::RaidHeroGift>(
+                json!({ "loot_table": "minecraft:gameplay/hero_of_the_village/armorer_gift" }),
+            )
+            .unwrap(),
+        )],
+    );
+    let data = json!({ "block_state_provider": { "type": "minecraft:simple", "state": { "id": "minecraft:stone" } } });
+    let oxidizable = review_synced(
+        "neoforge:oxidizables",
+        "minecraft:block",
+        vec![
+            ("minecraft:copper_block", parse::<Oxidizable>(json!({ "next_oxidation_stage": "minecraft:exposed_copper" })).unwrap()),
+            (
+                "minecraft:exposed_copper",
+                parse::<Oxidizable>(json!({ "next_oxidation_stage": "minecraft:weathered_copper", "generate_block_transform": false })).unwrap(),
+            ),
+        ],
+    );
+    let waxable = review_synced(
+        "neoforge:waxables",
+        "minecraft:block",
+        vec![(
+            "minecraft:copper_block",
+            parse::<builtin::Waxable>(json!({ "waxed": "minecraft:waxed_copper_block" })).unwrap(),
+        )],
+    );
+    let transformable = review_synced(
+        "neoforge:transformables",
+        "minecraft:block",
+        vec![
+            (
+                "minecraft:oak_log",
+                parse::<Transformable>(
+                    json!({ "transformer": "minecraft:axe", "transform_data": data }),
+                )
+                .unwrap(),
+            ),
+            (
+                "minecraft:dirt",
+                parse::<Transformable>(
+                    json!({ "transformers": { "minecraft:hoe": data, "minecraft:shovel": data } }),
+                )
+                .unwrap(),
+            ),
+        ],
+    );
+    let appender = review_synced(
+        "neoforge:block_transform_appenders",
+        "minecraft:block_transformer",
+        vec![(
+            "minecraft:axe",
+            parse::<builtin::BlockTransformAppender>(json!([data])).unwrap(),
+        )],
+    );
+    let registered = registered_with(&[
+        &distance,
+        &monster,
+        &parrot,
+        &biome,
+        &vibration,
+        &gift,
+        &oxidizable,
+        &waxable,
+        &transformable,
+        &appender,
+    ]);
+    let client: BTreeMap<Identifier, BTreeSet<Identifier>> = registered
+        .by_registry
+        .iter()
+        .map(|(registry, types)| {
+            (
+                registry.clone(),
+                types.iter().map(|info| info.id.clone()).collect(),
+            )
+        })
+        .collect();
+    let decoded: BTreeMap<String, SyncMaps> = sync::sync_payloads(&registered, &client)
+        .iter()
+        .map(|body| java_read_sync(body))
+        .collect();
+    let json_of = |registry: &str, map: &str, entry: &str| -> Value {
+        let text = &decoded[registry]
+            .iter()
+            .find(|(id, _)| id == map)
+            .unwrap()
+            .1
+            .iter()
+            .find(|(key, _)| key == entry)
+            .unwrap()
+            .1;
+        serde_json::from_str(text).unwrap()
+    };
+    // DISTANCE_CODEC = Codec.FLOAT: a bare number that reads back to the same f32.
+    let zombie = json_of(
+        "minecraft:entity_type",
+        "neoforge:acceptable_villager_distances",
+        "minecraft:zombie",
+    );
+    #[expect(clippy::cast_possible_truncation, reason = "Codec.FLOAT reads a float")]
+    let zombie_f32 = zombie.as_f64().unwrap() as f32;
+    assert_eq!(zombie_f32, 0.1f32, "{zombie}");
+    assert_eq!(
+        json_of(
+            "minecraft:entity_type",
+            "neoforge:acceptable_villager_distances",
+            "minecraft:husk"
+        ),
+        json!(2.5)
+    );
+    // WEIGHT_CODEC, SOUND_CODEC, TYPE_CODEC, FREQUENCY_CODEC, LOOT_TABLE_CODEC: the bare value.
+    assert_eq!(
+        json_of(
+            "minecraft:entity_type",
+            "neoforge:monster_room_mobs",
+            "minecraft:spider"
+        ),
+        json!(100)
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:entity_type",
+            "neoforge:parrot_imitations",
+            "minecraft:blaze"
+        ),
+        json!("minecraft:entity.parrot.imitate.blaze")
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:worldgen/biome",
+            "neoforge:villager_types",
+            "minecraft:desert"
+        ),
+        json!("minecraft:desert")
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:game_event",
+            "neoforge:vibration_frequencies",
+            "minecraft:step"
+        ),
+        json!(1)
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:villager_profession",
+            "neoforge:raid_hero_gifts",
+            "minecraft:armorer"
+        ),
+        json!("minecraft:gameplay/hero_of_the_village/armorer_gift")
+    );
+    // Oxidizable.CODEC and Waxable.CODEC: records; optionalFieldOf leaves out the default.
+    assert_eq!(
+        json_of(
+            "minecraft:block",
+            "neoforge:oxidizables",
+            "minecraft:copper_block"
+        ),
+        json!({ "next_oxidation_stage": "minecraft:exposed_copper" })
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:block",
+            "neoforge:oxidizables",
+            "minecraft:exposed_copper"
+        ),
+        json!({ "next_oxidation_stage": "minecraft:weathered_copper", "generate_block_transform": false })
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:block",
+            "neoforge:waxables",
+            "minecraft:copper_block"
+        ),
+        json!({ "waxed": "minecraft:waxed_copper_block" })
+    );
+    // Transformable.pack: one transformer in the mapPair form, more in the "transformers" map.
+    assert_eq!(
+        json_of(
+            "minecraft:block",
+            "neoforge:transformables",
+            "minecraft:oak_log"
+        ),
+        json!({ "transformer": "minecraft:axe", "transform_data": data })
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:block",
+            "neoforge:transformables",
+            "minecraft:dirt"
+        ),
+        json!({ "transformers": { "minecraft:hoe": data, "minecraft:shovel": data } })
+    );
+    assert_eq!(
+        json_of(
+            "minecraft:block_transformer",
+            "neoforge:block_transform_appenders",
+            "minecraft:axe"
+        ),
+        json!([data])
+    );
+    // One payload per registry, each registry key an Identifier of the registry, not of an entry.
+    assert_eq!(
+        decoded.keys().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "minecraft:block",
+            "minecraft:block_transformer",
+            "minecraft:entity_type",
+            "minecraft:game_event",
+            "minecraft:villager_profession",
+            "minecraft:worldgen/biome"
+        ]
+    );
+}
+
+#[test]
+fn review_a_neoforge_client_with_only_the_builtin_maps_gets_six_empty_payloads() {
+    let target = target();
+    post_with(&[], target, true).unwrap();
+    let registered = read(target);
+    // `ClientRegistryManager.handleKnownDataMaps` replies with every map of the client, synced or
+    // not: here the eleven built-in types.
+    let client: BTreeMap<Identifier, BTreeSet<Identifier>> = registered
+        .by_registry
+        .iter()
+        .map(|(registry, types)| {
+            (
+                registry.clone(),
+                types.iter().map(|info| info.id.clone()).collect(),
+            )
+        })
+        .collect();
+    let payloads = sync::sync_payloads(&registered, &client);
+    let decoded: Vec<_> = payloads.iter().map(|body| java_read_sync(body)).collect();
+    let registries: Vec<&str> = decoded
+        .iter()
+        .map(|(registry, _)| registry.as_str())
+        .collect();
+    // `minecraft:item` has only `villager_compostables`, which is not synced.
+    assert_eq!(
+        registries,
+        [
+            "minecraft:block",
+            "minecraft:block_transformer",
+            "minecraft:entity_type",
+            "minecraft:game_event",
+            "minecraft:villager_profession",
+            "minecraft:worldgen/biome"
+        ]
+    );
+    assert!(
+        decoded
+            .iter()
+            .flat_map(|(_, maps)| maps)
+            .all(|(_, entries)| entries.is_empty())
+    );
+    assert_eq!(
+        decoded.iter().map(|(_, maps)| maps.len()).sum::<usize>(),
+        10
+    );
+    let bytes: usize = payloads.iter().map(Vec::len).sum();
+    // The play boot test checks the same sum on the wire.
+    assert_eq!(bytes, 429);
+}
+
+#[test]
+fn review_block_transform_data_that_neoforge_refuses_is_rejected_at_load() {
+    // `SimpleStateProvider.CODEC` needs `state`; `sound` is a `Holder<SoundEvent>`, not a number;
+    // `particle` is an enum. `BlockTransformData.CODEC` refuses all three, and so does the loader.
+    for bad in [
+        json!({ "block_state_provider": { "type": "minecraft:simple" } }),
+        json!({ "block_state_provider": { "type": "minecraft:simple_state_provider", "state": "minecraft:stone" } }),
+        json!({ "block_state_provider": "minecraft:stone", "sound": 12 }),
+        json!({ "block_state_provider": "minecraft:stone", "particle": "no_such_particle" }),
+        json!({ "block_state_provider": { "id": "minecraft:no_such_block" } }),
+        json!({ "block_state_provider": { "id": "minecraft:stone", "type": "minecraft:simple", "state": "minecraft:stone" } }),
+        json!({ "block_state_provider": "minecraft:stone", "item_damage_per_use": -1 }),
+        json!({ "block_state_provider": "minecraft:stone", "disallowed_faces": ["sideways"] }),
+    ] {
+        assert!(
+            parse::<builtin::BlockTransformAppender>(json!([bad])).is_err(),
+            "{bad} is accepted"
+        );
+        assert!(
+            parse::<BlockTransformData>(bad.clone()).is_err(),
+            "{bad} is accepted"
+        );
+    }
+    for good in [
+        json!({ "block_state_provider": "minecraft:flower_plain" }),
+        json!({ "block_state_provider": { "id": "minecraft:stone" } }),
+        json!({
+            "block_state_provider": { "type": "minecraft:weighted", "entries": [{ "data": "minecraft:stone", "weight": 1 }] },
+            "sound": "minecraft:item.axe.strip",
+            "particle": "scrape",
+            "disallowed_faces": ["down"],
+            "loot": "minecraft:blocks/stone",
+            "drop_strategy": "clicked_face",
+            "update_from_neighbors": false,
+            "transform_type": "copper_chest",
+            "consume_on_use": false,
+            "item_damage_per_use": 1
+        }),
+    ] {
+        assert!(
+            parse::<BlockTransformData>(good.clone()).is_ok(),
+            "{good} is refused"
+        );
+    }
+}
+
+/// Every vanilla `worldgen/block_state_provider` file passes the provider check, so the check
+/// refuses no form that vanilla uses.
+#[test]
+fn review_the_vanilla_block_state_providers_pass_the_check() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../assets/datapack/data/minecraft/worldgen/block_state_provider");
+    let Ok(files) = fs::read_dir(&dir) else {
+        // The data pack assets are gitignored; a checkout without them skips the test.
+        return;
+    };
+    let mut count = 0;
+    for file in files.flatten() {
+        let provider: Value =
+            serde_json::from_str(&fs::read_to_string(file.path()).unwrap()).unwrap();
+        let data = json!({ "block_state_provider": provider });
+        assert!(
+            parse::<BlockTransformData>(data).is_ok(),
+            "{} is refused",
+            file.path().display()
+        );
+        count += 1;
+    }
+    assert!(count > 0);
+}
+
+#[test]
+fn review_values_the_neoforge_network_codec_refuses_are_rejected_at_load() {
+    // The client decodes each value with the network codec of its own map type: a value outside
+    // the codec fails `readJsonWithRegistryCodec` and disconnects the client.
+    let accepted = |result: Result<(), String>| result.is_ok();
+    let report = [
+        (
+            "frequency 0 (intRange 1..15)",
+            accepted(parse::<builtin::VibrationFrequency>(json!(0)).map(drop)),
+        ),
+        (
+            "frequency 16 (intRange 1..15)",
+            accepted(parse::<builtin::VibrationFrequency>(json!(16)).map(drop)),
+        ),
+        (
+            "weight -1 (NON_NEGATIVE_INT)",
+            accepted(parse::<builtin::MonsterRoomMob>(json!(-1)).map(drop)),
+        ),
+        (
+            "unknown sound (SOUND_EVENT.byNameCodec)",
+            accepted(parse::<builtin::ParrotImitation>(json!("mymod:no_such_sound")).map(drop)),
+        ),
+        (
+            "unknown waxed block (BLOCK.byNameCodec)",
+            accepted(
+                parse::<builtin::Waxable>(json!({ "waxed": "mymod:no_such_block" })).map(drop),
+            ),
+        ),
+        (
+            "unknown next stage (BLOCK.byNameCodec)",
+            accepted(
+                parse::<Oxidizable>(json!({ "next_oxidation_stage": "mymod:no_such_block" }))
+                    .map(drop),
+            ),
+        ),
+    ];
+    for (case, ok) in report {
+        assert!(!ok, "{case} is accepted");
+    }
+}
+
+/// `ByteBufCodecs.map(registryKey(), KnownDataMap.STREAM_CODEC.apply(list()))`, where
+/// `KnownDataMap` is `Identifier.STREAM_CODEC` then `ByteBufCodecs.BOOL`, read by hand.
+fn java_read_known(mut body: &[u8]) -> Vec<(String, Vec<(String, bool)>)> {
+    fn var_int(body: &mut &[u8]) -> usize {
+        let mut value = 0usize;
+        for shift in (0..35).step_by(7) {
+            let byte = body[0];
+            *body = &body[1..];
+            value |= usize::from(byte & 0x7f) << shift;
+            if byte & 0x80 == 0 {
+                return value;
+            }
+        }
+        panic!("VarInt too big");
+    }
+    fn utf(body: &mut &[u8]) -> String {
+        let len = var_int(body);
+        let (text, rest) = body.split_at(len);
+        *body = rest;
+        String::from_utf8(text.to_vec()).unwrap()
+    }
+    let mut registries = Vec::new();
+    for _ in 0..var_int(&mut body) {
+        let registry = utf(&mut body);
+        let mut maps = Vec::new();
+        for _ in 0..var_int(&mut body) {
+            let id = utf(&mut body);
+            let flag = body[0];
+            body = &body[1..];
+            assert!(flag <= 1, "ByteBufCodecs.BOOL is one byte, 0 or 1");
+            maps.push((id, flag == 1));
+        }
+        registries.push((registry, maps));
+    }
+    assert!(body.is_empty(), "trailing bytes after the payload");
+    registries
+}
+
+#[test]
+fn review_known_maps_and_reply_decode_as_the_neoforge_stream_codecs() {
+    let mandatory = DataMapType::<i32>::builder(id("mapmod:heat"), id("minecraft:block"))
+        .synced(true)
+        .build();
+    let optional = DataMapType::<i32>::builder(id("mapmod:light"), id("minecraft:block"))
+        .synced(false)
+        .build();
+    let unsynced = int_map("mapmod:fuel", "minecraft:item");
+    let registered = registered_with(&[&mandatory, &optional, &unsynced]);
+    let mut body = Vec::new();
+    sync::known_data_maps(&registered).write(&mut body).unwrap();
+    let mut decoded = java_read_known(&body);
+    for (_, maps) in &mut decoded {
+        maps.sort();
+    }
+    decoded.sort();
+    assert_eq!(
+        decoded,
+        [
+            (
+                "minecraft:block".to_owned(),
+                vec![
+                    ("mapmod:heat".to_owned(), true),
+                    ("mapmod:light".to_owned(), false)
+                ]
+            ),
+            // `RegistryDataMapNegotiation.run` puts every registry with data maps, also one with
+            // no synced map.
+            ("minecraft:item".to_owned(), vec![]),
+        ]
+    );
+    // `type.id() + " (" + type.registryKey().identifier() + ")"`.
+    assert_eq!(
+        sync::mandatory_data_maps(&registered),
+        ["mapmod:heat (minecraft:block)"]
+    );
+
+    // The reply: `map(registryKey(), Identifier.STREAM_CODEC.apply(collection()))`, the same
+    // layout without the flag.
+    let reply = pumpkin_protocol::java::neoforge::KnownRegistryDataMapsReplyPayload {
+        data_maps: [
+            (
+                id("minecraft:block"),
+                vec![id("mapmod:heat"), id("mapmod:light")],
+            ),
+            (id("minecraft:item"), vec![]),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    let mut body = Vec::new();
+    reply.write(&mut body).unwrap();
+    let expected: Vec<u8> = [
+        &[2u8, 15][..],
+        b"minecraft:block",
+        &[2, 11],
+        b"mapmod:heat",
+        &[12],
+        b"mapmod:light",
+        &[14],
+        b"minecraft:item",
+        &[0],
+    ]
+    .concat();
+    assert_eq!(body, expected);
+}
+
+#[test]
+fn a_synced_value_longer_than_the_sync_payload_carries_is_dropped_at_load() {
+    let dir = tempfile::tempdir().unwrap();
+    let names: DataMapType<Vec<String>> =
+        DataMapType::builder(id("mapmod:names"), id("minecraft:item"))
+            .synced(false)
+            .build();
+    let long = "x".repeat(loader::MAX_SYNCED_JSON_UNITS);
+    write_file(
+        &dir.path().join("a"),
+        "data/mapmod/data_maps/item/names.json",
+        &json!({ "values": { "minecraft:stick": [long], "minecraft:coal": ["short"] } }),
+    );
+    let registered = registered_with(&[&names]);
+    loader::load(&registered, &packs(dir.path(), &["a"]), &lookup());
+    assert!(names.get_data(&id("minecraft:stick")).is_none());
+    assert_eq!(*names.get_data(&id("minecraft:coal")).unwrap(), ["short"]);
+    // The same value in a map that is not synced loads.
+    let local: DataMapType<Vec<String>> =
+        DataMapType::builder(id("mapmod:names"), id("minecraft:item")).build();
+    let registered = registered_with(&[&local]);
+    loader::load(&registered, &packs(dir.path(), &["a"]), &lookup());
+    assert!(local.get_data(&id("minecraft:stick")).is_some());
 }

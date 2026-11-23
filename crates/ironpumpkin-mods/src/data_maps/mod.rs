@@ -73,6 +73,7 @@
 //! # let _ = burn_time;
 //! ```
 
+mod block_transform;
 pub mod builtin;
 mod loader;
 mod registries;

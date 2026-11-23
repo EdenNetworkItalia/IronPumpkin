@@ -202,6 +202,29 @@ fn parse_removals(info: &TypeInfo, remove: RawRemove) -> Result<Vec<Removal>, St
     }
 }
 
+/// `FriendlyByteBuf.writeUtf(String)`: at most 32767 UTF-16 units.
+pub(super) const MAX_SYNCED_JSON_UNITS: usize = 32767;
+
+/// Whether the value of a synced map fits one `writeUtf` of `RegistryDataMapSyncPayload`. A
+/// value that does not fit is dropped here, so the sync of its registry never meets it.
+fn fits_sync(info: &TypeInfo, key: &DataMapSource, entry: &Entry) -> bool {
+    if info.sync.is_none() {
+        return true;
+    }
+    let units = info
+        .ops
+        .encode(&entry.value)
+        .map_or(0, |json| json.to_string().encode_utf16().count());
+    if units <= MAX_SYNCED_JSON_UNITS {
+        return true;
+    }
+    error!(
+        "Ignored the value of synced data map {} for {key}: its JSON has {units} characters, more than the {MAX_SYNCED_JSON_UNITS} that the sync payload carries",
+        info.id
+    );
+    false
+}
+
 /// `DataMapFile.codec`, read from the text of a file.
 pub(super) fn parse_file(info: &TypeInfo, text: &str) -> Result<DataMapFile, String> {
     let raw: RawFile = serde_json::from_str(text).map_err(|error| error.to_string())?;
@@ -212,7 +235,10 @@ pub(super) fn parse_file(info: &TypeInfo, text: &str) -> Result<DataMapFile, Str
     };
     let values = strict_keys(raw.values.ok_or("No key values in map")?)?
         .into_iter()
-        .map(|(key, entry)| Ok((key, parse_entry(info, entry)?)))
+        .map(|(key, entry)| {
+            let entry = parse_entry(info, entry)?.filter(|entry| fits_sync(info, &key, entry));
+            Ok((key, entry))
+        })
         .collect::<Result<Vec<_>, String>>()?;
     let removals = raw
         .remove

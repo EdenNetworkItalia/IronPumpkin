@@ -175,11 +175,8 @@ pub struct BlockTransformData(pub Map<String, Value>);
 
 impl JsonForm for BlockTransformData {
     fn from_json(json: &Value) -> Result<Self, String> {
-        let data = object(json)?;
-        if !data.contains_key("block_state_provider") {
-            return Err("No key block_state_provider in MapLike".to_owned());
-        }
-        Ok(Self(data.clone()))
+        super::block_transform::check(json)?;
+        Ok(Self(object(json)?.clone()))
     }
 
     fn to_json(&self) -> Value {
