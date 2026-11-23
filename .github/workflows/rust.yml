@@ -1,6 +1,8 @@
 name: Cargo Build, Test, and Linting
 
 on:
+  push:
+    branches: [master]
   pull_request:
   schedule:
     - cron: "0 2 * * *"
@@ -26,7 +28,7 @@ on:
         default: "16"
         type: string
       full:
-        description: Run the full test matrix and the release builds
+        description: Add the integration tests, doc tests, GameTest, the full test matrix and the release builds
         required: false
         default: false
         type: boolean
@@ -178,7 +180,9 @@ jobs:
         run: >-
           python .github/scripts/ci_packages.py run --
           cargo nextest run --verbose --no-tests=pass
+          ${{ needs.prepare.outputs.run_full != 'true' && '--lib --bins' || '' }}
       - name: Test affected package documentation
+        if: needs.prepare.outputs.run_full == 'true'
         run: >-
           python .github/scripts/ci_packages.py run --
           cargo test --doc --verbose
@@ -189,6 +193,7 @@ jobs:
     if: >-
       !cancelled() &&
       needs.prepare.outputs.has_code == 'true' &&
+      needs.prepare.outputs.run_full == 'true' &&
       needs.format.result == 'success' &&
       needs.clippy.result == 'success' &&
       (needs.check_wit.result == 'success' || needs.check_wit.result == 'skipped')

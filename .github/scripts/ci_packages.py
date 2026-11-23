@@ -270,10 +270,11 @@ def plan(args: argparse.Namespace) -> None:
         blueprint_changed = has_blueprint_changes(changed)
     else:
         selected = all_packages
-        # A fork can keep manual runs light with CI_DISPATCH_FULL=false; the nightly stays full.
-        run_full = (
-            args.event != "workflow_dispatch"
-            or os.environ.get("CI_DISPATCH_FULL", "true") != "false"
+        # Pushes and manual runs test the units only; the nightly and a manual run with
+        # full=true add the integration tests, the doc tests, GameTest and the full matrix.
+        run_full = args.event == "schedule" or (
+            args.event == "workflow_dispatch"
+            and os.environ.get("CI_DISPATCH_FULL", "false") == "true"
         )
         should_check_wit = True
         blueprint_changed = True
