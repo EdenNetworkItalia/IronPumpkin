@@ -39,7 +39,7 @@ use crate::entity::passive::tamable::TamableAnimal;
 use crate::entity::player::Player;
 use crate::plugin::api::events::world::loot_generate::LootGenerateEvent;
 use crate::world::World;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, generate_loot_from_handle_with_rng};
 use pumpkin_data::BlockState;
 
 // TODO vanilla `BaseContainerBlockEntity.canOpen`: the `lock` component, with `container.isLocked` and the
@@ -226,12 +226,12 @@ fn unpack_loot_table(world: &World, entity: &Arc<dyn BlockEntity>, player: Optio
         world.cancelled_by_plugin(|| LootGenerateEvent::new(key.clone()))
     });
     let mut unpacked = None;
-    entity.unpack_loot_table_with(&mut |loot_key, seed| {
+    entity.unpack_loot_table_with(&mut |loot_key, rng| {
         // The cancel only covers the key the event saw.
         let items = if cancelled_key.as_deref() == Some(loot_key.as_str()) {
             Vec::new()
         } else {
-            generate_chest_loot(world, entity, player, &loot_key, seed)
+            generate_chest_loot(world, entity, player, &loot_key, rng)
         };
         unpacked = Some(loot_key);
         items
@@ -252,7 +252,7 @@ fn generate_chest_loot(
     entity: &Arc<dyn BlockEntity>,
     player: Option<&Player>,
     loot_key: &str,
-    seed: i64,
+    rng: &mut pumpkin_util::random::xoroshiro128::Xoroshiro,
 ) -> Vec<ItemStack> {
     // Vanilla resolves an unknown key to `LootTable.EMPTY`: the key is cleared, nothing is placed.
     let Some(table) = world.get_loot_table(loot_key) else {
@@ -270,7 +270,7 @@ fn generate_chest_loot(
         }),
         ..Default::default()
     };
-    generate_loot_from_handle(&table, seed, &params)
+    generate_loot_from_handle_with_rng(&table, rng, &params)
 }
 
 /// Vanilla `ChestBlock.getContainer` with `ignoreBeingBlocked = true`: a double chest is one container.

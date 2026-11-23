@@ -1,6 +1,8 @@
 use super::BlockEntity;
 use crate::world::World;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle, place_items_in_slots};
+use crate::world::loot::{
+    LootContextParameters, generate_loot_from_handle_with_rng, place_items_in_slots,
+};
 use pumpkin_data::data_component_impl::{
     ContainerImpl, ContainerLootImpl, DataComponentImpl, PotDecorationsImpl,
 };
@@ -245,9 +247,10 @@ impl DecoratedPotBlockEntity {
             // Generate without the item lock, then check the slot and place under one lock so a
             // concurrently inserted item is kept. Like vanilla `LootTable.fill` with no empty
             // slot, the loot is dropped with a warning.
-            let generated = generate_loot_from_handle(
+            let mut rng = pumpkin_util::random::xoroshiro128::Xoroshiro::from_seed(seed as u64);
+            let generated = generate_loot_from_handle_with_rng(
                 &handle,
-                seed,
+                &mut rng,
                 &LootContextParameters {
                     world: Some(world),
                     // TODO vanilla `RandomizableContainer.unpackLootTable` ORIGIN is `Vec3.atCenterOf`.
@@ -260,7 +263,7 @@ impl DecoratedPotBlockEntity {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut slots = [item.take().unwrap_or_else(|| ItemStack::EMPTY.clone())];
-            place_items_in_slots(&mut slots, generated, seed);
+            place_items_in_slots(&mut slots, generated, &mut rng);
             let [slot] = slots;
             *item = (!slot.is_empty()).then_some(slot);
             drop(item);

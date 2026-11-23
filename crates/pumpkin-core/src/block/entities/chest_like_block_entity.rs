@@ -142,13 +142,16 @@ macro_rules! impl_block_entity_for_chest {
 
             fn unpack_loot_table_with(
                 &self,
-                generate: &mut dyn FnMut(String, i64) -> Vec<ItemStack>,
+                generate: &mut dyn FnMut(
+                    String,
+                    &mut pumpkin_util::random::xoroshiro128::Xoroshiro,
+                ) -> Vec<ItemStack>,
             ) {
                 if $crate::world::loot::unpack_loot_into_slots(
                     &self.loot_table,
                     self.loot_table_seed,
                     &self.items,
-                    |key, seed| generate(key, seed),
+                    |key, rng| generate(key, rng),
                 )
                 .is_some()
                 {
@@ -524,7 +527,7 @@ mod tests {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             Some("minecraft:chests/simple_dungeon".into());
-        chest.unpack_loot_table_with(&mut |_key, _seed| {
+        chest.unpack_loot_table_with(&mut |_key, _rng| {
             // Generation runs with neither lock held, so a concurrent insert can happen here.
             assert!(chest.items.try_write().is_ok());
             assert!(chest.loot_table.try_lock().is_ok());
@@ -552,7 +555,7 @@ mod tests {
                 .is_none()
         );
 
-        chest.unpack_loot_table_with(&mut |_key, _seed| vec![ItemStack::new(1, &Item::GOLD_INGOT)]);
+        chest.unpack_loot_table_with(&mut |_key, _rng| vec![ItemStack::new(1, &Item::GOLD_INGOT)]);
         assert_eq!(chest.get_stack(0).item.id, Item::DIAMOND.id);
         assert!(
             (0..ChestBlockEntity::INVENTORY_SIZE)

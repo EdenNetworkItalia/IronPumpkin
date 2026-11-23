@@ -581,24 +581,36 @@ pub fn generate_loot_from_handle(
     seed: i64,
     params: &LootContextParameters,
 ) -> Vec<ItemStack> {
-    if let Some(modifiers) = modifiers::active(params) {
-        return modifiers::generate(handle, seed, params, &modifiers);
-    }
-    match &handle.table {
-        LootTableRef::Static(table) => generate_loot_with_context(table, seed, params),
-        LootTableRef::Dynamic(table) => generate_dynamic_loot_with_context(table, seed, params),
-    }
+    generate_loot_from_handle_with_rng(handle, &mut Xoroshiro::from_seed(seed as u64), params)
 }
 
-/// Places loot into empty slots of `slots`. Occupied slots stay.
-pub fn place_items_in_slots(slots: &mut [ItemStack], items_to_place: Vec<ItemStack>, seed: i64) {
+/// [`generate_loot_from_handle`] on the random source `rng`, which the caller goes on with.
+#[must_use]
+pub fn generate_loot_from_handle_with_rng(
+    handle: &LootTableHandle,
+    rng: &mut Xoroshiro,
+    params: &LootContextParameters,
+) -> Vec<ItemStack> {
+    if let Some(modifiers) = modifiers::active(params) {
+        return modifiers::generate_with_rng(handle, rng, params, &modifiers);
+    }
+    generation::generate_with_rng(handle.into(), rng, params)
+}
+
+/// Places loot into empty slots of `slots` with the random source of its roll. Occupied slots
+/// stay.
+pub fn place_items_in_slots(
+    slots: &mut [ItemStack],
+    items_to_place: Vec<ItemStack>,
+    rng: &mut Xoroshiro,
+) {
     let empty_slots = slots
         .iter()
         .enumerate()
         .filter(|(_, stack)| stack.is_empty())
         .map(|(slot, _)| slot)
         .collect();
-    place_items(empty_slots, items_to_place, seed, |slot, item| {
+    place_items(empty_slots, items_to_place, rng, |slot, item| {
         slots[slot] = item;
     });
 }
@@ -606,14 +618,13 @@ pub fn place_items_in_slots(slots: &mut [ItemStack], items_to_place: Vec<ItemSta
 /// Vanilla `RandomizableContainer.unpackLootTable` lock protocol for concurrent containers.
 ///
 /// Takes the pending loot-table key so another unpack cannot run, runs `generate` with neither
-/// chest lock held, then places into still-empty slots so concurrent inserts stay.
-// TODO vanilla `LootTable.fill` shuffles empty slots with the loot-context RNG after `getRandomItems`,
-// not a fresh generator from the same seed.
+/// chest lock held, then places into still-empty slots so concurrent inserts stay. As
+/// `LootTable.fill`, the placement goes on with the random source of the roll.
 pub fn unpack_loot_into_slots<const N: usize>(
     loot_table: &std::sync::Mutex<Option<String>>,
     seed: i64,
     items: &std::sync::RwLock<[ItemStack; N]>,
-    generate: impl FnOnce(String, i64) -> Vec<ItemStack>,
+    generate: impl FnOnce(String, &mut Xoroshiro) -> Vec<ItemStack>,
 ) -> Option<String> {
     let key = {
         let mut loot = loot_table
@@ -621,23 +632,24 @@ pub fn unpack_loot_into_slots<const N: usize>(
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         loot.take()?
     };
-    let generated = generate(key.clone(), seed);
+    let mut rng = Xoroshiro::from_seed(seed as u64);
+    let generated = generate(key.clone(), &mut rng);
     let mut slots = items
         .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    place_items_in_slots(&mut *slots, generated, seed);
+    place_items_in_slots(&mut *slots, generated, &mut rng);
     Some(key)
 }
 
 fn place_items_in_chest(
     inventory: &std::sync::Arc<dyn pumpkin_inventory::Inventory>,
     items_to_place: Vec<ItemStack>,
-    seed: i64,
+    rng: &mut Xoroshiro,
 ) {
     let empty_slots = (0..inventory.size())
         .filter(|&slot| inventory.get_stack(slot).is_empty())
         .collect();
-    place_items(empty_slots, items_to_place, seed, |slot, item| {
+    place_items(empty_slots, items_to_place, rng, |slot, item| {
         inventory.set_stack(slot, item);
     });
 }
@@ -646,21 +658,19 @@ fn place_items_in_chest(
 fn place_items(
     mut empty_slots: Vec<usize>,
     mut items_to_place: Vec<ItemStack>,
-    seed: i64,
+    rng: &mut Xoroshiro,
     mut set: impl FnMut(usize, ItemStack),
 ) {
     if items_to_place.is_empty() {
         return;
     }
 
-    let mut rng = Xoroshiro::from_seed(seed as u64);
-
     for i in (1..empty_slots.len()).rev() {
         let j = rng.next_bounded_i32((i + 1) as i32) as usize;
         empty_slots.swap(i, j);
     }
 
-    shuffle_and_split_items(&mut items_to_place, empty_slots.len(), &mut rng);
+    shuffle_and_split_items(&mut items_to_place, empty_slots.len(), rng);
 
     for item in items_to_place {
         let Some(slot) = empty_slots.pop() else {
@@ -677,8 +687,9 @@ pub fn fill_chest_inventory_handle(
     seed: i64,
     params: &LootContextParameters<'_>,
 ) {
-    let items_to_place = generate_loot_from_handle(handle, seed, params);
-    place_items_in_chest(inventory, items_to_place, seed);
+    let mut rng = Xoroshiro::from_seed(seed as u64);
+    let items_to_place = generate_loot_from_handle_with_rng(handle, &mut rng, params);
+    place_items_in_chest(inventory, items_to_place, &mut rng);
 }
 
 pub fn fill_chest_inventory(
@@ -686,8 +697,13 @@ pub fn fill_chest_inventory(
     table: &LootTable,
     seed: i64,
 ) {
-    let items_to_place = generate_loot(table, seed);
-    place_items_in_chest(inventory, items_to_place, seed);
+    let mut rng = Xoroshiro::from_seed(seed as u64);
+    let items_to_place = generation::generate_with_rng(
+        generation::Table::Static(table),
+        &mut rng,
+        &LootContextParameters::default(),
+    );
+    place_items_in_chest(inventory, items_to_place, &mut rng);
 }
 
 fn shuffle_and_split_items(

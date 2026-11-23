@@ -333,18 +333,33 @@ pub(super) fn active(params: &LootContextParameters<'_>) -> Option<Arc<LootModif
 
 /// `LootTable.getRandomItems` with the modifiers: the roll and the modifiers share the random
 /// source of one loot context.
-pub(super) fn generate(
+#[cfg(test)]
+fn generate(
     handle: &LootTableHandle,
     seed: i64,
     params: &LootContextParameters<'_>,
     modifiers: &LootModifiers,
 ) -> Vec<ItemStack> {
-    let mut random = Xoroshiro::from_seed(seed as u64);
-    let loot = generation::generate_with_rng(handle.into(), &mut random, params);
+    generate_with_rng(
+        handle,
+        &mut Xoroshiro::from_seed(seed as u64),
+        params,
+        modifiers,
+    )
+}
+
+/// [`generate`] on the random source of the caller, which `LootTable.fill` goes on with.
+pub(super) fn generate_with_rng(
+    handle: &LootTableHandle,
+    random: &mut Xoroshiro,
+    params: &LootContextParameters<'_>,
+    modifiers: &LootModifiers,
+) -> Vec<ItemStack> {
+    let loot = generation::generate_with_rng(handle.into(), random, params);
     let mut context = LootContext {
         params,
         queried_loot_table_id: handle.id.as_deref().unwrap_or(UNKNOWN_LOOT_TABLE),
-        random: &mut random,
+        random,
     };
     modifiers.apply(loot, &mut context)
 }
