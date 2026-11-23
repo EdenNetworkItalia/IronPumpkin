@@ -338,7 +338,7 @@ impl Chunk {
             status: proto_chunk.stage.into(),
             blending_data: proto_chunk.blending_data,
             inhabited_time: AtomicU64::new(0),
-            custom_data: Mutex::new(NbtCompound::new()),
+            custom_data: Mutex::new(proto_chunk.custom_data),
             attachments: crate::attachments::Attachments::default(),
             structures,
         };

@@ -344,3 +344,36 @@ fn blocks_and_ocean_floor_survive_chunk_data_resume() {
     );
     assert_eq!(resumed.flat_ocean_floor_height_map, expected_ocean_floor);
 }
+
+/// The relight downgrade turns a full chunk back into a proto chunk: the plugin data of the
+/// chunk survives it and the promotion that follows.
+#[test]
+fn custom_data_survives_chunk_data_resume() {
+    use crate::chunk_system::chunk_state::Chunk;
+    use pumpkin_config::lighting::LightingEngineConfig;
+
+    let world_gen = get_world_gen(
+        Seed(4242),
+        Dimension::OVERWORLD,
+        false,
+        Vec::new(),
+        String::new(),
+    );
+    let mut staged = Chunk::Proto(Box::new(ProtoChunk::new(1, 1, &world_gen)));
+    staged.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(chunk_data) = staged else {
+        unreachable!()
+    };
+    chunk_data.custom_data.lock().unwrap().put_int("plugin", 7);
+
+    let resumed = ProtoChunk::from_chunk_data(&chunk_data, &world_gen);
+    let mut staged_again = Chunk::Proto(Box::new(resumed));
+    staged_again.upgrade_to_level_chunk(&Dimension::OVERWORLD, &LightingEngineConfig::Default);
+    let Chunk::Level(chunk_again) = staged_again else {
+        unreachable!()
+    };
+    assert_eq!(
+        chunk_again.custom_data.lock().unwrap().get_int("plugin"),
+        Some(7)
+    );
+}

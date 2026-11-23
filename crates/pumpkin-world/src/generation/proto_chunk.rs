@@ -175,6 +175,8 @@ pub struct ProtoChunk {
     pub light: ChunkLight,
     pub blending_data: Option<crate::generation::blender::blending_data::BlendingData>,
     pub pending_block_entities: Vec<NbtCompound>,
+    /// The plugin data of the chunk data this chunk resumed from.
+    pub custom_data: NbtCompound,
     pending_structure_entities: Vec<NbtCompound>,
     pub fluid_ticks: Vec<ScheduledTick<&'static Fluid>>,
     pub(crate) surface_height_cache: FxHashMap<u64, i32>,
@@ -298,6 +300,7 @@ impl ProtoChunk {
             },
             blending_data: None,
             pending_block_entities: Vec::new(),
+            custom_data: NbtCompound::new(),
             pending_structure_entities: Vec::new(),
             fluid_ticks: Vec::new(),
             surface_height_cache: FxHashMap::default(),
@@ -332,6 +335,11 @@ impl ProtoChunk {
             .values()
             .cloned()
             .collect();
+        proto_chunk.custom_data = chunk_data
+            .custom_data
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
 
         let section_data = &chunk_data.section;
         let heightmap_data = chunk_data
