@@ -88,7 +88,7 @@ fn initial_sync(holder: &AttachmentHolder<'_>, slot: &Attachments, to: &Player) 
     let Some(types) = types() else {
         return;
     };
-    sync::send_initial(to, sync::initial_payload(holder, slot, types, to));
+    sync::send_initial(holder, slot, types, to);
 }
 
 impl AttachmentHooks for Hooks {
@@ -240,28 +240,13 @@ impl AttachmentHooks for Hooks {
         );
     }
 
-    fn sync_chunk(&self, world: &World, chunk: &ChunkData, player: &Arc<Player>) {
+    fn sync_chunks(&self, world: &World, chunks: &[Vector2<i32>], player: &Arc<Player>) {
         if !sync::has_channel(player) {
             return;
         }
-        initial_sync(&AttachmentHolder::Chunk(chunk), &chunk.attachments, player);
-        let chunk_pos = Vector2::new(chunk.x, chunk.z);
-        for (pos, slot) in world.attachments.block_entities_in(&chunk_pos) {
-            let block_entity = world
-                .block_entities
-                .get(&chunk_pos)
-                .and_then(|entities| entities.get(&pos).cloned());
-            if let Some(block_entity) = block_entity
-                && world
-                    .attachments
-                    .block_entity(&block_entity)
-                    .is_some_and(|live| Arc::ptr_eq(&live, &slot))
-            {
-                initial_sync(
-                    &AttachmentHolder::BlockEntity(block_entity.as_ref()),
-                    &slot,
-                    player,
-                );
+        for chunk_pos in chunks {
+            if let Some(chunk) = world.level.read_chunk_sync(chunk_pos, Arc::clone) {
+                sync_chunk(world, &chunk, player);
             }
         }
     }
@@ -307,5 +292,54 @@ impl ChunkAttachmentCodec for Hooks {
 
     fn read(&self, chunk: &ChunkData, nbt: &NbtCompound) {
         read_into(&chunk.attachments, &AttachmentHolder::Chunk(chunk), nbt);
+    }
+}
+
+/// `AttachmentSync.onChunkSent`: the chunk, then each block entity of the chunk.
+fn sync_chunk(world: &World, chunk: &ChunkData, player: &Arc<Player>) {
+    initial_sync(&AttachmentHolder::Chunk(chunk), &chunk.attachments, player);
+    let chunk_pos = Vector2::new(chunk.x, chunk.z);
+    wake_block_entities_with_attachments(world, chunk);
+    for (pos, slot) in world.attachments.block_entities_in(&chunk_pos) {
+        let block_entity = world
+            .block_entities
+            .get(&chunk_pos)
+            .and_then(|entities| entities.get(&pos).cloned());
+        if let Some(block_entity) = block_entity
+            && world
+                .attachments
+                .block_entity(&block_entity)
+                .is_some_and(|live| Arc::ptr_eq(&live, &slot))
+        {
+            initial_sync(
+                &AttachmentHolder::BlockEntity(block_entity.as_ref()),
+                &slot,
+                player,
+            );
+        }
+    }
+}
+
+/// Wakes the block entities that sleep in the chunk data with saved attachments, so their
+/// synced values reach the client as every block entity of a `LevelChunk` does on `NeoForge`.
+/// Pumpkin wakes a block entity on first use; the other sleeping entries cost one key lookup.
+fn wake_block_entities_with_attachments(world: &World, chunk: &ChunkData) {
+    let sleeping: Vec<_> = chunk
+        .pending_block_entities
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .filter(|(_, nbt)| nbt.get_compound(ATTACHMENTS_NBT_KEY).is_some())
+        .map(|(pos, _)| *pos)
+        .collect();
+    let chunk_pos = Vector2::new(chunk.x, chunk.z);
+    for pos in sleeping {
+        let live = world
+            .block_entities
+            .get(&chunk_pos)
+            .is_some_and(|entities| entities.contains_key(&pos));
+        if !live {
+            let _ = world.get_block_entity(&pos);
+        }
     }
 }

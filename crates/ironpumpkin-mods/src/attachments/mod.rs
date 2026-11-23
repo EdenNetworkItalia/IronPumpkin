@@ -27,6 +27,9 @@
 //!   [`AttachmentAccess::sync_data`], and every holder sends its synced values when a client
 //!   starts to see it. A vanilla client gets nothing. `sync_data` on a type without a sync
 //!   handler does nothing.
+//!   The payloads of one holder leave in the order of their snapshots, with no lock of a value
+//!   held while they are sent. A block entity that sleeps in the chunk data with saved
+//!   attachments wakes when its chunk is sent.
 //!
 //! A holder without attachments allocates nothing and writes no NBT key, and without a
 //! registered type the engine hooks are not installed.

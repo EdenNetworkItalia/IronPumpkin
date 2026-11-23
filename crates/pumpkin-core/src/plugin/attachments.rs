@@ -6,7 +6,10 @@
 //! player and a level. Without installed hooks, which `ironpumpkin-mods` installs only when a
 //! mod registers an attachment type, every function does nothing.
 
-use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
+use std::{
+    hash::BuildHasherDefault,
+    sync::{Arc, Mutex, OnceLock, PoisonError, Weak},
+};
 
 use dashmap::DashMap;
 use pumpkin_data::dynamic::ContentTables;
@@ -18,8 +21,7 @@ use pumpkin_util::{
 pub use pumpkin_world::attachments::{
     ATTACHMENTS_NBT_KEY, AttachmentCell, AttachmentMap, AttachmentValue, Attachments, new_cell,
 };
-use pumpkin_world::chunk::ChunkData;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use crate::{block::entities::BlockEntity, entity::Entity, entity::player::Player, world::World};
 
@@ -80,11 +82,11 @@ pub trait AttachmentHooks: Send + Sync {
     ///
     /// `NeoForge`: `AttachmentSync.syncInitialEntityAttachments`.
     fn sync_entity(&self, entity: &Entity, player: &Arc<Player>);
-    /// Sends the synced attachments of `chunk` and of its block entities to `player`, which got
-    /// the chunk.
+    /// Sends the synced attachments of each chunk of `chunks` and of its block entities to
+    /// `player`, which got the chunks.
     ///
     /// `NeoForge`: `AttachmentSync.onChunkSent`.
-    fn sync_chunk(&self, world: &World, chunk: &ChunkData, player: &Arc<Player>);
+    fn sync_chunks(&self, world: &World, chunks: &[Vector2<i32>], player: &Arc<Player>);
     /// Sends the block entity attachment changes that wait for the end of the tick.
     ///
     /// `NeoForge`: `AttachmentSync.syncBlockEntityUpdates` from `ChunkHolder#broadcastChanges`.
@@ -119,8 +121,11 @@ pub struct WorldAttachments {
     /// entities in one step.
     block_entities: DashMap<Vector2<i32>, FxHashMap<BlockPos, BlockEntitySlot>>,
     /// The block entity attachment types to sync at the end of the tick.
-    pending_block_entity_sync: Mutex<Vec<(BlockPos, u32)>>,
+    pending_block_entity_sync: Mutex<PendingSyncs>,
 }
+
+/// The queued block entity syncs, once each, in the order of their first change.
+type PendingSyncs = indexmap::IndexSet<(BlockPos, u32), BuildHasherDefault<FxHasher>>;
 
 struct BlockEntitySlot {
     block_entity: Weak<dyn BlockEntity>,
@@ -201,9 +206,7 @@ impl WorldAttachments {
             .pending_block_entity_sync
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if !pending.contains(&(pos, index)) {
-            pending.push((pos, index));
-        }
+        pending.insert((pos, index));
     }
 
     /// Takes the queued block entity syncs.
@@ -214,6 +217,8 @@ impl WorldAttachments {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner),
         )
+        .into_iter()
+        .collect()
     }
 }
 
@@ -302,7 +307,7 @@ pub fn sync_entity(entity: &Entity, player: &Arc<Player>) {
     }
 }
 
-/// See [`AttachmentHooks::sync_chunk`], for each chunk of `chunks` that `player` just got.
+/// See [`AttachmentHooks::sync_chunks`].
 pub fn sync_chunks(world: &World, player: &Player, chunks: &[Vector2<i32>]) {
     let Some(hooks) = hooks() else {
         return;
@@ -313,11 +318,7 @@ pub fn sync_chunks(world: &World, player: &Player, chunks: &[Vector2<i32>]) {
     let Some(player) = world.get_player_by_uuid(player.gameprofile.id) else {
         return;
     };
-    for pos in chunks {
-        if let Some(chunk) = world.level.read_chunk_sync(pos, Arc::clone) {
-            hooks.sync_chunk(world, &chunk, &player);
-        }
-    }
+    hooks.sync_chunks(world, chunks, &player);
 }
 
 /// See [`AttachmentHooks::flush_block_entities`].

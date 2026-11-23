@@ -104,8 +104,10 @@ fn send(player: &Player, payload: &[u8]) {
 
 /// `AttachmentSync.syncUpdate`: the current value of `entry` in `slot`, or its absence, to
 /// every player of `players` whose client has the channel and that the sync handler accepts.
-/// The sync handler chooses the players before any lock is taken, so it can read the holder;
-/// only the write of the value holds its lock. A failed write sends nothing.
+/// The sync handler chooses the players before any lock is taken, so it can read the holder.
+/// The order lock of the holder covers the write and the send, and the lock of the value only
+/// the write, so a handler of the sent packet can read the holder. A failed write sends
+/// nothing.
 pub(super) fn sync_update(
     holder: &AttachmentHolder<'_>,
     slot: &Attachments,
@@ -122,6 +124,7 @@ pub(super) fn sync_update(
     if recipients.is_empty() {
         return;
     }
+    let _order = cell::order(slot);
     let mut data = Vec::new();
     if let Some(cell) = slot.cell(entry.index()) {
         data.push(1);
@@ -197,9 +200,19 @@ pub(super) fn initial_data(
     Some((synced_ids, data))
 }
 
-/// Sends an initial payload to `to`.
-pub(super) fn send_initial(to: &Player, payload: Option<Vec<u8>>) {
-    if let Some(payload) = payload {
+/// Sends the initial payload of `slot` to `to`, under the order lock of the holder and with no
+/// lock of a value held.
+pub(super) fn send_initial(
+    holder: &AttachmentHolder<'_>,
+    slot: &Attachments,
+    types: &super::types::Types,
+    to: &Player,
+) {
+    if !has_channel(to) {
+        return;
+    }
+    let _order = cell::order(slot);
+    if let Some(payload) = initial_payload(holder, slot, types, to) {
         send(to, &payload);
     }
 }

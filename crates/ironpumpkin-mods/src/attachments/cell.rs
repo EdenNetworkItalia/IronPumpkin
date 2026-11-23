@@ -7,7 +7,7 @@ use std::{
     sync::{MutexGuard, PoisonError},
 };
 
-use pumpkin_core::plugin::attachments::{AttachmentCell, AttachmentValue};
+use pumpkin_core::plugin::attachments::{AttachmentCell, AttachmentValue, Attachments};
 
 thread_local! {
     /// The cells that this thread holds, so a re-entry panics instead of a deadlock.
@@ -79,4 +79,37 @@ pub(super) fn guarded<R>(f: impl FnOnce() -> R) -> Result<R, String> {
             .or_else(|| payload.downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "the callback panicked".to_owned())
     })
+}
+
+thread_local! {
+    /// Whether this thread holds the order lock of a holder.
+    static ORDERING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The order lock of a holder, held while a sync payload is encoded and sent.
+pub(super) struct OrderGuard<'a> {
+    guard: Option<MutexGuard<'a, ()>>,
+}
+
+/// Takes the order lock of `slot`, so the sync payloads of the holder leave in the order of
+/// their snapshots: an update never goes out before an older initial snapshot.
+///
+/// A send that starts inside another send on the same thread (a `PacketSentEvent` handler that
+/// changes a synced value, for example) takes no lock, so no thread ever waits for a second
+/// order lock and no deadlock is possible.
+pub(super) fn order(slot: &Attachments) -> OrderGuard<'_> {
+    if ORDERING.with(std::cell::Cell::get) {
+        return OrderGuard { guard: None };
+    }
+    let guard = slot.sync_lock();
+    ORDERING.with(|ordering| ordering.set(true));
+    OrderGuard { guard: Some(guard) }
+}
+
+impl Drop for OrderGuard<'_> {
+    fn drop(&mut self) {
+        if self.guard.is_some() {
+            ORDERING.with(|ordering| ordering.set(false));
+        }
+    }
 }

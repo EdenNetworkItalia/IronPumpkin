@@ -4296,6 +4296,7 @@ impl World {
             [TextComponent::text(player.gameprofile.name.clone())],
         )
         .color_named(NamedColor::Yellow);
+        crate::plugin::attachments::sync_player(player);
         let mut event = PlayerJoinEvent::new(player.clone(), msg_comp);
 
         server.plugin_manager.fire(server, &mut event).await;
