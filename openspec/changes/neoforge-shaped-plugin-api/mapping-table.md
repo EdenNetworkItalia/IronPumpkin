@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 445 | 445 | 0 | 0 | 0 | 365 | 85 |
-| Inventory, planned | 287 | 239 | 46 | 2 | 0 | 187 | 38 |
+| Inventory, supported | 444 | 444 | 0 | 0 | 0 | 364 | 84 |
+| Inventory, planned | 289 | 241 | 46 | 2 | 0 | 188 | 39 |
 | Inventory, not supported | 151 | 0 | 0 | 1 | 150 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -289,6 +289,7 @@ How to read it:
 | `FluidTooltipEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | planned |
 | `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` (fires before the lapis is consumed; `enchanted_item` is written back; fires outside the screen lock) | supported |
+| `PlayerEvent.ItemSmithedEvent` | 0 | event class | `pumpkin_core::plugin::inventory::SmithItemEvent` (the recipe id only; a handler can cancel it) | planned |
 | `PlayerEvent.PlayerChangeGameModeEvent` | 0 | event class | `event-bus.event::player-event-player-change-game-mode-event` | supported |
 | `PlayerEvent.TabListNameFormat` | 0 | event class | `pumpkin_core::plugin::player::PlayerEventTabListNameFormat` | supported |
 | `PlayerFlyableFallEvent` | 0 | event class | `pumpkin_core::plugin::player::PlayerFlyableFallEvent` | supported |
@@ -344,8 +345,8 @@ How to read it:
 | `entity_type` | 46 | Static registries a `DeferredRegister` can target | `ModInit::register_entity_type`, `content::RegisterEventExt::register_entity_type` | supported |
 | `DeferredRegister#createDataComponents` | 45 | Registration API | `ModInit::register_data_component_type` with `data_components::DataComponentTypeBuilder` | supported |
 | `particle_type` | 41 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
-| `DeferredRegister#getEntries` | 36 | Registration API | `ModInit::entries` | supported |
-| `IRegistryExtension` | 31 | Registration API | partial: `registry::contains`, `id_of`, `key_of`, `keys`; the alias, max id, sync and callback methods are a gap (M5) | planned |
+| `DeferredRegister#getEntries` | 36 | Registration API | `ModInit::entries` inside `init`, `registry::mod_entries` after it | supported |
+| `IRegistryExtension` | 31 | Registration API | partial: `registry::contains`, `id_of`, `key_of` (`getKey`, `getKeyOrNull`), `keys`, `data_maps::DataMapType::get_data` (`getDataMap`); the alias, max id, sync and callback methods are a gap (M5) | planned |
 | `DeferredRegister.DataComponents#registerComponentType` | 23 | Registration API | `ModInit::register_data_component_type` with `DataComponentTypeBuilder::<T>::new`, the codec is `T`; values through `data_components::DataComponentType` | supported |
 | `neoforge:global_loot_modifier_serializers` | 22 | Registries NeoForge adds | `ModInit::register_loot_modifier_type` | supported |
 | `command_argument_type` | 21 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -681,7 +682,7 @@ How to read it:
 | `neoforge:sync_attachments` | 0 | Payloads | `ironpumpkin_mods::attachments` (host payload; `ModInit::register_attachment_type` with a sync handler) | supported |
 | `CheckExtensibleEnums` | 0 | Configuration tasks and other network types | `ConfigurationTask::ExtensibleEnums` (host-side configuration task; no mod API) | supported |
 | `CheckExtensibleEnums.EnumEntry` | 0 | Configuration tasks and other network types | `pumpkin_protocol::java::neoforge::EnumEntry` (host-side; no mod API) | supported |
-| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | not supported: extensible enums stay excluded, the server never sends the data | not supported |
+| `CheckExtensibleEnums.ExtensionData` | 0 | Configuration tasks and other network types | not supported: Java-only, member of an internal class; the server never sends the data | not supported |
 | `CheckFeatureFlags` | 0 | Configuration tasks and other network types | `ConfigurationTask::FeatureFlags` (host-side configuration task; no mod API) | supported |
 | `CommonRegisterTask` | 0 | Configuration tasks and other network types | `ConfigurationTask::CommonRegister` (host-side configuration task; no mod API) | supported |
 | `CommonVersionTask` | 0 | Configuration tasks and other network types | `ConfigurationTask::CommonVersion` (host-side configuration task; no mod API) | supported |
@@ -886,7 +887,7 @@ How to read it:
 | `transfer.fluid` | 130 | Packages outside the families above | `ironpumpkin_mods::transfer::FluidResource`, `FluidStacksResourceHandler` | planned |
 | `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `transfer.energy` | 78 | Packages outside the families above | `ironpumpkin_mods::transfer::EnergyHandler`, `SimpleEnergyHandler` | planned |
-| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
+| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids); 5 of 10 nested classes complete | planned |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
 | `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
