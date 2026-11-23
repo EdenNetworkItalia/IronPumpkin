@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 327 | 327 | 0 | 0 | 0 | 287 | 73 |
-| Inventory, planned | 408 | 363 | 43 | 2 | 0 | 266 | 50 |
+| Inventory, supported | 352 | 352 | 0 | 0 | 0 | 309 | 81 |
+| Inventory, planned | 383 | 338 | 43 | 2 | 0 | 244 | 42 |
 | Inventory, not supported | 148 | 0 | 0 | 1 | 147 | 54 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -338,7 +338,7 @@ How to read it:
 | `DeferredRegister#createBlocks` | 66 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
 | `DeferredRegister.Blocks#register` | 60 | Registration API | `ModInit::register_block` with `content::BlockBuilder` | supported |
 | `sound_event` | 55 | Static registries a `DeferredRegister` can target | `ModInit::register_sound_event`, `sound_events::RegisterSoundEvent`; played with `sound_events::play_sound` | supported |
-| `neoforge:attachment_types` | 54 | Registries NeoForge adds | `registration.entry-definition::attachment-type` | planned |
+| `neoforge:attachment_types` | 54 | Registries NeoForge adds | `registration.entry-definition::attachment-type` | supported |
 | `recipe_type` | 49 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `RegistryBuilder` | 47 | Registration API | `registration` doc, not supported | planned |
 | `entity_type` | 46 | Static registries a `DeferredRegister` can target | `ModInit::register_entity_type`, `content::RegisterEventExt::register_entity_type` | supported |
@@ -418,7 +418,7 @@ How to read it:
 | `neoforge:ingredient_serializer` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:biome_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
 | `neoforge:structure_modifier` | 0 | Registries NeoForge adds | `registration` doc, not supported | planned |
-| `neoforge:synced_attachment_types` | 0 | Registries NeoForge adds | `attachments.attachment-type-definition.sync` | planned |
+| `neoforge:synced_attachment_types` | 0 | Registries NeoForge adds | `attachments.attachment-type-definition.sync` | supported |
 | `game_event` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
 | `debug_subscription` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | not supported |
 | `chunk_status` | 0 | Static registries a `DeferredRegister` can target | `registration` doc, not supported | planned |
@@ -514,31 +514,31 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `Level` | 310 | Attachment holders | `attachments.attachment-holder` | planned |
-| `Entity` | 249 | Attachment holders | `attachments.attachment-holder` | planned |
-| `BlockEntity` | 235 | Attachment holders | `attachments.attachment-holder` | planned |
-| `LevelChunk` | 70 | Attachment holders | `attachments.attachment-holder` | planned |
-| `ChunkAccess` | 65 | Attachment holders | `attachments.attachment-holder` | planned |
-| `IAttachmentHolder#getData` | 57 | Attachment API | `attachments.attachment-holder.get-data` | planned |
-| `AttachmentType.Builder#build` | 55 | Attachment API | `registration.entry-definition::attachment-type` | planned |
-| `AttachmentType#builder` | 46 | Attachment API | `attachments.attachment-type-definition` | planned |
-| `AttachmentType.Builder#serialize` | 43 | Attachment API | `attachments.attachment-type-definition.serialize` | planned |
-| `AttachmentType.Builder#copyOnDeath` | 25 | Attachment API | `attachments.attachment-type-definition.copy-on-death` | planned |
-| `IAttachmentHolder#hasData` | 16 | Attachment API | `attachments.attachment-holder.has-data` | planned |
-| `AttachmentType#serializable` | 15 | Attachment API | `attachments.attachment-type-definition.serialize` | planned |
-| `AttachmentType.Builder#sync` | 10 | Attachment API | `attachments.attachment-type-definition.sync` | planned |
-| `IAttachmentSerializer` | 7 | Attachment API | `attachments.attachment-type-definition.serialize` (host serializer) | planned |
-| `AttachmentType.Builder#copyHandler` | 5 | Attachment API | `attachments.attachment-type-definition.copy-handler` | planned |
-| `IAttachmentCopyHandler` | 5 | Attachment API | `callbacks.attachment-copy` | planned |
-| `IAttachmentHolder#getExistingData` | 5 | Attachment API | `attachments.attachment-holder.get-existing-data` | planned |
-| `AttachmentHolder` | 3 | Attachment API | `attachments.attachment-holder` | planned |
-| `IAttachmentHolder#getExistingDataOrNull` | 3 | Attachment API | `attachments.attachment-holder.get-existing-data` | planned |
-| `IAttachmentHolder#syncData` | 2 | Attachment API | `attachments.attachment-holder.sync-data` | planned |
-| `IAttachmentHolder#hasAttachments` | 1 | Attachment API | `attachments.attachment-holder.has-attachments` | planned |
-| `AttachmentHolder.AsField` | 0 | Attachment API | `attachments.attachment-holder` | planned |
+| `Level` | 310 | Attachment holders | `attachments.attachment-holder` | supported |
+| `Entity` | 249 | Attachment holders | `attachments.attachment-holder` | supported |
+| `BlockEntity` | 235 | Attachment holders | `attachments.attachment-holder` | supported |
+| `LevelChunk` | 70 | Attachment holders | `attachments.attachment-holder` | supported |
+| `ChunkAccess` | 65 | Attachment holders | `attachments.attachment-holder` | supported |
+| `IAttachmentHolder#getData` | 57 | Attachment API | `attachments.attachment-holder.get-data` | supported |
+| `AttachmentType.Builder#build` | 55 | Attachment API | `registration.entry-definition::attachment-type` | supported |
+| `AttachmentType#builder` | 46 | Attachment API | `attachments.attachment-type-definition` | supported |
+| `AttachmentType.Builder#serialize` | 43 | Attachment API | `attachments.attachment-type-definition.serialize` | supported |
+| `AttachmentType.Builder#copyOnDeath` | 25 | Attachment API | `attachments.attachment-type-definition.copy-on-death` | supported |
+| `IAttachmentHolder#hasData` | 16 | Attachment API | `attachments.attachment-holder.has-data` | supported |
+| `AttachmentType#serializable` | 15 | Attachment API | `attachments.attachment-type-definition.serialize` | supported |
+| `AttachmentType.Builder#sync` | 10 | Attachment API | `attachments.attachment-type-definition.sync` | supported |
+| `IAttachmentSerializer` | 7 | Attachment API | `attachments.attachment-type-definition.serialize` (host serializer) | supported |
+| `AttachmentType.Builder#copyHandler` | 5 | Attachment API | `attachments.attachment-type-definition.copy-handler` | supported |
+| `IAttachmentCopyHandler` | 5 | Attachment API | `callbacks.attachment-copy` | supported |
+| `IAttachmentHolder#getExistingData` | 5 | Attachment API | `attachments.attachment-holder.get-existing-data` | supported |
+| `AttachmentHolder` | 3 | Attachment API | `attachments.attachment-holder` | supported |
+| `IAttachmentHolder#getExistingDataOrNull` | 3 | Attachment API | `attachments.attachment-holder.get-existing-data` | supported |
+| `IAttachmentHolder#syncData` | 2 | Attachment API | `attachments.attachment-holder.sync-data` | supported |
+| `IAttachmentHolder#hasAttachments` | 1 | Attachment API | `attachments.attachment-holder.has-attachments` | supported |
+| `AttachmentHolder.AsField` | 0 | Attachment API | `attachments.attachment-holder` | supported |
 | `AttachmentInternals` | 0 | Attachment API | `attachments` doc, not supported | not supported |
 | `AttachmentSync` | 0 | Attachment API | `attachments` doc, not supported | not supported |
-| `AttachmentSyncHandler` | 0 | Attachment API | `attachments.attachment-sync`, `callbacks.attachment-send-to-player` | planned |
+| `AttachmentSyncHandler` | 0 | Attachment API | `attachments.attachment-sync`, `callbacks.attachment-send-to-player` | supported |
 | `LevelAttachmentsSavedData` | 0 | Attachment API | `attachments` doc, not supported | not supported |
 
 ### Data maps

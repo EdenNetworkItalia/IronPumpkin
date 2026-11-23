@@ -343,9 +343,9 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 |:--|:--|:--|:--|:--|:--|
 | Events, server and common | 282 | 177 | 85 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
-| Registries | 150 | 27 | 110 | 0 | 13 |
+| Registries | 150 | 29 | 108 | 0 | 13 |
 | Capabilities | 35 | 33 | 0 | 0 | 2 |
-| Attachments | 26 | 0 | 23 | 0 | 3 |
+| Attachments | 26 | 23 | 0 | 0 | 3 |
 | Data maps | 24 | 0 | 24 | 0 | 0 |
 | Config | 37 | 22 | 11 | 1 | 3 |
 | Networking | 88 | 28 | 36 | 0 | 24 |
@@ -354,7 +354,7 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 10 | 36 | 0 | 41 |
-| Total | 1093 | 327 | 408 | 210 | 148 |
+| Total | 1093 | 352 | 383 | 210 | 148 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -543,7 +543,7 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 | PlayerEnchantItemEvent | game | both | no | - | supported | `PlayerEnchantItemEvent` | fired by `container_events::on_button_click` after the enchantments apply and before the lapis is consumed, after the screen-handler lock is released; the table writes `enchanted_item` back to slot 0 when slot 0 still holds the enchanted item, and consumes the lapis cost from slot 1 while it holds lapis (up to what it holds), so a handler that changes the lapis count still pays and a handler that closes the table keeps the lapis; WIT v0.2, test `a_plugin_changes_the_stacks_of_a_brew_and_reads_an_enchant` (`crates/pumpkin-wasm-host-v0_2/tests`); tests `one_event_per_fire_site_enchantment_events`, `enchanting_events_handler_closes_the_screen`, `player_enchant_item_event_lapis_change_still_pays` |
 | PlayerEvent (abstract) | game | both | no | - | planned | shared fields of 59 subclasses | abstract: the bus rejects listeners on abstract events (EventBus 8.0.5 `addToListeners`); subclasses: 46 supported, 6 planned, 5 not supported, 2 client-only |
 | PlayerEvent.BreakSpeed | game | both | yes | - | supported | `PlayerEventBreakSpeed` | fired in `block::calc_block_breaking` on every mining step; `new_speed` written back, a cancel gives -1; the client also predicts break speed; WIT v0.2, test `a_plugin_slows_the_mining_and_refuses_the_harvest_of_a_block` (`crates/pumpkin-wasm-host-v0_2/tests`); test `one_event_per_fire_site_break_speed_and_harvest_check` |
-| PlayerEvent.Clone | game | both | no | - | planned | player respawn and attachment copy on death | `World::respawn_player` keeps the same `Arc<Player>` across death and the End exit, so there is no old player to pair with a new one; the copy-on-death rule belongs to attachments (task 2.14) |
+| PlayerEvent.Clone | game | both | no | - | planned | player respawn | `World::respawn_player` keeps the same `Arc<Player>` across death and the End exit, so there is no old player to pair with a new one; the attachment copy rules of the event run on that player (`ironpumpkin_mods::attachments`) |
 | PlayerEvent.HarvestCheck | game | both | no | - | supported | `PlayerEventHarvestCheck` | fired in `Player::can_harvest` (mining speed and drops); `can_harvest` written back; WIT v0.2, test `a_plugin_slows_the_mining_and_refuses_the_harvest_of_a_block` (`crates/pumpkin-wasm-host-v0_2/tests`); test `one_event_per_fire_site_break_speed_and_harvest_check` |
 | PlayerEvent.ItemCraftedEvent | game | both | no | - | supported | `CraftItemEvent` | fired in `entity/player.rs`; WIT v0.2 |
 | PlayerEvent.ItemSmeltedEvent | game | both | no | - | supported | `FurnaceExtractEvent` | fired in `entity/player.rs`; WIT v0.2 |
@@ -975,10 +975,10 @@ Every class below lives in the client source set (`src/client/java`) or is poste
 | `neoforge:ingredient_serializer` | `INGREDIENT_TYPES` | static | yes | both | planned | engine extension point (M5) | M5 engine extension: custom ingredient types; the recipe loader reads vanilla ingredients only |
 | `neoforge:fluid_ingredient_type` | `FLUID_INGREDIENT_TYPES` | static | yes | both | planned | engine extension point (M5) | M5 engine extension: fluid ingredients belong to the NeoForge fluid API, which has no Pumpkin equivalent |
 | `neoforge:condition_codecs` | `CONDITION_CODECS` | static | no | both | planned | engine extension point (M5) | M5 engine extension: the datapack loader does not read `neoforge:conditions` |
-| `neoforge:attachment_types` | `ATTACHMENT_TYPES` | static | no | both | planned | attachments (phase 6) | needs the phase 2 content registry (#17) and the M4 native API |
+| `neoforge:attachment_types` | `ATTACHMENT_TYPES` | static | no | both | supported | `ModInit::register_attachment_type` (`ironpumpkin_mods::attachments`) | frozen after the last `RegisterEvent`; no `RegisterEvent` fires for it |
 | `neoforge:biome_modifier` | `BIOME_MODIFIERS` | datapack | no | both | planned | engine extension point (M5) | M5 engine extension: datapack registry of biome modifiers; Pumpkin worldgen is Rust code |
 | `neoforge:structure_modifier` | `STRUCTURE_MODIFIERS` | datapack | no | both | planned | engine extension point (M5) | M5 engine extension: datapack registry of structure modifiers; Pumpkin worldgen is Rust code |
-| `neoforge:synced_attachment_types` | `AttachmentSync.SYNCED_ATTACHMENT_TYPES` | static | yes | both | planned | attachments with `sync_attachments` (phase 6) | needs the phase 2 content registry (#17) and the M4 native API |
+| `neoforge:synced_attachment_types` | `AttachmentSync.SYNCED_ATTACHMENT_TYPES` | static | yes | both | supported | the types with a sync handler, in registration order (`plugin::attachments::SYNCED_ATTACHMENT_TYPES`) | sent by the registry sync, so the ids of `neoforge:sync_attachments` are those of the server |
 
 #### Static registries a `DeferredRegister` can target (95 vanilla, from `registry_order.json`)
 
@@ -1144,37 +1144,37 @@ The `capabilities` and `transfer` modules of `ironpumpkin-mods` (task 2.7, #153)
 
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `AttachmentHolder` | class, 5 public methods | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `AttachmentHolder.AsField` | class, 2 public methods | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
+| `AttachmentHolder` | class, 5 public methods | both | supported | `attachments::AttachmentAccess` on `Entity`, `World`, `attachments::block_entity` and `attachments::chunk` | the storage is `pumpkin_world::attachments::Attachments`, with no map until the first attachment |
+| `AttachmentHolder.AsField` | class, 2 public methods | both | supported | `attachments::ChunkAttachments` over the `attachments` field of `ChunkData` | the chunk holder; a proto chunk has no holder, so nothing is copied on promotion |
 | `AttachmentInternals` | class, 4 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
 | `AttachmentSync` | class, 9 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
-| `AttachmentSyncHandler` | interface, 3 public methods | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `AttachmentType#builder` | method, 2 overloads | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `AttachmentType#serializable` | method, 2 overloads | both | planned | attachments (phase 6) | persisted under the `neoforge:attachments` NBT key |
-| `AttachmentType.Builder#serialize` | method, 3 overloads | both | planned | attachments (phase 6) | persisted under the `neoforge:attachments` NBT key |
-| `AttachmentType.Builder#copyOnDeath` | method, 1 overload | both | planned | attachments (phase 6) | needs the player clone step on respawn |
-| `AttachmentType.Builder#copyHandler` | method, 1 overload | both | planned | attachments (phase 6) | needs the player clone step on respawn |
-| `AttachmentType.Builder#sync` | method, 3 overloads | both | planned | attachments (phase 6) | needs the `neoforge:sync_attachments` payload |
-| `AttachmentType.Builder#build` | method, 1 overload | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentCopyHandler` | interface, 1 public method | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#hasAttachments` | method, 1 overload | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#hasData` | method, 2 overloads | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#getData` | method, 2 overloads | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#getExistingData` | method, 2 overloads | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#getExistingDataOrNull` | method, 2 overloads | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
-| `IAttachmentHolder#syncData` | method, 2 overloads | both | planned | attachments (phase 6) | needs the `neoforge:sync_attachments` payload |
-| `IAttachmentSerializer` | interface, 2 public methods | both | planned | attachments (phase 6) | no attachment storage on Pumpkin types yet |
+| `AttachmentSyncHandler` | interface, 3 public methods | both | supported | `attachments::AttachmentSyncHandler` | `sendToPlayer` and `write`; `read` runs on the client |
+| `AttachmentType#builder` | method, 2 overloads | both | supported | `AttachmentTypeBuilder::new`, `AttachmentTypeBuilder::with_constructor` | the default value or the default constructor that gets the holder |
+| `AttachmentType#serializable` | method, 2 overloads | both | supported | `AttachmentTypeBuilder::serializable`, `serializable_with_constructor` with `attachments::NbtSerializable` | persisted under the `neoforge:attachments` NBT key |
+| `AttachmentType.Builder#serialize` | method, 3 overloads | both | supported | `AttachmentTypeBuilder::serialize`, `serialize_codec`, `serialize_codec_if` | persisted under the `neoforge:attachments` NBT key; a second serializer does not compile |
+| `AttachmentType.Builder#copyOnDeath` | method, 1 overload | both | supported | `AttachmentTypeBuilder::copy_on_death` | applied by `World::respawn_player`; only on a builder with a serializer |
+| `AttachmentType.Builder#copyHandler` | method, 1 overload | both | supported | `AttachmentTypeBuilder::copy_handler` | only on a builder with a serializer |
+| `AttachmentType.Builder#sync` | method, 3 overloads | both | supported | `AttachmentTypeBuilder::sync`, `sync_with`, `sync_to` | the encoder of the stream codec; `neoforge:sync_attachments` |
+| `AttachmentType.Builder#build` | method, 1 overload | both | supported | `ModInit::register_attachment_type` | takes the builder and returns the typed `AttachmentType<T>` |
+| `IAttachmentCopyHandler` | interface, 1 public method | both | supported | `attachments::AttachmentCopyHandler` | also implemented by closures |
+| `IAttachmentHolder#hasAttachments` | method, 1 overload | both | supported | `AttachmentAccess::has_attachments` | - |
+| `IAttachmentHolder#hasData` | method, 2 overloads | both | supported | `AttachmentAccess::has_data` | - |
+| `IAttachmentHolder#getData` | method, 2 overloads | both | supported | `AttachmentAccess::get_data`, `AttachmentAccess::with_data` | `get_data` returns a clone; a change in place goes through `with_data` or a shared value |
+| `IAttachmentHolder#getExistingData` | method, 2 overloads | both | supported | `AttachmentAccess::get_existing_data` | - |
+| `IAttachmentHolder#getExistingDataOrNull` | method, 2 overloads | both | supported | `AttachmentAccess::get_existing_data` | `Option` covers both |
+| `IAttachmentHolder#syncData` | method, 2 overloads | both | supported | `AttachmentAccess::sync_data` | fails with `AttachmentError::NotSynced` for a type without a sync handler, where `NeoForge` does nothing |
+| `IAttachmentSerializer` | interface, 2 public methods | both | supported | `attachments::AttachmentSerializer`, `attachments::NbtSerializer` | the NBT compound of the attachment is the `ValueInput` and `ValueOutput` |
 | `LevelAttachmentsSavedData` | class, 2 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
 
 #### Attachment holders (from patches and `injected-interfaces.json`)
 
 | Minecraft class | How | Side | Status | Pumpkin type | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `BlockEntity` | patch: extends AttachmentHolder | both | planned | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), phase 6 | attachment storage and save on the Pumpkin type |
-| `ChunkAccess` | injected IAttachmentHolder | both | planned | `ChunkData` (pumpkin-world `chunk/mod.rs`), phase 6 | attachment storage and save on the Pumpkin type |
-| `Entity` | patch: extends AttachmentHolder | both | planned | `Entity` (pumpkin-core `entity/mod.rs`), phase 6 | attachment storage and save on the Pumpkin type |
-| `Level` | patch: extends AttachmentHolder | both | planned | `World` (pumpkin-core `world/mod.rs`), phase 6 | attachment storage and save on the Pumpkin type |
-| `LevelChunk` | injected IAttachmentHolder | both | planned | `ChunkData` (pumpkin-world `chunk/mod.rs`), phase 6 | attachment storage and save on the Pumpkin type |
+| `BlockEntity` | patch: extends AttachmentHolder | both | supported | `attachments::block_entity` over `World::attachments` | stored per world and position with the identity of the block entity; saved in its NBT by `World::save_block_entities` |
+| `ChunkAccess` | injected IAttachmentHolder | both | supported | `ChunkData::attachments` (pumpkin-world `chunk/mod.rs`) | saved at the top level of the chunk NBT; the Pump format does not carry it |
+| `Entity` | patch: extends AttachmentHolder | both | supported | `Entity::attachments` (pumpkin-core `entity/mod.rs`) | saved in the entity NBT, the player data included |
+| `Level` | patch: extends AttachmentHolder | both | supported | `World::attachments` (pumpkin-core `world/mod.rs`) | saved to `data/neoforge/data_attachments.dat` of the dimension |
+| `LevelChunk` | injected IAttachmentHolder | both | supported | `attachments::chunk` over `ChunkData::attachments` | the loaded chunk |
 
 ### Data maps
 
