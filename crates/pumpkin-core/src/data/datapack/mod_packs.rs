@@ -463,4 +463,24 @@ mod override_tests {
             .count();
         assert_eq!(same_id, 1, "both recipes are registered");
     }
+
+    /// Vanilla: function tags follow the tag rules, so `replace: true` drops earlier entries.
+    #[test]
+    fn r_a_world_function_tag_with_replace_drops_the_mod_entries() {
+        let (manager, _) = load(
+            &[(
+                "data/minecraft/tags/function/load.json",
+                br#"{"values":["gems:init"]}"#,
+            )],
+            &[(
+                "data/minecraft/tags/function/load.json",
+                br#"{"replace":true,"values":["world:init"]}"#,
+            )],
+        );
+        let tags = manager.function_tags.read().unwrap();
+        assert_eq!(
+            tags.get("minecraft:load"),
+            Some(&vec!["world:init".to_owned()])
+        );
+    }
 }
