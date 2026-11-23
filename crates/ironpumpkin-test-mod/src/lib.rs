@@ -220,6 +220,12 @@ impl NativeMod for TestMod {
         info!("{ID} reloaded {}", config.file_name());
     }
 
+    fn config_unloading(&self, config: &ModConfig) {
+        if config.config_type() == ConfigType::Synced {
+            log_event("ModConfigEvent.Unloading SYNCED");
+        }
+    }
+
     fn entity_attribute_creation(&self, event: &mut EntityAttributeCreationEvent) {
         log_event("EntityAttributeCreationEvent");
         // The handle keeps an error, and the server stops on it after this step.

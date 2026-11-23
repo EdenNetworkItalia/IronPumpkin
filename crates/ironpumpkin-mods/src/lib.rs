@@ -134,7 +134,6 @@ use mod_list::ModList;
 use mods_toml::ModInfo;
 use permission::Permission;
 use server::Server;
-use version::ArtifactVersion;
 
 // The Rust snippets of the porting guide are doc-tests of this crate, so an API change that breaks
 // a snippet fails `cargo test --doc -p ironpumpkin-mods`.
@@ -245,6 +244,11 @@ pub trait NativeMod: Sync {
     /// The config hooks of every mod run one at a time. A `save` of the same config from inside
     /// this method writes the file and does not call this method again.
     fn config_reloading(&self, _config: &config::ModConfig) {}
+    /// Called when a synced config of this mod unloads after its server stopped, like
+    /// `ModConfigEvent.Unloading`. The values are gone: [`ModConfig::get`](config::ModConfig::get)
+    /// fails until the config loads for the next server. Local and startup configs never unload,
+    /// as on `NeoForge`.
+    fn config_unloading(&self, _config: &config::ModConfig) {}
     /// `EntityAttributeCreationEvent`: sets the default attributes of the mod's entity types.
     /// Runs after the last `RegisterEvent`. See [`registration`].
     fn entity_attribute_creation(&self, _event: &mut registration::EntityAttributeCreationEvent) {}
@@ -720,15 +724,7 @@ fn mod_info(native_mod: &dyn NativeMod) -> Result<ModInfo, String> {
              0-9 _ . -"
         ));
     }
-    Ok(ModInfo {
-        mod_id: id.to_owned(),
-        namespace: id.to_owned(),
-        version: ArtifactVersion::new(version),
-        display_name: display_name.to_owned(),
-        description: display_name.to_owned(),
-        authors: None,
-        dependencies: Vec::new(),
-    })
+    Ok(ModInfo::plain(id, display_name, version))
 }
 
 fn is_valid_id(id: &str) -> bool {

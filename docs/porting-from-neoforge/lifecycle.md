@@ -11,7 +11,7 @@ In IronPumpkin, a mod is a type that implements `NativeMod`. `NativeMod::init` r
 | Feature | NeoForge | IronPumpkin |
 | :--- | :--- | :--- |
 | **Entry point** | The constructor of the `@Mod` class | `NativeMod::init(&self, cx: &mut ModInit)` |
-| **Mod bus** | One `IEventBus` for each mod | No object. Each lifecycle event is a `NativeMod` method. |
+| **Mod bus** | One `IEventBus` for each mod, from `ModContainer#getEventBus` | No object. Each lifecycle event is a `NativeMod` method. `IEventBus#register` and `@EventBusSubscriber` need an annotation scan, which Rust has not: call `ModInit::register_event` once for each handler. |
 | **`FMLCommonSetupEvent`** | A listener on the mod bus | `NativeMod::common_setup` |
 | **`FMLDedicatedServerSetupEvent`** | A listener on the mod bus | `NativeMod::dedicated_server_setup` |
 | **`InterModEnqueueEvent`, `InterModProcessEvent`** | Listeners that call `InterModComms` | `NativeMod::inter_mod_enqueue` and `inter_mod_process` |
@@ -183,6 +183,8 @@ The mapping from the Java code to the Rust code:
 | `modBus.addListener(this::commonSetup)` | Override `NativeMod::common_setup`. |
 | `ModList.get().getMods()` | `ModList::get().get_mods()`, a slice of `ModInfo` in load order |
 | `ModList.get().isLoaded(id)` | `ModList::get().is_loaded(id)` |
+| `ModList.get().forEachModContainer(..)`, `forEachModInOrder(..)`, `applyForEachModContainer(..)` | Iterate the slice of `get_mods()` or `get_sorted_mods()` |
+| `ModList.get().getModContainerById(id)` | `ModList::get().get_mod_container_by_id(id)`, an `Option<&ModInfo>` |
 | `InterModComms.sendTo(id, method, supplier)` | `imc.send(id, method, payload)`. The payload is any value. |
 | `InterModComms.getMessages(MOD_ID)` | `imc.get_messages()`. It returns the messages of the mod itself. |
 | `message.messageSupplier().get()` | `message.payload::<T>()`, an `Option<&T>` |
@@ -230,7 +232,7 @@ The handlers are the same objects on every server: state that a handler keeps ca
 IronPumpkin differs in two places:
 
 - The mod loading runs inside the first `Server::new`, because `RegisterEvent` and `RegisterPayloadHandlersEvent` fire through the event bus of a server. A handler of those events gets the first server as its `server` argument. NeoForge loads the mods before any server exists.
-- A Synced config stays loaded after its server stops, and the next server reloads it from `config/`. NeoForge unloads it in `handleServerStopped` (`ModConfigEvent.Unloading`) and reads the `syncedconfig` folder of the world first. IronPumpkin has no unloading hook and no world override.
+- A Synced config unloads after its server stops, and `NativeMod::config_unloading` runs for it, as `handleServerStopped` unloads it (`ModConfigEvent.Unloading`). The next server reloads it from `config/`. NeoForge reads the `syncedconfig` folder of the world first. IronPumpkin has no world override.
 
 ## The registry freeze
 
@@ -258,7 +260,11 @@ The mod list holds the system mods `minecraft` and `neoforge`, as on NeoForge. A
 | `namespace` | The registry namespace. The default is the mod id. |
 | `version` | The version. `${file.jarVersion}` becomes `NativeMod::version()`. The version starts with a digit. |
 | `displayName`, `description`, `authors` | The display fields of `ModInfo` |
-| `[[dependencies.<modId>]]` | The dependencies of the mod: `modId`, `type`, `versionRange`, `ordering`, `side` and `reason` |
+| `modUrl`, `issueTrackerURL` | `ModInfo::mod_url` and `ModInfo::issue_tracker_url`. The `issueTrackerURL` of the file is `ModInfo::file_issue_tracker_url`. `ModInfo::issues_url()` returns the key of the mod, else the key of the file. A blank value, or a value with `myurl.me` or `example.invalid`, is absent in `modUrl` and in the file `issueTrackerURL`, and a value without a scheme stops the load. The `issueTrackerURL` of a `[[mods]]` entry is a plain string, as FML does not parse it. |
+| `[properties]`, `[modproperties.<modId>]` | `ModInfo::file_properties` and `ModInfo::mod_properties`, as TOML tables |
+| `[[dependencies.<modId>]]` | The dependencies of the mod: `modId`, `type`, `versionRange`, `ordering`, `side`, `reason` and `referralUrl` (`ModDependency::referral_url`) |
+
+A crate that registers several mods with `register_mod!` gives each the same text, and each picks the `[[mods]]` entry with its id, or the only entry.
 
 The other keys (`modLoader`, `loaderVersion`, `mixins`, `accessTransformers` and the client display keys) are not read.
 

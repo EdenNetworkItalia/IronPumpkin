@@ -95,18 +95,9 @@ impl ModList {
 
 /// The mods that `NeoForge` always loads (`ModSorter.detectSystemMods`).
 pub(crate) fn system_mods() -> Vec<ModInfo> {
-    let system_mod = |mod_id: &str, display_name: &str, version: &str| ModInfo {
-        mod_id: mod_id.to_owned(),
-        namespace: mod_id.to_owned(),
-        version: ArtifactVersion::new(version),
-        display_name: display_name.to_owned(),
-        description: display_name.to_owned(),
-        authors: None,
-        dependencies: Vec::new(),
-    };
     vec![
-        system_mod("minecraft", "Minecraft", &CURRENT_MC_VERSION.to_string()),
-        system_mod("neoforge", "NeoForge", EMULATED_NEOFORGE_VERSION),
+        ModInfo::plain("minecraft", "Minecraft", &CURRENT_MC_VERSION.to_string()),
+        ModInfo::plain("neoforge", "NeoForge", EMULATED_NEOFORGE_VERSION),
     ]
 }
 

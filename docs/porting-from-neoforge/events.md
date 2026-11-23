@@ -22,6 +22,8 @@ In IronPumpkin, a game event is a Pumpkin event with the NeoForge fire site, fie
 | **Receive canceled** | `receiveCanceled = true` | The `receive_canceled` argument |
 | **Listener on a parent class** | A listener for the parent type gets the subclasses | `ModInit::register_parent_event` with a `ParentEventHandler`. The handler gets a `dyn Payload` and downcasts it. |
 | **Result** | `setResult(..)` on some events | Planned |
+| **Post an event** | `IEventBus#post(event)` | `server.plugin_manager.fire_blocking(server, &mut event)`, or `fire(..).await` in async code. A mod defines its own event type with `impl Payload`, and a handler of another mod receives it. |
+| **Scan for listeners** | `IEventBus#register(Object)`, `@EventBusSubscriber(value, modid)` | Not supported. Rust has no annotation scan: call `ModInit::register_event` for each handler. The mod id is the id of the `NativeMod`. A client-dist handler has no server counterpart. |
 | **Unregister** | `IEventBus#unregister` | Not supported. A handler lives as long as the server. |
 
 ---

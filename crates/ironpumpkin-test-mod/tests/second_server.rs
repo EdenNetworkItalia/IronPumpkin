@@ -53,15 +53,16 @@ const ONCE: [&str; 7] = [
     "RegisterPayloadHandlersEvent",
 ];
 
-/// The events of each server, a run of the mod's command, an echo payload and a reload of the
-/// synced config on each server.
-const PER_SERVER: [&str; 9] = [
+/// The events of each server, a run of the mod's command, an echo payload, a reload of the
+/// synced config and its unloading after the stop, on each server.
+const PER_SERVER: [&str; 10] = [
     "ModConfigEvent.Loading SYNCED",
     "ServerAboutToStartEvent",
     "ServerStartingEvent",
     "ServerStartedEvent",
     "ServerStoppingEvent",
     "ServerStoppedEvent",
+    "ModConfigEvent.Unloading SYNCED",
     "command",
     "echo",
     RELOADED,

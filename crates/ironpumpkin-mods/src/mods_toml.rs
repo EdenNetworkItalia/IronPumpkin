@@ -5,11 +5,17 @@
 //! description and authors, and `[[dependencies.<modId>]]` gives the dependencies. `license` must
 //! be set and not blank, as `ModFileInfo` requires ("Missing license"); its value is not kept.
 //!
+//! The file keys `properties` and `issueTrackerURL`, the `[[mods]]` keys `issueTrackerURL` and
+//! `modUrl`, the `[modproperties.<modId>]` table and the dependency key `referralUrl` are kept on
+//! the [`ModInfo`]. The file `issueTrackerURL`, `modUrl` and `referralUrl` are URLs: a value that
+//! is blank or holds `myurl.me` or `example.invalid` is absent, as in FML `StringUtils.toURL`, and
+//! a value without a scheme stops the load. The `[[mods]]` `issueTrackerURL` is a plain string,
+//! as FML does not parse it.
+//!
 //! The host does not read the other keys: `modLoader`, `loaderVersion`, `showAsResourcePack`,
-//! `showAsDataPack`, `services`, `properties`, `issueTrackerURL`, `[[mixins]]`,
-//! `[[accessTransformers]]`; in a `[[mods]]` entry `logoFile`, `logoBlur`, `updateJSONURL`,
-//! `modUrl`, `credits`, `displayURL`, `features`, `modproperties`; in a dependency `referralUrl`.
-//! design.md lists why for each one.
+//! `showAsDataPack`, `services`, `[[mixins]]`, `[[accessTransformers]]`; in a `[[mods]]` entry
+//! `logoFile`, `logoBlur`, `updateJSONURL`, `credits`, `displayURL`, `features`. design.md lists
+//! why for each one.
 
 use toml::{Table, Value};
 
@@ -38,6 +44,47 @@ pub struct ModInfo {
     pub authors: Option<String>,
     /// `getDependencies`.
     pub dependencies: Vec<ModDependency>,
+    /// `getModURL`: the `modUrl` key.
+    pub mod_url: Option<String>,
+    /// The `issueTrackerURL` key of the `[[mods]]` entry. [`ModInfo::issues_url`] falls back to
+    /// the file key.
+    pub issue_tracker_url: Option<String>,
+    /// The `issueTrackerURL` key of the file (`IModFileInfo.getIssueURL`).
+    pub file_issue_tracker_url: Option<String>,
+    /// `getModProperties`: the `[modproperties.<modId>]` table of the file.
+    pub mod_properties: Table,
+    /// The `[properties]` table of the file (`IModFileInfo.getFileProperties`).
+    pub file_properties: Table,
+}
+
+impl ModInfo {
+    /// A mod without a descriptor: the namespace is the id and the description is the display
+    /// name.
+    pub(crate) fn plain(mod_id: &str, display_name: &str, version: &str) -> Self {
+        Self {
+            mod_id: mod_id.to_owned(),
+            namespace: mod_id.to_owned(),
+            version: ArtifactVersion::new(version),
+            display_name: display_name.to_owned(),
+            description: display_name.to_owned(),
+            authors: None,
+            dependencies: Vec::new(),
+            mod_url: None,
+            issue_tracker_url: None,
+            file_issue_tracker_url: None,
+            mod_properties: Table::new(),
+            file_properties: Table::new(),
+        }
+    }
+
+    /// `DefaultModDisplayInfo.issuesUrl`: the `issueTrackerURL` of the mod, else the one of the
+    /// file.
+    #[must_use]
+    pub fn issues_url(&self) -> Option<&str> {
+        self.issue_tracker_url
+            .as_deref()
+            .or(self.file_issue_tracker_url.as_deref())
+    }
 }
 
 /// One `[[dependencies.<modId>]]` entry (`IModInfo.ModVersion`).
@@ -50,6 +97,8 @@ pub struct ModDependency {
     pub side: DependencySide,
     /// Shown when the dependency is incompatible or discouraged.
     pub reason: Option<String>,
+    /// `getReferralURL`: the `referralUrl` key.
+    pub referral_url: Option<String>,
 }
 
 /// `IModInfo.DependencyType`. The `type` key is case-insensitive.
@@ -172,6 +221,17 @@ pub fn parse(text: &str, id: &str, jar_version: &str) -> Result<ModInfo, String>
         _ => Vec::new(),
     };
     Ok(ModInfo {
+        mod_url: url(entry, "modUrl")?,
+        issue_tracker_url: string(entry, "issueTrackerURL")?.map(str::to_owned),
+        file_issue_tracker_url: url(&file, "issueTrackerURL")?,
+        mod_properties: sub_table(&file, "modproperties", &mod_id)?,
+        file_properties: match file.get("properties") {
+            None => Table::new(),
+            Some(value) => value
+                .as_table()
+                .ok_or("properties must be a table")?
+                .clone(),
+        },
         display_name: string(entry, "displayName")?.unwrap_or(&mod_id).to_owned(),
         description: string(entry, "description")?.map_or_else(
             || MISSING_DESCRIPTION.to_owned(),
@@ -226,6 +286,7 @@ fn dependency(entry: &Table) -> Result<ModDependency, String> {
         .unwrap_or_else(VersionRange::unbounded);
     Ok(ModDependency {
         reason: string(entry, "reason")?.map(str::to_owned),
+        referral_url: url(entry, "referralUrl")?,
         mod_id,
         dependency_type,
         version_range,
@@ -239,6 +300,48 @@ fn string<'a>(table: &'a Table, key: &str) -> Result<Option<&'a str>, String> {
         .get(key)
         .map(|value| value.as_str().ok_or(format!("{key} must be a string")))
         .transpose()
+}
+
+/// FML `StringUtils.toURL`: a blank or placeholder value is absent, and a value without a scheme
+/// is an error.
+fn url(table: &Table, key: &str) -> Result<Option<String>, String> {
+    let Some(value) = string(table, key)? else {
+        return Ok(None);
+    };
+    if value.trim().is_empty() || value.contains("myurl.me") || value.contains("example.invalid") {
+        return Ok(None);
+    }
+    let scheme_end = value.find(':');
+    let valid = scheme_end.is_some_and(|end| {
+        value[..end].starts_with(|c: char| c.is_ascii_alphabetic())
+            && value[..end]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    });
+    if valid {
+        Ok(Some(value.to_owned()))
+    } else {
+        Err(format!("{key} \"{value}\" is not an URL: it has no scheme"))
+    }
+}
+
+/// The `[<key>.<name>]` table of the file, empty when absent.
+fn sub_table(file: &Table, key: &str, name: &str) -> Result<Table, String> {
+    let Some(parent) = file.get(key) else {
+        return Ok(Table::new());
+    };
+    let parent = parent
+        .as_table()
+        .ok_or_else(|| format!("{key} must be a table of [{key}.<modId>] tables"))?;
+    parent.get(name).map_or_else(
+        || Ok(Table::new()),
+        |value| {
+            value
+                .as_table()
+                .cloned()
+                .ok_or_else(|| format!("{key}.{name} must be a table"))
+        },
+    )
 }
 
 fn tables<'a>(table: &'a Table, key: &str) -> Result<Vec<&'a Table>, String> {
@@ -339,6 +442,110 @@ mod tests {
         assert_eq!(parse(text, "second", "1").unwrap().mod_id, "second");
         let none = parse(text, "third", "1").unwrap_err();
         assert!(none.contains("\"third\""), "{none}");
+    }
+
+    #[test]
+    fn properties_are_kept_for_the_file() {
+        let info = parse(
+            "license = \"MIT\"\n[properties]\nstringy = \"x\"\nnumber = 3\n[[mods]]\nmodId = \"ok\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(info.file_properties["stringy"].as_str(), Some("x"));
+        assert_eq!(info.file_properties["number"].as_integer(), Some(3));
+        assert!(info.mod_properties.is_empty());
+        let none = parse("license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\n", "ok", "1").unwrap();
+        assert!(none.file_properties.is_empty());
+        let bad = parse(
+            "license = \"MIT\"\nproperties = 1\n[[mods]]\nmodId = \"ok\"\n",
+            "ok",
+            "1",
+        );
+        assert!(bad.is_err());
+    }
+
+    #[test]
+    fn issue_tracker_urls_are_read_at_file_and_mod_level() {
+        let file_only = parse(
+            "license = \"MIT\"\nissueTrackerURL = \"https://file.test/issues\"\n[[mods]]\nmodId = \"ok\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(file_only.issue_tracker_url, None);
+        assert_eq!(file_only.issues_url(), Some("https://file.test/issues"));
+        let both = parse(
+            "license = \"MIT\"\nissueTrackerURL = \"https://file.test/issues\"\n[[mods]]\nmodId = \"ok\"\nissueTrackerURL = \"https://mod.test/issues\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(
+            both.issue_tracker_url.as_deref(),
+            Some("https://mod.test/issues")
+        );
+        assert_eq!(
+            both.file_issue_tracker_url.as_deref(),
+            Some("https://file.test/issues")
+        );
+        assert_eq!(both.issues_url(), Some("https://mod.test/issues"));
+        let none = parse("license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\n", "ok", "1").unwrap();
+        assert_eq!(none.issues_url(), None);
+        // FML never parses the mod-level key as a URL.
+        let plain = parse(
+            "license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\nissueTrackerURL = \"no scheme\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(plain.issues_url(), Some("no scheme"));
+    }
+
+    #[test]
+    fn mod_url_and_url_rules_follow_fml() {
+        let with = |value: &str| {
+            parse(
+                &format!("license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\nmodUrl = \"{value}\"\n"),
+                "ok",
+                "1",
+            )
+        };
+        assert_eq!(
+            with("https://mod.test").unwrap().mod_url.as_deref(),
+            Some("https://mod.test")
+        );
+        for placeholder in ["", "  ", "https://myurl.me/x", "https://example.invalid"] {
+            assert_eq!(with(placeholder).unwrap().mod_url, None, "{placeholder}");
+        }
+        assert!(with("no scheme").is_err());
+    }
+
+    #[test]
+    fn modproperties_are_read_for_the_mod_id() {
+        let info = parse(
+            "license = \"MIT\"\n[modproperties.ok]\nkey = \"v\"\n[modproperties.other]\nkey = \"w\"\n[[mods]]\nmodId = \"ok\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(info.mod_properties.len(), 1);
+        assert_eq!(info.mod_properties["key"].as_str(), Some("v"));
+    }
+
+    #[test]
+    fn referral_url_is_read_on_a_dependency() {
+        let info = parse(
+            "license = \"MIT\"\n[[mods]]\nmodId = \"ok\"\n[[dependencies.ok]]\nmodId = \"a\"\nreferralUrl = \"https://a.test\"\n[[dependencies.ok]]\nmodId = \"b\"\n",
+            "ok",
+            "1",
+        )
+        .unwrap();
+        assert_eq!(
+            info.dependencies[0].referral_url.as_deref(),
+            Some("https://a.test")
+        );
+        assert_eq!(info.dependencies[1].referral_url, None);
     }
 
     const LICENSE: &str = "license = \"MIT\"\n";
