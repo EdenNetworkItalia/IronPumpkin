@@ -29,6 +29,8 @@
 //! assert_eq!(registry::id_of(ContentKind::Item, "examplemod:unknown"), None);
 //! ```
 
+use std::{collections::HashMap, sync::OnceLock};
+
 use pumpkin_data::{
     Block, BlockId,
     attributes::Attributes,
@@ -43,6 +45,119 @@ use pumpkin_data::{
     tag::RegistryKey,
 };
 use pumpkin_util::identifier::Identifier;
+
+/// A registry of the content registry, as a handle. [`ModInit::registry`](crate::ModInit::registry)
+/// gives one.
+///
+/// `NeoForge`: the `Registry<T>` that `DeferredRegister#getRegistry` supplies. The handle carries
+/// the lookups of this module for one registry, with the same rules for the freeze.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Registry(ContentKind);
+
+impl Registry {
+    /// The handle of the registry of this kind.
+    #[must_use]
+    pub const fn of(kind: ContentKind) -> Self {
+        Self(kind)
+    }
+
+    /// The key of the registry. `NeoForge`: `DeferredRegister#getRegistryKey`, a `ResourceKey` of
+    /// the registry. Here a registry is its [`ContentKind`], so the key is the kind that
+    /// [`ModInit::entries`](crate::ModInit::entries) and the lookups of this module take.
+    #[must_use]
+    pub const fn key(self) -> ContentKind {
+        self.0
+    }
+
+    /// The name of the registry, for example `minecraft:block`.
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryName`, the identifier of the registry key.
+    #[must_use]
+    pub const fn name(self) -> Identifier {
+        Identifier::vanilla_static(match self.0 {
+            ContentKind::Block => "block",
+            ContentKind::Item => "item",
+            ContentKind::EntityType => "entity_type",
+            ContentKind::SoundEvent => "sound_event",
+            ContentKind::MobEffect => "mob_effect",
+            ContentKind::Attribute => "attribute",
+            ContentKind::DataComponentType => "data_component_type",
+        })
+    }
+
+    /// See [`contains`].
+    #[must_use]
+    pub fn contains(self, key: &str) -> bool {
+        contains(self.0, key)
+    }
+
+    /// See [`id_of`].
+    #[must_use]
+    pub fn id_of(self, key: &str) -> Option<u16> {
+        id_of(self.0, key)
+    }
+
+    /// See [`key_of`].
+    #[must_use]
+    pub fn key_of(self, id: u16) -> Option<Identifier> {
+        key_of(self.0, id)
+    }
+
+    /// See [`keys`].
+    #[must_use]
+    pub fn keys(self) -> Vec<Identifier> {
+        keys(self.0)
+    }
+
+    /// See [`mod_entries`].
+    #[must_use]
+    pub fn mod_entries(self, mod_id: &str) -> Vec<Identifier> {
+        mod_entries(mod_id, self.0)
+    }
+
+    /// See [`is_in_tag`].
+    #[must_use]
+    pub fn is_in_tag(self, key: &str, tag: &str) -> bool {
+        is_in_tag(self.0, key, tag)
+    }
+
+    /// See [`tag_entries`].
+    #[must_use]
+    pub fn tag_entries(self, tag: &str) -> Option<Vec<Identifier>> {
+        tag_entries(self.0, tag)
+    }
+}
+
+/// The content that each mod registered through its [`ModInit`](crate::ModInit), by mod id.
+static MOD_ENTRIES: OnceLock<HashMap<String, Vec<(ContentKind, Identifier)>>> = OnceLock::new();
+
+/// Keeps the entries of every mod once the last `init` has run. The first server of the process
+/// does this, before the lifecycle steps.
+pub(crate) fn set_mod_entries(entries: HashMap<String, Vec<(ContentKind, Identifier)>>) {
+    // A later server of the process keeps the entries of the first.
+    let _ = MOD_ENTRIES.set(entries);
+}
+
+/// The names of the content that the mod `mod_id` registered in a registry, in registration order.
+///
+/// The mod registered it through [`ModInit`](crate::ModInit). The list exists from the end of the
+/// last `init`, so a mod reads it in `common_setup` and later. Before that point it is empty, and
+/// [`ModInit::entries`](crate::ModInit::entries) answers inside `init`. A tag and a failed
+/// registration are not listed, and neither is content that a handler of `RegisterEvent`
+/// registers.
+///
+/// `NeoForge`: `DeferredRegister#getEntries`, which a mod can call at any time.
+#[must_use]
+pub fn mod_entries(mod_id: &str, kind: ContentKind) -> Vec<Identifier> {
+    MOD_ENTRIES
+        .get()
+        .and_then(|entries| entries.get(mod_id))
+        .into_iter()
+        .flatten()
+        .filter(|(entry_kind, _)| *entry_kind == kind)
+        .map(|(_, name)| name.clone())
+        .collect()
+}
 
 /// Whether the registry has an entry with this name.
 ///

@@ -1149,8 +1149,8 @@ mod tests {
     use super::*;
     use crate::data_component::DataComponent;
     use crate::data_component_impl::{
-        CustomDataImpl, CustomNameImpl, DataComponentImpl, EnchantmentsImpl, ItemNameImpl,
-        LoreImpl, MapDecorationsImpl, UnbreakableImpl,
+        CustomDataImpl, CustomNameImpl, DamageImpl, DataComponentImpl, EnchantmentsImpl,
+        ItemNameImpl, LoreImpl, MapDecorationsImpl, UnbreakableImpl,
     };
     use pumpkin_nbt::Nbt;
     use pumpkin_nbt::deserializer::NbtReadHelperJava;
@@ -1570,6 +1570,29 @@ mod tests {
             "durability patch must differ so inventory sync sends SET_SLOT"
         );
         assert_eq!(stack.get_damage(), 1);
+    }
+
+    /// `MutableDataComponentHolder` on `ItemStack`: `get`, `set`, `remove` and `has` of a
+    /// component, over the default of the item.
+    #[test]
+    fn a_component_is_set_read_and_removed_over_the_default_of_the_item() {
+        let damage = |stack: &ItemStack| stack.get_data_component::<DamageImpl>().map(|d| d.damage);
+        let mut stack = iron_sword();
+        assert_eq!(damage(&stack), Some(0));
+
+        stack.set_data_component(DamageImpl { damage: 7 });
+        assert_eq!(damage(&stack), Some(7));
+        assert!(stack.has_data_component(DataComponent::Damage));
+
+        // The removal hides the default of the item.
+        stack.remove_data_component(DataComponent::Damage);
+        assert_eq!(damage(&stack), None);
+        assert!(!stack.has_data_component(DataComponent::Damage));
+
+        // A value equal to the default drops the override, as `ItemStack#set` does.
+        stack.set_data_component(DamageImpl { damage: 0 });
+        assert_eq!(damage(&stack), Some(0));
+        assert!(stack.patch.is_empty());
     }
 
     #[test]

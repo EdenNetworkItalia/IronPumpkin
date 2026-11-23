@@ -133,6 +133,7 @@ use imc::{InterModEnqueue, InterModProcess};
 use mod_list::ModList;
 use mods_toml::ModInfo;
 use permission::Permission;
+use pumpkin_util::identifier::Identifier;
 use server::Server;
 
 // The Rust snippets of the porting guide are doc-tests of this crate, so an API change that breaks
@@ -321,6 +322,10 @@ type Registration = Box<dyn Fn(&Context) + Send + Sync>;
 /// This crate is the native API for mods. It passes `pumpkin-core` types through.
 pub struct ModInit {
     id: &'static str,
+    /// The registry namespace of the mod, `DeferredRegister#getNamespace`.
+    namespace: String,
+    /// The content that this `init` registered, in registration order. A tag is not an entry.
+    entries: Vec<(ContentKind, Identifier)>,
     data_root: PathBuf,
     registrations: Vec<Registration>,
     content_error: Option<ContentRegistrationError>,
@@ -365,6 +370,8 @@ impl ModInit {
     pub fn new(id: &'static str) -> Self {
         Self {
             id,
+            namespace: id.to_owned(),
+            entries: Vec::new(),
             // Must agree with `Context::get_data_folder`, which is not reachable without a server.
             data_root: Path::new("plugins").join("data"),
             registrations: Vec::new(),
@@ -581,6 +588,60 @@ impl ModInit {
         Ok(())
     }
 
+    /// The registry namespace of the mod: the `namespace` of its `neoforge.mods.toml`, or the mod
+    /// id. The registrations take names as written, so a mod puts this value in front of each
+    /// name itself.
+    ///
+    /// The namespace is one per mod, not one per `DeferredRegister`. After `init`,
+    /// [`ModList`] gives it as `ModInfo::namespace`.
+    ///
+    /// `NeoForge`: `DeferredRegister#getNamespace`, which the `DeferredRegister` puts in front of
+    /// each name.
+    #[must_use]
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    /// The names of the content that this mod registered with [`ModInit`] in a registry, in
+    /// registration order. A failed registration is not listed, and neither is a tag. Content that
+    /// a handler of `RegisterEvent` registers is not listed. This method answers inside `init`;
+    /// after it, [`registry::mod_entries`] gives the same list.
+    ///
+    /// The list is one per mod and registry, not one per `DeferredRegister`: two registers of the
+    /// same registry give one merged list.
+    ///
+    /// `NeoForge`: `DeferredRegister#getEntries`, the holders of one `DeferredRegister`.
+    #[must_use]
+    pub fn entries(&self, kind: ContentKind) -> Vec<Identifier> {
+        self.entries
+            .iter()
+            .filter(|(entry_kind, _)| *entry_kind == kind)
+            .map(|(_, name)| name.clone())
+            .collect()
+    }
+
+    /// The registry of this kind. `NeoForge`: `DeferredRegister#getRegistry`.
+    #[must_use]
+    pub const fn registry(&self, kind: ContentKind) -> registry::Registry {
+        registry::Registry::of(kind)
+    }
+
+    /// The key of the registry of this kind, the kind itself. See [`registry::Registry::key`].
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryKey`.
+    #[must_use]
+    pub const fn registry_key(&self, kind: ContentKind) -> ContentKind {
+        self.registry(kind).key()
+    }
+
+    /// The name of the registry of this kind, for example `minecraft:block`.
+    ///
+    /// `NeoForge`: `DeferredRegister#getRegistryName`.
+    #[must_use]
+    pub const fn registry_name(&self, kind: ContentKind) -> Identifier {
+        self.registry(kind).name()
+    }
+
     /// Passes `result` through and keeps its error if it is the first one of this mod.
     fn keep_content_error(
         &mut self,
@@ -588,6 +649,12 @@ impl ModInit {
         name: String,
         result: Result<(), RegistryError>,
     ) -> Result<(), RegistryError> {
+        if result.is_ok()
+            && !name.starts_with('#')
+            && let Ok(entry) = Identifier::parse(&name)
+        {
+            self.entries.push((kind, entry));
+        }
         if let Err(error) = &result {
             self.content_error
                 .get_or_insert_with(|| ContentRegistrationError {
@@ -745,6 +812,12 @@ fn run_init(
     native_mod: &dyn NativeMod,
     mut init: ModInit,
 ) -> Result<ModInit, ContentRegistrationError> {
+    if let Some(info) = mod_info(native_mod)
+        .ok()
+        .filter(|info| info.mod_id == init.id)
+    {
+        init.namespace = info.namespace;
+    }
     native_mod.init(&mut init);
     init.content_error.take().map_or(Ok(init), Err)
 }
@@ -833,6 +906,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
     mod_packs::set_mod_data_packs(data_pack::of_mods(&mods));
     let mut configs = Vec::new();
     let mut registrations = Vec::new();
+    let mut entries = HashMap::new();
     for loaded in &mods {
         let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
             continue;
@@ -842,6 +916,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
         let mut init =
             run_init(loaded.native_mod, init).unwrap_or_else(|err| refuse_to_start(&err));
         configs.append(&mut init.configs);
+        entries.insert(loaded.mod_id.to_owned(), std::mem::take(&mut init.entries));
         registrations.push(ModRegistrations {
             metadata: PluginMetadata {
                 name: info.mod_id.clone(),
@@ -854,6 +929,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
             registrations: init.registrations,
         });
     }
+    registry::set_mod_entries(entries);
     let mut loaded = LoadedMods {
         mods: registrations,
         configs,
