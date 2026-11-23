@@ -104,6 +104,14 @@ mod tests {
     }
 
     #[test]
+    fn the_default_payload_is_the_captured_empty_payload() {
+        // The configuration task sends this payload when no mod adds a feature flag.
+        let mut bytes = Vec::new();
+        FeatureFlagDataPayload::default().write(&mut bytes).unwrap();
+        assert_eq!(bytes, [0x00]);
+    }
+
+    #[test]
     fn ack_is_empty() {
         // The serverbound body of run (b), seq 96, is empty.
         decode_exact(&[], FeatureFlagAcknowledgePayload::read).unwrap();
