@@ -78,9 +78,9 @@ A row stays `not supported` in these cases:
 - A vanilla feature that Pumpkin lacks and no extension point would add: the phantom spawner, village sieges and the custom spawner list.
 - A design difference: one permission manager, no per-world mod version records, and the empty-click events that only the client knows.
 
-### The inventory is generated; the statuses are hand-written and checked
+### The statuses are hand-written and checked
 
-Class lists, buses, sides, cancel flags, results, method counts, channel ids, registry lists and `neoforge.mods.toml` keys come from the sources. Statuses and Pumpkin concepts are judgement. The generator keeps judgement in mapping tables and checks every `supported` claim against this checkout. Rejected alternative: a hand-written list. It drifts on the next NeoForge commit and cannot be rechecked.
+The class lists, buses, sides, cancel flags, results, method counts, channel ids, registry lists and `neoforge.mods.toml` keys of the tables come from the NeoForge sources. The statuses and the Pumpkin concepts are judgement. Each task that changes a status names the test that proves it, and `tools/openspec-sync/mapping_status.py --check` keeps `mapping-table.md` in sync with the tables. A NeoForge update needs a new pass over the sources, because no generator is in the repository.
 
 ### `supported` means a ported mod gets the behaviour today
 
