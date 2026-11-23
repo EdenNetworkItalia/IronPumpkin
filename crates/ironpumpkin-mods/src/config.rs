@@ -58,6 +58,14 @@
 //! [`NativeMod::config_loading`](crate::NativeMod::config_loading) runs for every config when it
 //! loads: for a startup config, before `register_config` returns.
 //!
+//! # Unload
+//!
+//! When a server has stopped, the host unloads the [`ConfigType::Synced`] configs and calls
+//! [`NativeMod::config_unloading`](crate::NativeMod::config_unloading) for each one, after
+//! `ServerStoppedEvent`, as `ServerLifecycleHooks.handleServerStopped` does. [`ModConfig::get`]
+//! then fails with [`ConfigError::NotLoaded`] until the next server loads the config. Startup and
+//! local configs stay loaded.
+//!
 //! # Hooks
 //!
 //! The config hooks run one at a time, under one lock for every mod (`FancyModLoader` takes one
@@ -67,7 +75,7 @@
 
 use std::{
     cell::RefCell,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Write as _},
     fs,
     io::{self, Read as _},
@@ -83,7 +91,10 @@ use pumpkin_core::plugin::{
     BoxFuture, EventHandler,
     api::events::{
         EventPriority,
-        server::{server_lifecycle::ServerStoppingEvent, server_tick_end::ServerTickEndEvent},
+        server::{
+            server_lifecycle::{ServerStoppedEvent, ServerStoppingEvent},
+            server_tick_end::ServerTickEndEvent,
+        },
     },
     startup::{self, SyncedConfigSource},
 };
@@ -295,28 +306,132 @@ impl RangeBound for i32 {
     }
 }
 
-/// When a changed value takes effect, like `ModConfigSpec.RestartType`.
+/// When a changed value takes effect, like `ModConfigSpec.RestartType`. Set it with
+/// [`ConfigSpecBuilder::world_restart`] or [`ConfigSpecBuilder::game_restart`] and read it with
+/// [`ValueSpec::restart_type`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Restart {
+pub enum RestartType {
+    /// A changed value applies at once.
     None,
+    /// A changed value applies after the server stops.
     World,
+    /// A changed value applies after the process restarts. A synced config cannot have one.
     Game,
+}
+
+/// A range of numbers, like `ModConfigSpec.Range`. [`ConfigSpecBuilder::define_in_range`] uses it.
+#[derive(Debug, Clone, Copy)]
+pub struct Range<T> {
+    min: T,
+    max: T,
+}
+
+impl<T: RangeBound> Range<T> {
+    /// `Range.of`. Returns `None` when `min` is greater than `max`, where `Range` throws.
+    #[must_use]
+    pub fn new(min: T, max: T) -> Option<Self> {
+        (min <= max).then_some(Self { min, max })
+    }
+
+    /// `getMin`.
+    #[must_use]
+    pub const fn min(&self) -> T {
+        self.min
+    }
+
+    /// `getMax`.
+    #[must_use]
+    pub const fn max(&self) -> T {
+        self.max
+    }
+
+    /// `test`: whether `value` is in the range, bounds included.
+    #[must_use]
+    pub fn test(&self, value: T) -> bool {
+        self.min <= value && value <= self.max
+    }
+
+    /// `correct`: `value` clamped to the nearest bound.
+    #[must_use]
+    pub fn correct(&self, value: T) -> T {
+        if value < self.min {
+            self.min
+        } else if value > self.max {
+            self.max
+        } else {
+            value
+        }
+    }
+}
+
+impl<T: RangeBound> fmt::Display for Range<T> {
+    /// The text of the `Range:` comment line (`1 ~ 5`, `> 1`, `< 5`).
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&T::range_comment(self.min, self.max))
+    }
 }
 
 type Test = Box<dyn Fn(&Value) -> bool + Send + Sync>;
 type Correct = Box<dyn Fn(&Value) -> Value + Send + Sync>;
 
-/// One value of a spec, like `ModConfigSpec.ValueSpec`.
-struct ValueSpec {
+/// One value of a spec, like `ModConfigSpec.ValueSpec`. Get it with [`ConfigSpec::value_spec`].
+///
+/// `getRange` and `getClazz` have no counterpart: the kind and the range of a value are inside
+/// [`Self::test`] and [`Self::correct`].
+pub struct ValueSpec {
     path: Vec<String>,
     key: String,
     comment: Vec<String>,
     translation: Option<String>,
-    restart: Restart,
+    restart: RestartType,
     default: Value,
     test: Test,
     /// Called for a present value that fails `test`.
     correct: Correct,
+}
+
+impl ValueSpec {
+    /// The path of the value, sections and key joined with `.`.
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.key
+    }
+
+    /// `getComment`: the comment lines joined with a line break, or `None` without a comment.
+    #[must_use]
+    pub fn comment(&self) -> Option<String> {
+        (!self.comment.is_empty()).then(|| self.comment.join("\n"))
+    }
+
+    /// `getTranslationKey`.
+    #[must_use]
+    pub fn translation_key(&self) -> Option<&str> {
+        self.translation.as_deref()
+    }
+
+    /// `restartType`.
+    #[must_use]
+    pub const fn restart_type(&self) -> RestartType {
+        self.restart
+    }
+
+    /// `getDefault`.
+    #[must_use]
+    pub const fn default_value(&self) -> &Value {
+        &self.default
+    }
+
+    /// `test`: whether `value` passes the kind, range, allowed values and validator.
+    #[must_use]
+    pub fn test(&self, value: &Value) -> bool {
+        (self.test)(value)
+    }
+
+    /// `correct`: the value that replaces `value` when [`Self::test`] fails.
+    #[must_use]
+    pub fn correct(&self, value: &Value) -> Value {
+        (self.correct)(value)
+    }
 }
 
 /// A section of a spec, or the root.
@@ -371,6 +486,29 @@ impl ConfigSpec {
     #[must_use]
     pub fn builder() -> ConfigSpecBuilder {
         ConfigSpecBuilder::default()
+    }
+
+    /// `ModConfigSpec.Builder.configure`: runs `define` on a new builder and builds the spec. The
+    /// result of `define` comes back with the spec.
+    ///
+    /// # Errors
+    ///
+    /// The error of [`ConfigSpecBuilder::build`].
+    pub fn configure<T>(
+        define: impl FnOnce(&mut ConfigSpecBuilder) -> T,
+    ) -> Result<(T, Self), ConfigError> {
+        let mut builder = Self::builder();
+        let result = define(&mut builder);
+        builder.build().map(|spec| (result, spec))
+    }
+
+    /// The [`ValueSpec`] at `path`.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::UnknownPath`].
+    pub fn value_spec(&self, path: &str) -> Result<&ValueSpec, ConfigError> {
+        self.index(path).map(|index| &self.values[index])
     }
 
     fn index(&self, path: &str) -> Result<usize, ConfigError> {
@@ -479,7 +617,7 @@ fn write_section(
 struct Pending {
     comment: Vec<String>,
     translation: Option<String>,
-    restart: Option<Restart>,
+    restart: Option<RestartType>,
 }
 
 /// Builds a [`ConfigSpec`], like `ModConfigSpec.Builder`.
@@ -521,14 +659,14 @@ impl ConfigSpecBuilder {
     /// `RestartType.WORLD`. The next server of the process reads the value of the file when it
     /// first gets it.
     pub const fn world_restart(&mut self) -> &mut Self {
-        self.pending.restart = Some(Restart::World);
+        self.pending.restart = Some(RestartType::World);
         self
     }
 
     /// The next value keeps the value it loaded with until the server restarts. Not allowed in
     /// a synced config.
     pub const fn game_restart(&mut self) -> &mut Self {
-        self.pending.restart = Some(Restart::Game);
+        self.pending.restart = Some(RestartType::Game);
         self
     }
 
@@ -608,23 +746,34 @@ impl ConfigSpecBuilder {
         min: T,
         max: T,
     ) -> &mut Self {
-        if min > max {
+        let Some(range) = Range::new(min, max) else {
             self.fail(format!("the range of \"{path}\" has min > max"));
             return self;
-        }
+        };
         self.comment(format!(" Default: {}", default.into_toml()));
-        self.comment(format!(" Range: {}", T::range_comment(min, max)));
+        self.comment(format!(" Range: {range}"));
         let fallback = default.into_toml();
         self.add(
             path,
             default.into_toml(),
-            Box::new(move |value| T::from_toml(value).is_some_and(|v| min <= v && v <= max)),
-            Box::new(move |value| match T::from_toml(value) {
-                Some(v) if v < min => min.into_toml(),
-                Some(v) if v > max => max.into_toml(),
-                _ => fallback.clone(),
+            Box::new(move |value| T::from_toml(value).is_some_and(|v| range.test(v))),
+            Box::new(move |value| {
+                T::from_toml(value)
+                    .map_or_else(|| fallback.clone(), |v| range.correct(v).into_toml())
             }),
         )
+    }
+
+    /// `defineInList`: defines a value that must be one of `acceptable`. A value that is not in
+    /// the list is replaced with the default, which must be in the list.
+    pub fn define_in_list<T: TomlValue + PartialEq + Send + Sync + 'static>(
+        &mut self,
+        path: &str,
+        default: T,
+        acceptable: impl IntoIterator<Item = T>,
+    ) -> &mut Self {
+        let acceptable: Vec<T> = acceptable.into_iter().collect();
+        self.define_validated(path, default, move |value| acceptable.contains(value))
     }
 
     /// Defines an enum value, with the comment line `Allowed Values:` after the comment of the
@@ -671,6 +820,19 @@ impl ConfigSpecBuilder {
         )
     }
 
+    /// `defineListAllowEmpty`. The correction of a file is the one of [`Self::define_list`]: a
+    /// list from the file that is empty stays empty, a missing key gets the default, and a list
+    /// with no valid element left gets the default. The `NeoForge` size range, which the two
+    /// methods set differently, only limits the edits of the config screen.
+    pub fn define_list_allow_empty<T: TomlValue + 'static>(
+        &mut self,
+        path: &str,
+        default: Vec<T>,
+        element: impl Fn(&T) -> bool + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.define_list(path, default, element)
+    }
+
     fn fail(&mut self, reason: String) {
         self.error.get_or_insert(ConfigError::InvalidSpec(reason));
     }
@@ -709,7 +871,7 @@ impl ConfigSpecBuilder {
             key,
             comment: pending.comment,
             translation: pending.translation,
-            restart: pending.restart.unwrap_or(Restart::None),
+            restart: pending.restart.unwrap_or(RestartType::None),
             default,
             test,
             correct,
@@ -872,7 +1034,7 @@ impl ModConfig {
             .values
             .as_ref()
             .ok_or_else(|| ConfigError::NotLoaded(self.file_name.clone()))?;
-        if state.pinned[index].is_some() || self.spec.values[index].restart == Restart::None {
+        if state.pinned[index].is_some() || self.spec.values[index].restart == RestartType::None {
             return self.convert(
                 index,
                 state.pinned[index].as_ref().unwrap_or(&values[index]),
@@ -895,10 +1057,19 @@ impl ModConfig {
     fn reset_world(&self) {
         let mut state = self.write_state();
         for (spec, pinned) in self.spec.values.iter().zip(&mut state.pinned) {
-            if spec.restart == Restart::World {
+            if spec.restart == RestartType::World {
                 *pinned = None;
             }
         }
+    }
+
+    /// Drops the values, as `ConfigTracker.unloadConfig` does: `get` fails with
+    /// [`ConfigError::NotLoaded`] until the config loads again.
+    fn unload(&self) {
+        let mut state = self.write_state();
+        state.values = None;
+        state.pinned.clear();
+        state.text.clear();
     }
 
     /// The default value at `path`.
@@ -1084,7 +1255,7 @@ impl ModConfig {
                 .values
                 .iter()
                 .zip(&values)
-                .map(|(spec, value)| (spec.restart != Restart::None).then(|| value.clone()))
+                .map(|(spec, value)| (spec.restart != RestartType::None).then(|| value.clone()))
                 .collect();
         }
         state.values = Some(values);
@@ -1195,6 +1366,57 @@ impl SyncedConfigSource for ModConfig {
 /// The files of every registered config, so that two configs never share one.
 static FILES: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
 
+/// Every registered config, in registration order.
+static REGISTERED: Mutex<Vec<Arc<ModConfig>>> = Mutex::new(Vec::new());
+
+fn registered() -> MutexGuard<'static, Vec<Arc<ModConfig>>> {
+    REGISTERED.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// The configs of every mod, like FML `ModConfigs`, which reads the `ConfigTracker`.
+pub struct ModConfigs;
+
+impl ModConfigs {
+    /// `getModConfigs`: the configs that `mod_id` registered, in registration order.
+    #[must_use]
+    pub fn get_mod_configs(mod_id: &str) -> Vec<Arc<ModConfig>> {
+        registered()
+            .iter()
+            .filter(|config| config.mod_id == mod_id)
+            .cloned()
+            .collect()
+    }
+
+    /// `getConfigFileNames`: the file names of the configs of `mod_id` with `config_type`.
+    #[must_use]
+    pub fn get_config_file_names(mod_id: &str, config_type: ConfigType) -> Vec<String> {
+        registered()
+            .iter()
+            .filter(|config| config.mod_id == mod_id && config.config_type == config_type)
+            .map(|config| config.file_name.clone())
+            .collect()
+    }
+
+    /// `getConfigSet`: the configs of every mod with `config_type`.
+    #[must_use]
+    pub fn get_config_set(config_type: ConfigType) -> Vec<Arc<ModConfig>> {
+        registered()
+            .iter()
+            .filter(|config| config.config_type == config_type)
+            .cloned()
+            .collect()
+    }
+
+    /// `getFileMap`: every config by its file name.
+    #[must_use]
+    pub fn get_file_map() -> BTreeMap<String, Arc<ModConfig>> {
+        registered()
+            .iter()
+            .map(|config| (config.file_name.clone(), config.clone()))
+            .collect()
+    }
+}
+
 fn files() -> MutexGuard<'static, BTreeSet<PathBuf>> {
     FILES.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -1251,7 +1473,7 @@ impl ModInit {
             && let Some(value) = spec
                 .values
                 .iter()
-                .find(|value| value.restart == Restart::Game)
+                .find(|value| value.restart == RestartType::Game)
         {
             return Err(ConfigError::InvalidSpec(format!(
                 "the value \"{}\" needs a game restart, which a synced config cannot have",
@@ -1281,6 +1503,7 @@ impl ModInit {
             // before it returns.
             config.fire(|owner, config| owner.config_loading(config));
         }
+        registered().push(config.clone());
         self.configs.push(config.clone());
         Ok(config)
     }
@@ -1374,6 +1597,33 @@ impl EventHandler<ServerStoppingEvent> for WorldReset {
     }
 }
 
+/// Unloads the synced configs after the server stopped and calls the unloading hook of each, like
+/// `ServerLifecycleHooks.handleServerStopped`, which calls `ConfigTracker.unloadConfigs(SYNCED)`
+/// after `ServerStoppedEvent`. The local and startup configs stay loaded: `NeoForge` never
+/// unloads them.
+struct Unloader(Vec<Arc<ModConfig>>);
+
+fn unload_synced(configs: &[Arc<ModConfig>]) {
+    for config in configs
+        .iter()
+        .filter(|config| config.config_type == ConfigType::Synced)
+    {
+        config.unload();
+        config.fire(|owner, config| owner.config_unloading(config));
+    }
+}
+
+impl EventHandler<ServerStoppedEvent> for Unloader {
+    fn handle<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        _event: &'a ServerStoppedEvent,
+    ) -> BoxFuture<'a, ()> {
+        unload_synced(&self.0);
+        Box::pin(async {})
+    }
+}
+
 /// Starts the polling of every config on the ticks of `server` and clears the cached World
 /// values when `server` stops. Runs for each server, after [`load`] of the synced configs.
 pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) {
@@ -1384,6 +1634,11 @@ pub(crate) fn start(server: &Arc<Server>, configs: Vec<Arc<ModConfig>>) {
         Arc::new(WorldReset(configs.clone())),
         EventPriority::Normal,
         true,
+    );
+    server.plugin_manager.register::<ServerStoppedEvent, _>(
+        Arc::new(Unloader(configs.clone())),
+        EventPriority::Lowest,
+        false,
     );
     if let Some(poller) = Poller::new(configs, server.basic_config.mod_config_reload_ticks) {
         server.plugin_manager.register::<ServerTickEndEvent, _>(
@@ -1408,8 +1663,8 @@ mod tests {
     use toml::{Table, Value};
 
     use super::{
-        ConfigEnum, ConfigError, ConfigSpec, ConfigType, MAX_FILE_SIZE, ModConfig, Poller,
-        SyncedConfigSource, load,
+        ConfigEnum, ConfigError, ConfigSpec, ConfigType, MAX_FILE_SIZE, ModConfig, ModConfigs,
+        Poller, Range, RestartType, SyncedConfigSource, load, unload_synced,
     };
     use crate::{ModInit, NativeMod};
 
@@ -1815,6 +2070,267 @@ mod tests {
         let text = fs::read_to_string(config.path()).unwrap();
         assert_eq!(text, "# first\n# second\n#third\nvalue = 1\n");
         assert_eq!(table(&config)["value"], Value::Integer(1));
+    }
+
+    /// Registers a startup config with the text `file` in `<mod_id>-startup.toml`.
+    fn startup_config(
+        dir: &Path,
+        mod_id: &'static str,
+        file: Option<&str>,
+        spec: ConfigSpec,
+    ) -> Arc<ModConfig> {
+        if let Some(file) = file {
+            fs::create_dir_all(dir.join("config")).unwrap();
+            fs::write(
+                dir.join("config").join(format!("{mod_id}-startup.toml")),
+                file,
+            )
+            .unwrap();
+        }
+        init_in(dir, mod_id)
+            .register_config(ConfigType::Startup, spec)
+            .unwrap()
+    }
+
+    #[test]
+    fn define_in_list_keeps_a_listed_value_and_corrects_any_other() {
+        let spec = || {
+            let mut builder = ConfigSpec::builder();
+            builder.define_in_list(
+                "mode",
+                "easy".to_owned(),
+                ["easy".to_owned(), "hard".to_owned()],
+            );
+            builder.build().unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let listed = startup_config(dir.path(), "inlistone", Some("mode = \"hard\"\n"), spec());
+        assert_eq!(listed.get::<String>("mode"), Ok("hard".to_owned()));
+        let dir = tempfile::tempdir().unwrap();
+        let other = startup_config(dir.path(), "inlisttwo", Some("mode = \"insane\"\n"), spec());
+        assert_eq!(other.get::<String>("mode"), Ok("easy".to_owned()));
+        assert_eq!(table(&other)["mode"].as_str(), Some("easy"));
+        let dir = tempfile::tempdir().unwrap();
+        let missing = startup_config(dir.path(), "inlistthree", None, spec());
+        assert_eq!(missing.get::<String>("mode"), Ok("easy".to_owned()));
+        // A default outside the list is a malformed spec.
+        let mut builder = ConfigSpec::builder();
+        builder.define_in_list("mode", "other".to_owned(), ["easy".to_owned()]);
+        assert!(matches!(builder.build(), Err(ConfigError::InvalidSpec(_))));
+    }
+
+    #[test]
+    fn define_list_allow_empty_keeps_an_empty_list_and_defaults_a_missing_key() {
+        let spec = || {
+            let mut builder = ConfigSpec::builder();
+            builder.define_list_allow_empty("names", vec!["a".to_owned()], |name: &String| {
+                !name.is_empty()
+            });
+            builder.build().unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let empty = startup_config(dir.path(), "emptyone", Some("names = []\n"), spec());
+        assert_eq!(empty.get::<Vec<String>>("names"), Ok(Vec::new()));
+        assert_eq!(table(&empty)["names"].as_array().unwrap().len(), 0);
+        let dir = tempfile::tempdir().unwrap();
+        let missing = startup_config(dir.path(), "emptytwo", None, spec());
+        assert_eq!(
+            missing.get::<Vec<String>>("names"),
+            Ok(vec!["a".to_owned()])
+        );
+        // An element that fails is removed; a list with no valid element left gets the default.
+        let dir = tempfile::tempdir().unwrap();
+        let mixed = startup_config(
+            dir.path(),
+            "emptythree",
+            Some("names = [\"b\", \"\"]\n"),
+            spec(),
+        );
+        assert_eq!(mixed.get::<Vec<String>>("names"), Ok(vec!["b".to_owned()]));
+        let dir = tempfile::tempdir().unwrap();
+        let invalid = startup_config(dir.path(), "emptyfour", Some("names = [\"\"]\n"), spec());
+        assert_eq!(
+            invalid.get::<Vec<String>>("names"),
+            Ok(vec!["a".to_owned()])
+        );
+    }
+
+    #[test]
+    fn configure_returns_the_builder_result_and_the_spec() {
+        let (handle, spec) = ConfigSpec::configure(|builder| {
+            builder.define("enabled", true);
+            "enabled"
+        })
+        .unwrap();
+        assert_eq!(handle, "enabled");
+        assert!(spec.value_spec("enabled").is_ok());
+        let failed = ConfigSpec::configure(|builder| {
+            builder.define("a", 1i64).define("a", 2i64);
+        });
+        assert!(matches!(failed, Err(ConfigError::InvalidSpec(_))));
+    }
+
+    #[test]
+    fn an_i32_value_is_read_and_corrected_into_its_range() {
+        let spec = || {
+            let mut builder = ConfigSpec::builder();
+            builder.define_in_range("count", 5i32, 1, 10);
+            builder.build().unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let high = startup_config(dir.path(), "inti32one", Some("count = 99\n"), spec());
+        assert_eq!(high.get::<i32>("count"), Ok(10));
+        let dir = tempfile::tempdir().unwrap();
+        let low = startup_config(dir.path(), "inti32two", Some("count = -4\n"), spec());
+        assert_eq!(low.get::<i32>("count"), Ok(1));
+        let dir = tempfile::tempdir().unwrap();
+        let inside = startup_config(dir.path(), "inti32three", Some("count = 7\n"), spec());
+        assert_eq!(inside.get::<i32>("count"), Ok(7));
+        let dir = tempfile::tempdir().unwrap();
+        // A value that does not fit in an `i32` is out of the type, so it gets the default.
+        let wide = startup_config(
+            dir.path(),
+            "inti32four",
+            Some("count = 5000000000\n"),
+            spec(),
+        );
+        assert_eq!(wide.get::<i32>("count"), Ok(5));
+    }
+
+    #[test]
+    fn a_range_tests_corrects_and_prints_its_bounds() {
+        let range = Range::new(1i32, 5).unwrap();
+        assert_eq!((range.min(), range.max()), (1, 5));
+        assert!(range.test(1) && range.test(5) && !range.test(6) && !range.test(0));
+        assert_eq!(
+            (range.correct(-3), range.correct(3), range.correct(9)),
+            (1, 3, 5)
+        );
+        assert_eq!(range.to_string(), "1 ~ 5");
+        assert_eq!(Range::new(1i32, i32::MAX).unwrap().to_string(), "> 1");
+        assert_eq!(Range::new(i32::MIN, 5i32).unwrap().to_string(), "< 5");
+        assert_eq!(Range::new(0.5f64, 1.5).unwrap().to_string(), "0.5 ~ 1.5");
+        assert!(Range::new(5i64, 1).is_none());
+    }
+
+    #[test]
+    fn a_value_spec_gives_its_comment_default_restart_and_checks() {
+        let mut builder = ConfigSpec::builder();
+        builder
+            .comment("Line one\nLine two")
+            .translation("mod.damage")
+            .world_restart()
+            .define_in_range("damage", 10i64, 0, 100);
+        builder.define("plain", true);
+        let spec = builder.build().unwrap();
+        let damage = spec.value_spec("damage").unwrap();
+        assert_eq!(damage.path(), "damage");
+        assert_eq!(damage.translation_key(), Some("mod.damage"));
+        assert_eq!(damage.restart_type(), RestartType::World);
+        assert_eq!(damage.default_value().as_integer(), Some(10));
+        assert!(damage.comment().unwrap().contains("Line two"));
+        assert!(damage.test(&Value::Integer(50)));
+        assert!(!damage.test(&Value::Integer(500)));
+        assert_eq!(damage.correct(&Value::Integer(500)).as_integer(), Some(100));
+        let plain = spec.value_spec("plain").unwrap();
+        assert_eq!(plain.restart_type(), RestartType::None);
+        assert_eq!(plain.comment(), None);
+        assert!(matches!(
+            spec.value_spec("none"),
+            Err(ConfigError::UnknownPath(_))
+        ));
+    }
+
+    #[test]
+    fn mod_configs_lists_the_configs_of_a_mod_by_type_and_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = init_in(dir.path(), "lookupmod");
+        let local = init
+            .register_config(ConfigType::Local, general_spec())
+            .unwrap();
+        let synced = init
+            .register_config(ConfigType::Synced, general_spec())
+            .unwrap();
+        let other = init_in(dir.path(), "lookupother")
+            .register_config(ConfigType::Local, general_spec())
+            .unwrap();
+        let of_mod = ModConfigs::get_mod_configs("lookupmod");
+        assert_eq!(of_mod.len(), 2);
+        assert!(Arc::ptr_eq(&of_mod[0], &local) && Arc::ptr_eq(&of_mod[1], &synced));
+        assert!(ModConfigs::get_mod_configs("lookupnone").is_empty());
+        assert_eq!(
+            ModConfigs::get_config_file_names("lookupmod", ConfigType::Synced),
+            ["lookupmod-synced.toml"]
+        );
+        assert!(ModConfigs::get_config_file_names("lookupmod", ConfigType::Startup).is_empty());
+        assert!(
+            ModConfigs::get_config_set(ConfigType::Local)
+                .iter()
+                .any(|config| Arc::ptr_eq(config, &other))
+        );
+        let files = ModConfigs::get_file_map();
+        assert!(Arc::ptr_eq(&files["lookupmod-local.toml"], &local));
+        assert!(Arc::ptr_eq(&files["lookupother-local.toml"], &other));
+    }
+
+    static UNLOADINGS: AtomicUsize = AtomicUsize::new(0);
+
+    struct UnloadMod;
+
+    impl NativeMod for UnloadMod {
+        fn id(&self) -> &'static str {
+            "unloadmod"
+        }
+
+        fn display_name(&self) -> &'static str {
+            "Unload mod"
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0.0"
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+
+        fn config_unloading(&self, config: &ModConfig) {
+            assert_eq!(config.config_type(), ConfigType::Synced);
+            assert_eq!(
+                config.get::<i64>("general.damage"),
+                Err(ConfigError::NotLoaded("unloadmod-synced.toml".to_owned()))
+            );
+            UNLOADINGS.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    static UNLOAD_MOD: UnloadMod = UnloadMod;
+
+    #[test]
+    fn a_stopped_server_unloads_the_synced_configs_and_calls_the_hook_for_each() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut init = init_in(dir.path(), "unloadmod");
+        init.owner = Some(&UNLOAD_MOD);
+        let local = init
+            .register_config(ConfigType::Local, general_spec())
+            .unwrap();
+        let synced = init
+            .register_config(ConfigType::Synced, general_spec())
+            .unwrap();
+        load(&init.configs, ConfigType::Local).unwrap();
+        load(&init.configs, ConfigType::Synced).unwrap();
+        assert_eq!(synced.get::<i64>("general.damage"), Ok(10));
+
+        unload_synced(&init.configs);
+        assert_eq!(UNLOADINGS.load(Ordering::Relaxed), 1);
+        assert!(matches!(
+            synced.get::<i64>("general.damage"),
+            Err(ConfigError::NotLoaded(_))
+        ));
+        // NeoForge never unloads a local config.
+        assert_eq!(local.get::<i64>("general.damage"), Ok(10));
+
+        // The next server loads the synced config again.
+        load(&init.configs, ConfigType::Synced).unwrap();
+        assert_eq!(synced.get::<i64>("general.damage"), Ok(10));
     }
 
     #[test]
