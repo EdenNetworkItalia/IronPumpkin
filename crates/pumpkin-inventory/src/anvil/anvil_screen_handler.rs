@@ -546,6 +546,10 @@ impl AnvilScreenHandler {
 }
 
 impl ScreenHandler for AnvilScreenHandler {
+    /// Vanilla `ItemCombinerMenu.canTakeItemForPickAll`: a double click never collects the result.
+    fn can_take_item_for_pick_all(&self, _carried: &ItemStack, slot_index: usize) -> bool {
+        slot_index != 2
+    }
     fn as_any(&self) -> &dyn Any {
         self
     }
