@@ -411,3 +411,56 @@ mod tests {
         assert!(!missing.exists());
     }
 }
+
+/// A world data pack above a mod pack follows the override rules of vanilla for every loader.
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod override_tests {
+    use super::*;
+    use crate::{data::datapack::DatapackManager, server::recipe::RecipeManager};
+
+    fn load(
+        mod_files: PackFiles,
+        world_files: &[(&str, &[u8])],
+    ) -> (DatapackManager, RecipeManager) {
+        let world = tempfile::tempdir().unwrap();
+        let mod_root = tempfile::tempdir().unwrap();
+        let pack_dir = world.path().join("datapacks/world_pack");
+        for (path, contents) in world_files {
+            let target = pack_dir.join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, contents).unwrap();
+        }
+        let manager = DatapackManager::new();
+        let recipes = RecipeManager::default();
+        manager.load_all_with_mod_packs(
+            world.path(),
+            &["file/world_pack".to_owned()],
+            &recipes,
+            &[ModDataPack {
+                mod_id: "gems".to_owned(),
+                files: mod_files,
+            }],
+            mod_root.path(),
+        );
+        (manager, recipes)
+    }
+
+    const RECIPE_MOD: &[u8] = br#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:diamond"],"result":{"id":"minecraft:emerald","count":1}}"#;
+    const RECIPE_WORLD: &[u8] = br#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:diamond"],"result":{"id":"minecraft:emerald","count":9}}"#;
+
+    /// Vanilla: a later pack with the same recipe id replaces the earlier recipe.
+    #[test]
+    fn r_a_world_recipe_replaces_the_mod_recipe_with_the_same_id() {
+        let (_, recipes) = load(
+            &[("data/gems/recipe/ruby.json", RECIPE_MOD)],
+            &[("data/gems/recipe/ruby.json", RECIPE_WORLD)],
+        );
+        let same_id = recipes
+            .get_dynamic_recipes_internal()
+            .iter()
+            .filter(|r| r.recipe_id() == Some("gems:ruby"))
+            .count();
+        assert_eq!(same_id, 1, "both recipes are registered");
+    }
+}

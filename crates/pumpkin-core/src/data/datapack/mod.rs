@@ -2129,7 +2129,17 @@ fn load_recipes_recursive(
             if let Ok(content) = fs::read_to_string(&path)
                 && let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content)
             {
-                all_recipes.push(recipe);
+                // Like `RecipeManager`, a recipe of a later pack replaces the earlier one with
+                // the same id.
+                let existing = recipe.recipe_id().and_then(|id| {
+                    all_recipes
+                        .iter()
+                        .position(|other| other.recipe_id() == Some(id))
+                });
+                match existing {
+                    Some(index) => all_recipes[index] = recipe,
+                    None => all_recipes.push(recipe),
+                }
                 *count += 1;
             }
         }
