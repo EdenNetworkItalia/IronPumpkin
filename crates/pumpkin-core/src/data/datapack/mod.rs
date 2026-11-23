@@ -6,6 +6,7 @@ pub mod dynamic_registry_manager;
 pub mod function_loader;
 pub mod item_modifier_loader;
 pub mod loot_table_loader;
+pub mod mod_packs;
 pub mod predicate_loader;
 pub mod recipe_loader;
 pub mod slot_source_loader;
@@ -138,12 +139,32 @@ impl DatapackManager {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn load_all(
         &self,
         world_path: &Path,
         enabled_packs: &[String],
         recipe_manager: &RecipeManager,
+    ) {
+        self.load_all_with_mod_packs(
+            world_path,
+            enabled_packs,
+            recipe_manager,
+            mod_packs::mod_data_packs(),
+            Path::new(mod_packs::MOD_DATA_DIR),
+        );
+    }
+
+    /// [`Self::load_all`] with the data packs of the native mods and the folder they are written
+    /// to given by the caller. The packs of a mod load after the embedded data and before the
+    /// world data packs, so a world data pack overrides a mod pack.
+    #[allow(clippy::too_many_lines)]
+    pub fn load_all_with_mod_packs(
+        &self,
+        world_path: &Path,
+        enabled_packs: &[String],
+        recipe_manager: &RecipeManager,
+        mod_data_packs: &[mod_packs::ModDataPack],
+        mod_data_root: &Path,
     ) {
         let datapacks_dir = world_path.join("datapacks");
         structure_loader::clear_dynamic_worldgen_data();
@@ -203,6 +224,13 @@ impl DatapackManager {
             slot_sources: &mut all_slot_sources,
             tags: &mut all_tags,
         };
+
+        mod_packs::load_mod_packs(
+            mod_data_root,
+            mod_data_packs,
+            &mut acc,
+            &mut loaded_packs_vec,
+        );
 
         scan_datapacks_dir(
             &datapacks_dir,
@@ -2101,7 +2129,17 @@ fn load_recipes_recursive(
             if let Ok(content) = fs::read_to_string(&path)
                 && let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content)
             {
-                all_recipes.push(recipe);
+                // Like `RecipeManager`, a recipe of a later pack replaces the earlier one with
+                // the same id.
+                let existing = recipe.recipe_id().and_then(|id| {
+                    all_recipes
+                        .iter()
+                        .position(|other| other.recipe_id() == Some(id))
+                });
+                match existing {
+                    Some(index) => all_recipes[index] = recipe,
+                    None => all_recipes.push(recipe),
+                }
                 *count += 1;
             }
         }

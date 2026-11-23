@@ -53,6 +53,7 @@ use std::{
 
 use pumpkin_core::{
     command::node::detached::CommandDetachedNode,
+    data::datapack::mod_packs,
     entity::custom,
     plugin::{
         Context, PluginMetadata,
@@ -66,6 +67,7 @@ use tracing::{error, info};
 #[doc(hidden)]
 pub use inventory;
 
+pub use data_pack::include_data_pack;
 pub use pumpkin_core;
 pub use pumpkin_data;
 pub use pumpkin_macros;
@@ -80,6 +82,7 @@ pub mod capabilities;
 pub mod config;
 pub mod content;
 pub mod data_components;
+pub mod data_pack;
 pub mod entity_attributes;
 pub mod imc;
 pub mod lifecycle;
@@ -165,6 +168,9 @@ mod porting_guide {
     #[doc = include_str!("../../../docs/porting-from-neoforge/menus.md")]
     struct Menus;
 
+    #[doc = include_str!("../../../docs/porting-from-neoforge/data-packs.md")]
+    struct DataPacks;
+
     #[doc = include_str!("../../../docs/porting-from-neoforge/mixins-and-patches.md")]
     struct MixinsAndPatches;
 
@@ -248,6 +254,11 @@ pub trait NativeMod: Sync {
     /// `ExtendPoiTypesEvent`: adds blocks to POI types. Runs after `dedicated_server_setup` of
     /// every mod and before `inter_mod_enqueue`. See [`registration`].
     fn extend_poi_types(&self, _event: &mut registration::ExtendPoiTypesEvent) {}
+    /// The files of the data pack of this mod, usually [`include_data_pack!`]. They load as mod
+    /// resources, below the data packs of the world. The default is no pack. See [`data_pack`].
+    fn data_pack(&self) -> data_pack::PackFiles {
+        &[]
+    }
     /// `RegisterCapabilitiesEvent`: registers capability providers. The host calls it once per
     /// listener priority, from `EventPriority::Highest` to `Lowest`, for every mod in load order
     /// before the next priority; [`phase`](capabilities::RegisterCapabilitiesEvent::phase) tells
@@ -806,6 +817,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
     let mod_list = ModList::get();
     let mods = in_order(&by_id, mod_list);
     startup::set_native_mods(native_mod_infos(&mods, mod_list));
+    mod_packs::set_mod_data_packs(data_pack::of_mods(&mods));
     let mut configs = Vec::new();
     let mut registrations = Vec::new();
     for loaded in &mods {

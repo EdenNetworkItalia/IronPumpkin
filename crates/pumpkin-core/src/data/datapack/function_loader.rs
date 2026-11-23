@@ -97,7 +97,16 @@ fn load_tags_recursive<S: std::hash::BuildHasher>(
                     .iter()
                     .filter_map(|v| v.as_str().map(ToString::to_string))
                     .collect();
-                tags.entry(tag_id).or_default().extend(list);
+                let entry = tags.entry(tag_id).or_default();
+                // `TagLoader`: a file with `"replace": true` drops the entries of earlier packs.
+                if val
+                    .get("replace")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    entry.clear();
+                }
+                entry.extend(list);
             }
         }
     }
