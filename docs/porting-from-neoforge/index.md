@@ -49,6 +49,7 @@ The table below contrasts a NeoForge 26.3 mod with an IronPumpkin native mod:
 - [Capabilities and the transfer API](./capabilities.md): `BlockCapability`, `RegisterCapabilitiesEvent`, the transfer handlers and transactions against the `capabilities` and `transfer` modules, and what hoppers and droppers do with them.
 - [Block shapes](./shapes.md): `VoxelShape`, `Shapes` and the shape getters of `BlockBehaviour` against the `shapes` module and `BlockBuilder::shape`.
 - [Menus](./menus.md): `AbstractContainerMenu`, `MenuProvider`, slots and data slots against `MenuDefinition`, `MenuLogic` and `menus::open_menu`.
+- [Data packs](./data-packs.md): the `data/` folder of a mod jar against `NativeMod::data_pack` and `include_data_pack!`, and the order of the mod packs, the vanilla data and the world data packs.
 - [Mixins, reflection and access transformers](./mixins-and-patches.md): when a source patch is allowed, and how a pack applies it.
 - [What is unsupported](./unsupported.md): what a mod cannot do today, and where to look.
 

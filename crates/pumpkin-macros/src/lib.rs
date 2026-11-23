@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+mod include_data_pack;
+
 use heck::ToShoutySnakeCase;
 use proc_macro::TokenStream;
 use proc_macro_error2::{abort, abort_call_site};
@@ -1190,4 +1192,18 @@ pub fn translate_java(input: TokenStream) -> TokenStream {
     };
 
     expanded.into()
+}
+
+/// Embeds a folder of the calling crate as the files of a data pack, at compile time.
+///
+/// The argument is a path relative to the crate root (the folder of its `Cargo.toml`). The
+/// folder is the root of the pack, as the root of a `NeoForge` mod jar: it holds `data/` and
+/// optionally `pack.mcmeta`. The expression has the type `&'static [(&'static str, &'static [u8])]`,
+/// the relative path with `/` separators and the contents of each file in path order.
+///
+/// Cargo rebuilds the crate when an embedded file changes, but not when a file is added or
+/// removed: touch a Rust file of the crate after that.
+#[proc_macro]
+pub fn include_data_pack(input: TokenStream) -> TokenStream {
+    include_data_pack::expand(input)
 }
