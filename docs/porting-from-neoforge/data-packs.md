@@ -18,7 +18,7 @@ An IronPumpkin native mod is compiled into the server binary, so it has no jar t
 | **`pack.mcmeta`** | Optional for a mod jar | Optional. The server reads the description from it. |
 | **File types** | Every type that the game loads from a data pack | Every type that a world data pack supports in IronPumpkin, from the same loaders |
 | **Conditions** | `neoforge:conditions` in a data file | Not supported yet. It waits for the datapack loader step of milestone M5. See [What is unsupported](./unsupported.md). |
-| **Add a pack at run time** | `AddPackFindersEvent` | Not supported. A mod ships one pack. |
+| **Add a pack at run time** | `AddPackFindersEvent` | `NativeMod::add_pack_finders` gets `AddPackFindersEvent` once, after the mod lifecycle. `add_pack` takes a pack id and the files of `include_data_pack!`. The packs load after the packs of the mods and before the packs of the world. |
 | **Client files** | `assets/` of the same jar | Not part of the server pack. Keep them in the Java client mod. |
 
 ---

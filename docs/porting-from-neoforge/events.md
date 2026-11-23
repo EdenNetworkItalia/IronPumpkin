@@ -267,7 +267,7 @@ The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A n
 | `UseItemOnBlockEvent` | the same name | Fires once per phase that runs (`phase`: `ItemBeforeBlock`, `Block`, `ItemAfterBlock`). A cancel skips the phase and gives `cancellation_result`, `TryWithEmptyHand` by default. |
 | `PlayerContainerEvent` | `PlayerContainerEvent` | A concrete parent: register a `ParentEventHandler` with `register_parent_event` to get `InventoryOpenEvent` and `InventoryCloseEvent`. |
 
-`PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `PermissionsChangedEvent`, `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason.
+`PlayerEvent` and the other abstract classes have no struct, as NeoForge rejects a listener on an abstract event. `PlayerEvent.Clone` stays planned: Pumpkin keeps the same `Player` across a respawn, so there is no old player to copy from. `CanContinueSleepingEvent`, `PlayerNegotiationEvent` and `AdvancementEvent.AdvancementProgressEvent` stay planned too; the mapping table gives the reason. `PermissionsChangedEvent` is in [the server section](#the-server-data-pack-and-command-events).
 
 ## The level and block events
 
@@ -290,6 +290,103 @@ The packages `event.level`, `event.level.block` and `event.tick` map to Pumpkin 
 v0.2 Wasm plugins get these events, `UseItemOnBlockEvent` and the new fields of `PlayerInteractEvent` through the same dispatch as native mods. The WIT records are in `event.wit` and `neoforge-events.wit` of `crates/pumpkin-plugin-wit/v0.2`, with block states as state ids. A v0.2 handler of a `neoforge-events.wit` event writes back only the fields that NeoForge can set. The merged Pumpkin events of `event.wit` keep their upstream write-back of the old fields, such as the block and the position, and keep the new fields that NeoForge cannot set. A new entry in `spawns` names its entity type. An entry with an unknown type, a minimum count below 1, a maximum below the minimum or a maximum above the mob cap of the category is dropped. A Wasm listener of a tick event costs a guest call per entity or player and tick, about 9.3 µs each for one caller. The entities tick in parallel and queue on the one store of the plugin. Keep Wasm tick handlers for small worlds, or port the logic to a native mod.
 
 These rows stay planned: `BlockEvent.FarmlandTrampleEvent` (Pumpkin never tramples farmland), `LevelEvent.CreateSpawnPosition` (Pumpkin picks the spawn before the server exists), `ChunkDataEvent.Load` and `Save` (the chunk I/O runs in `pumpkin-world`), `AlterGroundEvent` and `ChunkTicketLevelUpdatedEvent` (engine extension points of M5). The mapping table gives the reasons.
+
+## The server, data pack and command events
+
+These events of the root `event` package fire after the server loads or reloads its data packs, around the op list and the command dispatcher, and at shutdown. They are in `ironpumpkin_mods::event::server`, except `PermissionsChangedEvent` (`player`) and `AddPackFindersEvent` (`registration`).
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `CommandEvent` | `server::CommandEvent` | Fires for each command that a sender performs: a player, the console, a command block, a sign. A command of a function does not fire it. It fires after the slash is removed and before the parse, so `command` is the input of the parse. Pumpkin has no parse result that a handler can keep: set `command` to replace the parse result, and the dispatcher parses the new command. `source` is the sender. A cancel stops the command. With `exception` set, a cancel also sends the message to the sender as a failure and logs it. |
+| `PermissionsChangedEvent` | `player::PermissionsChangedEvent` | Fires on `/op`, `/deop` and the op calls of the Wasm plugins, for an online player and only when the level changes. `old_level` is the level in the op list. A cancel leaves the op list as it is. The permission level that a plugin sets on a player does not fire it. |
+| `TagsUpdatedEvent.ServerDataLoad` | `server::TagsUpdatedEventServerDataLoad` | After the server loads its tags: at the start, after the worlds load, and after each reload. It has no fields. |
+| `TagsUpdatedEvent` | `server::TagsUpdatedEvent` | A concrete parent that the server never fires. Register a `ParentEventHandler` with `register_parent_event` to get the subclass. |
+| `OnDatapackSyncEvent` | `server::OnDatapackSyncEvent` | Fires for a joining player (`player` is set) before the data maps go out, and for all players after a reload (`player` is `None`). `relevant_players` gives the players to sync. `sendRecipes` is not supported. |
+| `LootTableLoadEvent` | `server::LootTableLoadEvent` | Fires once for each loot table that the data packs of the mods and of the world load, at each load. Set `table` or cancel to load an empty table. The loot tables of the vanilla data are compiled in and fire nothing: ship a table with the same id in the pack of the mod to replace one. |
+| `AddServerReloadListenersEvent` | `server::AddServerReloadListenersEvent` | Fires at each load. `add_listener` takes a key and a `ReloadListener`, and `add_dependency` orders two listeners. All listeners run after the vanilla loaders, in registration order, with the loaded packs. A cycle fails the sort and none of the listeners of that load runs. Only native mods get it. |
+| `AddPackFindersEvent` | `registration::AddPackFindersEvent`, `NativeMod::add_pack_finders` | Once, after the mod lifecycle. `add_pack` adds a pack with an id and the files of `include_data_pack!`. See [Data packs](./data-packs.md). |
+| `GameShuttingDownEvent` | `server::GameShuttingDownEvent` | Once, when the server stops, before `ServerStoppingEvent` and before the mods and the plugins unload. |
+
+`PlayerCommandPreprocessEvent` and `ServerCommandEvent` of Pumpkin keep their contract and fire before `CommandEvent`: `ServerCommandEvent` for the console, and `PlayerCommandPreprocessEvent` and `PlayerCommandSendEvent` for a player. NeoForge has no event at these sites, so they do not conflict.
+
+The next example rewrites an alias and refuses a command. It is a doc-test of `ironpumpkin-mods`.
+
+```rust
+use std::sync::Arc;
+
+use ironpumpkin_mods::{
+    ModInit, NativeMod,
+    event::{
+        BoxFuture, Cancellable, EventHandler, EventPriority,
+        server::{AddServerReloadListenersEvent, CommandEvent, ReloadListener},
+    },
+    server::Server,
+    tracing::info,
+};
+
+struct Commands;
+
+impl EventHandler<CommandEvent> for Commands {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut CommandEvent,
+    ) -> BoxFuture<'a, ()> {
+        if event.command == "h" {
+            // Replaces the parse result: the dispatcher parses `help`.
+            event.command = "help".to_owned();
+        } else if event.command.starts_with("stop") {
+            event.exception = Some("no stopping".to_owned());
+            event.set_cancelled(true);
+        }
+        Box::pin(async {})
+    }
+}
+
+struct Reloaded;
+
+impl ReloadListener for Reloaded {
+    fn reload(&self, _server: &Arc<Server>, packs: &[ironpumpkin_mods::pumpkin_core::data::datapack::LoadedDatapack]) {
+        info!("loaded {} packs", packs.len());
+    }
+}
+
+struct AddListener;
+
+impl EventHandler<AddServerReloadListenersEvent> for AddListener {
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut AddServerReloadListenersEvent,
+    ) -> BoxFuture<'a, ()> {
+        // The handle returns an error for a duplicate key.
+        let _ = event.add_listener("example:reloaded", Arc::new(Reloaded));
+        Box::pin(async {})
+    }
+}
+
+struct Example;
+
+impl NativeMod for Example {
+    fn id(&self) -> &'static str { "example" }
+    fn display_name(&self) -> &'static str { "Example" }
+    fn version(&self) -> &'static str { "1.0.0" }
+
+    fn init(&self, cx: &mut ModInit) {
+        cx.register_event::<CommandEvent, _>(Arc::new(Commands), EventPriority::Normal, true, false);
+        cx.register_event::<AddServerReloadListenersEvent, _>(
+            Arc::new(AddListener),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+    }
+}
+```
+
+v0.2 Wasm plugins get `CommandEvent` (`command` and `exception` are settable), `PermissionsChangedEvent`, `TagsUpdatedEvent.ServerDataLoad`, `OnDatapackSyncEvent`, `LootTableLoadEvent` (a plugin can cancel, but not replace the table) and `GameShuttingDownEvent`. The first load happens before the Wasm plugins load, so a plugin sees the tags and loot table events of the reloads only. `AddServerReloadListenersEvent` and `AddPackFindersEvent` are native only: a listener and a pack are host code.
+
+`DifficultyChangeEvent` is not in the table. NeoForge fires it only from the client level data, so a dedicated server never posts it.
 
 ## The living entity events
 
