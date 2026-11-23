@@ -583,6 +583,97 @@ fn click(player: &Arc<Player>, slot: i16) {
     });
 }
 
+/// Shift-clicks `slot` of the open screen (sync id 1) of `player`.
+fn quick_move(player: &Arc<Player>, slot: i16) {
+    let packet = SClickSlot {
+        sync_id: VarInt(1),
+        revision: VarInt(0),
+        slot,
+        button: SClickSlot::BUTTON_LEFT,
+        mode: SlotActionType::QuickMove,
+        length_of_array: VarInt(0),
+        array_of_changed_slots: Vec::new(),
+        carried_item: OptionalItemStackHash(None),
+    };
+    finish_within(player, move |player| {
+        player.on_slot_click(packet, support::server());
+    });
+}
+
+/// Vanilla `slotsChanged`: the anvil and the grindstone update their result, and fire their
+/// event, when a click changes an input, as a shift-click from the player inventory does, and
+/// not on a click that leaves the inputs as they are.
+#[test]
+fn anvil_and_grindstone_updates_follow_the_inputs() {
+    let _serial = support::serial();
+    let player = support::player("InputWatcher");
+    let anvil_fires = Arc::new(AtomicUsize::new(0));
+    let grindstone_fires = Arc::new(AtomicUsize::new(0));
+    let (anvil_count, grindstone_count) = (anvil_fires.clone(), grindstone_fires.clone());
+    let manager = &support::server().plugin_manager;
+    manager.register_with::<PrepareAnvilEvent, _>(
+        blocking(move |event: &mut PrepareAnvilEvent| {
+            if event.player.gameprofile.name == "InputWatcher" {
+                anvil_count.fetch_add(1, Ordering::Relaxed);
+            }
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+    manager.register_with::<PrepareGrindstoneEvent, _>(
+        blocking(move |event: &mut PrepareGrindstoneEvent| {
+            if event.player.gameprofile.name == "InputWatcher" {
+                grindstone_count.fetch_add(1, Ordering::Relaxed);
+            }
+        }),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+
+    // Slot 3 of both screens is the first slot of the main player inventory, slot 9.
+    let anvil_inputs = Arc::new(SimpleInventory::new(3));
+    let _anvil = open(
+        &player,
+        AnvilScreenHandler::new(1, &player.inventory, anvil_inputs.clone()),
+    );
+    click(&player, 10);
+    assert_eq!(
+        anvil_fires.load(Ordering::Relaxed),
+        0,
+        "an empty player slot"
+    );
+    let mut sword = ItemStack::new(1, &Item::DIAMOND_SWORD);
+    sword.set_damage(1000);
+    player.inventory.set_stack(9, sword);
+    quick_move(&player, 3);
+    assert_eq!(anvil_inputs.get_stack(0).item, &Item::DIAMOND_SWORD);
+    assert_eq!(anvil_fires.load(Ordering::Relaxed), 1, "the shift-click");
+
+    let grindstone_inputs = Arc::new(SimpleInventory::new(3));
+    let _grindstone = open(
+        &player,
+        GrindstoneScreenHandler::new(1, &player.inventory, grindstone_inputs.clone()),
+    );
+    click(&player, 10);
+    assert_eq!(
+        grindstone_fires.load(Ordering::Relaxed),
+        0,
+        "an empty player slot"
+    );
+    let mut enchanted = ItemStack::new(1, &Item::IRON_SWORD);
+    enchanted.add_enchantment(&Enchantment::SHARPNESS, 2);
+    player.inventory.set_stack(9, enchanted);
+    quick_move(&player, 3);
+    assert_eq!(grindstone_inputs.get_stack(0).item, &Item::IRON_SWORD);
+    assert_eq!(
+        grindstone_fires.load(Ordering::Relaxed),
+        1,
+        "the shift-click"
+    );
+}
+
 /// Opens an anvil for `player`: a damaged sword on the left and a diamond on the right.
 fn anvil(player: &Player) -> (Arc<Mutex<AnvilScreenHandler>>, Arc<SimpleInventory>) {
     let inventory = Arc::new(SimpleInventory::new(3));
