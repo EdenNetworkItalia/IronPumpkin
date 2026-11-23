@@ -1201,8 +1201,16 @@ pub fn translate_java(input: TokenStream) -> TokenStream {
 /// optionally `pack.mcmeta`. The expression has the type `&'static [(&'static str, &'static [u8])]`,
 /// the relative path with `/` separators and the contents of each file in path order.
 ///
+/// The macro skips the files and folders whose name starts with a dot, such as `.gitkeep`.
+///
 /// Cargo rebuilds the crate when an embedded file changes, but not when a file is added or
-/// removed: touch a Rust file of the crate after that.
+/// removed. Add a `build.rs` to the mod crate that watches the folder:
+///
+/// ```ignore
+/// fn main() {
+///     println!("cargo::rerun-if-changed=resources");
+/// }
+/// ```
 #[proc_macro]
 pub fn include_data_pack(input: TokenStream) -> TokenStream {
     include_data_pack::expand(input)

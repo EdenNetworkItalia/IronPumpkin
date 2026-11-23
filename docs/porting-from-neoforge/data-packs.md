@@ -97,22 +97,32 @@ From the lowest to the highest priority:
 
 A file in a higher pack replaces a file with the same id in a lower pack. A tag file merges with the lower packs unless it sets `"replace": true`, as in vanilla. A mod pack can replace a vanilla loot table, for example `data/minecraft/loot_table/blocks/stone.json`. A world data pack can replace the table of a mod.
 
-This is the order of NeoForge for a world that has the default pack list. NeoForge keeps the order in the pack list of the world, so a list that an older version saved can place `mod_data` above a world pack. IronPumpkin always puts the mod packs below the world packs. The bundled feature packs (`trade_rebalance`, `minecart_improvements` and `redstone_experiments`) load after both, as they do for every data pack in IronPumpkin.
+This is the order of NeoForge for a new world. NeoForge appends `mod_data` to the end of the saved pack list of a world that lacks it, so in an older world `mod_data` can sit above the packs of the world. IronPumpkin always puts the mod packs below the world packs. The bundled feature packs (`trade_rebalance`, `minecart_improvements` and `redstone_experiments`) load after both, as they do for every data pack in IronPumpkin.
 
 ## The `mod_data` folder
 
-Before each load, the server replaces `mod_data/<mod id>/` with the embedded files. A file that a newer version of the mod no longer ships does not stay. The folder holds a marker file. The server never touches a folder of that name that has no marker, logs a warning and skips the pack of that mod.
+The first load of a process writes `mod_data/<mod id>/` from the embedded files. A `/reload` and the load of a second server in the same process only read the folder, because the embedded files cannot change inside a process. The next start replaces the folder, so a file that a newer version of the mod no longer ships does not stay.
 
-Do not edit `mod_data/`. Edit the files in the crate and rebuild. A server with no mod that ships files does not create the folder.
+The server writes the new files to `mod_data/.staging-<mod id>/`, renames the old folder to `.trash-<mod id>/`, renames the staging folder to `<mod id>/` and deletes the trash. A crash leaves only dot folders, which the next start deletes, so the pack never stays out after a crash. The folder holds a marker file. The server never touches a folder of that name that has files and no marker. It logs a warning and skips the pack of that mod.
+
+Do not edit `mod_data/`. Edit the files in the crate and rebuild. A server with no mod that ships files does not create the folder. The mod id is a folder name, so the names that Windows reserves (`con`, `prn`, `aux`, `nul`, `com1` and the others) cannot be written on Windows.
 
 ## Rebuild after you add a file
 
-Cargo rebuilds the crate when an embedded file changes. It does not notice a file that you add or remove. After you add, rename or remove a file, change a Rust file of the crate, for example with `touch src/lib.rs`, and build again.
+Cargo rebuilds the crate when an embedded file changes. It does not notice a file that you add or remove. Add a `build.rs` to the mod crate that watches the folder:
+
+```rust,ignore
+fn main() {
+    println!("cargo::rerun-if-changed=resources");
+}
+```
+
+Cargo then rebuilds the crate when anything in `resources/` changes, files that are added or removed included. The macro skips the files and folders whose name starts with a dot.
 
 ## Do and don't
 
 - Do keep the layout of a data pack: `data/<namespace>/<type>/...`. The folder names are those of the Minecraft version of the server.
-- Do put the loot modifiers and the data maps of the mod in this folder too. Their loaders read the files through the same pack manager, when tasks 2.16 and 2.17 land.
+- Do put the loot modifiers and the data maps of the mod in this folder too. Their loaders read the files through the same pack manager, when the loot modifier loader and the data map loader land.
 - Don't use `neoforge:conditions` in a file yet. The loaders ignore the field, so the file always loads. See [What is unsupported](./unsupported.md).
 - Don't ship `assets/` here. The server ignores client resources.
 - Don't depend on the files of `mod_data/` at run time. Use the registry and the data manager of the server to read the data.

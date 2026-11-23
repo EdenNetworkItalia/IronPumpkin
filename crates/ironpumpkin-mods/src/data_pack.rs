@@ -37,12 +37,22 @@
 //! packs, so every file type that a world data pack supports works from a mod pack. A pack
 //! overrides the vanilla data, a later mod overrides an earlier mod ([`crate::mod_list`] gives the
 //! load order), and the data packs of the world override the mod packs. Tags merge across packs
-//! unless a file sets `"replace": true`, as in vanilla. This is the order of `NeoForge`: the
+//! unless a file sets `"replace": true`, as in vanilla. This is the order of `NeoForge` for a new world: the
 //! `mod_data` pack sits above `vanilla` and below the packs that a world enables.
 //!
-//! The server writes each pack to `mod_data/<mod id>/` in the server directory before it loads
-//! it, and replaces that folder on every load. Do not edit it. A folder of that name that the
-//! server did not write is left alone and the pack of that mod is skipped.
+//! The first load of a process writes each pack to `mod_data/<mod id>/` in the server directory.
+//! A `/reload` and a second server in the same process read that folder. The next start replaces
+//! it, so a file that a newer version of the mod no longer ships does not stay. Do not edit it. A
+//! folder of that name that has files and no marker file is left alone and the pack of that mod is
+//! skipped.
+//!
+//! `NeoForge` appends `mod_data` to the end of the saved pack list of a world that lacks it, so in
+//! an older world it can sit above the packs of the world. `IronPumpkin` always puts the mod packs
+//! below the world packs. A mod id is a folder name, so the names that Windows reserves (`con`,
+//! `prn`, `aux`, `nul`, `com1` and the others) cannot be written on Windows.
+//!
+//! Cargo does not notice a file that is added to or removed from the embedded folder. Add a
+//! `build.rs` to the mod crate: `println!("cargo::rerun-if-changed=resources");`.
 
 pub use pumpkin_core::data::datapack::mod_packs::{MOD_DATA_DIR, ModDataPack, PackFiles};
 pub use pumpkin_macros::include_data_pack;

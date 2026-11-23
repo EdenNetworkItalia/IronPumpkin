@@ -26,6 +26,10 @@ fn collect_into(dir: &Path, prefix: &str, files: &mut Vec<(String, PathBuf)>) ->
                 format!("the file name {} is not UTF-8", name.to_string_lossy()),
             )
         })?;
+        // `.gitkeep`, `.DS_Store` and the like are not part of a pack.
+        if name.starts_with('.') {
+            continue;
+        }
         let path = entry.path();
         if path.to_str().is_none() {
             return Err(io::Error::new(
@@ -97,5 +101,92 @@ mod tests {
     #[test]
     fn a_missing_folder_is_an_error() {
         assert!(collect_files(Path::new("does/not/exist")).is_err());
+    }
+}
+
+#[cfg(test)]
+mod review_tests {
+    #[cfg(unix)]
+    use std::os::unix::{ffi::OsStrExt, fs::symlink};
+
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/scratch/review-165/macro")
+            .join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn r_an_empty_folder_gives_no_files() {
+        let dir = scratch("empty");
+        assert!(collect_files(&dir).unwrap().is_empty());
+    }
+
+    #[test]
+    fn r_order_is_sorted_depth_first_whatever_the_creation_order() {
+        let dir = scratch("order");
+        for path in ["z.json", "data/b/x.json", "data/a/y.json", "data/a.json"] {
+            let target = dir.join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, [0xff, 0x00, 0xfe]).unwrap();
+        }
+        let relative: Vec<String> = collect_files(&dir)
+            .unwrap()
+            .into_iter()
+            .map(|(relative, _)| relative)
+            .collect();
+        assert_eq!(
+            relative,
+            ["data/a/y.json", "data/a.json", "data/b/x.json", "z.json"]
+        );
+    }
+
+    #[test]
+    fn r_names_that_start_with_a_dot_are_skipped() {
+        let dir = scratch("dot");
+        for path in [".hidden", "data/.gitkeep", ".git/config", "data/x.json"] {
+            let target = dir.join(path);
+            fs::create_dir_all(target.parent().unwrap()).unwrap();
+            fs::write(target, b"{}").unwrap();
+        }
+        let relative: Vec<String> = collect_files(&dir)
+            .unwrap()
+            .into_iter()
+            .map(|(relative, _)| relative)
+            .collect();
+        assert_eq!(relative, ["data/x.json"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_a_non_utf8_file_name_is_an_error() {
+        let dir = scratch("non_utf8");
+        fs::write(
+            dir.join(std::ffi::OsStr::from_bytes(b"bad\xff.json")),
+            b"{}",
+        )
+        .unwrap();
+        let error = collect_files(&dir).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_a_symlink_loop_is_an_error_not_a_hang() {
+        let dir = scratch("loop");
+        symlink(".", dir.join("self")).unwrap();
+        assert!(collect_files(&dir).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_a_dangling_symlink_is_an_error() {
+        let dir = scratch("dangling");
+        symlink("missing.json", dir.join("link.json")).unwrap();
+        assert!(collect_files(&dir).is_err());
     }
 }
