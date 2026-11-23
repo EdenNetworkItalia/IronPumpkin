@@ -8,6 +8,8 @@ use serde::Deserialize;
 pub struct DynamicTagEntry {
     pub id: String,
     pub values: Vec<String>,
+    /// A pack replaced the tag: its built-in values no longer apply.
+    pub replace: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -111,6 +113,7 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                         DynamicTagEntry {
                             id: tag_id,
                             values: string_values,
+                            replace: true,
                         },
                     );
                 } else {
@@ -120,6 +123,7 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                             .or_insert_with(|| DynamicTagEntry {
                                 id: tag_id,
                                 values: Vec::new(),
+                                replace: false,
                             });
                     for val in string_values {
                         if !entry.values.contains(&val) {
@@ -154,5 +158,34 @@ mod tests {
         let block_map = map.get("block").expect("block tags");
         let entry = block_map.get("custom:custom_tag").expect("custom_tag");
         assert_eq!(entry.values, ["minecraft:stone", "minecraft:dirt"]);
+        assert!(!entry.replace);
+    }
+
+    #[test]
+    fn a_replacing_pack_marks_the_tag_and_later_packs_append() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let write = |pack: &str, json: &str| {
+            let dir = temp.path().join(pack).join("tags/item");
+            fs::create_dir_all(&dir).expect("create dir");
+            fs::write(dir.join("planks.json"), json).expect("write");
+            temp.path().join(pack).join("tags")
+        };
+        let low = write("low", r#"{"values": ["minecraft:oak_planks"]}"#);
+        let mid = write(
+            "mid",
+            r#"{"replace": true, "values": ["minecraft:birch_planks"]}"#,
+        );
+        let high = write("high", r#"{"values": ["minecraft:spruce_planks"]}"#);
+        let mut map: HashMap<String, HashMap<String, DynamicTagEntry>> = HashMap::new();
+        load_tags_from_dir("minecraft", &low, &mut map);
+        assert!(!map["item"]["minecraft:planks"].replace);
+        load_tags_from_dir("minecraft", &mid, &mut map);
+        load_tags_from_dir("minecraft", &high, &mut map);
+        let entry = &map["item"]["minecraft:planks"];
+        assert!(entry.replace);
+        assert_eq!(
+            entry.values,
+            ["minecraft:birch_planks", "minecraft:spruce_planks"]
+        );
     }
 }

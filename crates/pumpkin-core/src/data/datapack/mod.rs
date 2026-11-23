@@ -777,6 +777,26 @@ impl DatapackManager {
         Some(tag_entry.values.clone())
     }
 
+    /// Whether a data pack replaced the tag, so its built-in values no longer apply.
+    #[must_use]
+    pub fn tag_replaces_builtin(&self, category: &str, tag_id: &str) -> bool {
+        let guard = self
+            .tags
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let category = category.strip_prefix("minecraft:").unwrap_or(category);
+        let tag_id = tag_id.strip_prefix('#').unwrap_or(tag_id);
+        let full_tag = if tag_id.contains(':') {
+            tag_id.to_string()
+        } else {
+            format!("minecraft:{tag_id}")
+        };
+        guard
+            .get(category)
+            .and_then(|tags| tags.get(&full_tag))
+            .is_some_and(|entry| entry.replace)
+    }
+
     #[must_use]
     pub fn get_villager_trade_set(
         &self,
