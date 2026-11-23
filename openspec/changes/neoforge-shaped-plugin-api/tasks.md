@@ -80,6 +80,9 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.45 (#188) Registration and registry gaps of the wave 4 review; verify: a test per fix
 - [ ] 2.46 (#151) Component hashes and nested item stack templates like vanilla; verify: hashes against the decompiled `HashOps`, template bytes from the decompiled codecs
 - [ ] 2.47 (#162) The hopper and the dropper ask the mod block capability before the entity containers; verify: the minecart test, the `hopper_tick` bench
+- [ ] 2.48 (#189) World generation adds the vanilla placement modifiers `cuboid`, `random_chance` and `randomly_selected`, and the codegen fails on an unknown modifier; verify: a test per modifier, a fixed-seed chunk test, a codegen rerun changes nothing, the world generation benches
+- [ ] 2.49 (#190) Forced chunks save and load in the vanilla format, and the fluid spread event carries the source, the destination and the fluid block; verify: a save and reload test, a test for water and lava
+- [ ] 2.50 (#191) The vanilla recipe sync is sent, data pack cooking recipes cook, and `"#tag"` ingredient strings parse as tags; verify: the packet bytes against the decompiled codec, a headless client test, a test per cooking block
 
 ## Workflow follow-up
 
