@@ -21,11 +21,15 @@ use pumpkin_protocol::{
     java::{client::play::CCustomPayload, server::play::SCustomPayload},
     packet::MultiVersionJavaPacket,
 };
-use pumpkin_util::{identifier::Identifier, text::TextComponent};
+use pumpkin_util::{
+    identifier::Identifier,
+    math::{vector2::Vector2, vector3::Vector3},
+    text::TextComponent,
+};
 use tracing::{debug, error, info};
 
 use crate::{
-    entity::player::Player,
+    entity::{EntityBase, player::Player},
     net::{
         DisconnectReason,
         java::{
@@ -42,7 +46,7 @@ use crate::{
         TaskContext,
     },
     server::Server,
-    world::World,
+    world::{World, entity_tracker::TrackedEntity},
 };
 
 /// A channel that a mod registered for one protocol.
@@ -241,7 +245,7 @@ enum Route<'a> {
     Discarded,
     /// The client cannot send on the channel: disconnect with this reason.
     Refused(TextComponent),
-    Handle(&'a PayloadHandler),
+    Handle(&'a PayloadHandler, HandlerThread),
 }
 
 /// `NetworkRegistry.getCodec` and `handleModdedPayload`: the channel must be negotiated, or be
@@ -272,7 +276,7 @@ fn route<'a>(
     let Some(handler) = payload.handler.as_ref() else {
         return Route::Refused(incompatible(&format!("No Handler for {channel}")));
     };
-    Route::Handle(handler)
+    Route::Handle(handler, payload.thread)
 }
 
 /// The channels of a connection in the configuration phase.
@@ -340,9 +344,14 @@ pub(crate) async fn handle_configuration_payload(
             connection.kick(reason).await;
             return true;
         }
-        Route::Handle(handler) => {
-            let mut context =
-                PayloadContext::new(channel, ConnectionProtocol::Configuration, None, negotiated);
+        Route::Handle(handler, thread) => {
+            let mut context = PayloadContext::new(
+                channel,
+                ConnectionProtocol::Configuration,
+                thread,
+                None,
+                negotiated,
+            );
             handler(data, &mut context);
             context.into_actions()
         }
@@ -390,9 +399,14 @@ pub(crate) fn handle_play_payload(
             player.kick(DisconnectReason::Kicked, &reason);
             return true;
         }
-        Route::Handle(handler) => {
-            let mut context =
-                PayloadContext::new(channel, ConnectionProtocol::Play, Some(player), negotiated);
+        Route::Handle(handler, thread) => {
+            let mut context = PayloadContext::new(
+                channel,
+                ConnectionProtocol::Play,
+                thread,
+                Some(player),
+                negotiated,
+            );
             handler(data, &mut context);
             context.into_actions()
         }
@@ -524,10 +538,99 @@ pub fn send_to_all_players(server: &Server, channel: &str, data: &[u8]) -> usize
 ///
 /// `NeoForge`: `PacketDistributor#sendToPlayersInDimension`.
 pub fn send_to_players_in_dimension(world: &World, channel: &str, data: &[u8]) -> usize {
-    world
-        .players
+    send_to_each(world.players.load().iter(), channel, data)
+}
+
+/// Sends a payload to the players of `world`, except `excluded`, who are closer than `radius`
+/// to `position`. Skips the players whose client did not negotiate `channel`, and returns how many
+/// players got it.
+///
+/// `NeoForge`: `PacketDistributor#sendToPlayersNear`.
+pub fn send_to_players_near(
+    world: &World,
+    excluded: Option<&Player>,
+    position: &Vector3<f64>,
+    radius: f64,
+    channel: &str,
+    data: &[u8],
+) -> usize {
+    send_to_each(
+        &world.players_near(excluded, position, radius),
+        channel,
+        data,
+    )
+}
+
+/// Sends a payload to the players who track `entity`, the players it is visible to.
+///
+/// Skips the players whose client did not negotiate `channel`, and returns how many players got
+/// it. An entity that the world does not track has no viewers.
+///
+/// `NeoForge`: `PacketDistributor#sendToPlayersTrackingEntity`.
+pub fn send_to_players_tracking_entity(
+    entity: &dyn EntityBase,
+    channel: &str,
+    data: &[u8],
+) -> usize {
+    tracked(entity).map_or(0, |tracked| {
+        send_to_each(&tracked.java_viewers(), channel, data)
+    })
+}
+
+/// Sends a payload to the players who track `entity`, and to `entity` when it is a player.
+///
+/// The viewers get it as in [`send_to_players_tracking_entity`]. An entity that the world does
+/// not track gets nothing, not even a player.
+///
+/// `NeoForge`: `PacketDistributor#sendToPlayersTrackingEntityAndSelf`.
+pub fn send_to_players_tracking_entity_and_self(
+    entity: &dyn EntityBase,
+    channel: &str,
+    data: &[u8],
+) -> usize {
+    let Some(tracked) = tracked(entity) else {
+        return 0;
+    };
+    let mut count = send_to_each(&tracked.java_viewers(), channel, data);
+    if let Some(player) = entity.get_player()
+        && send_to_player(player, channel, data).is_ok()
+    {
+        count += 1;
+    }
+    count
+}
+
+/// Sends a payload to the players whose client holds the chunk at `chunk_pos` of `world`. Skips
+/// the players whose client did not negotiate `channel`, and returns how many players got it.
+///
+/// `NeoForge`: `PacketDistributor#sendToPlayersTrackingChunk`.
+pub fn send_to_players_tracking_chunk(
+    world: &World,
+    chunk_pos: Vector2<i32>,
+    channel: &str,
+    data: &[u8],
+) -> usize {
+    send_to_each(&world.players_tracking_chunk(chunk_pos), channel, data)
+}
+
+/// The tracker entry of `entity`. The senders collect its viewers into a list first, so a send
+/// holds no lock of the tracker.
+fn tracked(entity: &dyn EntityBase) -> Option<Arc<TrackedEntity>> {
+    entity
+        .get_entity()
+        .world
         .load()
-        .iter()
+        .entity_tracker
+        .get_tracked_entity(entity.get_entity().entity_id)
+}
+
+fn send_to_each<'a>(
+    players: impl IntoIterator<Item = &'a Arc<Player>>,
+    channel: &str,
+    data: &[u8],
+) -> usize {
+    players
+        .into_iter()
         .filter(|player| send_to_player(player, channel, data).is_ok())
         .count()
 }

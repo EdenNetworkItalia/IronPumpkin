@@ -1,11 +1,68 @@
 use super::{
     Arc, Block, BlockBreakEvent, BlockFlags, BlockPos, BlockState, BlockStateId, CLevelEvent,
     CSoundEffect, CWorldEvent, Entity, EntityBase, ItemStack, LevelEvent, NbtCompound, Player,
-    SoundCategory, StructureKeys, StructureStart, VarInt, Vector3, World, WorldEvent, cause_id,
-    load_entity_from_nbt, self_and_passengers,
+    SoundCategory, StructureKeys, StructureStart, VarInt, Vector2, Vector3, World, WorldEvent,
+    cause_id, load_entity_from_nbt, self_and_passengers,
 };
 
+/// Whether `player` is strictly closer than `range` to `position`, as `PlayerList.broadcast` tests.
+fn is_closer_than(player: &Player, position: &Vector3<f64>, range: f64) -> bool {
+    player
+        .living_entity
+        .entity
+        .pos
+        .load()
+        .squared_distance_to_vec(position)
+        < range * range
+}
+
 impl World {
+    /// The players of this world, except `excluded`, who are closer than `range` to `position`.
+    ///
+    /// `PlayerList.broadcast` picks the players with the same test: the dimension of the world,
+    /// another player than the excluded one, and a distance below the range.
+    #[must_use]
+    pub fn players_near(
+        &self,
+        excluded: Option<&Player>,
+        position: &Vector3<f64>,
+        range: f64,
+    ) -> Vec<Arc<Player>> {
+        self.players
+            .load()
+            .iter()
+            .filter(|player| {
+                !excluded.is_some_and(|excluded| std::ptr::eq(excluded, player.as_ref()))
+                    && is_closer_than(player, position, range)
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// The players whose client holds the chunk at `pos`: the chunk is in their view and the
+    /// server sent it and the client received it.
+    ///
+    /// `ChunkMap.getPlayers(pos, false)`, which tests `isChunkTracked`.
+    #[must_use]
+    pub fn players_tracking_chunk(&self, pos: Vector2<i32>) -> Vec<Arc<Player>> {
+        self.players
+            .load()
+            .iter()
+            .filter(|player| {
+                player
+                    .watched_section
+                    .load()
+                    .is_within_distance(pos.x, pos.y)
+                    && player
+                        .chunk_sender
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .is_chunk_ready(&pos)
+            })
+            .cloned()
+            .collect()
+    }
+
     /// Plays a sound event by name to the players within its range of `position`, like
     /// `ServerLevel.playSeededSound` with a direct holder, and returns how many players got it.
     ///
@@ -36,15 +93,7 @@ impl World {
         let players = self.players.load();
         let recipients: Vec<&Arc<Player>> = players
             .iter()
-            .filter(|player| {
-                player
-                    .living_entity
-                    .entity
-                    .pos
-                    .load()
-                    .squared_distance_to_vec(position)
-                    < range * range
-            })
+            .filter(|player| is_closer_than(player, position, range))
             .collect();
         let count = recipients.len();
         let recipients_by_version =

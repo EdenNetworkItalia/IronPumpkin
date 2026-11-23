@@ -1,4 +1,14 @@
+use bytes::Bytes;
+use pumpkin_protocol::RawPacket;
+
 use super::{Attributes, ItemStack, Player};
+
+/// A task that a payload handler hands to the tick of the player.
+pub type SyncedTask = Box<dyn FnOnce() + Send>;
+
+/// The id of the marker packet that stands for one synced task in `Player::inbound_packets`.
+/// No client sends it: packet ids are not negative.
+pub(super) const SYNCED_TASK_PACKET_ID: i32 = -1;
 
 impl Player {
     /// Whether the cooldown group of `stack` is on cooldown (`ItemCooldowns.isOnCooldown`): the
@@ -73,6 +83,24 @@ impl Player {
         self.living_entity
             .get_attribute_value(&Attributes::NEOFORGE_CREATIVE_FLIGHT)
             > 0.0
+    }
+
+    /// Queues `task` in the inbound packets of the player, where the tick runs it in order with
+    /// the packets that arrived before and after it, as `PacketProcessor.scheduleIfPossible`
+    /// queues a `NeoForge` task in the packet queue of the connection.
+    pub(crate) fn schedule_synced_task(&self, task: SyncedTask) {
+        self.synced_tasks.push(task);
+        self.inbound_packets.push(RawPacket {
+            id: SYNCED_TASK_PACKET_ID,
+            payload: Bytes::new(),
+        });
+    }
+
+    /// Runs the oldest synced task, which its marker packet reached.
+    pub(super) fn run_synced_task(&self) {
+        if let Some(task) = self.synced_tasks.pop() {
+            task();
+        }
     }
 
     /// What the client negotiated in the configuration phase: the `NeoForge` connection type,

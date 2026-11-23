@@ -2,6 +2,7 @@ pub mod advancement;
 pub mod client_move;
 pub mod client_push;
 mod ironpumpkin;
+use ironpumpkin::{SYNCED_TASK_PACKET_ID, SyncedTask};
 mod shoulders;
 pub mod statistics;
 
@@ -746,6 +747,8 @@ pub struct Player {
     pub post_effects: std::sync::Mutex<Vec<String>>,
     /// Inbound packets waiting to be processed during player tick.
     pub inbound_packets: SegQueue<RawPacket>,
+    /// The tasks of [`Player::schedule_synced_task`], one marker packet each in `inbound_packets`.
+    synced_tasks: SegQueue<SyncedTask>,
     shoulders: Mutex<shoulders::Shoulders>,
 }
 
@@ -1087,6 +1090,7 @@ impl Player {
             spawn_extra_particles_on_fall: AtomicBool::new(false),
             post_effects: std::sync::Mutex::new(Vec::new()),
             inbound_packets: SegQueue::new(),
+            synced_tasks: SegQueue::new(),
         }
     }
 
@@ -3158,6 +3162,10 @@ impl Player {
         while let Some(mut packet) = self.inbound_packets.pop() {
             if self.client.closed() {
                 break;
+            }
+            if packet.id == SYNCED_TASK_PACKET_ID {
+                self.run_synced_task();
+                continue;
             }
 
             match self.client.as_ref() {
