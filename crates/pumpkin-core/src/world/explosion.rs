@@ -508,7 +508,12 @@ impl<'a> Explosion<'a> {
             Vector3::new(max_x as f64, max_y as f64, max_z as f64),
         );
 
-        world.get_all_at_box(&search_box)
+        // Vanilla `getEntities(source, box)`: the source is not in the list, so a detonate handler
+        // does not see it.
+        let source_id = self.source.map(|source| source.get_entity().entity_id);
+        let mut entities = world.get_all_at_box(&search_box);
+        entities.retain(|entity| Some(entity.get_entity().entity_id) != source_id);
+        entities
     }
 
     fn damage_entities(
@@ -524,8 +529,8 @@ impl<'a> Explosion<'a> {
             None => &default_calc,
         };
 
-        // TODO vanilla also skips the source entity, checks `doTeamsAllowDamage`, gives redirectable projectiles
-        // the damage source's owner and calls `onExplosionHit`. `Explosion` has no source yet.
+        // TODO vanilla also checks `doTeamsAllowDamage`, gives redirectable projectiles the damage
+        // source's owner and calls `onExplosionHit`.
         for entity_base in entities {
             if entity_base.is_immune_to_explosion() {
                 continue;
@@ -537,12 +542,6 @@ impl<'a> Explosion<'a> {
             }
 
             let entity = entity_base.get_entity();
-            if self
-                .source
-                .is_some_and(|source| source.get_entity().entity_id == entity.entity_id)
-            {
-                continue;
-            }
 
             let distance = (entity.pos.load().squared_distance_to_vec(&self.pos)).sqrt() / radius;
             if distance > 1.0 {
