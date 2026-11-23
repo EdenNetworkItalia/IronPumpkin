@@ -99,6 +99,7 @@ target/
 
 # === PROJECT SPECIFIC ===
 plugins/
+mod_data/
 world/*
 logs/
 crash-reports/
