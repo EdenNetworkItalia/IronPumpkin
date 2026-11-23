@@ -342,20 +342,20 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 
 | Family | Rows | Supported | Planned | Client-only | Not supported |
 |:--|:--|:--|:--|:--|:--|
-| Events, server and common | 282 | 179 | 83 | 0 | 20 |
+| Events, server and common | 282 | 181 | 81 | 0 | 20 |
 | Events, client | 189 | 0 | 0 | 189 | 0 |
 | Registries | 150 | 30 | 107 | 0 | 13 |
 | Capabilities | 35 | 33 | 0 | 0 | 2 |
 | Attachments | 26 | 23 | 0 | 0 | 3 |
 | Data maps | 24 | 24 | 0 | 0 | 0 |
-| Config | 37 | 22 | 11 | 1 | 3 |
+| Config | 37 | 30 | 0 | 1 | 6 |
 | Networking | 88 | 32 | 32 | 0 | 24 |
-| Lifecycle and metadata | 82 | 30 | 16 | 10 | 26 |
+| Lifecycle and metadata | 82 | 42 | 0 | 10 | 30 |
 | Loot and conditions | 25 | 5 | 18 | 0 | 2 |
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 10 | 36 | 0 | 41 |
-| Total | 1093 | 388 | 346 | 210 | 149 |
+| Total | 1093 | 410 | 317 | 210 | 156 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -674,14 +674,14 @@ Event classes found: 471 (93 on the mod bus, 378 on the game bus). Server or com
 |:--|:--|:--|:--|:--|:--|:--|:--|
 | VillageSiegeEvent | game | both | yes | - | not supported | - | Pumpkin has no village siege spawner |
 
-#### `fml.event.config` (4: 2 supported, 2 planned)
+#### `fml.event.config` (4: 4 supported)
 
 | Event | Bus | Side | Cancel | Result | Status | Pumpkin event or concept | Reason |
 |:--|:--|:--|:--|:--|:--|:--|:--|
-| ModConfigEvent | mod | both | no | - | planned | `NativeMod::config_loading`, `NativeMod::config_reloading` | concrete parent of the config events; the Rust API has the two hooks and no parent handler, so a listener on the parent implements both hooks |
+| ModConfigEvent | mod | both | no | - | supported | `NativeMod::config_loading`, `config_reloading`, `config_unloading` | concrete parent of the config events; the Rust API has the three hooks and no parent handler, so a listener on the parent implements the three hooks; tests of the three hooks below |
 | ModConfigEvent.Loading | mod | both | no | - | supported | `NativeMod::config_loading` | called once per config after it loads: Startup inside `register_config`, Local before `common_setup`, Synced after `load_complete`; the hooks of all mods run one at a time; tests `local_configs_load_before_common_setup_and_synced_after_load_complete` and `neoforge_lifecycle_events` (`crates/ironpumpkin-test-mod/tests`) |
 | ModConfigEvent.Reloading | mod | both | no | - | supported | `NativeMod::config_reloading` | called after a reload that the poll finds (`mod_config_reload_ticks`) and after `ModConfig::save`; a `save` inside a hook of the same config does not call the hook again; tests `save_calls_the_reloading_hook_once_even_when_the_hook_saves`, `an_edit_reloads_within_the_interval_and_changes_the_synced_body` and `neoforge_client_syncs_custom_content` (`crates/ironpumpkin-test-mod/tests`) |
-| ModConfigEvent.Unloading | mod | both | no | - | planned | Rust config spec of `ironpumpkin-mods` | not implemented: the host does not unload a config when the server stops |
+| ModConfigEvent.Unloading | mod | both | no | - | supported | `NativeMod::config_unloading` | called for each Synced config after the server stopped and `ServerStoppedEvent` fired, as `ServerLifecycleHooks.handleServerStopped` calls `ConfigTracker.unloadConfigs(SYNCED)`; the values are gone inside the hook; Local and Startup configs never unload, as in NeoForge; test `a_stopped_server_unloads_the_synced_configs_and_calls_the_hook_for_each` (`config.rs`) |
 
 #### `fml.event.lifecycle` (8: 6 supported, 2 planned)
 
@@ -1222,13 +1222,13 @@ The `capabilities` and `transfer` modules of `ironpumpkin-mods` (task 2.7, #153)
 
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `ModConfigSpec` | class, 15 public methods | both | supported | `ConfigSpec` | `ConfigSpec::builder()` builds the spec; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` and `set_and_save_write_the_key_under_its_section`; gaps: no `IConfigSpec` trait, and a value is read by path with `ModConfig::get::<T>`, not through a typed handle |
+| `ModConfigSpec` | class, 15 public methods | both | supported | `ConfigSpec` | `ConfigSpec::builder()` builds the spec; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` and `set_and_save_write_the_key_under_its_section`; gap: a value is read by path with `ModConfig::get::<T>`, not through a typed handle |
 | `ModConfigSpec.BooleanValue` | class, 3 public methods | both | supported | `ModConfig::get::<bool>` | read by path, no typed handle; tests `a_boolean_accepts_the_strings_true_and_false` and `set_and_save_write_the_key_under_its_section` |
 | `ModConfigSpec.Builder#define` | method, 12 overloads | both | supported | `ConfigSpecBuilder::define`, `define_validated` | tests `a_boolean_accepts_the_strings_true_and_false`, `a_path_defined_twice_is_an_invalid_spec` |
 | `ModConfigSpec.Builder#defineInRange` | method, 16 overloads | both | supported | `ConfigSpecBuilder::define_in_range` | for `i32`, `i64` and `f64`; a number out of range is clamped; test `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
-| `ModConfigSpec.Builder#defineInList` | method, 4 overloads | both | planned | `ConfigSpecBuilder::define_validated` | no dedicated method: `define_validated` with a membership check does the same |
+| `ModConfigSpec.Builder#defineInList` | method, 4 overloads | both | supported | `ConfigSpecBuilder::define_in_list` | a value that is not in the list gets the default, which must be in the list; test `define_in_list_keeps_a_listed_value_and_corrects_any_other` |
 | `ModConfigSpec.Builder#defineList` | method, 9 overloads | both | supported | `ConfigSpecBuilder::define_list` | elements that fail are removed, and a list with no element left gets the default; test `enums_lists_and_restart_values_follow_the_spec` |
-| `ModConfigSpec.Builder#defineListAllowEmpty` | method, 8 overloads | both | planned | `ConfigSpecBuilder::define_list` | no dedicated method: `define_list` keeps an empty list from the file, and no test covers the empty list |
+| `ModConfigSpec.Builder#defineListAllowEmpty` | method, 8 overloads | both | supported | `ConfigSpecBuilder::define_list_allow_empty` | the correction of `define_list`: an empty list in the file stays empty, a missing key gets the default; NeoForge `correct` runs only when `test` fails, so the size range of the two list methods only limits the config screen; test `define_list_allow_empty_keeps_an_empty_list_and_defaults_a_missing_key` |
 | `ModConfigSpec.Builder#defineEnum` | method, 20 overloads | both | supported | `ConfigSpecBuilder::define_enum` | the type implements `ConfigEnum`; test `enums_lists_and_restart_values_follow_the_spec` |
 | `ModConfigSpec.Builder#comment` | method, 2 overloads | both | supported | `ConfigSpecBuilder::comment` | each line of the comment is one `#` line; test `a_comment_with_line_breaks_writes_one_comment_line_each` |
 | `ModConfigSpec.Builder#translation` | method, 1 overload | both | supported | `ConfigSpecBuilder::translation` | read back with `ConfigSpec::translation`; test `enums_lists_and_restart_values_follow_the_spec` |
@@ -1236,25 +1236,25 @@ The `capabilities` and `transfer` modules of `ironpumpkin-mods` (task 2.7, #153)
 | `ModConfigSpec.Builder#gameRestart` | method, 1 overload | both | supported | `ConfigSpecBuilder::game_restart` | a synced config cannot have such a value; test `a_synced_config_cannot_need_a_game_restart` |
 | `ModConfigSpec.Builder#push` | method, 2 overloads | both | supported | `ConfigSpecBuilder::push` | test `set_and_save_write_the_key_under_its_section` |
 | `ModConfigSpec.Builder#pop` | method, 2 overloads | both | supported | `ConfigSpecBuilder::pop` | test `set_and_save_write_the_key_under_its_section` |
-| `ModConfigSpec.Builder#configure` | method, 1 overload | both | planned | `ConfigSpec::builder`, then `ConfigSpecBuilder::build` | no `configure`: a mod fills the builder directly and calls `build` |
+| `ModConfigSpec.Builder#configure` | method, 1 overload | both | supported | `ConfigSpec::configure` | runs the closure on a new builder and returns its result with the built spec, as the `Pair`; test `configure_returns_the_builder_result_and_the_spec` |
 | `ModConfigSpec.Builder#build` | method, 1 overload | both | supported | `ConfigSpecBuilder::build` | returns a `Result`; `InvalidSpec` for a malformed definition; test `a_path_defined_twice_is_an_invalid_spec` |
 | `ModConfigSpec.ConfigValue` | class, 10 public methods | both | supported | `ModConfig::get`, `set`, `save`, `get_default` | the value methods are on `ModConfig`, addressed by path; tests `set_and_save_write_the_key_under_its_section`, `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
 | `ModConfigSpec.DoubleValue` | class, 2 public methods | both | supported | `ModConfig::get::<f64>` | read by path, no typed handle; test `enums_lists_and_restart_values_follow_the_spec` |
 | `ModConfigSpec.EnumValue` | class, 1 public method | both | supported | `ConfigEnum`, `ModConfig::get::<E>` | read by path, no typed handle; test `enums_lists_and_restart_values_follow_the_spec` |
-| `ModConfigSpec.IntValue` | class, 2 public methods | both | planned | `ModConfig::get::<i32>` | `i32` is implemented but no test reads an `i32` value; a port can use `i64`, which `ModConfigSpec.LongValue` covers |
-| `ModConfigSpec.ListValueSpec` | class, 3 public methods | both | planned | `ConfigSpecBuilder::define_list` | no public type for it: `define_list` takes the element validator |
+| `ModConfigSpec.IntValue` | class, 2 public methods | both | supported | `ModConfig::get::<i32>` | read by path, no typed handle; a number out of range is clamped, and a number that does not fit in an `i32` gets the default; test `an_i32_value_is_read_and_corrected_into_its_range` |
+| `ModConfigSpec.ListValueSpec` | class, 3 public methods | both | not supported | - | its members (`getNewElementSupplier`, `testElement`, `getSizeRange`) serve the config screen only ("Only used by the UI!"); the list is read with `ModConfig::get::<Vec<T>>` |
 | `ModConfigSpec.LongValue` | class, 2 public methods | both | supported | `ModConfig::get::<i64>` | read by path, no typed handle; test `an_out_of_range_value_is_clamped_and_the_file_rewritten` |
-| `ModConfigSpec.Range` | class, 7 public methods | both | planned | `RangeBound` (`i32`, `i64`, `f64`) | no `Range` object: `RangeBound` is a trait, and `define_in_range` writes the range comment |
-| `ModConfigSpec.RestartType` | enum, 1 public method | both | planned | `ConfigSpecBuilder::world_restart`, `game_restart` | no public enum: the two builder methods set the flag |
-| `ModConfigSpec.ValueSpec` | class, 8 public methods | both | planned | `ConfigSpec` (per value: `ModConfig::get_default`, `ConfigSpec::translation`) | no public type for it: `get_default` and `translation` give the per-value data |
+| `ModConfigSpec.Range` | class, 7 public methods | both | supported | `config::Range` | `new`, `min`, `max`, `test`, `correct` and the `Range:` comment text through `Display`; `Range::new` returns `None` where `Range.of` throws; `define_in_range` uses it; test `a_range_tests_corrects_and_prints_its_bounds` |
+| `ModConfigSpec.RestartType` | enum, 1 public method | both | supported | `config::RestartType` (`None`, `World`, `Game`) | set with `world_restart` and `game_restart`, read with `ValueSpec::restart_type`; test `a_value_spec_gives_its_comment_default_restart_and_checks` |
+| `ModConfigSpec.ValueSpec` | class, 8 public methods | both | supported | `config::ValueSpec`, `ConfigSpec::value_spec` | `path`, `comment`, `translation_key`, `restart_type`, `default_value`, `test` and `correct`; `getRange` and `getClazz` have no counterpart because the kind and the range are inside `test` and `correct`; test `a_value_spec_gives_its_comment_default_restart_and_checks` |
 | `NeoForgeLocalConfig` | class, 0 public methods | both | not supported | - | NeoForge own settings; Pumpkin has its own `pumpkin.toml` |
 | `NeoForgeSyncedConfig` | class, 0 public methods | both | not supported | - | NeoForge own settings; Pumpkin has its own `pumpkin.toml` |
 | `ConfigTracker` | class, 7 public methods | both | not supported | - | internal (`@ApiStatus.Internal`) |
-| `IConfigSpec` | interface, 5 public methods | both | planned | `ConfigSpec` | no `IConfigSpec` trait: `ConfigSpec` is the only spec type |
-| `IConfigSpec.ILoadedConfig` | interface, 2 public methods | both | planned | `ModConfig` | no such interface: the loaded values are on `ModConfig` |
+| `IConfigSpec` | interface, 5 public methods | both | not supported | - | a mod implements it to plug its own spec type into FML; `ConfigSpec` is the only spec, and `register_config` takes it; a port that only uses `ModConfigSpec` compiles against `ConfigSpec` |
+| `IConfigSpec.ILoadedConfig` | interface, 2 public methods | both | not supported | - | it wraps the `NightConfig` `CommentedConfig` of a loaded file (`config`, `save`); a mod reads and writes values with `ModConfig::get`, `set` and `save` |
 | `ModConfig` | class, 6 public methods | both | supported | `ModConfig` | `mod_id`, `config_type`, `file_name`, `path`, `spec`, `get`, `set`, `save` and `get_default`; tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `set_and_save_write_the_key_under_its_section` |
 | `ModConfig.Type` | enum, 1 public method | both | supported | `ConfigType::{Local, Synced, Startup}` | `CLIENT` never loads on a server (see the client-only row); tests in the config type table |
-| `ModConfigs` | class, 4 public methods | both | planned | lookup of configs by mod, not implemented | not implemented: a mod keeps the `Arc<ModConfig>` that `register_config` returns |
+| `ModConfigs` | class, 4 public methods | both | supported | `config::ModConfigs` | `get_mod_configs`, `get_config_file_names`, `get_config_set` and `get_file_map` read the configs that `register_config` registered; test `mod_configs_lists_the_configs_of_a_mod_by_type_and_file` |
 
 #### Config types (`ModConfig.Type` in FancyModLoader 12.0.8)
 
@@ -1390,8 +1390,8 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | `@Mod(value)` | String | both | supported | `NativeMod` entry point (`register_mod!`) with the mod id | the mod id is `NativeMod::id` or the `modId` of `mods_toml`; tests `collects_registered_mods_in_id_order_and_runs_init`, `the_mods_toml_decides_the_metadata` |
 | `@Mod(dist)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | supported | `mod_list::dist()` | always `Dist::DedicatedServer`; client-dist entry points never run; test `mod_list_answers_like_neoforge` |
 | `@Mod(depends)` | String[], default `{}` | both | supported | `mods_toml::ModInfo::dependencies` | ids, types, ranges, ordering and side; test `parses_the_client_mod_descriptor` |
-| `@EventBusSubscriber(value)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | planned | registration through `ModInit::register_event` | client-dist subscribers are skipped |
-| `@EventBusSubscriber(modid)` | String, default `""` | both | planned | registration through `ModInit::register_event` | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `@EventBusSubscriber(value)` | Dist[], default `{ Dist.CLIENT, Dist.DEDICATED_SERVER }` | both | not supported | - | the annotation drives the scan of `IEventBus#register`; Rust has no scan, and a client-dist handler has no server counterpart because `dist()` is always `DedicatedServer` |
+| `@EventBusSubscriber(modid)` | String, default `""` | both | not supported | - | the annotation drives the scan of `IEventBus#register`; Rust has no scan, and every handler of `ModInit::register_event` belongs to the mod of that `ModInit` |
 | `@SubscribeEvent(priority)` | EventPriority, default `EventPriority.NORMAL` | both | supported | `ModInit::register_event` `priority` argument (`EventPriority`, same five levels) | blocking handlers run before non-blocking ones, each from Highest to Lowest, in registration order inside one priority; tests `priority_order`, `blocking_before_non_blocking` |
 | `@SubscribeEvent(receiveCanceled)` | boolean, default `false` | both | supported | `ModInit::register_event` `receive_canceled` argument | a handler without the flag does not run for a cancelled event; `Context::register_event` (Wasm) always receives cancelled events; tests `receive_canceled`, `register_and_register_event_receive_cancelled_events` |
 
@@ -1399,10 +1399,10 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 
 | API | Kind | Side | Status | Pumpkin concept | Reason |
 |:--|:--|:--|:--|:--|:--|
-| `IEventBus#register` | method, 1 overload | both | planned | registration through `ModInit::register_event` | Rust has no annotation scan; a macro lists the handlers |
+| `IEventBus#register` | method, 1 overload | both | not supported | - | it scans an object for `@SubscribeEvent` methods; Rust has no annotation scan, so a mod calls `ModInit::register_event` once for each handler |
 | `IEventBus#addListener` | method, 8 overloads | both | supported | `ModInit::register_event` (native), `ModInit::register_parent_event` (parent class), `Context::register_event` (Wasm) | each NeoForge event type is a Pumpkin event or maps to one; tests `priority_order`, `blocking_before_non_blocking`, `receive_canceled`, `handler_on_a_parent` |
 | `IEventBus#unregister` | method, 1 overload | both | not supported | - | Pumpkin plugins register handlers for the plugin lifetime |
-| `IEventBus#post` | method, 2 overloads | both | planned | firing a Pumpkin event; plugin IPC across plugins | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `IEventBus#post` | method, 2 overloads | both | supported | `PluginManager::fire`, `fire_blocking` (`server.plugin_manager`) | a mod defines its own event with `impl Payload` and posts it; the handlers of every mod receive it by priority; test `a_mod_posts_its_own_event_and_another_mod_handles_it` (`crates/ironpumpkin-mods/tests/mod_event_post.rs`) |
 | `IEventBus#start` | method, 1 overload | both | not supported | - | internal FML bus start |
 | `EventPriority` | enum: HIGHEST, HIGH, NORMAL, LOW, LOWEST | both | supported | WIT `event-priority` | same five levels |
 | `ModContainer#getModId` | method, 1 overload | both | supported | plugin-metadata `name` (`metadata.wit`) | available today |
@@ -1411,10 +1411,10 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | `ModContainer#getCustomExtension` | method, 1 overload | both | client-only | - | extension points are client screens (config screen factory) |
 | `ModContainer#registerExtensionPoint` | method, 2 overloads | both | client-only | - | extension points are client screens (config screen factory) |
 | `ModContainer#registerConfig` | method, 2 overloads | both | supported | `ModInit::register_config`, `ModInit::register_config_with_file_name` | tests `the_default_file_is_modid_type_toml_in_the_config_folder`, `a_second_config_with_the_same_file_is_a_duplicate` |
-| `ModContainer#getEventBus` | method, 1 overload | both | planned | `NativeMod` lifecycle methods, one set per mod | the Pumpkin side exists or is named; `ironpumpkin-mods` maps it |
+| `ModContainer#getEventBus` | method, 1 overload | both | not supported | - | a mod has no bus object: the lifecycle events are `NativeMod` methods, and a game event handler registers with `ModInit::register_event` |
 | `ModContainer#acceptEvent` | method, 2 overloads | both | not supported | - | internal FML dispatch |
 | `ModList#of` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
-| `ModList#get` | method, 1 overload | both | planned | `ModList::get()` | returns the process-wide list that `init_mods` builds; no unit test reads it, the boot log of `hello-mod` does |
+| `ModList#get` | method, 1 overload | both | supported | `ModList::get()` | returns the process-wide list that `init_mods` builds; test `mod_list_get_lists_the_mods_that_init_mods_loaded` (`crates/ironpumpkin-mods/tests/mod_event_post.rs`) |
 | `ModList#getModFiles` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#getModFileById` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#getModContainerById` | method, 1 overload | both | supported | `ModList::get_mod_container_by_id` | test `mod_list_answers_like_neoforge` |
@@ -1425,10 +1425,10 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | `ModList#forEachModFile` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#applyForEachModFile` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 | `ModList#applyForEachModFileAlphabetical` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
-| `ModList#forEachModContainer` | method, 1 overload | both | planned | `ModList::get_mods` (iterate) | no callback method: iterate the slice |
+| `ModList#forEachModContainer` | method, 1 overload | both | supported | `ModList::get_mods` (iterate) | no callback method: iterate the slice; test `iterating_the_mod_slices_replaces_the_for_each_methods` |
 | `ModList#getSortedMods` | method, 1 overload | both | supported | `ModList::get_sorted_mods` | test `mod_list_answers_like_neoforge` |
-| `ModList#forEachModInOrder` | method, 1 overload | both | planned | `ModList::get_sorted_mods` (iterate) | no callback method: iterate the slice |
-| `ModList#applyForEachModContainer` | method, 1 overload | both | planned | `ModList::get_mods` (iterate) | no callback method: iterate the slice |
+| `ModList#forEachModInOrder` | method, 1 overload | both | supported | `ModList::get_sorted_mods` (iterate) | no callback method: iterate the slice; test `iterating_the_mod_slices_replaces_the_for_each_methods` |
+| `ModList#applyForEachModContainer` | method, 1 overload | both | supported | `ModList::get_mods` (iterate) | no callback method: iterate the slice; test `iterating_the_mod_slices_replaces_the_for_each_methods` |
 | `ModList#clear` | method, 1 overload | both | not supported | - | mod files and scan data describe Java jars |
 
 #### `neoforge.mods.toml` keys (44, every `getConfigElement` and `getConfigList` call in FML and NeoForge)
@@ -1442,9 +1442,9 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | file | `showAsResourcePack` | FML `ModFileInfo` | both | not supported | - | pack listing in the client UI |
 | file | `showAsDataPack` | FML `ModFileInfo` | both | not supported | - | pack listing in the client UI |
 | file | `services` | FML `ModFileInfo` | both | not supported | - | Java ServiceLoader declarations |
-| file | `properties` | FML `ModFileInfo` | both | planned | not read | `mods_toml::parse` does not read it |
-| file | `issueTrackerURL` | FML `ModFileInfo`, NeoForge `CrashReportExtender` | both | planned | not read | `mods_toml::parse` does not read it |
-| file | `mods` | FML `ModFileInfo` | both | planned | `NativeMod::mods_toml`, `mods_toml::parse` | a native mod reads the `[[mods]]` entry with its id, or the only entry; a file with several mods has no equivalent; test `picks_the_entry_of_the_mod` |
+| file | `properties` | FML `ModFileInfo` | both | supported | `mods_toml::ModInfo::file_properties` | the `[properties]` table of the file, as a TOML table; test `properties_are_kept_for_the_file` |
+| file | `issueTrackerURL` | FML `ModFileInfo`, NeoForge `CrashReportExtender` | both | supported | `mods_toml::ModInfo::file_issue_tracker_url`, `ModInfo::issues_url` | file level; `issues_url` returns the key of the mod, else the key of the file; test `issue_tracker_urls_are_read_at_file_and_mod_level` |
+| file | `mods` | FML `ModFileInfo` | both | supported | `NativeMod::mods_toml`, `mods_toml::parse` | a crate that registers several mods with `register_mod!` gives each the same text, and each picks the `[[mods]]` entry with its id, or the only entry; test `picks_the_entry_of_the_mod` |
 | file | `mixins` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | [[mixins]] | `config` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
 | [[mixins]] | `requiredMods` | FML `ModFileParser` | both | not supported | - | Mixin configuration; Java bytecode patching |
@@ -1459,17 +1459,17 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | [[mods]] | `logoFile` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo`, NeoForge `LogoFileWarningsHandler` | client | client-only | - | mod list screen |
 | [[mods]] | `logoBlur` | FML `ModInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `updateJSONURL` | FML `ModInfo` | both | not supported | - | NeoForge version checker |
-| [[mods]] | `modUrl` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[mods]] | `modUrl` | FML `ModInfo`, NeoForge `DefaultModDisplayInfo` | both | supported | `mods_toml::ModInfo::mod_url` | a blank or placeholder value is absent; test `mod_url_and_url_rules_follow_fml` |
 | [[mods]] | `dependencies` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::dependencies` | the `[[dependencies.<modid>]]` entries of the mod; tests `parses_the_client_mod_descriptor`, `a_bad_mods_toml_id_or_dependency_stops_the_load` |
 | [[mods]] | `features` | FML `ModInfo` | both | not supported | - | environment checks (Java version, OpenGL version) |
-| [[mods]] | `modproperties` | FML `ModInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[mods]] | `modproperties` | FML `ModInfo` | both | supported | `mods_toml::ModInfo::mod_properties` | the `[modproperties.<modId>]` table of the file; test `modproperties_are_read_for_the_mod_id` |
 | [[dependencies.<modid>]] | `modId` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::mod_id` | test `parses_the_client_mod_descriptor` |
 | [[dependencies.<modid>]] | `type` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::dependency_type` | required, optional, incompatible or discouraged, case-insensitive; test `checks_version_ranges_types_and_sides` |
 | [[dependencies.<modid>]] | `reason` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::reason` | added to the error of an incompatible dependency; test `checks_version_ranges_types_and_sides` |
 | [[dependencies.<modid>]] | `versionRange` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::version_range` | Maven ranges, as `ModSorter.verifyDependencyVersions` reads them; tests `checks_version_ranges_types_and_sides`, `ranges_contain_like_maven` |
 | [[dependencies.<modid>]] | `ordering` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::ordering` | BEFORE and AFTER order `init` and the lifecycle methods, the mod id breaks ties; tests `before_and_after_order_three_mods`, `id_breaks_ties_and_none_adds_no_order` |
 | [[dependencies.<modid>]] | `side` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::side` | a CLIENT dependency is ignored on the server; test `checks_version_ranges_types_and_sides` |
-| [[dependencies.<modid>]] | `referralUrl` | FML `ModInfo.ModVersion` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[dependencies.<modid>]] | `referralUrl` | FML `ModInfo.ModVersion` | both | supported | `mods_toml::ModDependency::referral_url` | test `referral_url_is_read_on_a_dependency` |
 | [[mods]] | `authors` | NeoForge `DefaultModDisplayInfo` | both | supported | `mods_toml::ModInfo::authors` | read by `mods_toml::parse`; `parses_the_client_mod_descriptor` covers a descriptor without the key only |
 | [[mods]] | `credits` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `licenseURL` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
@@ -1477,7 +1477,7 @@ FML lifecycle events (`FMLConstructModEvent`, `FMLCommonSetupEvent`, `FMLDedicat
 | [[mods]] | `iconFile` | NeoForge `DefaultModDisplayInfo`, NeoForge `LogoFileWarningsHandler` | client | client-only | - | mod list screen |
 | [[mods]] | `iconBlur` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
 | [[mods]] | `displayURL` | NeoForge `DefaultModDisplayInfo` | client | client-only | - | mod list screen |
-| [[mods]] | `issueTrackerURL` | NeoForge `DefaultModDisplayInfo` | both | planned | not read | `mods_toml::parse` does not read it |
+| [[mods]] | `issueTrackerURL` | NeoForge `DefaultModDisplayInfo` | both | supported | `mods_toml::ModInfo::issue_tracker_url`, `ModInfo::issues_url` | mod level; a blank or placeholder value is absent and a value without a scheme stops the load, as `StringUtils.toURL`; test `issue_tracker_urls_are_read_at_file_and_mod_level` |
 | [[mods]] | `featureFlags` | NeoForge `FeatureFlagLoader` | both | not supported | - | mod feature flags stay excluded (risk: feature flags and extensible enums) |
 
 ### Loot modifiers, loot conditions and data conditions

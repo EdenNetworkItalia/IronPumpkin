@@ -65,7 +65,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.30 (#170) Data map consumers (follows 2.17): the vanilla behaviours read the NeoForge built-in data maps where NeoForge reads them, and the NeoForge default values load at the lowest priority from a GPL-3.0 server crate; verify: one test per consumer, the copper, wax and composter parity tests
 - [ ] 2.31 (#171) Loot context parameters (follows 2.16): the parameters that vanilla 26.3 sets and mods read, filled at each vanilla call site; verify: one test per call site, the vanilla loot parity dump
 - [ ] 2.32 (#175) Inventory rows that M3, the content registry and wave 8 already cover, the `DeferredRegister` getters, and the abstract event rule; verify: each listed row has a test, an `M5 engine extension:` reason or a `not supported` reason, `mapping_status.py --check`, `openspec validate --all`
-- [ ] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
+- [x] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
 - [ ] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
 - [ ] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
 

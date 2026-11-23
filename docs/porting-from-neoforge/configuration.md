@@ -13,13 +13,19 @@ In IronPumpkin, a mod builds a `ConfigSpec` with a `ConfigSpecBuilder`. It regis
 | **Spec** | `ModConfigSpec` from `ModConfigSpec.Builder` | `ConfigSpec` from `ConfigSpec::builder()`. `build()` returns a `Result`. |
 | **Values** | A typed handle: `ModConfigSpec.BooleanValue` and others | No handle. `ModConfig::get::<T>("section.key")` returns a `Result<T, ConfigError>`. |
 | **Value types** | Boolean, int, long, double, string, enum, list | `bool`, `i32`, `i64`, `f64`, `String`, a `ConfigEnum` type, and `Vec` of these |
+| **Define helpers** | `define`, `defineInRange`, `defineInList`, `defineList`, `defineListAllowEmpty`, `defineEnum` | `define`, `define_in_range`, `define_in_list`, `define_list`, `define_list_allow_empty`, `define_enum` |
+| **Builder helper** | `ModConfigSpec.Builder#configure(builder -> ...)` returns a pair | `ConfigSpec::configure(\|builder\| ...)` returns `Result<(T, ConfigSpec), ConfigError>` |
+| **Range** | `ModConfigSpec.Range` | `config::Range<T>` with `min`, `max`, `test` and `correct` |
+| **Restart type** | `ModConfigSpec.RestartType` | `config::RestartType`, read with `ValueSpec::restart_type` |
+| **Value spec** | `ModConfigSpec.ValueSpec` | `config::ValueSpec`, got with `ConfigSpec::value_spec(path)`. `getRange` and `getClazz` have no counterpart. |
+| **Configs of a mod** | `ModConfigs.getModConfigs(modId)` | `config::ModConfigs::get_mod_configs(mod_id)`, and `get_config_file_names`, `get_config_set` and `get_file_map` |
 | **Registration** | `ModContainer#registerConfig(type, spec)` | `ModInit::register_config(type, spec)` in `init` |
 | **Types** | `ModConfig.Type.LOCAL`, `SYNCED`, `STARTUP` and `CLIENT` | `ConfigType::Local`, `Synced` and `Startup`. `CLIENT` never loads on a server. |
 | **File** | `config/<modid>-<type>.toml` | The same path. `register_config_with_file_name` sets another name. |
 | **Load time** | Startup at registration. Local before `FMLCommonSetupEvent`. Synced when the server is about to start, after `FMLLoadCompleteEvent`. | Startup inside `register_config`. Local after the last `init`, before `common_setup`. Synced after `load_complete`, before the server starts. |
 | **Correction** | `ModConfigSpec.correct` on load | The same rules, and the same `.bak` backup of the old file |
 | **Reload** | `ConfigWatcher` watches the file | The server checks the files every `mod_config_reload_ticks` ticks |
-| **Events** | `ModConfigEvent.Loading` and `Reloading` on the mod bus | `NativeMod::config_loading` and `NativeMod::config_reloading` |
+| **Events** | `ModConfigEvent.Loading`, `Reloading` and `Unloading` on the mod bus | `NativeMod::config_loading`, `config_reloading` and `config_unloading` |
 | **Sync** | `SYNCED` configs go to the clients as `neoforge:config_file` | The same payload, in the configuration phase |
 | **Change a value** | `ConfigValue#set`, then `ModConfigSpec#save` | `ModConfig::set`, then `ModConfig::save` |
 
@@ -201,6 +207,20 @@ The server checks the config files every `mod_config_reload_ticks` ticks. The ke
 The hooks of all mods run one at a time, under one lock. A reload that the poll finds and a `save` on another thread never overlap. A `save` inside a hook of the same config writes the file and does not call the hook again, so a `config_reloading` hook that saves does not recurse.
 
 A client that connects after a reload gets the new text of a synced file. The server sends the file in the configuration phase of each connection.
+
+## Unload
+
+When a server has stopped, the server unloads each Synced config and calls `NativeMod::config_unloading` for it, after `ServerStoppedEvent`. This is `ConfigTracker.unloadConfigs(SYNCED)` and `ModConfigEvent.Unloading`. `ModConfig::get` returns `ConfigError::NotLoaded` from then on, also inside the hook, until the next server of the process loads the config. Local and Startup configs stay loaded, as in NeoForge.
+
+## Value helpers
+
+- `define_in_list(path, default, acceptable)` accepts a value that is in `acceptable`. The default must be in the list.
+- `define_list_allow_empty` has the correction of `define_list`: an empty list in the file stays empty, a missing key gets the default, and a list with no valid element gets the default. NeoForge sets a size range that only limits the edits of the config screen.
+- `define_in_range::<i32>` reads and corrects an `i32` value. A TOML integer that does not fit in an `i32` gets the default.
+- `ConfigSpec::configure` builds a spec and returns the value that the closure returns, for a mod that keeps a path or a handle next to the spec.
+- `ModConfigs::get_mod_configs("examplemod")` returns the `Arc<ModConfig>` of each config that a mod registered.
+
+`ModConfigSpec.ListValueSpec` has no counterpart. Its members serve the config screen only.
 
 ## Restart flags
 
