@@ -167,6 +167,8 @@ const fn default_amount() -> f32 {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TradeTagDefinition {
+    #[serde(default)]
+    pub replace: bool,
     pub values: Vec<Value>,
 }
 
@@ -601,6 +603,7 @@ fn load_trade_tags_recursive<S: std::hash::BuildHasher>(
             if let Ok(content) = fs::read_to_string(&path)
                 && let Ok(tag_file) = serde_json::from_str::<TradeTagDefinition>(&content)
             {
+                let replace = tag_file.replace;
                 let values = tag_file
                     .values
                     .into_iter()
@@ -612,8 +615,20 @@ fn load_trade_tags_recursive<S: std::hash::BuildHasher>(
                         _ => None,
                     })
                     .collect::<Vec<_>>();
-                registry.insert(full_id, values.clone());
-                registry.insert(stem_path, values);
+                // `TagLoader`: a file merges with the same tag of earlier packs, unless it sets
+                // `"replace": true`.
+                let mut merged = if replace {
+                    Vec::new()
+                } else {
+                    registry.get(&full_id).cloned().unwrap_or_default()
+                };
+                for value in values {
+                    if !merged.contains(&value) {
+                        merged.push(value);
+                    }
+                }
+                registry.insert(full_id, merged.clone());
+                registry.insert(stem_path, merged);
             }
         }
     }

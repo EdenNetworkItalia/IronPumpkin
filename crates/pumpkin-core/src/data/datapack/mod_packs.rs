@@ -483,4 +483,43 @@ mod override_tests {
             Some(&vec!["world:init".to_owned()])
         );
     }
+
+    /// Vanilla: a tag without `replace` merges, also for villager trade tags.
+    #[test]
+    fn r_a_world_trade_tag_without_replace_merges_with_the_mod_tag() {
+        let (manager, _) = load(
+            &[(
+                "data/gems/tags/villager_trade/t.json",
+                br#"{"values":["gems:a"]}"#,
+            )],
+            &[(
+                "data/gems/tags/villager_trade/t.json",
+                br#"{"values":["gems:b"]}"#,
+            )],
+        );
+        let registry = manager.trade_registry.read().unwrap();
+        assert_eq!(
+            registry.trade_tags.get("gems:t"),
+            Some(&vec!["gems:a".to_owned(), "gems:b".to_owned()])
+        );
+    }
+
+    #[test]
+    fn a_world_trade_tag_with_replace_drops_the_mod_values() {
+        let (manager, _) = load(
+            &[(
+                "data/gems/tags/villager_trade/t.json",
+                br#"{"values":["gems:a"]}"#,
+            )],
+            &[(
+                "data/gems/tags/villager_trade/t.json",
+                br#"{"replace":true,"values":["gems:b"]}"#,
+            )],
+        );
+        let registry = manager.trade_registry.read().unwrap();
+        assert_eq!(
+            registry.trade_tags.get("gems:t"),
+            Some(&vec!["gems:b".to_owned()])
+        );
+    }
 }
