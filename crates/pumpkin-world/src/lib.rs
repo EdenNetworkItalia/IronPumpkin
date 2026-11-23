@@ -12,6 +12,7 @@ macro_rules! include_json {
     };
 }
 
+pub mod attachments;
 pub mod biome;
 pub mod block;
 pub mod chunk;

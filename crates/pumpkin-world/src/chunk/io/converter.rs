@@ -103,6 +103,9 @@ fn transcode_payload(
             if !payload.starts_with(&PUMP_CHUNK_MAGIC)
                 && let Ok(chunk) = ChunkData::internal_from_bytes(&payload, chunk_pos)
             {
+                if crate::attachments::bytes_hold_attachments(&payload) {
+                    crate::attachments::warn_pump_drop((chunk_pos.x, chunk_pos.y));
+                }
                 return Ok(chunk.internal_to_pump_bytes());
             }
         }
@@ -495,6 +498,7 @@ mod tests {
             blending_data: None,
             inhabited_time: AtomicU64::new(12345),
             custom_data: Mutex::new(NbtCompound::default()),
+            attachments: crate::attachments::Attachments::default(),
             structures: NbtCompound::default(),
         };
         chunk.set_custom_data("test_ns", "flag", NbtTag::Int(99));

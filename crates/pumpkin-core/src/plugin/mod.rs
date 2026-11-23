@@ -19,6 +19,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 pub mod api;
+pub mod attachments;
 pub(crate) mod brewing_events;
 pub mod cache;
 pub mod capabilities;

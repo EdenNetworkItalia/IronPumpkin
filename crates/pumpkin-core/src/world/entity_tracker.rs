@@ -897,6 +897,7 @@ impl TrackedEntity {
                 }
             }
         }
+        crate::plugin::attachments::sync_entity(self.entity.get_entity(), player);
         crate::plugin::player_events::start_tracking(player, &self.entity);
     }
 

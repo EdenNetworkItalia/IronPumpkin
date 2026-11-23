@@ -85,6 +85,8 @@ pub struct ChunkData {
     /// The vanilla `structures` tag: structure `starts` owned by this chunk and the
     /// `References` to starts of nearby chunks whose bounding box reaches into it.
     pub structures: NbtCompound,
+    /// The `NeoForge` data attachments of the chunk.
+    pub attachments: crate::attachments::Attachments,
 }
 
 pub struct ChunkEntityData {
@@ -648,6 +650,7 @@ impl ChunkData {
             dirty: std::sync::atomic::AtomicBool::new(false),
             inhabited_time: std::sync::atomic::AtomicU64::new(0),
             custom_data: std::sync::Mutex::new(NbtCompound::new()),
+            attachments: crate::attachments::Attachments::default(),
             structures: NbtCompound::new(),
         }
     }

@@ -46,6 +46,7 @@ fn decode(payloads: &RegistrySyncPayloads) -> Vec<FrozenRegistryPayload> {
             "minecraft:mob_effect",
             "minecraft:attribute",
             "minecraft:data_component_type",
+            "neoforge:synced_attachment_types",
         ]
     );
     let listed: Vec<String> = start.to_access.iter().map(ToString::to_string).collect();
@@ -136,6 +137,8 @@ fn without_content() {
             entry(121, "minecraft:cushion/color")
         )
     );
+    // `NeoForge` registers no attachment type of its own.
+    assert!(registries[6].snapshot.ids.is_empty());
     for registry in &registries {
         let ids: Vec<i32> = registry.snapshot.ids.keys().copied().collect();
         let dense: Vec<i32> = (0..i32::try_from(ids.len()).unwrap()).collect();

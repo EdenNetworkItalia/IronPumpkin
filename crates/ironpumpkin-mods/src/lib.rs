@@ -80,6 +80,7 @@ pub use tracing;
 pub use pumpkin_core::{command, entity, server, world};
 pub use pumpkin_util::{identifier, math, permission};
 
+pub mod attachments;
 pub mod capabilities;
 pub mod config;
 pub mod content;
@@ -156,6 +157,9 @@ mod porting_guide {
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/configuration.md")]
     struct Configuration;
+
+    #[doc = include_str!("../../../docs/porting-from-neoforge/attachments.md")]
+    struct Attachments;
 
     #[doc = include_str!("../../../docs/porting-from-neoforge/events.md")]
     struct Events;

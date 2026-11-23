@@ -307,6 +307,8 @@ pub struct World {
     pub(crate) encoded_chunk_cache: DashMap<Vector2<i32>, crate::net::chunk_sender::EncodedChunk>,
     /// Entity tracker responsible for tracking entity visibility and sending delta/status packets to watchers.
     pub entity_tracker: entity_tracker::EntityTracker,
+    /// The `NeoForge` data attachments of the level and of its block entities.
+    pub attachments: crate::plugin::attachments::WorldAttachments,
 }
 
 #[derive(Clone, Copy)]
@@ -466,6 +468,7 @@ impl World {
             custom_block_entity_data: DashMap::new(),
             encoded_chunk_cache: DashMap::new(),
             entity_tracker: entity_tracker::EntityTracker::new(),
+            attachments: crate::plugin::attachments::WorldAttachments::default(),
         }
     }
 
@@ -680,6 +683,7 @@ impl World {
         for chunk_pos in chunks {
             self.save_block_entities(chunk_pos);
         }
+        crate::plugin::attachments::save_level(self);
 
         // Save portal POI to disk
         let save_result = self
@@ -766,6 +770,7 @@ impl World {
             {
                 nbt.put_compound("PumpkinCustomData", custom_data.clone());
             }
+            crate::plugin::attachments::write_block_entity(self, &block_entity, &mut nbt);
             self.add_block_entity_nbt(block_entity.get_position(), &nbt);
         }
     }
@@ -1714,6 +1719,7 @@ impl World {
         let start = std::time::Instant::now();
 
         self.flush_block_updates();
+        crate::plugin::attachments::flush_block_entities(self);
         self.flush_synced_block_events();
         self.update_active_chunks();
         self.process_poi_chunks();
@@ -3749,6 +3755,7 @@ impl World {
         )
         .color_named(NamedColor::Yellow);
 
+        crate::plugin::attachments::sync_player(&player);
         let mut event = PlayerJoinEvent::new(player.clone(), msg_comp);
         server.plugin_manager.fire(server, &mut event).await;
 
@@ -4185,6 +4192,7 @@ impl World {
                 .send_packet(&CGameEvent::new(GameEvent::StartWaitingChunks, 0.0))
                 .await;
         }
+        crate::plugin::attachments::sync_level(self, player);
 
         self.worldborder
             .lock()
@@ -4289,6 +4297,7 @@ impl World {
             [TextComponent::text(player.gameprofile.name.clone())],
         )
         .color_named(NamedColor::Yellow);
+        crate::plugin::attachments::sync_player(player);
         let mut event = PlayerJoinEvent::new(player.clone(), msg_comp);
 
         server.plugin_manager.fire(server, &mut event).await;
@@ -4370,6 +4379,7 @@ impl World {
         {
             player.try_send_client_packet(&CGameEvent::new(GameEvent::StartWaitingChunks, 0.0));
         }
+        crate::plugin::attachments::sync_level(self, player);
 
         player.send_client_information();
         // The client just re-created the player entity (respawn or dimension change), so
@@ -4721,6 +4731,9 @@ impl World {
             || (self.clone(), position, yaw, pitch),
             |new_world| (new_world.clone(), position, yaw, pitch),
         );
+        // `PlayerEvent.Clone`, after the respawn position and in the respawn world: Pumpkin
+        // keeps the player, so the copy runs on it.
+        crate::plugin::attachments::clone_player(player, !alive);
 
         // Notify plugins that the player has respawned (non-cancellable).
         if let Some(server) = self.server.upgrade() {
@@ -4824,6 +4837,7 @@ impl World {
 
         // Load chunks and send world info FIRST (before teleport packet)
         target_world.send_world_info(player);
+        crate::plugin::attachments::sync_player(player);
         target_world.send_center_chunk(player).await;
 
         // Send teleport packet after at least the center chunk was delivered
@@ -5785,6 +5799,7 @@ impl World {
         for chunk_pos in &chunks_set {
             self.save_block_entities(*chunk_pos);
             self.block_entities.remove(chunk_pos);
+            self.attachments.unload_chunk(chunk_pos);
         }
     }
 
@@ -7307,6 +7322,7 @@ impl World {
         if let Some(weak) = self.weak_self() {
             entity.set_world(weak);
         }
+        crate::plugin::attachments::read_block_entity(self, &entity, &nbt);
         self.block_entities
             .entry(chunk_pos)
             .or_default()
@@ -7464,6 +7480,7 @@ impl World {
                 });
         if removed || removed_pending {
             self.custom_block_entity_data.remove(block_pos);
+            self.attachments.remove_block_entity(block_pos);
             // Drop the chunk's map once its last block entity is gone.
             self.block_entities
                 .remove_if(&chunk_pos, |_, entities| entities.is_empty());
@@ -8079,6 +8096,7 @@ impl World {
         if let Ok(mut portal_poi) = self.portal_poi.try_lock() {
             let _ = portal_poi.save_all();
         }
+        crate::plugin::attachments::save_level(self);
 
         {
             let custom_data = self

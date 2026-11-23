@@ -56,7 +56,7 @@ pub type RegistrySnapshotFn = fn(&ContentTables) -> Vec<(i32, Identifier)>;
 /// from the client's own ids and travel in packets: mods fill them. A client keeps its own ids for
 /// any registry that is not listed. `minecraft:sound_event` is not listed: a mod sound travels by
 /// name, so a client needs no entry for it.
-pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 6] = [
+pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 7] = [
     (
         Identifier::vanilla_static("block"),
         ContentTables::block_snapshot,
@@ -80,6 +80,10 @@ pub const SYNCED_REGISTRIES: [(Identifier, RegistrySnapshotFn); 6] = [
     (
         Identifier::vanilla_static("data_component_type"),
         ContentTables::data_component_type_snapshot,
+    ),
+    (
+        Identifier::parse_static("neoforge:synced_attachment_types"),
+        crate::plugin::attachments::synced_types_snapshot,
     ),
 ];
 

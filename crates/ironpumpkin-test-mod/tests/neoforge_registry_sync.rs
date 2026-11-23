@@ -244,6 +244,7 @@ fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
             "minecraft:mob_effect",
             "minecraft:attribute",
             "minecraft:data_component_type",
+            "neoforge:synced_attachment_types",
         ]
     );
     assert_eq!(start.len(), 1);
@@ -260,7 +261,12 @@ fn check_neoforge_client(server: &Server, port: u16, synced_config: &[u8]) {
         "../../../tools/pumpkin-neoforge-client/expected/pumpkin-neoforge-test-mod-registries.toml"
     ))
     .unwrap();
-    let custom: Vec<&str> = expectations.0.iter().map(|r| r.last.as_str()).collect();
+    let custom: Vec<&str> = expectations
+        .0
+        .iter()
+        .filter(|r| r.ids > 0)
+        .map(|r| r.last.as_str())
+        .collect();
     assert_eq!(
         custom,
         [
