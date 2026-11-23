@@ -19,7 +19,7 @@ use std::{
 
 use ironpumpkin_mods::{
     ModInit, NativeMod,
-    content::{BlockBehaviour, BlockBuilder, EntityTypeBuilder, ItemBuilder},
+    content::{BlockBehaviour, BlockBuilder, ContentKind, EntityTypeBuilder, ItemBuilder},
     entity::{
         Entity, EntityBase,
         living::LivingEntity,
@@ -54,6 +54,7 @@ use ironpumpkin_mods::{
         EntityAttributeModificationEvent, ExtendPoiTypesEvent, Operation,
         RegisterSpawnPlacementsEvent, SpawnLocation, spawn_predicate,
     },
+    registry,
 };
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
 
@@ -69,6 +70,11 @@ const REJECTED_X: i32 = 7;
 const ZOMBIE_REJECTED_X: i32 = 3;
 
 static LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// The blocks, items and entity types that `registry::mod_entries` listed in `common_setup`.
+type Entries = (Vec<String>, Vec<String>, Vec<String>);
+
+static COMMON_SETUP_ENTRIES: Mutex<Option<Entries>> = Mutex::new(None);
 
 fn log(entry: &str) {
     LOG.lock()
@@ -133,6 +139,17 @@ impl NativeMod for RegistrationMod {
 
     fn common_setup(&self) {
         log("common_setup");
+        let entries = |kind| {
+            registry::mod_entries("regmod", kind)
+                .iter()
+                .map(ToString::to_string)
+                .collect()
+        };
+        *COMMON_SETUP_ENTRIES.lock().unwrap() = Some((
+            entries(ContentKind::Block),
+            entries(ContentKind::Item),
+            entries(ContentKind::EntityType),
+        ));
     }
 
     fn dedicated_server_setup(&self) {
@@ -245,6 +262,27 @@ fn each_registration_event_fires_once_at_its_neoforge_position() {
             "load_complete",
         ]
     );
+}
+
+/// `DeferredRegister#getEntries` is a live view: a mod reads its entries in `common_setup`, after
+/// the `init` that registered them.
+#[test]
+fn a_mod_reads_its_entries_in_common_setup() {
+    boot();
+    let (blocks, items, entity_types) = COMMON_SETUP_ENTRIES.lock().unwrap().clone().unwrap();
+    assert_eq!(blocks, [STAIRS, OWN_STAIRS, CRATE, DESK]);
+    assert_eq!(items, [BUCKET]);
+    assert_eq!(entity_types, [GOLEM]);
+    // The lookup stays after the lifecycle.
+    assert_eq!(
+        registry::mod_entries("regmod", ContentKind::Item)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        [BUCKET]
+    );
+    assert!(registry::mod_entries("regmod", ContentKind::Attribute).is_empty());
+    assert!(registry::mod_entries("unknown", ContentKind::Block).is_empty());
 }
 
 /// Scenario "Attributes of a mod entity".

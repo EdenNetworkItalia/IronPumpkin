@@ -588,6 +588,9 @@ impl ModInit {
     /// id. The registrations take names as written, so a mod puts this value in front of each
     /// name itself.
     ///
+    /// The namespace is one per mod, not one per `DeferredRegister`. After `init`,
+    /// [`ModList`] gives it as `ModInfo::namespace`.
+    ///
     /// `NeoForge`: `DeferredRegister#getNamespace`, which the `DeferredRegister` puts in front of
     /// each name.
     #[must_use]
@@ -597,7 +600,11 @@ impl ModInit {
 
     /// The names of the content that this mod registered with [`ModInit`] in a registry, in
     /// registration order. A failed registration is not listed, and neither is a tag. Content that
-    /// a handler of `RegisterEvent` registers is not listed.
+    /// a handler of `RegisterEvent` registers is not listed. This method answers inside `init`;
+    /// after it, [`registry::mod_entries`] gives the same list.
+    ///
+    /// The list is one per mod and registry, not one per `DeferredRegister`: two registers of the
+    /// same registry give one merged list.
     ///
     /// `NeoForge`: `DeferredRegister#getEntries`, the holders of one `DeferredRegister`.
     #[must_use]
@@ -903,6 +910,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
     mod_packs::set_mod_data_packs(data_pack::of_mods(&mods));
     let mut configs = Vec::new();
     let mut registrations = Vec::new();
+    let mut entries = HashMap::new();
     for loaded in &mods {
         let Some(info) = mod_list.get_mod_container_by_id(loaded.mod_id) else {
             continue;
@@ -912,6 +920,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
         let mut init =
             run_init(loaded.native_mod, init).unwrap_or_else(|err| refuse_to_start(&err));
         configs.append(&mut init.configs);
+        entries.insert(loaded.mod_id.to_owned(), std::mem::take(&mut init.entries));
         registrations.push(ModRegistrations {
             metadata: PluginMetadata {
                 name: info.mod_id.clone(),
@@ -924,6 +933,7 @@ fn load_mods(server: &Arc<Server>) -> LoadedMods {
             registrations: init.registrations,
         });
     }
+    registry::set_mod_entries(entries);
     let mut loaded = LoadedMods {
         mods: registrations,
         configs,

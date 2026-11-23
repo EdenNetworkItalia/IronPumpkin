@@ -279,8 +279,8 @@ Lookups by tag work for generated tags (vanilla, and the `c:` and `neoforge:` ta
 
 | NeoForge | `ModInit` |
 | :--- | :--- |
-| `getNamespace()` | `namespace()`: the `namespace` key of `neoforge.mods.toml`, or the mod id |
-| `getEntries()` | `entries(kind)`: the names that this mod registered through `ModInit`, in registration order. Tags and failed registrations are not listed. |
+| `getNamespace()` | `namespace()`: the `namespace` key of `neoforge.mods.toml`, or the mod id. One namespace for the mod, not one for each `DeferredRegister`. After `init`, `ModList` gives it as `ModInfo::namespace`. |
+| `getEntries()` | `entries(kind)` inside `init`, and `registry::mod_entries(mod_id, kind)` from `common_setup` on: the names that this mod registered through `ModInit`, in registration order. One list for each mod and registry: two `DeferredRegister`s of one registry give one merged list. Tags and failed registrations are not listed. |
 | `getRegistry()` | `registry(kind)`: a `registry::Registry` with the lookups of the table above |
 | `getRegistryKey()` | `registry_key(kind)`: the `ContentKind` itself |
 | `getRegistryName()` | `registry_name(kind)`, for example `minecraft:block` |

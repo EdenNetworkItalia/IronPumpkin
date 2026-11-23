@@ -29,6 +29,8 @@
 //! assert_eq!(registry::id_of(ContentKind::Item, "examplemod:unknown"), None);
 //! ```
 
+use std::{collections::HashMap, sync::OnceLock};
+
 use pumpkin_data::{
     Block, BlockId,
     attributes::Attributes,
@@ -107,6 +109,12 @@ impl Registry {
         keys(self.0)
     }
 
+    /// See [`mod_entries`].
+    #[must_use]
+    pub fn mod_entries(self, mod_id: &str) -> Vec<Identifier> {
+        mod_entries(mod_id, self.0)
+    }
+
     /// See [`is_in_tag`].
     #[must_use]
     pub fn is_in_tag(self, key: &str, tag: &str) -> bool {
@@ -118,6 +126,37 @@ impl Registry {
     pub fn tag_entries(self, tag: &str) -> Option<Vec<Identifier>> {
         tag_entries(self.0, tag)
     }
+}
+
+/// The content that each mod registered through its [`ModInit`](crate::ModInit), by mod id.
+static MOD_ENTRIES: OnceLock<HashMap<String, Vec<(ContentKind, Identifier)>>> = OnceLock::new();
+
+/// Keeps the entries of every mod once the last `init` has run. The first server of the process
+/// does this, before the lifecycle steps.
+pub(crate) fn set_mod_entries(entries: HashMap<String, Vec<(ContentKind, Identifier)>>) {
+    // A later server of the process keeps the entries of the first.
+    let _ = MOD_ENTRIES.set(entries);
+}
+
+/// The names of the content that the mod `mod_id` registered in a registry, in registration order.
+///
+/// The mod registered it through [`ModInit`](crate::ModInit). The list exists from the end of the
+/// last `init`, so a mod reads it in `common_setup` and later. Before that point it is empty, and
+/// [`ModInit::entries`](crate::ModInit::entries) answers inside `init`. A tag and a failed
+/// registration are not listed, and neither is content that a handler of `RegisterEvent`
+/// registers.
+///
+/// `NeoForge`: `DeferredRegister#getEntries`, which a mod can call at any time.
+#[must_use]
+pub fn mod_entries(mod_id: &str, kind: ContentKind) -> Vec<Identifier> {
+    MOD_ENTRIES
+        .get()
+        .and_then(|entries| entries.get(mod_id))
+        .into_iter()
+        .flatten()
+        .filter(|(entry_kind, _)| *entry_kind == kind)
+        .map(|(_, name)| name.clone())
+        .collect()
 }
 
 /// Whether the registry has an entry with this name.
