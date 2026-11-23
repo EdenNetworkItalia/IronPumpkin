@@ -1,0 +1,4 @@
+[profile.default]
+# A hung test grows on a 16 GB hosted runner until GitHub loses the runner, and then the job
+# uploads no log. Terminating it names the test instead. The slowest test takes ~85 s on CI.
+slow-timeout = { period = "60s", terminate-after = 5 }
