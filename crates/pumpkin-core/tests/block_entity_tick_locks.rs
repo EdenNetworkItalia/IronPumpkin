@@ -441,3 +441,29 @@ fn the_burn_skips_an_input_that_the_smelt_event_swaps() {
     assert_eq!(furnace.get_stack(0).item.id, Item::COBBLESTONE.id);
     assert_eq!(furnace.get_stack(0).item_count, 1);
 }
+
+/// Vanilla `consumeFuel` uses the fuel that lit the furnace. A `FurnaceBurnEvent` handler that
+/// takes the fuel leaves the furnace unlit.
+#[test]
+fn the_furnace_does_not_light_when_the_burn_event_takes_the_fuel() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(2, 100, 2);
+    place(&world, pos, &Block::FURNACE);
+    let furnace = Arc::new(FurnaceBlockEntity::new(pos));
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    on({
+        let furnace = furnace.clone();
+        move |event: &mut FurnaceBurnEvent| {
+            if event.block_pos == pos {
+                furnace.remove_stack(1);
+            }
+        }
+    });
+    furnace.tick(&world);
+    assert!(!furnace.is_burning());
+    assert_eq!(furnace.get_cooking_time_spent(), 0);
+    assert!(furnace.get_stack(1).is_empty());
+}

@@ -443,6 +443,49 @@ macro_rules! impl_inventory_for_cooking {
                     self.reset_cooking(stack);
                 }
             }
+
+            /// Vanilla `AbstractFurnaceBlockEntity.consumeFuel` for the `fuel` that the tick
+            /// read. A `FurnaceBurnEvent` handler can change the fuel slot before, so the slot
+            /// must still hold that fuel. Returns whether the fuel was used.
+            fn consume_fuel(
+                &self,
+                world: &std::sync::Arc<$crate::world::World>,
+                fuel: &ItemStack,
+            ) -> bool {
+                let remainder = {
+                    // A skipped write would light the furnace for free, so it waits for the lock.
+                    let mut items = self
+                        .items
+                        .write()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if items[1].is_empty() || !items[1].are_items_and_components_equal(fuel) {
+                        return false;
+                    }
+                    let remainder = items[1]
+                        .item
+                        .crafting_remainder
+                        .map(|item| ItemStack::new(1, item));
+                    items[1].decrement(1);
+                    match remainder {
+                        Some(remainder) if items[1].is_empty() => {
+                            items[1] = remainder;
+                            None
+                        }
+                        remainder => remainder,
+                    }
+                };
+                if let Some(remainder) = remainder {
+                    let entity = $crate::entity::Entity::new(
+                        world.clone(),
+                        self.position.to_centered_f64(),
+                        &pumpkin_data::entity::EntityType::ITEM,
+                    );
+                    world.spawn_entity(std::sync::Arc::new($crate::entity::item::ItemEntity::new(
+                        entity, remainder,
+                    )));
+                }
+                true
+            }
         }
     };
 }
@@ -510,7 +553,10 @@ macro_rules! impl_block_entity_for_cooking {
                                 burn_ticks = burn_event.burn_time as u16;
                             }
                         }
-                        if !burn_cancelled {
+                        // Vanilla uses the fuel only for a burn time above 0.
+                        if !burn_cancelled
+                            && (burn_ticks == 0 || self.consume_fuel(world, &bottom_item))
+                        {
                             self.set_lit_time_remaining(burn_ticks);
                             self.set_lit_total_time(burn_ticks);
                             // Vanilla `AbstractFurnaceBlockEntity.serverTick`
@@ -532,41 +578,6 @@ macro_rules! impl_block_entity_for_cooking {
 
                             if self.is_burning() {
                                 is_dirty = true;
-                                // Vanilla `consumeFuel`. A skipped write would light the
-                                // furnace for free, so it waits for the lock.
-                                let mut dropped_remainder = None;
-                                {
-                                    let mut items = self
-                                        .items
-                                        .write()
-                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                                    if !items[1].is_empty() {
-                                        let remainder = items[1].item.crafting_remainder;
-                                        items[1].decrement(1);
-                                        if let Some(remainder_item) = remainder {
-                                            let remainder_stack = ItemStack::new(1, remainder_item);
-                                            if items[1].is_empty() {
-                                                items[1] = remainder_stack;
-                                            } else {
-                                                dropped_remainder = Some(remainder_stack);
-                                            }
-                                        }
-                                    }
-                                }
-                                if let Some(remainder_stack) = dropped_remainder {
-                                    let pos = self.position.to_centered_f64();
-                                    let entity = $crate::entity::Entity::new(
-                                        world.clone(),
-                                        pos,
-                                        &pumpkin_data::entity::EntityType::ITEM,
-                                    );
-                                    world.spawn_entity(std::sync::Arc::new(
-                                        $crate::entity::item::ItemEntity::new(
-                                            entity,
-                                            remainder_stack,
-                                        ),
-                                    ));
-                                }
                             }
                         }
                     }
