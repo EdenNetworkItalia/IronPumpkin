@@ -843,8 +843,10 @@ pub trait ScreenHandler: Send + Sync {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
-        let skip_item_click_overrides =
-            std::mem::take(&mut self.get_behaviour_mut().skip_item_click_overrides);
+        // A drag over one slot ends in a pickup click through a recursive call: the flag waits
+        // for it.
+        let skip_item_click_overrides = action_type == SlotActionType::Pickup
+            && std::mem::take(&mut self.get_behaviour_mut().skip_item_click_overrides);
         if action_type == SlotActionType::PickupAll {
             // Vanilla `AbstractContainerMenu#doClick`, `PICKUP_ALL`: two passes from the start
             // (button 0) or the end (button 1); the first pass skips full stacks.

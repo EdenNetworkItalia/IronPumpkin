@@ -7414,13 +7414,6 @@ impl Player {
                 .cancel();
         };
 
-        // The stacks that `ItemStackedOnOtherEvent` gets, copied only when a handler listens.
-        let stacked_inputs = (packet.mode == SlotActionType::Pickup
-            && server
-                .plugin_manager
-                .has_handlers::<crate::plugin::inventory::ItemStackedOnOtherEvent>())
-        .then(|| (clicked_item.clone(), cursor_item.clone()));
-
         send_cancellable_blocking! {{
             server;
             InventoryClickEvent::new(
@@ -7562,19 +7555,38 @@ impl Player {
             }
         }
 
-        // Vanilla `tryItemClickBehaviourOverride`: a pickup click fires the event before the
-        // item overrides, here before the click takes the lock of the screen handler.
-        let stacked_on_other = stacked_inputs.and_then(|(clicked, cursor)| {
-            let (index, clicked, cursor) = (usize::try_from(slot).ok()?, clicked?, cursor?);
-            let action = if packet.button == SClickSlot::BUTTON_LEFT {
-                crate::plugin::inventory::ClickAction::Primary
-            } else {
-                crate::plugin::inventory::ClickAction::Secondary
-            };
-            let change = crate::plugin::item_events::stacked_on_other(
-                self, index, action, &cursor, &clicked,
-            );
-            Some((change, index, cursor, clicked))
+        // Vanilla `tryItemClickBehaviourOverride`: a pickup click, and a drag over one slot that
+        // ends in a pickup click, fire the event before the item overrides. Here it fires before
+        // the click takes the lock of the screen handler.
+        let stacked_on_other = (matches!(
+            packet.mode,
+            SlotActionType::Pickup | SlotActionType::QuickCraft
+        ) && server
+            .plugin_manager
+            .has_handlers::<crate::plugin::inventory::ItemStackedOnOtherEvent>(
+        ))
+        .then(|| {
+            let handler = self
+                .current_screen_handler
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            let handler = handler
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            crate::plugin::item_events::ClickTarget::of(
+                &*handler,
+                packet.slot,
+                packet.button,
+                &packet.mode,
+            )
+        })
+        .flatten()
+        .map(|target| {
+            (
+                crate::plugin::item_events::stacked_on_other(self, &target),
+                target,
+            )
         });
 
         let screen_handler_arc = self
@@ -7594,14 +7606,20 @@ impl Player {
 
         screen_handler.disable_sync();
         let mut run_click = true;
-        if let Some((change, index, cursor, clicked)) = &stacked_on_other {
-            change.apply(&*screen_handler, *index, cursor, clicked);
+        if let Some((change, target)) = &stacked_on_other {
+            change.apply(&*screen_handler, target);
             match change.outcome {
                 crate::plugin::item_events::StackedOnOther::Continue => {}
                 crate::plugin::item_events::StackedOnOther::SkipOverrides => {
                     screen_handler.get_behaviour_mut().skip_item_click_overrides = true;
                 }
-                crate::plugin::item_events::StackedOnOther::Handled => run_click = false,
+                crate::plugin::item_events::StackedOnOther::Handled => {
+                    run_click = false;
+                    if target.from_drag {
+                        // Vanilla `resetQuickCraft` ends the drag after the pickup click.
+                        screen_handler.get_behaviour_mut().drag_slots.clear();
+                    }
+                }
             }
         }
         if run_click {
@@ -7612,6 +7630,7 @@ impl Player {
                 self.as_ref(),
             );
         }
+        screen_handler.get_behaviour_mut().skip_item_click_overrides = false;
 
         for (key, value) in packet.array_of_changed_slots {
             screen_handler.set_received_hash(key as usize, value);

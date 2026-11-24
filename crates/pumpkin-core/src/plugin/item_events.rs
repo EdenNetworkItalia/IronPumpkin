@@ -21,6 +21,7 @@ use pumpkin_data::item_stack::{
 };
 use pumpkin_data::{Enchantment, damage::DamageType};
 use pumpkin_inventory::screen_handler::ScreenHandler;
+use pumpkin_protocol::java::server::play::SlotActionType;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::entity::{EntityBase, player::Player};
@@ -159,7 +160,56 @@ pub enum StackedOnOther {
     Handled,
 }
 
-/// The stacks that [`stacked_on_other`] gives to its event, and what the event changed.
+/// The click that fires [`ItemStackedOnOtherEvent`]: the slot, the click action and the stacks of
+/// the slot and of the cursor before the click.
+pub struct ClickTarget {
+    pub index: usize,
+    action: ClickAction,
+    clicked: ItemStack,
+    cursor: ItemStack,
+    /// The click is the pickup that ends a drag over one slot.
+    pub from_drag: bool,
+}
+
+impl ClickTarget {
+    /// The target of a click packet on `handler`, or `None` when vanilla fires no event for it:
+    /// a pickup click with a left or right button (`doClick(.., PICKUP)`), and the end of a drag
+    /// over one slot, which vanilla turns into a pickup click of that slot.
+    #[must_use]
+    pub fn of(
+        handler: &dyn ScreenHandler,
+        slot: i16,
+        button: i8,
+        mode: &SlotActionType,
+    ) -> Option<Self> {
+        let behaviour = handler.get_behaviour();
+        let (index, button, from_drag) = match mode {
+            SlotActionType::Pickup => (usize::try_from(slot).ok()?, button, false),
+            SlotActionType::QuickCraft if button & 3 == 2 && behaviour.drag_slots.len() == 1 => {
+                (behaviour.drag_slots[0] as usize, (button >> 2) & 3, true)
+            }
+            _ => return None,
+        };
+        let action = match button {
+            0 => ClickAction::Primary,
+            1 => ClickAction::Secondary,
+            _ => return None,
+        };
+        Some(Self {
+            index,
+            action,
+            clicked: behaviour.slots.get(index)?.get_cloned_stack(),
+            cursor: behaviour
+                .cursor_stack
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
+            from_drag,
+        })
+    }
+}
+
+/// What [`stacked_on_other`] decided, and the stacks that its event changed.
 pub struct StackedOnOtherChange {
     pub outcome: StackedOnOther,
     carried: Option<ItemStack>,
@@ -176,26 +226,21 @@ impl StackedOnOtherChange {
     }
 
     /// Writes the stacks that a handler changed into `handler`, when its cursor and the slot
-    /// still hold the stacks that `stacked_on_other` got.
-    pub fn apply(
-        &self,
-        handler: &dyn ScreenHandler,
-        slot: usize,
-        carried: &ItemStack,
-        stacked_on: &ItemStack,
-    ) {
+    /// still hold the stacks that `target` got.
+    pub fn apply(&self, handler: &dyn ScreenHandler, target: &ClickTarget) {
         let behaviour = handler.get_behaviour();
         if let Some(new_carried) = &self.carried {
             let mut cursor = behaviour
                 .cursor_stack
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            if cursor.are_equal(carried) {
+            if cursor.are_equal(&target.cursor) {
                 *cursor = new_carried.clone();
             }
         }
-        if let (Some(new_stacked), Some(slot)) = (&self.stacked_on, behaviour.slots.get(slot))
-            && slot.get_cloned_stack().are_equal(stacked_on)
+        if let (Some(new_stacked), Some(slot)) =
+            (&self.stacked_on, behaviour.slots.get(target.index))
+            && slot.get_cloned_stack().are_equal(&target.clicked)
         {
             slot.set_stack(new_stacked.clone());
             slot.mark_dirty();
@@ -203,17 +248,9 @@ impl StackedOnOtherChange {
     }
 }
 
-/// Fires [`ItemStackedOnOtherEvent`] for a pickup click on `slot` of the screen handler of
-/// `player` (`CommonHooks.onItemStackedOn`). `carried` and `stacked_on` are the stacks of the
-/// cursor and of the slot before the click. The caller must not hold the lock of the screen
-/// handler.
-pub fn stacked_on_other(
-    player: &Arc<Player>,
-    slot: usize,
-    click_action: ClickAction,
-    carried: &ItemStack,
-    stacked_on: &ItemStack,
-) -> StackedOnOtherChange {
+/// Fires [`ItemStackedOnOtherEvent`] for the click `target` of the screen handler of `player`
+/// (`CommonHooks.onItemStackedOn`). The caller must not hold the lock of the screen handler.
+pub fn stacked_on_other(player: &Arc<Player>, target: &ClickTarget) -> StackedOnOtherChange {
     let unchanged = StackedOnOtherChange::unchanged(StackedOnOther::Continue);
     let Some(server) = player.world().server.upgrade() else {
         return unchanged;
@@ -226,10 +263,10 @@ pub fn stacked_on_other(
     }
     let mut event = ItemStackedOnOtherEvent::new(
         player.clone(),
-        carried.clone(),
-        stacked_on.clone(),
-        slot,
-        click_action,
+        target.cursor.clone(),
+        target.clicked.clone(),
+        target.index,
+        target.action,
     );
     server.plugin_manager.fire_blocking(&server, &mut event);
     let outcome = match (event.cancelled, event.cancellation_result) {
@@ -239,8 +276,9 @@ pub fn stacked_on_other(
     };
     StackedOnOtherChange {
         outcome,
-        carried: (!event.carried_item.are_equal(carried)).then_some(event.carried_item),
-        stacked_on: (!event.stacked_on_item.are_equal(stacked_on)).then_some(event.stacked_on_item),
+        carried: (!event.carried_item.are_equal(&target.cursor)).then_some(event.carried_item),
+        stacked_on: (!event.stacked_on_item.are_equal(&target.clicked))
+            .then_some(event.stacked_on_item),
     }
 }
 

@@ -388,19 +388,30 @@ fn victim_id(entity: &Arc<dyn EntityBase>) -> i32 {
     entity.get_entity().entity_id
 }
 
-/// Opens a click on `slot` of the player inventory screen (sync id 0).
-fn click(player: &Arc<Player>, slot: i16) {
+/// Sends a click packet for the screen with `sync_id` of `player`.
+fn send(player: &Arc<Player>, sync_id: i32, slot: i16, button: i8, mode: SlotActionType) {
     let packet = SClickSlot {
-        sync_id: VarInt(0),
+        sync_id: VarInt(sync_id),
         revision: VarInt(0),
         slot,
-        button: SClickSlot::BUTTON_LEFT,
-        mode: SlotActionType::Pickup,
+        button,
+        mode,
         length_of_array: VarInt(0),
         array_of_changed_slots: Vec::new(),
         carried_item: OptionalItemStackHash(None),
     };
     player.on_slot_click(packet, support::server());
+}
+
+/// Left-clicks `slot` of the player inventory screen (sync id 0).
+fn click(player: &Arc<Player>, slot: i16) {
+    send(
+        player,
+        0,
+        slot,
+        SClickSlot::BUTTON_LEFT,
+        SlotActionType::Pickup,
+    );
 }
 
 const SLOT: usize = 36;
@@ -542,4 +553,50 @@ impl PropertyDelegate for NoProperties {
     fn get_properties_size(&self) -> i32 {
         0
     }
+}
+
+/// Vanilla turns a drag over one slot into `doClick(slot, PICKUP)`, which reaches
+/// `tryItemClickBehaviourOverride`: `ItemStackedOnOtherEvent` fires for it too, a cancel with the
+/// result `true` ends the click, and the drag ends.
+#[test]
+fn item_stacked_on_other_event_fires_for_a_drag_over_one_slot() {
+    let _serial = support::serial();
+    let player = support::player("DragStackedPlayer");
+    let seen = log();
+    let record = seen.clone();
+    on::<ItemStackedOnOtherEvent, _>(move |event| {
+        if event.player.gameprofile.name == "DragStackedPlayer" {
+            push(
+                &record,
+                format!("{} {}", event.carried_item.item.registry_key, event.slot),
+            );
+            event.cancelled = true;
+        }
+    });
+    set_up(
+        &player,
+        ItemStack::EMPTY.clone(),
+        ItemStack::new(4, &Item::BREAD),
+    );
+
+    send(&player, 0, -999, 0, SlotActionType::QuickCraft);
+    send(&player, 0, SLOT as i16, 1, SlotActionType::QuickCraft);
+    send(&player, 0, -999, 2, SlotActionType::QuickCraft);
+
+    assert_eq!(entries(&seen), ["bread 36"]);
+    let (slot, cursor) = read(&player);
+    assert!(
+        slot.is_empty(),
+        "the cancelled click put nothing in the slot"
+    );
+    assert_eq!(cursor.item_count, 4);
+    let handler = player.current_screen_handler.lock().unwrap().clone();
+    assert!(
+        handler
+            .lock()
+            .unwrap()
+            .get_behaviour()
+            .drag_slots
+            .is_empty()
+    );
 }
