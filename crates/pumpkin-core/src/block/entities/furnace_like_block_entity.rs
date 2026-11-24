@@ -135,23 +135,23 @@ macro_rules! impl_cooking_block_entity_base {
                 let Ok(items) = self.items.try_read() else {
                     return false;
                 };
-
-                let is_top_items_empty = items[0].is_empty();
-                let side_item_stack = &items[2];
-
-                if side_item_stack.is_empty() {
-                    return !is_top_items_empty;
+                if items[0].is_empty() {
+                    return false;
                 }
-
-                if let Some(recipe_output_item) = recipe.result.item()
-                    && !is_top_items_empty
-                    && recipe_output_item.id == side_item_stack.item.id
-                    && side_item_stack.item_count < max_count
-                    && side_item_stack.item_count < side_item_stack.get_max_stack_size()
-                {
+                // Vanilla `AbstractFurnaceBlockEntity.canBurn`.
+                let result = recipe.result.assemble();
+                if result.is_empty() {
+                    return false;
+                }
+                let output = &items[2];
+                if output.is_empty() {
                     return true;
                 }
-                false
+                if !output.are_items_and_components_equal(&result) {
+                    return false;
+                }
+                let count = u32::from(output.item_count) + u32::from(result.item_count);
+                count <= u32::from(max_count.min(result.get_max_stack_size()))
             }
             fn craft_recipe(
                 &self,
@@ -169,10 +169,11 @@ macro_rules! impl_cooking_block_entity_base {
                             return false;
                         }
 
-                        if items[2].are_equal(ItemStack::EMPTY) {
+                        // Vanilla `AbstractFurnaceBlockEntity.burn`.
+                        if items[2].is_empty() {
                             items[2] = output_item_stack;
                         } else if items[2].are_items_and_components_equal(&output_item_stack) {
-                            items[2].increment(1);
+                            items[2].increment(output_item_stack.item_count);
                         }
 
                         // Track recipe usage for XP calculation (vanilla RecipesUsed format)

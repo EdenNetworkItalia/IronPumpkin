@@ -209,3 +209,40 @@ fn a_campfire_cooks_a_data_pack_recipe() {
         });
     assert!(cooked, "the campfire drops the data pack result");
 }
+
+fn furnace_with(world: &Arc<World>, x: i32) -> FurnaceBlockEntity {
+    let furnace = FurnaceBlockEntity::new(BlockPos::new(x, 100, 4));
+    place(world, furnace.get_position(), &Block::FURNACE);
+    furnace
+}
+
+#[test]
+fn a_furnace_adds_the_result_count_and_stops_at_the_max_stack_size() {
+    let _serial = support::serial();
+    let mut recipe = cooking("test:two_stone", "minecraft:dirt", "minecraft:stone");
+    recipe.result.count = 2;
+    recipe.cooking_time = 1;
+    support::server()
+        .recipe_manager
+        .set_recipes(vec![DynamicRecipe::Cooking(
+            OwnedCookingRecipeType::Smelting(recipe),
+        )]);
+    let world = support::world();
+    let furnace = furnace_with(&world, 12);
+    furnace.set_stack(0, ItemStack::new(2, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    for _ in 0..10 {
+        furnace.tick(&world);
+    }
+    assert!(furnace.get_stack(0).is_empty());
+    assert_eq!(furnace.get_stack(2).item_count, 4);
+
+    // 63 + 2 is more than a stack, so vanilla `canBurn` keeps the input.
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_stack(2, ItemStack::new(63, &Item::STONE));
+    for _ in 0..10 {
+        furnace.tick(&world);
+    }
+    assert_eq!(furnace.get_stack(0).item_count, 1);
+    assert_eq!(furnace.get_stack(2).item_count, 63);
+}
