@@ -442,6 +442,15 @@ impl crate::generation::proto_chunk::GenerationCache for TestGridCache {
             .unwrap()
             .add_block_entity(nbt);
     }
+    fn add_entity(
+        &mut self,
+        pos: &pumpkin_util::math::vector3::Vector3<i32>,
+        nbt: pumpkin_nbt::compound::NbtCompound,
+    ) {
+        if let Some(chunk) = self.chunks.get_mut(&(pos.x >> 4, pos.z >> 4)) {
+            chunk.add_structure_entity(nbt);
+        }
+    }
     fn top_motion_blocking_block_height_exclusive(&self, x: i32, z: i32) -> i32 {
         let cx = x >> 4;
         let cz = z >> 4;

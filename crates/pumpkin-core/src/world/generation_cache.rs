@@ -22,6 +22,7 @@ use pumpkin_world::{
 use rustc_hash::FxHashMap;
 
 use crate::block::entities::block_entity_from_nbt;
+use crate::entity::r#type::load_static_entity_from_nbt;
 use crate::world::World;
 
 pub struct WorldGenerationCache {
@@ -30,6 +31,7 @@ pub struct WorldGenerationCache {
     pending: Vec<(BlockPos, BlockStateId)>,
     overlay: FxHashMap<BlockPos, BlockStateId>,
     block_entities: Vec<NbtCompound>,
+    entities: Vec<NbtCompound>,
 }
 
 impl WorldGenerationCache {
@@ -43,6 +45,7 @@ impl WorldGenerationCache {
             pending: Vec::new(),
             overlay: FxHashMap::default(),
             block_entities: Vec::new(),
+            entities: Vec::new(),
         }
     }
 
@@ -77,6 +80,12 @@ impl WorldGenerationCache {
         for nbt in self.block_entities {
             if let Some(block_entity) = block_entity_from_nbt(&nbt) {
                 self.world.add_block_entity(block_entity);
+            }
+        }
+        for nbt in self.entities {
+            if let Some(entity) = load_static_entity_from_nbt(&nbt, Vector3::default(), &self.world)
+            {
+                self.world.spawn_entity(entity);
             }
         }
     }
@@ -151,6 +160,10 @@ impl GenerationCache for WorldGenerationCache {
         nbt.put_int("y", pos.y);
         nbt.put_int("z", pos.z);
         self.block_entities.push(nbt);
+    }
+
+    fn add_entity(&mut self, _pos: &Vector3<i32>, nbt: NbtCompound) {
+        self.entities.push(nbt);
     }
 
     fn top_motion_blocking_block_height_exclusive(&self, x: i32, z: i32) -> i32 {
