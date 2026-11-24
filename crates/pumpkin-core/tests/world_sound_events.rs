@@ -772,6 +772,19 @@ fn a_global_level_event_gives_each_player_a_position_within_32_blocks() {
     assert_eq!(far, [(1028, (x as i32 + 1000 - 32, 100, 0), 0, true)]);
 }
 
+/// Puts the rule `global_sound_events` back on when the test ends, so another test of the process
+/// sees the default.
+struct RestoreRule(Arc<pumpkin_core::world::World>);
+
+impl Drop for RestoreRule {
+    fn drop(&mut self) {
+        self.0.set_game_rule(
+            &pumpkin_data::game_rules::GameRule::GlobalSoundEvents,
+            pumpkin_data::game_rules::GameRuleValue::Bool(true),
+        );
+    }
+}
+
 /// With the rule off the event is local: the players closer than 64 blocks get it, without the
 /// global flag.
 #[test]
@@ -787,6 +800,7 @@ fn a_global_level_event_is_local_when_global_sound_events_is_off() {
     let (_near, mut near_peer) = listener("LocalNear", x + 50.0);
     let (_far, mut far_peer) = listener("LocalFar", x + 70.0);
     let world = support::world();
+    let _restore = RestoreRule(world.clone());
     world.set_game_rule(&GameRule::GlobalSoundEvents, GameRuleValue::Bool(false));
 
     world.sync_global_world_event(
