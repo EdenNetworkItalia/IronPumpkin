@@ -28,6 +28,28 @@ about 1 s.
 The same input gives byte-identical outputs: jars, entries and rows are sorted, and the outputs hold
 no time stamps and no absolute paths.
 
+## Demand per extension method
+
+`extension_scan.py` counts, for each method of the NeoForge extension interfaces, the mods that call
+the method and the mods that override it. It resolves each method reference and each declared method
+through the class hierarchy of the 21.1 jars, so `state.getFriction(..)` counts for
+`IBlockStateExtension#getFriction`.
+
+```sh
+P="$HOME/.var/app/org.prismlauncher.PrismLauncher/data/PrismLauncher"
+L="$P/libraries"
+python3 -I tools/modpack-scan/extension_scan.py "$P/instances/FTB StoneBlock 4/.minecraft/mods" \
+  tools/modpack-scan/extension_demand.tsv \
+  "$L/net/minecraft/client/1.21.1-20240808.144430/client-1.21.1-20240808.144430-srg.jar" \
+  "$L/net/neoforged/neoforge/21.1.248/neoforge-21.1.248-client.jar" \
+  "$L/net/neoforged/neoforge/21.1.248/neoforge-21.1.248-universal.jar"
+```
+
+The first jar gives the vanilla class hierarchy (Mojang names), the second the patched classes and
+the third the extension interfaces. A later jar replaces a class of an earlier one. The output has one row per method name: the mods that call it and the mods that override it, as
+`;` separated jar names. `tools/openspec-sync/extension_table.py` reads it, with
+`extension_moves.tsv` for the methods that 26.3 moved or renamed.
+
 ## Safety
 
 The jars are untrusted data. The scanner reads them with `zipfile` and its own class file parser.

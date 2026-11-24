@@ -95,16 +95,49 @@ reason is one of these:
 A `client-only` row of design.md has no row in the mapping table by design. The script counts these
 rows and does not list them.
 
-Current result: 883 inventory rows of the mapping table, 883 matched, 0 unmatched. design.md has
-210 `client-only` rows without a mapping row:
+Current result: 1172 inventory rows of the mapping table, 1172 matched, 0 unmatched. design.md has
+236 `client-only` rows without a mapping row:
 
 - 189 client events and 9 client-only subsystems, in tables that the mapping table does not have.
-- 12 rows in server-side families: `ModConfig.Type.CLIENT`, `ModContainer#getCustomExtension`,
-  `ModContainer#registerExtensionPoint`, `IClientCommonPacketListenerExtension` and 8 keys of
-  `neoforge.mods.toml` (`[[mods]]` `logoFile`, `logoBlur`, `credits`, `licenseURL`, `bannerFile`,
-  `iconFile`, `iconBlur`, `displayURL`).
+- 38 rows in server-side families: `ModConfig.Type.CLIENT`, `ModContainer#getCustomExtension`,
+  `ModContainer#registerExtensionPoint`, 27 methods of extension interfaces that only the client
+  calls, and 8 keys of `neoforge.mods.toml` (`[[mods]]` `logoFile`, `logoBlur`, `credits`,
+  `licenseURL`, `bannerFile`, `iconFile`, `iconBlur`, `displayURL`).
+
+## Extension interface rows
+
+`extension_table.py` writes the family "Extension interfaces" in both files. It is the one family
+whose rows a script generates. Run it with the NeoForge sources:
+
+```sh
+python3 -I tools/openspec-sync/extension_table.py --neoforge DIR            # write both files
+python3 -I tools/openspec-sync/extension_table.py --neoforge DIR --check    # write nothing, exit 1 on a diff
+python3 -I -B tools/openspec-sync/test_extension_table.py                   # unit tests
+```
+
+DIR is the root of the NeoForge sources (the folder that holds `net/` and `META-INF/`). The script
+reads every interface of `net/neoforged/neoforge/common/extensions` with `extension_methods.py`, a
+small Java reader. It writes one row per public method name. Overloads and mixed kinds go in the
+Kind column. A public method is every method that is not `private`.
+
+The inputs are:
+
+- `extension_rows.tsv`: the hand-written status, side, Pumpkin concept, reason and test of each row.
+  A key is `Interface#method`, `Interface#*` (the default of an interface) or `Interface` (a type
+  without a method). The script stops when a method has no row and no default, when a key matches no
+  method, when a reason is empty, when a `supported` row has no test, or when a test name is not a
+  function in `crates/`.
+- `tools/modpack-scan/extension_demand.tsv`: the mods that call or override each method, from
+  `tools/modpack-scan/extension_scan.py`. The Mods column of a row is the size of the union of these
+  mods over the overloads of the 21.1 method with the same name and over the 21.1 methods that
+  `tools/modpack-scan/extension_moves.tsv` lists for the row (methods that 26.3 moved or renamed). A
+  method that 21.1 does not have and no move names shows 0.
+
+The script also writes the family row and the Total row of "Summary per family". It does not write
+the Coverage table: run `mapping_status.py` after it. A second run writes nothing. A `client-only`
+row goes to design.md only, in line with the join rule.
 
 ## Safety
 
-The script reads two markdown files and writes one. It uses no network and runs no code from the
+`mapping_status.py` reads two markdown files and writes one. `extension_table.py` writes both. It uses no network and runs no code from the
 files. Run it with `python3 -I`, so that Python does not import modules from the working directory.

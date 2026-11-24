@@ -1,0 +1,191 @@
+# Hand-written rows for tools/openspec-sync/extension_table.py.
+# key	status	side	concept	reason	test
+# key is Interface#method, Interface#* (default of an interface) or Interface (a type with no method).
+# A supported row needs a test, or several separated by ;. Each test is a function in crates/.
+BootstrapContextAccessExtension#*	not supported	both	-	data generation of datapack registries	
+BootstrapContextExtension#*	not supported	both	-	data generation of datapack registries	
+GameTestHelperExtension#*	not supported	both	-	game test framework	
+IAdvancementBuilderExtension#*	not supported	both	-	data generation of advancements	
+IRecipeOutputExtension#*	not supported	both	-	data generation of recipes	
+ITagAppenderExtension#*	not supported	both	-	data generation of tags	
+ITagBuilderExtension#*	not supported	both	-	data generation of tags	
+LootTableSubProviderContextExtension#*	not supported	both	-	data generation of loot tables	
+PackMetadataResourcesExtension#*	not supported	both	-	pack resource internals	
+PendingTagsExtension#*	not supported	both	-	internal tag loading state	
+ITransformationExtension#*	not supported	both	-	model transformation math for client models	
+TooltipFlagExtension#*	not supported	both	-	tooltip display only	
+IAttributeExtension#*	not supported	both	-	formats attribute values for tooltips; display only	
+IClientCommonPacketListenerExtension#*	client-only	client	-	client packet listener; a dedicated server never runs it	
+IEnchantmentExtension	not supported	both	-	declares no methods in 26.3	
+IHolderSetExtension.SerializationType	not supported	both	-	enum of the Java holder set serialization; a holder set is a tag name in `registry::tag_entries`	
+IHolderSetExtension#*	not supported	both	`registry::tag_entries`	Java-only: a holder set is a tag name, and `tag_entries` answers its members	
+IHolderExtension#*	not supported	both	`registry::key_of`, `registry::id_of`	Java-only: IronPumpkin has no holder object; the mod keeps the name	
+IHolderExtension#getKey	supported	both	`ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin)	answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it	lookups_round_trip_vanilla_and_mod_entries
+IHolderExtension#key	supported	both	`ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin)	answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it	lookups_round_trip_vanilla_and_mod_entries
+IHolderExtension#keyOrNull	supported	both	`ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin)	answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it	lookups_round_trip_vanilla_and_mod_entries
+IHolderLookupProviderExtension#*	not supported	both	`registry::contains`, `registry::id_of`	Java-only: returns a holder object; the mod asks the registry by name	
+ILevelReaderExtension#holder	not supported	both	`registry::contains`, `registry::id_of`	Java-only: returns a holder object; the mod asks the registry by name	
+ILevelReaderExtension#holderOrThrow	not supported	both	`registry::contains`, `registry::id_of`	Java-only: returns a holder object; the mod asks the registry by name	
+IFriendlyByteBufExtension#*	not supported	both	-	Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec	
+ValueInputExtension#*	not supported	both	`NbtCompound` in `EntityBase::read_custom_nbt`	Java-only: reader of the Java codec layer; Rust hooks read an `NbtCompound`	
+ValueOutputExtension#*	not supported	both	`NbtCompound` in `EntityBase::write_custom_nbt`	Java-only: writer of the Java codec layer; Rust hooks write an `NbtCompound`	
+IDataComponentHolderExtension#addToTooltip	not supported	both	-	tooltip text is built for display	
+IDataComponentMapBuilderExtensions#*	not supported	both	`ItemBuilder` component calls	Java-only: a `Supplier` overload of the builder `set`	
+IItemPropertiesExtensions#*	not supported	both	`ItemBuilder` component calls	Java-only: a `Supplier` overload of the builder `component`	
+ILivingEntityExtension#self	not supported	both	-	Java-only: returns the receiver of the interface	
+IPacketFlowExtension#self	not supported	both	-	Java-only: returns the receiver of the interface	
+IPlayerListExtension#self	not supported	both	-	Java-only: returns the receiver of the interface	
+IServerChunkCacheExtension#self	not supported	both	-	Java-only: returns the receiver of the interface	
+IPacketFlowExtension#*	not supported	both	`ironpumpkin_mods::network::PacketFlow` match	Java-only: helper of the Java enum; a port matches the Rust `PacketFlow` directly	
+IOwnedSpawner#*	not supported	both	-	finds the owner entity of a spawner for spawn events; Pumpkin spawners have no owner link	
+IMobEffectExtension#*	client-only	client	-	sorts the effects in GUIs; the server never calls it	
+ILevelExtension#getCapability	supported	both	`ironpumpkin_mods::capabilities::BlockCapability::get_capability`	four overloads; the lookup goes through the providers of the mods and of vanilla blocks	a_provider_of_one_mod_answers_the_lookup_of_another
+ILevelExtension#invalidateCapabilities	supported	both	`ironpumpkin_mods::capabilities::invalidate_capabilities` and `invalidate_capabilities_in_chunk`	a plain block calls it; the host calls it for chunk loads and unloads	a_mod_invalidates_the_cache_of_a_plain_block;a_chunk_unload_invalidates_its_caches
+IBlockEntityExtension#invalidateCapabilities	supported	both	`ironpumpkin_mods::capabilities::invalidate_capabilities`	a block entity that goes or arrives invalidates the caches of its position; a plain block calls the function itself	a_cache_listener_runs_when_the_block_entity_goes;a_mod_invalidates_the_cache_of_a_plain_block
+IItemStackExtension#getCapability	supported	both	`ironpumpkin_mods::capabilities::ItemCapability::get_capability`	an empty stack has no capability; `get_capability_from` answers for an `ItemAccess`	an_item_provider_answers_the_lookup_of_its_items_only
+TypedInstanceExtension#getData	supported	both	`ironpumpkin_mods::data_maps::DataMapType::get_data`	a data map entry is read by registry name	reads_go_through_the_view_and_with_data
+ICommonPacketListener#hasChannel	supported	both	`NegotiatedChannels::has_channel` (pumpkin-core `plugin/network_events.rs`)	reads the negotiated channels, the common channels and the ad hoc channels of the connection	the_channels_of_a_connection_follow_has_channel
+ICommonPacketListener#getConnectionType	supported	both	`NegotiatedChannels::connection_type`	the connection is `NeoForge`, `Vanilla` or `Other` after the negotiation	the_channels_of_a_connection_follow_has_channel
+IServerConfigurationPacketListenerExtension#finishCurrentTask	supported	both	`ironpumpkin_mods::network::PayloadContext::finish_current_task`	a request for a task that is not current disconnects the client	a_finish_request_while_no_mod_task_waits_disconnects_the_client
+ICommonPacketListener#getConnection	not supported	both	-	Java-only: returns the Netty connection object	
+ICommonPacketListener#getPacketProcessor	not supported	both	-	Java-only: returns the Netty packet processor	
+ICommonPacketListener#send	planned	both	`pumpkin_core` payload send of the connection	M5 engine extension: a mod sends a payload only through the registrar and the player helpers; the `Packet` overload is Java-only	
+ICommonPacketListener#disconnect	planned	both	`JavaClient` kick (pumpkin-core `net/java/mod.rs`)	M5 engine extension: no mod API disconnects a connection with a text component	
+IServerCommonPacketListenerExtension#send	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete; the overload with a Netty `ChannelFutureListener` is Java-only	
+IPlayerListExtension#broadcastAll	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete	
+IPlayerListExtension#broadcast	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete	
+IServerChunkCacheExtension#sendToTrackingPlayersAndSelf	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete	
+IServerChunkCacheExtension#sendToTrackingPlayers	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete	
+IServerGamePacketListenerExtension#sendBundled	planned	both	`ironpumpkin_mods::network` payload send helpers	M5 engine extension: the payload send helpers of the mod API are not complete	
+ICommandSourceExtension#getGameProfile	planned	both	`CommandSender` (pumpkin-core `command/mod.rs`)	the Pumpkin type has the data; no mod API reads it yet	
+ICommandSourceStackExtension#getScoreboard	planned	both	`CommandSender`, scoreboard of the server	the Pumpkin type has the data; no mod API reads it yet	
+ICommandSourceStackExtension#getAdvancement	planned	both	`CommandSender`, advancement lookup	the Pumpkin type has the data; no mod API reads it yet	
+ICommandSourceStackExtension#getUnsidedLevel	planned	both	`CommandSender` world	the Pumpkin type has the data; no mod API reads it yet	
+ICommandSourceStackExtension#getSourceProfile	planned	both	`CommandSender` (pumpkin-core `command/mod.rs`)	the Pumpkin type has the data; no mod API reads it yet	
+IPlayerExtension#isCloseEnough	planned	both	`Player` (pumpkin-core `entity/player.rs`)	the Pumpkin type has the data; no mod API reads it yet	
+IPlayerExtension#mayFly	supported	both	`Player::may_fly` (pumpkin-core `entity/player/ironpumpkin.rs`, public through `ironpumpkin_mods::entity`)	true for the allow-flying ability or the `neoforge:creative_flight` attribute; the engine calls it in `request_flying` and `stop_flying_unless_may_fly`	creative_flight_lets_a_survival_player_fly
+IPlayerExtension#isFakePlayer	not supported	both	-	design difference: Pumpkin has no fake player type, so a player is never a fake player	
+ILevelReaderExtension#isAreaLoaded	planned	both	`World` chunk loading state	the Pumpkin type has the data; no mod API reads it yet	
+IPlayerExtension#openMenu	planned	both	`ironpumpkin_mods::menus::open_menu`	M5 engine extension: `openMenu(provider)` works through `open_menu`; the overloads with extra data or a position wait for `neoforge:advanced_open_screen`	
+IMenuProviderExtension#writeClientSideData	planned	both	`menus::MenuDefinition`	M5 engine extension: the extra data of a mod menu waits for `neoforge:advanced_open_screen`	
+IMenuProviderExtension#shouldTriggerClientSideContainerClosingOnOpen	planned	both	`menus::MenuDefinition`	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IMenuTypeExtension#*	planned	both	`registration.menu-type-definition.extra-data`	M5 engine extension: mod menu types with extra data wait for `neoforge:advanced_open_screen`	
+ILevelExtension#getMaxEntityRadius	not supported	both	-	Java-only: the size of the entity lookup of the Java engine	
+ILevelExtension#increaseMaxEntityRadius	not supported	both	-	Java-only: the size of the entity lookup of the Java engine	
+ILevelExtension#getModelDataManager	client-only	client	-	model data is a client rendering feature	
+ILevelExtension#getDescriptionKey	not supported	both	-	display name of the dimension	
+ILevelExtension#getDescription	not supported	both	-	display name of the dimension	
+IBlockGetterExtension#getModelData	client-only	client	-	model data is a client rendering feature	
+IBlockGetterExtension#getAuxLightManager	planned	both	`World` light engine	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IBlockEntityExtension#*	planned	both	`BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IBlockEntityExtension#onDataPacket	client-only	client	-	the client calls it when it receives block entity data or renders the block entity	
+IBlockEntityExtension#handleUpdateTag	client-only	client	-	the client calls it when it receives block entity data or renders the block entity	
+IBlockEntityExtension#getModelData	client-only	client	-	the client calls it when it receives block entity data or renders the block entity	
+IBlockEntityExtension#requestModelDataUpdate	client-only	client	-	the client calls it when it receives block entity data or renders the block entity	
+IBlockEntityExtension#getPersistentData	not supported	both	`attachments::block_entity`	design difference: data attachments hold the persistent data of a block entity	
+IEntityExtension#getPersistentData	not supported	both	`Entity::attachments`	design difference: data attachments hold the persistent data of an entity	
+IBlockExtension#*	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IBlockStateExtension#*	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site	
+IBlockExtension#hasDynamicLightEmission	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the server calls it in vanilla (`ChunkAccess.java:321`, to find light sources); the Pumpkin light engine reads the state luminance at `pumpkin-world/src/lighting/engine.rs:537` and has no hook	
+IBlockStateExtension#hasDynamicLightEmission	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: the server calls it in vanilla (`ChunkAccess.java:321`, to find light sources); the Pumpkin light engine reads the state luminance at `pumpkin-world/src/lighting/engine.rs:537` and has no hook	
+IBlockExtension#shouldDisplayFluidOverlay	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockStateExtension#shouldDisplayFluidOverlay	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockExtension#hidesNeighborFace	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockStateExtension#hidesNeighborFace	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockExtension#supportsExternalFaceHiding	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockStateExtension#supportsExternalFaceHiding	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockExtension#getAppearance	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockStateExtension#getAppearance	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockExtension#shouldHideAdjacentFluidFace	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockStateExtension#shouldHideAdjacentFluidFace	client-only	client	-	only the client calls it: dynamic light, face culling or the rendered appearance	
+IBlockExtension#canDropFromExplosion	planned	both	`BlockBehaviour::should_drop_items_on_explosion`	M5 engine extension: the engine calls the hook in `world/explosion.rs`, but the hook takes no state, position or explosion, and no test covers it	
+IBlockExtension#onBlockExploded	planned	both	`BlockBehaviour::explode`	M5 engine extension: the engine calls `explode` after it removes the block; NeoForge calls `onBlockExploded` in place of the removal	
+IBaseRailBlockExtension#*	planned	both	rail `BlockBehaviour`, new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IFallableExtension#*	planned	both	falling block `BlockBehaviour`, new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IBucketPickupExtension#*	planned	both	bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IDispensibleContainerItemExtension#*	planned	both	bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IItemExtension#*	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IItemStackExtension#*	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site	
+ItemInstanceExtension#*	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site	
+IItemExtension#getHighlightTip	client-only	client	-	only the client calls it, for the item name above the hotbar	
+IItemExtension#shouldCauseBlockBreakReset	client-only	client	-	only the client calls it, to reset the block breaking progress	
+IItemStackExtension#getHighlightTip	client-only	client	-	only the client calls it, for the item name above the hotbar	
+IItemStackExtension#shouldCauseBlockBreakReset	client-only	client	-	only the client calls it, to reset the block breaking progress	
+IItemExtension#shouldCauseReequipAnimation	client-only	client	-	only the client calls it, for the held item animation	
+IItemExtension#getCreatorModId	not supported	both	-	names the mod of an item for tooltips; display only	
+IItemStackExtension#getAttributeModifiers	planned	both	`ItemStack` attribute modifier component	M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site	
+IEntityExtension#*	planned	both	`EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IEntityExtension#isPushedByFluid	planned	both	`EntityBase::is_pushed_by_fluids`	M5 engine extension: the hook takes no fluid type, because Pumpkin has no fluid types	
+ILivingEntityExtension#*	planned	both	`LivingEntity` (pumpkin-core `entity/living.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IAbstractBoatExtension#*	planned	both	boat entity, new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IFluidExtension#*	planned	both	`FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IFluidStateExtension#*	planned	both	`FluidState` forwarding to `FluidBehaviour`, new hook	M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site	
+IFluidExtension#appendHoverText	not supported	both	-	tooltip text for display	
+ContainerExtension#*	planned	both	`Inventory` trait (pumpkin-inventory), new hook	M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site	
+IBlockExtension#getStateAtViewpoint	client-only	client	-	only the client calls it (`Camera.java`), to pick the fog of the camera block	
+IBlockExtension#getBeaconColorMultiplier	not supported	both	-	sets the colour of the beacon beam; display only	
+IBlockStateExtension#getStateAtViewpoint	client-only	client	-	only the client calls it (`Camera.java`), to pick the fog of the camera block	
+IBlockStateExtension#getBeaconColorMultiplier	not supported	both	-	sets the colour of the beacon beam; display only	
+IEntityExtension#shouldRiderSit	client-only	client	-	only the client calls it (`HumanoidMobRenderer.java:62`), for the sitting pose	
+IBlockExtension#getLightEmission	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-world/src/lighting/engine.rs:537` and no hook that a mod can override	
+IBlockStateExtension#getLightEmission	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getLightEmission`, which has no hook; the engine code is at `pumpkin-world/src/lighting/engine.rs:537`	
+IBlockExtension#getFriction	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/living.rs:2229` and no hook that a mod can override	
+IBlockStateExtension#getFriction	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getFriction`, which has no hook; the engine code is at `entity/living.rs:2229`	
+IBlockExtension#getExplosionResistance	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `world/explosion.rs:68` and no hook that a mod can override	
+IBlockStateExtension#getExplosionResistance	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getExplosionResistance`, which has no hook; the engine code is at `world/explosion.rs:68`	
+IBlockExtension#isLadder	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/living.rs:2511` and no hook that a mod can override	
+IBlockStateExtension#isLadder	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#isLadder`, which has no hook; the engine code is at `entity/living.rs:2511`	
+IBlockExtension#isFlammable	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/fire/fire.rs:37` and no hook that a mod can override	
+IBlockStateExtension#isFlammable	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#isFlammable`, which has no hook; the engine code is at `block/blocks/fire/fire.rs:37`	
+IBlockExtension#getFlammability	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/fire/fire.rs:37` and no hook that a mod can override	
+IBlockStateExtension#getFlammability	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getFlammability`, which has no hook; the engine code is at `block/blocks/fire/fire.rs:37`	
+IBlockExtension#getFireSpreadSpeed	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/fire/fire.rs:37` and no hook that a mod can override	
+IBlockStateExtension#getFireSpreadSpeed	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getFireSpreadSpeed`, which has no hook; the engine code is at `block/blocks/fire/fire.rs:37`	
+IBlockExtension#isSlimeBlock	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/piston/mod.rs:81` and no hook that a mod can override	
+IBlockStateExtension#isSlimeBlock	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#isSlimeBlock`, which has no hook; the engine code is at `block/blocks/piston/mod.rs:81`	
+IBlockExtension#isStickyBlock	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/piston/mod.rs:81` and no hook that a mod can override	
+IBlockStateExtension#isStickyBlock	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#isStickyBlock`, which has no hook; the engine code is at `block/blocks/piston/mod.rs:81`	
+IBlockExtension#canStickTo	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/piston/mod.rs:85` and no hook that a mod can override	
+IBlockStateExtension#canStickTo	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#canStickTo`, which has no hook; the engine code is at `block/blocks/piston/mod.rs:85`	
+IBlockExtension#getEnchantPowerBonus	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/enchanting_table.rs:105` and no hook that a mod can override	
+IBlockStateExtension#getEnchantPowerBonus	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getEnchantPowerBonus`, which has no hook; the engine code is at `block/blocks/enchanting_table.rs:105`	
+IBlockExtension#isScaffolding	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/living.rs:1893` and no hook that a mod can override	
+IBlockStateExtension#isScaffolding	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#isScaffolding`, which has no hook; the engine code is at `entity/living.rs:1893`	
+IBlockExtension#getCloneItemStack	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `net/java/play/pick_item.rs` and no hook that a mod can override	
+IBlockStateExtension#getCloneItemStack	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getCloneItemStack`, which has no hook; the engine code is at `net/java/play/pick_item.rs`	
+IBlockExtension#getMapColor	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `world/map.rs:116` and no hook that a mod can override	
+IBlockExtension#getSoundType	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/living.rs:2849` and no hook that a mod can override	
+IBlockStateExtension#getSoundType	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#getSoundType`, which has no hook; the engine code is at `entity/living.rs:2849`	
+IBlockExtension#canHarvestBlock	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/mod.rs:622` and no hook that a mod can override	
+IBlockStateExtension#canHarvestBlock	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#canHarvestBlock`, which has no hook; the engine code is at `block/mod.rs:622`	
+IBlockExtension#canEntityDestroy	planned	both	`BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/boss/wither.rs:170` and no hook that a mod can override	
+IBlockStateExtension#canEntityDestroy	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#canEntityDestroy`, which has no hook; the engine code is at `entity/boss/wither.rs:170`	
+IBlockExtension#rotate	planned	both	`BlockBehaviour::rotate`	M5 engine extension: `BlockBehaviour::rotate` is the vanilla state rotation and takes no level or position; `rotate(state, level, pos, rotation)` has no call site	
+IBlockStateExtension#rotate	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#rotate`, which has no hook with a level and a position	
+IBlockExtension#onDestroyedByPlayer	planned	both	`BlockBehaviour::broken`	M5 engine extension: `BlockBehaviour::broken` runs after the engine removed the block; NeoForge calls the method in place of the removal	
+IBlockStateExtension#onDestroyedByPlayer	planned	both	`BlockState` forwarding to `BlockBehaviour`, new hook	M5 engine extension: forwards to `IBlockExtension#onDestroyedByPlayer`, which has no hook that replaces the removal	
+IItemExtension#onStopUsing	planned	both	`ItemBehaviour::on_stopped_using`	M5 engine extension: `ItemBehaviour::on_stopped_using` is the vanilla `releaseUsing`; NeoForge calls `onStopUsing` on every stop (`LivingEntity.java:3750`), also when the item is not released	
+IItemStackExtension#onStopUsing	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#onStopUsing`, which has no hook for every stop	
+IItemExtension#getEntityLifespan	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/item.rs:92` and no hook that a mod can override	
+IItemStackExtension#getEntityLifespan	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#getEntityLifespan`, which has no hook; the engine code is at `entity/item.rs:92`	
+IItemExtension#isPiglinCurrency	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/mob/piglin.rs:402` and no hook that a mod can override	
+IItemStackExtension#isPiglinCurrency	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#isPiglinCurrency`, which has no hook; the engine code is at `entity/mob/piglin.rs:402`	
+IItemExtension#canWalkOnPowderedSnow	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/powder_snow.rs:26` and no hook that a mod can override	
+IItemStackExtension#canWalkOnPowderedSnow	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#canWalkOnPowderedSnow`, which has no hook; the engine code is at `block/blocks/powder_snow.rs:26`	
+IItemExtension#isGazeDisguise	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/mob/enderman.rs:371` and no hook that a mod can override	
+IItemStackExtension#isGazeDisguise	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#isGazeDisguise`, which has no hook; the engine code is at `entity/mob/enderman.rs:371`	
+IItemExtension#getXpRepairRatio	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/player.rs:6759` and no hook that a mod can override	
+IItemStackExtension#getXpRepairRatio	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#getXpRepairRatio`, which has no hook; the engine code is at `entity/player.rs:6759`	
+IItemExtension#getCraftingRemainder	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-data/src/item_stack/mod.rs:358` and no hook that a mod can override	
+IItemExtension#canBeHurtBy	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-data/src/item_stack/mod.rs:450` and no hook that a mod can override	
+IItemExtension#getMaxStackSize	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-data/src/item_stack/mod.rs:351` and no hook that a mod can override	
+IItemExtension#getMaxDamage	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-data/src/item_stack/mod.rs:363` and no hook that a mod can override	
+IItemExtension#getEquipmentSlot	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/mob/equipment.rs:809` and no hook that a mod can override	
+IItemStackExtension#getEquipmentSlot	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#getEquipmentSlot`, which has no hook; the engine code is at `entity/mob/equipment.rs:809`	
+IItemExtension#getSweepHitBox	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/player.rs:1848` and no hook that a mod can override	
+IItemStackExtension#getSweepHitBox	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#getSweepHitBox`, which has no hook; the engine code is at `entity/player.rs:1848`	
+IItemExtension#canEquip	planned	both	`ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `pumpkin-data/src/data_component_impl/combat.rs:670` and no hook that a mod can override	
+IItemStackExtension#canEquip	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#canEquip`, which has no hook; the engine code is at `pumpkin-data/src/data_component_impl/combat.rs:670`	
+ItemInstanceExtension#getCraftingRemainder	planned	both	`ItemStack` forwarding to `ItemBehaviour`, new hook	M5 engine extension: forwards to `IItemExtension#getCraftingRemainder`, which has no hook; the engine code is at `pumpkin-data/src/item_stack/mod.rs:358`	
+IEntityExtension#canTrample	planned	both	`EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `block/blocks/farmland.rs:73` and no hook that a mod can override	
+IEntityExtension#getBlockBounciness	planned	both	`EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook	M5 engine extension: the engine has the vanilla code at `entity/mod.rs:3430` and no hook that a mod can override	
