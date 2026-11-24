@@ -100,6 +100,8 @@ impl fmt::Display for UnknownSoundEvent {
 impl std::error::Error for UnknownSoundEvent {}
 
 /// Plays `sound` at `position` to the players in its range and returns how many players got it.
+/// The count is 0 when the call runs inside the brain tick of a mob: the world queues the sound
+/// until the tick ends.
 ///
 /// `NeoForge`: `Level#playSound(null, x, y, z, sound, source, volume, pitch)`. The world fires
 /// `PlayLevelSoundEvent.AtPosition`. A vanilla sound has no fixed range: its range is 16 blocks

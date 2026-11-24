@@ -211,7 +211,8 @@ impl World {
 
     /// Plays `sound` at `position` to all players in range with a random seed, like vanilla
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`. Returns how many Java
-    /// players got it.
+    /// players got it, or 0 when an active [`FireDeferral`](super::fire_deferral::FireDeferral)
+    /// queued the sound.
     pub fn play_sound_holder(
         &self,
         position: &Vector3<f64>,
@@ -327,7 +328,8 @@ impl World {
     }
 
     /// Plays the vanilla `sound` so that it follows `entity`, with a random seed, like
-    /// `Level.playSound(except, entity, sound, source, volume, pitch)`.
+    /// `Level.playSound(except, entity, sound, source, volume, pitch)`. Returns 0 when an active
+    /// [`FireDeferral`](super::fire_deferral::FireDeferral) queued the sound.
     pub fn play_sound_at_entity(
         &self,
         except: Option<&Player>,
