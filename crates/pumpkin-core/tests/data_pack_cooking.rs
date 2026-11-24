@@ -286,3 +286,41 @@ fn a_cooking_time_of_zero_cooks_every_tick() {
     assert!(furnace.get_stack(0).is_empty());
     assert_eq!(furnace.get_stack(2).item_count, 3);
 }
+
+#[test]
+fn a_campfire_drops_the_raw_item_when_a_reload_removes_its_recipe() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(18, 100, 4);
+    place(&world, pos, &Block::CAMPFIRE);
+    let campfire = CampfireBlockEntity::new(pos);
+    *campfire.items[0].lock().unwrap() = ItemStack::new(1, &Item::STICK);
+    campfire.tick(&world);
+    assert_eq!(
+        *campfire.cooking_total_times[0].lock().unwrap(),
+        COOKING_TIME
+    );
+    support::server().recipe_manager.set_recipes(Vec::new());
+    for _ in 0..COOKING_TIME {
+        campfire.tick(&world);
+    }
+    assert!(campfire.items[0].lock().unwrap().is_empty());
+    let area = BoundingBox {
+        min: Vector3::new(17.0, 100.0, 3.0),
+        max: Vector3::new(20.0, 103.0, 6.0),
+    };
+    let dropped_stick = world
+        .get_entities_at_box(&area)
+        .iter()
+        .filter_map(|entity| entity.get_item_entity())
+        .any(|item| {
+            let mut id = 0;
+            item.insert_into(|stack| {
+                id = stack.item.id;
+                stack
+            });
+            id == Item::STICK.id
+        });
+    assert!(dropped_stick, "the campfire drops the raw item");
+}

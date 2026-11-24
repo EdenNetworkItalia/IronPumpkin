@@ -110,17 +110,17 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let Some(recipe) =
-                recipes.cooking_recipe(stack.item, &CookingRecipeKind::CampfireCooking)
-            else {
-                continue;
-            };
+            // Vanilla `CampfireBlockEntity.cookTick` cooks the slot without a recipe too and
+            // drops the raw item, for example after a reload removed its recipe.
+            let recipe = recipes.cooking_recipe(stack.item, &CookingRecipeKind::CampfireCooking);
 
             let total = {
                 let mut total = self.cooking_total_times[slot]
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if *total <= 0 {
+                if *total <= 0
+                    && let Some(recipe) = recipe
+                {
                     let mut cooking_time = recipe.cooking_time;
                     if let Some(server) = world.server.upgrade() {
                         let mut event = crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
@@ -154,7 +154,8 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let mut result = recipe.result.assemble();
+            let mut result =
+                recipe.map_or_else(|| stack.clone(), |recipe| recipe.result.assemble());
             if result.is_empty() {
                 continue;
             }
