@@ -65,14 +65,19 @@ impl ItemBehaviour for GoatHornItem {
         }
 
         player.living_entity.set_active_hand(hand, stack, duration);
-        world.play_sound_raw(
-            instrument.sound() as u16,
+        world.play_sound_at_entity(
+            Some(player),
+            &player.living_entity.entity,
+            instrument.sound(),
             SoundCategory::Records,
-            &pos,
             volume,
             1.0,
         );
-        world.emit_game_event(GameEvent::InstrumentPlay.name(), pos);
+        world.emit_game_event_by(
+            GameEvent::InstrumentPlay.name(),
+            pos,
+            &player.living_entity.entity,
+        );
         if duration > 0 {
             player.start_cooldown(cooldown_group, duration);
         }

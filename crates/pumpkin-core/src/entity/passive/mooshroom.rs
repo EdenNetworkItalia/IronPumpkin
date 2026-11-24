@@ -234,7 +234,14 @@ impl Shearable for MooshroomEntity {
         }
         let entity = self.get_entity();
         let world = entity.world.load_full();
-        world.play_sound(Sound::EntityMooshroomShear, category, &entity.pos.load());
+        world.play_sound_at_entity(
+            None,
+            entity,
+            Sound::EntityMooshroomShear,
+            category,
+            1.0,
+            1.0,
+        );
         convert_to(
             self,
             &EntityType::COW,

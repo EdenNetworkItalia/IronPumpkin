@@ -17,7 +17,7 @@ use pumpkin_util::math::vector3::Vector3;
 
 use super::World;
 use crate::{
-    entity::{EntityBase, player::Player},
+    entity::{Entity, player::Player},
     net::ClientPlatform,
     plugin::api::events::world::play_level_sound::{
         PlayLevelSoundEventAtEntity, PlayLevelSoundEventAtPosition,
@@ -177,27 +177,31 @@ impl World {
     /// except `except`, and returns how many players got it.
     ///
     /// Vanilla `ServerLevel.playSeededSound` with an entity. It fires
-    /// [`PlayLevelSoundEventAtEntity`], with the rules of [`Self::play_seeded_sound`].
+    /// [`PlayLevelSoundEventAtEntity`], with the rules of [`Self::play_seeded_sound`]. The event
+    /// carries the entity that the world lists under the id of `entity`; an entity that the world
+    /// does not list plays the sound without the event.
     #[allow(clippy::too_many_arguments)]
     pub fn play_seeded_sound_at_entity(
         &self,
         except: Option<&Player>,
-        entity: &Arc<dyn EntityBase>,
+        entity: &Entity,
         sound: SoundHolder,
         category: SoundCategory,
         volume: f32,
         pitch: f32,
         seed: i64,
     ) -> usize {
-        let fired = self.plugin_event_in_world(|world| {
-            PlayLevelSoundEventAtEntity::new(
-                world,
-                entity.clone(),
-                sound.clone(),
-                category,
-                volume,
-                pitch,
-            )
+        let fired = self.get_entity_by_id(entity.entity_id).and_then(|listed| {
+            self.plugin_event_in_world(|world| {
+                PlayLevelSoundEventAtEntity::new(
+                    world,
+                    listed,
+                    sound.clone(),
+                    category,
+                    volume,
+                    pitch,
+                )
+            })
         });
         let (sound, category, volume, pitch) = match fired {
             None => (sound, category, volume, pitch),
@@ -208,16 +212,37 @@ impl World {
             },
         };
         let range = sound_range(&sound, volume);
-        let base = entity.get_entity();
         let packet = CEntitySoundEffect::new(
             sound,
             category,
-            pumpkin_protocol::VarInt(base.entity_id),
+            pumpkin_protocol::VarInt(entity.entity_id),
             volume,
             pitch,
             seed,
         );
-        self.send_to_players_in_range(except, &base.pos.load(), range, &packet)
+        self.send_to_players_in_range(except, &entity.pos.load(), range, &packet)
+    }
+
+    /// Plays the vanilla `sound` so that it follows `entity`, with a random seed, like
+    /// `Level.playSound(except, entity, sound, source, volume, pitch)`.
+    pub fn play_sound_at_entity(
+        &self,
+        except: Option<&Player>,
+        entity: &Entity,
+        sound: Sound,
+        category: SoundCategory,
+        volume: f32,
+        pitch: f32,
+    ) -> usize {
+        self.play_seeded_sound_at_entity(
+            except,
+            entity,
+            IdOr::Id(sound as u16),
+            category,
+            volume,
+            pitch,
+            rand::random::<i64>(),
+        )
     }
 
     /// Sends `packet` to the Java players of this world closer than `range` to `position`,

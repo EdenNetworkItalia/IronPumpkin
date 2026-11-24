@@ -83,22 +83,32 @@ impl TridentItem {
         } else {
             ArrowPickup::Allowed
         };
-        let trident =
-            TridentEntity::new_shot(entity, player.get_entity(), thrown_stack.clone(), pickup);
+        let trident = TridentEntity::new_shot(
+            entity,
+            &player.living_entity.entity,
+            thrown_stack.clone(),
+            pickup,
+        );
         trident.shoot_from_rotation(
-            player.get_entity(),
+            &player.living_entity.entity,
             pitch,
             yaw,
             0.0,
             Self::PROJECTILE_SHOOT_POWER,
             1.0,
         );
-        let trident_pos = trident.get_entity().pos.load();
         let trident_arc = Arc::new(trident);
         world.spawn_entity(trident_arc.clone());
         trident_arc.apply_on_projectile_spawned(&thrown_stack);
 
-        world.play_sound_raw(sound as u16, SoundCategory::Players, &trident_pos, 1.0, 1.0);
+        world.play_sound_at_entity(
+            None,
+            trident_arc.get_entity(),
+            sound,
+            SoundCategory::Players,
+            1.0,
+            1.0,
+        );
     }
 
     fn activate_riptide(
@@ -139,10 +149,11 @@ impl TridentItem {
             stack,
             Some(slot),
         );
-        player.world().play_sound_raw(
-            sound as u16,
+        player.world().play_sound_at_entity(
+            None,
+            &player.living_entity.entity,
+            sound,
             SoundCategory::Players,
-            &player.position(),
             1.0,
             1.0,
         );
