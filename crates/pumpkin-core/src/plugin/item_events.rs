@@ -70,9 +70,10 @@ pub fn is_hooked_event(event_name: &str) -> bool {
         || event_name == ItemAttributeModifierEvent::get_name_static()
 }
 
-/// Runs `operation` with the item stack reads of this thread firing no event. The Wasm host runs
-/// the host work of a handler of a hooked event this way: the handler follows the event chain
-/// onto a pool thread, where the thread-local guard of the fire is not set.
+/// Runs `operation` with the item stack reads of this thread firing no event.
+///
+/// The Wasm host runs the host work of a handler of a hooked event this way: the handler follows
+/// the event chain onto a pool thread, where the thread-local guard of the fire is not set.
 pub fn without_item_hooks<R>(operation: impl FnOnce() -> R) -> R {
     let _scope = HandlerScope::enter();
     operation()
