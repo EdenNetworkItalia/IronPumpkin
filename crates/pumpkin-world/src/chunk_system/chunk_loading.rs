@@ -20,7 +20,8 @@ impl ChunkLoading {
     // pub const FULL_CHUNK_LEVEL: i8 = 33;
     pub const FULL_CHUNK_LEVEL: i8 = 43;
     /// Vanilla `ChunkMap.FORCED_TICKET_LEVEL`: entity ticking, two levels below FULL, so the
-    /// chunks within two of a forced chunk load at FULL.
+    /// chunks within two of a forced chunk load at FULL. The Pumpkin scale is the vanilla scale
+    /// plus 10, so this is 31, the level that `world_info::chunk_tickets` saves.
     pub const FORCED_TICKET_LEVEL: i8 = Self::FULL_CHUNK_LEVEL - 2;
     pub const MAX_LEVEL: i8 = 49; // level 49 will be unloaded.
     fn debug_check_error(&self) -> bool {
