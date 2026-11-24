@@ -9,8 +9,7 @@
     reason = "a test fails on the first missing value"
 )]
 
-#[path = "../../pumpkin-core/tests/support/mod.rs"]
-mod support;
+use ironpumpkin_test_support as support;
 
 use std::{
     sync::{Arc, Mutex, PoisonError, atomic::Ordering},

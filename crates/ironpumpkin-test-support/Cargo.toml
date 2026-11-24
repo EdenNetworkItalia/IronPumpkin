@@ -1,0 +1,19 @@
+[package]
+name = "ironpumpkin-test-support"
+version.workspace = true
+description = "The server for the integration tests and benches: a test file calls server(), world() and player()."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+arc-swap.workspace = true
+pumpkin-config.workspace = true
+pumpkin-core.workspace = true
+pumpkin-util.workspace = true
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread"] }
+uuid.workspace = true
+
+[lints]
+workspace = true
