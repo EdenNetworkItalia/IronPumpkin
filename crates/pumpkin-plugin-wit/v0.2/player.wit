@@ -882,7 +882,8 @@ interface player {
         get-display-name: func () -> text-component;
         /// Sets the player's display name.
         set-display-name: func (display-name: text-component);
-        /// Gets the player's custom tab list name.
+        /// Gets the player's custom tab list name. Inside a guest call, every event fired during
+        /// this call reaches native handlers only: a Wasm handler does not get it.
         get-tab-list-name: func () -> option<text-component>;
         /// Sets the player's custom tab list name.
         set-tab-list-name: func (name: option<text-component>);
@@ -985,15 +986,22 @@ interface player {
         /// Opens a written book interface for the player from the specified hand.
         open-book: func(hand: hand);
         /// Forces the sign text editor to open for the player at the specified sign block position.
+        /// The editor opens after the guest call returns, so that a handler of
+        /// `player-open-sign-event` can run.
         open-sign-editor: func(pos: block-pos, is-front-text: bool);
         /// Broadcasts an arm-swing animation for this player's specified hand.
         swing-hand: async func(hand: hand);
 
         // Velocity & Physics
 
-        /// Sets the player's velocity / motion vector.
+        /// Sets the player's velocity / motion vector. The velocity applies after the guest call
+        /// returns, so that a handler of `player-velocity-event` can run. A read in the same guest
+        /// call may see the old or the new value: work that reaches no Wasm handler runs at once.
         set-velocity: func(velocity: position);
-        /// Applies directional knockback impulse to the player.
+        /// Applies directional knockback impulse to the player. The knockback applies after the
+        /// guest call returns, so that a handler of `entity-knockback-event` can run. A read in the
+        /// same guest call may see the old or the new value: work that reaches no Wasm handler runs
+        /// at once.
         apply-knockback: func(strength: f64, x: f64, z: f64);
 
         /// Returns whether the player is currently sneaking.
@@ -1030,6 +1038,8 @@ interface player {
         get-freeze-ticks: func() -> s32;
 
         /// Sends custom server links to the player (displayed in the client Esc pause menu in 1.21+).
+        /// The links go out after the guest call returns, so that a handler of
+        /// `player-links-send-event` can run.
         set-server-links: func(links: list<server-link>);
 
         // Teleport & kick
@@ -1066,9 +1076,15 @@ interface player {
 
         /// Gives a status effect to the player.
         add-effect: async func(effect: status-effect-instance);
-        /// Removes a status effect from the player.
+        /// Removes a status effect from the player. The removal applies after the guest call
+        /// returns, so that a handler of `effect-particle-modification-event` can run. A read in
+        /// the same guest call may see the old or the new value: work that reaches no Wasm handler
+        /// runs at once.
         remove-effect: func(effect: status-effect-type);
-        /// Clears all active status effects from the player.
+        /// Clears all active status effects from the player. The removal applies after the guest
+        /// call returns, so that a handler of `effect-particle-modification-event` can run. A read
+        /// in the same guest call may see the old or the new value: work that reaches no Wasm
+        /// handler runs at once.
         clear-effects: func();
         /// Checks if a status effect is currently applied to the player.
         has-effect: func(effect: status-effect-type) -> bool;
@@ -1105,16 +1121,28 @@ interface player {
 
         /// Gets the value of a statistic for this player in the given category and ID.
         get-statistic: func(category: statistic-category, stat-id: s32) -> s32;
-        /// Sets the value of a statistic for this player in the given category and ID.
+        /// Sets the value of a statistic for this player in the given category and ID. The change
+        /// applies after the guest call returns, so that a handler of
+        /// `player-statistic-increment-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         set-statistic: func(category: statistic-category, stat-id: s32, value: s32);
-        /// Increments the value of a statistic for this player in the given category and ID.
+        /// Increments the value of a statistic for this player in the given category and ID. The
+        /// change applies after the guest call returns, so that a handler of
+        /// `player-statistic-increment-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         increment-statistic: func(category: statistic-category, stat-id: s32, amount: s32);
 
         /// Gets the value of a custom statistic for this player.
         get-custom-statistic: func(stat: custom-statistic) -> s32;
-        /// Sets the value of a custom statistic for this player.
+        /// Sets the value of a custom statistic for this player. The change applies after the guest
+        /// call returns, so that a handler of `player-statistic-increment-event` can run. A read in
+        /// the same guest call may see the old or the new value: work that reaches no Wasm handler
+        /// runs at once.
         set-custom-statistic: func(stat: custom-statistic, value: s32);
-        /// Increments the value of a custom statistic for this player.
+        /// Increments the value of a custom statistic for this player. The change applies after the
+        /// guest call returns, so that a handler of `player-statistic-increment-event` can run. A
+        /// read in the same guest call may see the old or the new value: work that reaches no Wasm
+        /// handler runs at once.
         increment-custom-statistic: func(stat: custom-statistic, amount: s32);
 
         /// Sends the player's updated statistics packet to the client.
@@ -1176,9 +1204,13 @@ interface player {
         /// checking game mode and tool restrictions, firing `BlockBreakEvent`, dropping loot with the held tool's
         /// enchantments (Fortune / Silk Touch), damaging the held tool, adding exhaustion, and updating statistics.
         break-block: async func (pos: block-pos) -> bool;
-        /// Returns whether the player can harvest drops from the block at `pos` with their currently held item.
+        /// Returns whether the player can harvest drops from the block at `pos` with their
+        /// currently held item. Inside a guest call, every event fired during this call reaches
+        /// native handlers only: a Wasm handler does not get it.
         can-harvest-block: func (pos: block-pos) -> bool;
-        /// Returns the player's current mining speed against the block at `pos` (accounting for held tool, Efficiency, effects, and water/air state).
+        /// Returns the player's current mining speed against the block at `pos` (accounting for
+        /// held tool, Efficiency, effects, and water/air state). Inside a guest call, every event
+        /// fired during this call reaches native handlers only: a Wasm handler does not get it.
         get-mining-speed: func (pos: block-pos) -> f32;
 
         // Ender Chest Inventory
@@ -1454,6 +1486,8 @@ interface player {
         send-packet: async func(packet: java-packet);
 
         /// Sends an already-encoded clientbound packet directly to the player without re-observing it.
+        /// While a Wasm plugin handles `packet-sent-event`, the packet goes out after the guest call
+        /// returns, in call order with the other packets of the guest call.
         send-raw-packet: func(packet-id: s32, payload: list<u8>);
 
         /// Sends a custom payload packet (plugin message) to the player.
@@ -1481,6 +1515,9 @@ interface player {
         clear-resource-packs: async func();
 
         /// Kicks the Java player with the specified options.
+        /// While a Wasm plugin handles `packet-sent-event`, the disconnect packet and the close run
+        /// after the guest call returns. This call then returns before the write of the packet and
+        /// before the connection closes.
         kick: async func(options: java-kick-options);
 
         /// Sends a clientbound GameEvent packet to the Java player.
@@ -1525,6 +1562,8 @@ interface player {
         send-packet: async func(packet: bedrock-packet);
 
         /// Sends an already-encoded clientbound Bedrock game packet directly to the player.
+        /// While a Wasm plugin handles `packet-sent-event`, the packet goes out after the guest call
+        /// returns, in call order with the other packets of the guest call.
         send-raw-packet: func(packet-id: u16, payload: list<u8>);
 
         /// Opens a Bedrock custom form for the player.

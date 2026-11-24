@@ -115,6 +115,20 @@ pub(crate) fn has_handlers_in(map: &HandlerMap, event_name: &str, parent_names: 
     listens(event_name) || parent_names.iter().any(|name| listens(name))
 }
 
+/// Whether `matches` holds for a handler of `event_name` or of one of its parents.
+pub(crate) fn any_handler_in(
+    map: &HandlerMap,
+    event_name: &str,
+    parent_names: &[&str],
+    matches: impl Fn(&dyn DynEventHandler) -> bool,
+) -> bool {
+    std::iter::once(&event_name)
+        .chain(parent_names)
+        .filter_map(|name| map.get(*name))
+        .flatten()
+        .any(|handler| matches(handler.as_ref()))
+}
+
 /// The handlers of an event and of its parents in dispatch order. Inside one rank the handlers
 /// of the event come first, then those of each parent, nearest first. Only an event whose
 /// parents have handlers allocates.
@@ -148,8 +162,23 @@ pub(crate) async fn dispatch(
     parent_names: &[&str],
     event: &mut (dyn Payload + Send + Sync),
 ) {
+    dispatch_skipping(map, server, event_name, parent_names, event, false).await;
+}
+
+/// Like [`dispatch`]. With `skip_wasm`, the Wasm plugin handlers do not run.
+pub(crate) async fn dispatch_skipping(
+    map: &HandlerMap,
+    server: &Arc<Server>,
+    event_name: &str,
+    parent_names: &[&str],
+    event: &mut (dyn Payload + Send + Sync),
+    skip_wasm: bool,
+) {
     for handler in dispatch_list(map, event_name, parent_names).iter() {
         if !handler.receive_canceled() && event.is_cancelled() {
+            continue;
+        }
+        if skip_wasm && handler.is_wasm_plugin() {
             continue;
         }
         if handler.is_blocking() {

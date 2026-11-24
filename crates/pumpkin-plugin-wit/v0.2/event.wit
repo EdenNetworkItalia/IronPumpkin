@@ -521,6 +521,10 @@ interface event {
         payload: list<u8>,
     }
 
+    /// A packet that a guest call sends while a Wasm plugin handles this event fires the event, and
+    /// goes out, after the guest call returns: the Wasm handler cannot run inside the guest call.
+    /// The packets of one guest call go out in call order. An import that waits for the write of
+    /// its packet returns before the write.
     record packet-sent-event-data {
         player: player,
         packet: clientbound-packet,

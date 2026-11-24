@@ -1,6 +1,6 @@
 use super::{AccessorExt, run_blocking};
 use crate::pumpkin::plugin::world::HostLivingEntityWithStore;
-use crate::{LockIgnorePoison, RwLockIgnorePoison};
+use crate::{DeferHost, LockIgnorePoison, RwLockIgnorePoison};
 
 use std::sync::Arc;
 use wasmtime::component::{Accessor, HasSelf, Resource};
@@ -387,11 +387,12 @@ impl HostLivingEntity for PluginHostState {
     }
 
     fn reset_all_attributes(&mut self, this: Resource<WitLivingEntity>) -> wasmtime::Result<()> {
-        let entity = self.get(&this)?;
-        if let Some(living) = entity.get_living_entity() {
-            living.reset_effects_and_attributes();
-        }
-        Ok(())
+        let entity = self.get(&this)?.clone();
+        self.defer("living-entity reset-all-attributes", move || {
+            if let Some(living) = entity.get_living_entity() {
+                living.reset_effects_and_attributes();
+            }
+        })
     }
 
     fn get_equipment(
@@ -412,22 +413,25 @@ impl HostLivingEntity for PluginHostState {
     }
 
     fn clear_equipment(&mut self, this: Resource<WitLivingEntity>) -> wasmtime::Result<()> {
-        let entity = self.get(&this)?;
-        if let Some(living) = entity.get_living_entity() {
-            let mut equipment = living.entity_equipment.lock_ignore_poison();
-            let slots_to_clear: Vec<(
-                pumpkin_data::data_component_impl::EquipmentSlot,
-                pumpkin_data::item_stack::ItemStack,
-            )> = equipment
-                .equipment
-                .drain()
-                .map(|(slot, _)| (slot, pumpkin_data::item_stack::ItemStack::EMPTY.clone()))
-                .collect();
-            drop(equipment);
+        let entity = self.get(&this)?.clone();
+        // `send_equipment_changes` reads the attribute modifiers of the stacks, which fires
+        // `ItemAttributeModifierEvent`.
+        self.defer("living-entity clear-equipment", move || {
+            if let Some(living) = entity.get_living_entity() {
+                let mut equipment = living.entity_equipment.lock_ignore_poison();
+                let slots_to_clear: Vec<(
+                    pumpkin_data::data_component_impl::EquipmentSlot,
+                    pumpkin_data::item_stack::ItemStack,
+                )> = equipment
+                    .equipment
+                    .drain()
+                    .map(|(slot, _)| (slot, pumpkin_data::item_stack::ItemStack::EMPTY.clone()))
+                    .collect();
+                drop(equipment);
 
-            living.send_equipment_changes(&slots_to_clear);
-        }
-        Ok(())
+                living.send_equipment_changes(&slots_to_clear);
+            }
+        })
     }
 
     fn get_age(&mut self, this: Resource<WitLivingEntity>) -> wasmtime::Result<i32> {
@@ -472,9 +476,13 @@ impl HostLivingEntity for PluginHostState {
         else {
             return Ok(false);
         };
-        Ok(entity
-            .get_living_entity()
-            .is_some_and(|living| living.remove_effect(status_effect)))
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || {
+                entity
+                    .get_living_entity()
+                    .is_some_and(|living| living.remove_effect(status_effect))
+            },
+        ))
     }
 
     fn has_effect(

@@ -83,6 +83,7 @@ use crate::{
     },
     plugin::{
         api::events::world::chunk_send::ChunkSend,
+        guest_call::{self, GuestCall},
         server::packet::{
             BedrockConnectionPacketReceivedEvent, BedrockConnectionPacketSentEvent, PacketSentEvent,
         },
@@ -532,7 +533,15 @@ impl BedrockClient {
             .set_prefixed_compression(prefixed);
     }
 
+    /// Sends the disconnect packet and closes the connection. In a guest call that defers the
+    /// sends of this connection, the packet and the close run after the guest call.
     pub fn try_kick(&self, reason: DisconnectReason, message: String) {
+        // The kick defers when the sends of this connection defer, so that it does not overtake
+        // them.
+        if let Some((call, client)) = self.deferring_guest_call(true) {
+            call.defer("kick", Box::new(move || client.try_kick(reason, message)));
+            return;
+        }
         warn!("Closing connection for {}: {message}", self.address);
         let packet = CDisconnect::new(reason as i32, message);
         if let Some(data) = self
@@ -554,6 +563,13 @@ impl BedrockClient {
     }
 
     pub async fn kick(&self, reason: DisconnectReason, message: String) {
+        if let Some((call, client)) = self.deferring_guest_call(true) {
+            let data = self
+                .serialize_packet(&CDisconnect::new(reason as i32, message))
+                .ok();
+            Self::defer_kick(&call, client, data);
+            return;
+        }
         warn!("Closing connection for {}: {message}", self.address);
         self.send_packet(&CDisconnect::new(reason as i32, message))
             .await;
@@ -572,6 +588,21 @@ impl BedrockClient {
         filtered_message: String,
         send_packet: bool,
     ) {
+        if let Some((call, client)) = self.deferring_guest_call(true) {
+            let data = send_packet
+                .then(|| {
+                    self.serialize_packet(&CDisconnect {
+                        reason: pumpkin_protocol::codec::var_int::VarInt(reason as i32),
+                        skip_message,
+                        message,
+                        filtered_message,
+                    })
+                    .ok()
+                })
+                .flatten();
+            Self::defer_kick(&call, client, data);
+            return;
+        }
         warn!("Closing connection for {}: {message}", self.address);
         if send_packet {
             self.send_packet(&CDisconnect {
@@ -828,6 +859,91 @@ impl BedrockClient {
         (frame_raw_packet(event.packet_id, &event.payload), extras)
     }
 
+    /// This client in an `Arc`, for work that runs after the current call: the client of the
+    /// player, or the entry of the connection in `be_clients`.
+    fn shared(&self) -> Option<Arc<Self>> {
+        if let Some(player) = (**self.player.load()).as_ref()
+            && let ClientPlatform::Bedrock(client) = player.client.as_ref()
+            && std::ptr::eq(client.as_ref(), self)
+        {
+            return Some(client.clone());
+        }
+        let clients = self.be_clients.try_lock().ok()?;
+        clients
+            .get(&self.address)
+            .filter(|client| std::ptr::eq(client.as_ref(), self))
+            .cloned()
+    }
+
+    /// The guest call that defers a send of this connection, and this client. `None`, and the
+    /// send runs now, outside a guest call or when the send fires no sent event that a Wasm
+    /// plugin handles. A Wasm handler waits for the root permit that the guest call holds, so the
+    /// event and the send run after the guest call.
+    fn deferring_guest_call(&self, observe: bool) -> Option<(Arc<dyn GuestCall>, Arc<Self>)> {
+        let call = guest_call::current()?;
+        let has_player = self.player.load().is_some();
+        let wasm_handles = match SentEvent::of(has_player, self.is_current_protocol(), observe)? {
+            SentEvent::Play => (**self.player.load())
+                .as_ref()
+                .and_then(|player| player.world().server.upgrade())
+                .or_else(|| self.server.upgrade())?
+                .plugin_manager
+                .has_wasm_handlers::<PacketSentEvent>(),
+            SentEvent::Connection => self
+                .server
+                .upgrade()?
+                .plugin_manager
+                .has_wasm_handlers::<BedrockConnectionPacketSentEvent>(),
+        };
+        if !wasm_handles {
+            return None;
+        }
+        Some((call, self.shared()?))
+    }
+
+    /// Moves the send to the deferred queue of the guest call that runs on this thread, and
+    /// returns `true`. Returns `false`, and defers nothing, when
+    /// [`Self::deferring_guest_call`] finds no guest call.
+    fn defer_in_guest_call(&self, packet_data: &Bytes, observe: bool) -> bool {
+        let Some((call, client)) = self.deferring_guest_call(observe) else {
+            return false;
+        };
+        let packet_data = packet_data.clone();
+        call.defer(
+            "packet send",
+            Box::new(move || {
+                client.try_enqueue_packet_data_inner(packet_data, observe, false);
+            }),
+        );
+        true
+    }
+
+    /// Defers a kick: the disconnect packet `data` goes out in the order of the deferred sends,
+    /// then a task waits until the writer takes it, flushes the session and closes the
+    /// connection, so that a stalled peer does not hold the deferred queue. The flush counts only
+    /// the bytes that the writer took, so the wait for the writer comes first.
+    fn defer_kick(call: &Arc<dyn GuestCall>, client: Arc<Self>, data: Option<Bytes>) {
+        let runtime = tokio::runtime::Handle::current();
+        call.defer(
+            "kick",
+            Box::new(move || {
+                let written = data.and_then(|data| {
+                    client.queue_translated_with_completion(client.translate_outgoing(data, true))
+                });
+                runtime.spawn(async move {
+                    if let Some(written) = written {
+                        let _ = tokio::time::timeout(KICK_WRITE_TIMEOUT, written).await;
+                    }
+                    let _ = client
+                        .session
+                        .flush_reliable(std::time::Duration::from_secs(1))
+                        .await;
+                    client.close().await;
+                });
+            }),
+        );
+    }
+
     fn translate_outgoing(&self, packet_data: Bytes, observe: bool) -> TranslatedPacket {
         if let Some((server, mut event, current_version)) =
             self.prepare_play_sent_event(&packet_data, observe)
@@ -934,6 +1050,9 @@ impl BedrockClient {
         if self.is_closed() {
             return false;
         }
+        if self.defer_in_guest_call(&packet_data, true) {
+            return true;
+        }
         let (packet_data, extras) = self.translate_outgoing_async(packet_data, true).await;
         match packet_data {
             Some(packet_data) => self.queue_translated_packet(packet_data, extras),
@@ -953,8 +1072,20 @@ impl BedrockClient {
     }
 
     /// Queues an already-formatted raw Bedrock packet (`packet_id` + client-version `payload`)
-    /// directly onto the wire queue without firing `PacketSentEvent`.
+    /// directly onto the wire queue without firing `PacketSentEvent`. In a guest call that defers
+    /// the sends of this connection, the packet goes to the same queue, so that it keeps its place
+    /// between the deferred sends. `true` also when the guest call deferred it.
     pub fn try_enqueue_raw_packet_direct(&self, packet_id: u16, payload: &[u8]) -> bool {
+        if let Some((call, client)) = self.deferring_guest_call(true) {
+            let payload = payload.to_vec();
+            call.defer(
+                "raw packet send",
+                Box::new(move || {
+                    client.try_enqueue_raw_packet_direct(packet_id, &payload);
+                }),
+            );
+            return true;
+        }
         let Some(packet_data) = frame_raw_packet(i32::from(packet_id), payload) else {
             return false;
         };
@@ -980,6 +1111,11 @@ impl BedrockClient {
     ) -> bool {
         if self.is_closed() {
             return false;
+        }
+        // The sent event runs after the guest call, and the result of the deferred send is not
+        // known here: `require_primary` reports `true`.
+        if self.defer_in_guest_call(&packet_data, observe) {
+            return true;
         }
         let (packet_data, extras) = self.translate_outgoing(packet_data, observe);
         match packet_data {
@@ -1041,43 +1177,53 @@ impl BedrockClient {
         }
     }
 
-    async fn send_and_wait_translated(&self, (packet_data, extras): (Option<Bytes>, Vec<Bytes>)) {
+    async fn send_and_wait_translated(&self, translated: (Option<Bytes>, Vec<Bytes>)) {
+        if let Some(written) = self.queue_translated_with_completion(translated) {
+            let _ = written.await;
+        }
+    }
+
+    /// Queues the translated packets. The receiver completes when the writer takes the last one.
+    /// `None` when nothing was queued.
+    fn queue_translated_with_completion(
+        &self,
+        (packet_data, extras): (Option<Bytes>, Vec<Bytes>),
+    ) -> Option<oneshot::Receiver<()>> {
         if self.is_closed() {
-            return;
+            return None;
         }
         let mut packets = Vec::with_capacity(usize::from(packet_data.is_some()) + extras.len());
         if let Some(packet_data) = packet_data {
             packets.push(packet_data);
         }
         packets.extend(extras);
-        let Some(last_packet) = packets.pop() else {
-            return;
-        };
+        let last_packet = packets.pop()?;
         for packet in packets {
-            let Some(packet_len) = self.reserve_bytes(packet.len()) else {
-                return;
-            };
+            let packet_len = self.reserve_bytes(packet.len())?;
             if !self.queue_outgoing(
                 OutgoingPacket::normal(packet, self.sub_client_id, self.id),
                 packet_len,
             ) {
-                return;
+                return None;
             }
         }
-        let Some(last_len) = self.reserve_bytes(last_packet.len()) else {
-            return;
-        };
+        let last_len = self.reserve_bytes(last_packet.len())?;
         let (tx, rx) = oneshot::channel();
-        if self.queue_outgoing(
+        self.queue_outgoing(
             OutgoingPacket::priority(last_packet, self.sub_client_id, self.id, tx),
             last_len,
-        ) {
-            let _ = rx.await;
-        }
+        )
+        .then_some(rx)
     }
 
+    /// Sends the packet and waits until the writer takes it. In a guest call that defers the
+    /// sends of this connection, the packet goes to the deferred queue, and this call returns
+    /// without waiting for the write.
     pub async fn send_game_packet(&self, packet_data: Bytes) {
         if self.is_closed() {
+            return;
+        }
+        if self.defer_in_guest_call(&packet_data, true) {
             return;
         }
         let translated = self.translate_outgoing_async(packet_data, true).await;
@@ -1840,10 +1986,48 @@ impl BedrockClient {
     }
 }
 
+/// How long a deferred kick waits until the writer takes its disconnect packet.
+const KICK_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The sent event that a send fires.
+#[derive(Debug, PartialEq, Eq)]
+enum SentEvent {
+    /// `PacketSentEvent`, for a connection with a player.
+    Play,
+    /// `BedrockConnectionPacketSentEvent`, for a connection before its player joins.
+    Connection,
+}
+
+impl SentEvent {
+    /// The event that a send fires, as [`BedrockClient::translate_outgoing`] fires it, when a
+    /// plugin handles it. `observe` is `false` for a send that fires no event on a client of the
+    /// current protocol.
+    const fn of(has_player: bool, current_protocol: bool, observe: bool) -> Option<Self> {
+        match (has_player, current_protocol) {
+            (true, true) if !observe => None,
+            (true, _) => Some(Self::Play),
+            (false, true) => None,
+            (false, false) => Some(Self::Connection),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use pumpkin_protocol::bedrock::client::biome_definition_list::CBiomeDefinitionList;
+
+    #[test]
+    fn a_send_defers_on_the_event_that_it_fires() {
+        assert_eq!(SentEvent::of(true, true, true), Some(SentEvent::Play));
+        assert_eq!(SentEvent::of(true, true, false), None);
+        assert_eq!(SentEvent::of(true, false, false), Some(SentEvent::Play));
+        assert_eq!(SentEvent::of(false, true, true), None);
+        assert_eq!(
+            SentEvent::of(false, false, false),
+            Some(SentEvent::Connection)
+        );
+    }
 
     #[test]
     fn raw_packet_framing_roundtrips_high_and_0xfe_packet_ids() {

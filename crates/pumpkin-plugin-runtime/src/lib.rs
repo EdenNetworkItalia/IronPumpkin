@@ -4,6 +4,7 @@ mod lifecycle;
 mod policy;
 mod spawn;
 
+pub use chain::ON_ROOT_ADMITTED;
 pub use executor::{
     LegacyGuestScope, LegacyStore, StoreDataMut, StoreExecutor, StoreFuture, StoreHandle, StoreMode,
 };

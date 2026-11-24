@@ -198,6 +198,18 @@ impl Context {
         aliases: &[String],
         permission: P,
     ) {
+        self.register_command_without_reload(node, aliases, permission);
+        self.reload_commands_for_everyone();
+    }
+
+    /// Like [`Self::register_command_with_aliases`], without the resend of the commands to the
+    /// online players: the caller runs [`Self::reload_commands_for_everyone`] later.
+    pub fn register_command_without_reload<P: Into<String>>(
+        &self,
+        node: impl Into<crate::command::node::detached::CommandDetachedNode>,
+        aliases: &[String],
+        permission: P,
+    ) {
         let permission = permission.into();
 
         let full_permission_node = if permission.contains(':') {
@@ -220,8 +232,6 @@ impl Context {
             new_dispatcher.register_with_aliases(node.clone(), aliases);
             Arc::new(new_dispatcher)
         });
-
-        self.reload_commands_for_everyone();
     }
 
     /// Unregisters a command from the server.
