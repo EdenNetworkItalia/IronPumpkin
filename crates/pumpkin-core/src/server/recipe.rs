@@ -30,10 +30,20 @@ fn loaded(recipe: DynamicRecipe) -> Option<DynamicRecipe> {
     })
 }
 
-/// Adds `recipe` to `recipes` when it loads.
+/// Adds `recipe` to `recipes`. A recipe replaces the one with the same id in its place, as the
+/// data pack loader does for a later pack.
 fn insert(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
-    if let Some(recipe) = loaded(recipe) {
-        recipes.push(recipe);
+    let Some(recipe) = loaded(recipe) else {
+        return;
+    };
+    let existing = recipe.recipe_id().and_then(|id| {
+        recipes
+            .iter()
+            .position(|other| other.recipe_id() == Some(id))
+    });
+    match existing {
+        Some(index) => recipes[index] = recipe,
+        None => recipes.push(recipe),
     }
 }
 
@@ -217,6 +227,27 @@ mod tests {
         assert!(generated(), "{id} is a generated recipe");
         manager.set_recipes(vec![stonecutting(id, "test:missing")]);
         assert!(!generated());
+    }
+
+    /// A recipe replaces the one with the same id in its place, as a later data pack does.
+    #[test]
+    fn a_recipe_replaces_the_recipe_with_the_same_id() {
+        let manager = RecipeManager::new();
+        manager.set_recipes(vec![
+            stonecutting("test:a", "minecraft:dirt"),
+            stonecutting("test:b", "minecraft:dirt"),
+        ]);
+        manager.add_recipe(stonecutting("test:a", "minecraft:gravel"));
+        assert_eq!(ids(&manager), ["test:a", "test:b"]);
+        let Some(DynamicRecipe::Stonecutting(first)) =
+            manager.get_dynamic_recipes_internal().into_iter().next()
+        else {
+            panic!("a stonecutter recipe");
+        };
+        assert_eq!(
+            first.ingredient,
+            OwnedRecipeIngredient::Simple("minecraft:gravel".to_string())
+        );
     }
 
     /// The vanilla messages: `Registry.java:43`, `Item.java:118`, `HolderSetCodec.java:76`.
