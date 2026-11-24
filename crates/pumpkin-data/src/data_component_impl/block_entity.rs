@@ -129,7 +129,7 @@ impl ContainerImpl {
         if let NbtTag::List(l) = tag {
             for item_tag in l {
                 if let NbtTag::Compound(c) = item_tag
-                    && let Some(slot) = c.get_int("slot")
+                    && let Some(slot) = c.get_numeric_int("slot")
                     && let Some(item_compound) = c.get_compound("item")
                     && let Some(stack) =
                         crate::item_stack::ItemStack::read_item_stack(item_compound)
@@ -251,7 +251,7 @@ impl ContainerLootImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
         let loot_table = compound.get_string("loot_table")?.to_string();
-        let seed = compound.get_long("seed").unwrap_or(0);
+        let seed = compound.get_numeric_long("seed").unwrap_or(0);
         Some(Self { loot_table, seed })
     }
 }

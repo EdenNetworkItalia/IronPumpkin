@@ -41,7 +41,7 @@ pub struct MaxStackSizeImpl {
 }
 impl MaxStackSizeImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|size| Self { size: size as u8 })
+        data.as_numeric_int().map(|size| Self { size: size as u8 })
     }
 }
 impl DataComponentImpl for MaxStackSizeImpl {
@@ -60,7 +60,7 @@ pub struct MaxDamageImpl {
 }
 impl MaxDamageImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|max_damage| Self { max_damage })
+        data.as_numeric_int().map(|max_damage| Self { max_damage })
     }
 }
 impl DataComponentImpl for MaxDamageImpl {
@@ -76,7 +76,7 @@ pub struct DamageImpl {
 }
 impl DamageImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|damage| Self { damage })
+        data.as_numeric_int().map(|damage| Self { damage })
     }
 }
 impl DataComponentImpl for DamageImpl {
@@ -296,7 +296,7 @@ impl CustomModelDataImpl {
         let compound = data.extract_compound()?;
         let floats = compound
             .get_list("floats")
-            .map(|l| l.iter().filter_map(NbtTag::extract_float).collect())
+            .map(|l| l.iter().filter_map(NbtTag::as_numeric_float).collect())
             .unwrap_or_default();
         let flags = compound
             .get_list("flags")
@@ -314,7 +314,7 @@ impl CustomModelDataImpl {
         let colors = if let Some(arr) = compound.get_int_array("colors") {
             arr.to_vec()
         } else if let Some(l) = compound.get_list("colors") {
-            l.iter().filter_map(NbtTag::extract_int).collect()
+            l.iter().filter_map(NbtTag::as_numeric_int).collect()
         } else {
             Vec::new()
         };
@@ -598,7 +598,7 @@ impl CushionColorImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let color = if let Some(s) = data.extract_string() {
             crate::dye_color::DyeColor::by_name(s)?
-        } else if let Some(id) = data.extract_int() {
+        } else if let Some(id) = data.as_numeric_int() {
             crate::dye_color::DyeColor::by_id(id as u8)?
         } else {
             return None;
@@ -829,8 +829,8 @@ impl LockImpl {
                     }
                 }
                 NbtTag::Compound(bounds) => {
-                    if bounds.get_int("min").is_some_and(|min| count < min)
-                        || bounds.get_int("max").is_some_and(|max| count > max)
+                    if bounds.get_numeric_int("min").is_some_and(|min| count < min)
+                        || bounds.get_numeric_int("max").is_some_and(|max| count > max)
                     {
                         return false;
                     }
@@ -883,7 +883,7 @@ impl BreakSoundImpl {
             }
         } else if let Some(c) = data.extract_compound() {
             let sound_name = c.get_string("sound_id")?.to_string();
-            let range = c.get_float("range");
+            let range = c.get_numeric_float("range");
             IdOr::Value(SoundEvent { sound_name, range })
         } else {
             return None;

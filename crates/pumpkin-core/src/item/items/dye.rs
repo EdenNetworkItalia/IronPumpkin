@@ -34,11 +34,13 @@ impl ItemBehaviour for DyeItem {
             && color != sheep.get_color()
         {
             let ent = entity.get_entity();
-            ent.world.load().play_sound_expect(
-                player,
+            ent.world.load().play_sound_at_entity(
+                Some(player),
+                ent,
                 pumpkin_data::sound::Sound::ItemDyeUse,
                 pumpkin_data::sound::SoundCategory::Players,
-                &ent.pos.load(),
+                1.0,
+                1.0,
             );
             sheep.set_color(color);
             item.decrement_unless_creative(player.gamemode.load(), 1);

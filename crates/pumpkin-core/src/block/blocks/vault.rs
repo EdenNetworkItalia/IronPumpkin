@@ -11,7 +11,7 @@ use crate::block::entities::vault::VaultBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{BlockBehaviour, OnPlaceArgs, PlacedArgs, UseWithItemArgs};
 use crate::entity::EntityBase;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, player_luck, roll_loot};
 
 #[pumpkin_block("minecraft:vault")]
 pub struct VaultBlock;
@@ -79,6 +79,8 @@ impl BlockBehaviour for VaultBlock {
 
         vault_entity.mark_rewarded(player_uuid);
 
+        // `resolveItemsToEject` rolls with the key stack before it consumes the key.
+        let key_stack = args.item_stack.clone();
         args.item_stack
             .decrement_unless_creative(args.player.gamemode.load(), 1);
 
@@ -126,9 +128,11 @@ impl BlockBehaviour for VaultBlock {
                     world: Some(args.world),
                     position: Some(args.position.to_centered_f64()),
                     this_entity: Some(args.player.as_ref() as &dyn EntityBase),
+                    luck: player_luck(args.player),
+                    tool: Some(key_stack),
                     ..Default::default()
                 };
-                generate_loot_from_handle(&handle, rand::random(), &params)
+                roll_loot(&handle, 0, &params)
             })
             .unwrap_or_default();
 

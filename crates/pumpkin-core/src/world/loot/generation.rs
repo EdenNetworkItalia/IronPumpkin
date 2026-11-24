@@ -4,8 +4,9 @@ use super::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
     DynamicLootPool, DynamicLootTable, Item, ItemStack, LootCondition, LootContextParameters,
     LootEntry, LootEntryKind, LootFunction, LootFunctionKind, LootNumberProvider, LootPool,
-    LootTable, LootTableHandle, LootTableRef, RandomImpl, Taggable, Xoroshiro, add_stew_effect,
-    apply_bonus_formula, check_condition, check_dynamic_condition, get_loot_table, smelt,
+    LootTable, LootTableHandle, LootTableRef, RandomGenerator, RandomImpl, Taggable,
+    add_stew_effect, apply_bonus_formula, check_condition, check_dynamic_condition, get_loot_table,
+    smelt,
 };
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::DataComponentImpl;
@@ -225,13 +226,13 @@ pub(super) fn generate(
     seed: i64,
     params: &LootContextParameters<'_>,
 ) -> Vec<ItemStack> {
-    generate_with_rng(table, &mut Xoroshiro::from_seed(seed as u64), params)
+    generate_with_rng(table, &mut super::random_source(seed), params)
 }
 
 /// The roll of `generate` with a random source that the caller keeps.
 pub(super) fn generate_with_rng(
     table: Table<'_>,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
     params: &LootContextParameters<'_>,
 ) -> Vec<ItemStack> {
     let has_silk_touch = params
@@ -274,7 +275,7 @@ pub(super) fn generate_with_rng(
 
 struct Generator<'a, 'b> {
     params: &'a LootContextParameters<'b>,
-    rng: &'a mut Xoroshiro,
+    rng: &'a mut RandomGenerator,
     visited: HashSet<*const ()>,
     has_silk_touch: bool,
     has_shears: bool,
@@ -621,13 +622,15 @@ impl Generator<'_, '_> {
                                 .count() as i32;
                         }
                     }
-                    LootFunctionKind::FurnaceSmelt => {
+                    LootFunctionKind::FurnaceSmelt { use_input_count } => {
                         if stack.count <= 0 {
                             continue;
                         }
-                        let (item, count) = smelt(stack.item, stack.count);
-                        stack.item = item;
-                        stack.count = count;
+                        if let Some(result) = smelt(stack.item, stack.count, use_input_count) {
+                            stack.item = result.item;
+                            stack.count = i32::from(result.item_count);
+                            stack.patch = result.patch;
+                        }
                     }
                     LootFunctionKind::SetStewEffect(effects) => {
                         if stack.item != &Item::SUSPICIOUS_STEW || effects.is_empty() {

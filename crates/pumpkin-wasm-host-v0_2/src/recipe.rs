@@ -51,13 +51,12 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 
         let server = accessor.server()?;
-        server
-            .recipe_manager
-            .add_recipe(DynamicRecipe::Crafting(owned_recipe));
+        server.add_recipe(DynamicRecipe::Crafting(owned_recipe));
         Ok(())
     }
 
@@ -86,13 +85,12 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 
         let server = accessor.server()?;
-        server
-            .recipe_manager
-            .add_recipe(DynamicRecipe::Crafting(owned_recipe));
+        server.add_recipe(DynamicRecipe::Crafting(owned_recipe));
         Ok(())
     }
 
@@ -120,6 +118,7 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 
@@ -139,7 +138,7 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
         };
 
         let server = accessor.server()?;
-        server.recipe_manager.add_recipe(dynamic_recipe);
+        server.add_recipe(dynamic_recipe);
         Ok(())
     }
 }

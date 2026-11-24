@@ -75,10 +75,15 @@ impl CommandExecutor for RandomExecutor {
         let value = if self.has_sequence {
             let sequence = IdentifierArgumentType::get(context, ARG_SEQUENCE)?;
             let world_seed = context.server().level_info.load().world_gen_settings.seed;
-            let mut sequences = context.server().random_sequences.lock().unwrap();
-            sequences
+            // The manager lock ends before the draw waits for a roll of the sequence.
+            let handle = context
+                .server()
+                .random_sequences
+                .lock()
+                .unwrap()
                 .get_or_create(&sequence, world_seed)
-                .random_between_inclusive(min, max)
+                .handle();
+            handle.random_between_inclusive(min, max)
         } else {
             rand::random_range(min..=max)
         };

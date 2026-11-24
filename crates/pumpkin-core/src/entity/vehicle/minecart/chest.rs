@@ -24,7 +24,12 @@ impl ChestMinecart {
         &self.inventory
     }
 
-    pub(super) fn interact(&self, entity: &crate::entity::Entity, player: &Arc<Player>) -> bool {
+    pub(super) fn interact(
+        &self,
+        entity: &crate::entity::Entity,
+        player: &Arc<Player>,
+        minecart: &dyn crate::entity::EntityBase,
+    ) -> bool {
         container::open(
             entity,
             player,
@@ -35,6 +40,7 @@ impl ChestMinecart {
                 [],
             ),
             false,
+            Some(minecart),
         )
     }
 

@@ -32,12 +32,13 @@ use bindings::pumpkin::plugin::{
         Test, TestCallbackId, VoidCallbackId,
     },
     neoforge_events::MobEffectEventApplicableResult,
+    sounds::{Sound, SoundCategory},
     world::EquipmentSlot,
 };
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
-const EVENTS: [EventType; 31] = [
+const EVENTS: [EventType; 32] = [
     EventType::CommandEvent,
     EventType::BlockBreakEvent,
     EventType::BlockPlaceEvent,
@@ -67,6 +68,7 @@ const EVENTS: [EventType; 31] = [
     EventType::ArrowLooseEvent,
     EventType::MobEffectEventApplicable,
     EventType::EntityPotionEffectEvent,
+    EventType::PlayLevelSoundEventAtPosition,
     EventType::ItemAttributeModifierEvent,
     EventType::GetEnchantmentLevelEvent,
 ];
@@ -93,6 +95,18 @@ macro_rules! parsed_field {
 }
 
 parsed_field!(bool, u8, u32, i32, f32);
+
+/// A sound event name, or `none`.
+impl Field for Option<String> {
+    fn show(&self) -> String {
+        self.clone().unwrap_or_else(|| "none".to_owned())
+    }
+
+    fn assign(&mut self, value: &str) -> Result<(), String> {
+        *self = (value != "none").then(|| value.to_owned());
+        Ok(())
+    }
+}
 
 /// The affected blocks of an explosion: the length, and a truncation.
 impl Field for Vec<BlockPos> {
@@ -254,6 +268,11 @@ fn view(event: &mut Event) -> Option<View<'_>> {
             Some(&mut data.amplifier),
             Some(&mut data.cancelled),
         ),
+        Event::PlayLevelSoundEventAtPosition(data) => (
+            "PlayLevelSoundEventAtPosition",
+            Some(&mut data.sound),
+            Some(&mut data.cancelled),
+        ),
         Event::ItemAttributeModifierEvent(_) => ("ItemAttributeModifierEvent", None, None),
         Event::GetEnchantmentLevelEvent(_) => ("GetEnchantmentLevelEvent", None, None),
         _ => return None,
@@ -269,12 +288,16 @@ struct Action {
     /// Damages a golden sword through the v0.2 `damage-item` import, which reads its enchantment
     /// levels on the server.
     damage: bool,
+    /// Plays a stone sound and an anvil sound through the v0.2 world import, which defers them.
+    sounds: bool,
 }
 
 #[derive(Default)]
 struct State {
     context: Option<Context>,
     actions: HashMap<(String, u32), Action>,
+    /// Whether a handler of the sound event plays one more sound.
+    replay: bool,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -284,9 +307,9 @@ thread_local! {
 }
 
 /// Logs what handler `slot` sees, then runs its action.
-fn handle(slot: u32, event: &mut Event) -> Result<bool, String> {
+fn handle(slot: u32, event: &mut Event) -> Result<(bool, bool), String> {
     let Some((name, mut field, mut cancelled)) = view(event) else {
-        return Ok(false);
+        return Ok((false, false));
     };
     STATE.with_borrow_mut(|state| {
         let key = (name.to_owned(), slot);
@@ -302,10 +325,10 @@ fn handle(slot: u32, event: &mut Event) -> Result<bool, String> {
                 .map_or_else(|| "-".to_owned(), ToString::to_string),
         ));
         let Some(action) = state.actions.get(&key) else {
-            return Ok(false);
+            return Ok((false, false));
         };
         if action.nth.is_some_and(|nth| nth != fire) {
-            return Ok(false);
+            return Ok((false, false));
         }
         if let (Some(value), Some(field)) = (&action.value, field.as_mut()) {
             field.assign(value)?;
@@ -313,7 +336,7 @@ fn handle(slot: u32, event: &mut Event) -> Result<bool, String> {
         if let (Some(cancel), Some(cancelled)) = (action.cancel, cancelled.as_mut()) {
             **cancelled = cancel;
         }
-        Ok(action.damage)
+        Ok((action.damage, action.sounds))
     })
 }
 
@@ -333,6 +356,9 @@ fn configure(words: &[&str]) -> Result<(), String> {
             }
             Some(("damage", damage)) => {
                 action.damage = damage.parse().map_err(|_| damage.to_owned())?;
+            }
+            Some(("sounds", sounds)) => {
+                action.sounds = sounds.parse().map_err(|_| sounds.to_owned())?;
             }
             _ => return Err(format!("not a setting: {setting}")),
         }
@@ -374,6 +400,51 @@ async fn spawn(words: &[&str]) -> Result<String, String> {
         .ok_or("no world")?;
     let pig = world.spawn_entity(EntityType::Pig, position).await;
     Ok(pig.get_id().to_string())
+}
+
+/// `sound <x> <y> <z>`: plays a stone sound through the v0.2 world import.
+async fn sound(words: &[&str]) -> Result<String, String> {
+    let [x, y, z] = words else {
+        return Err("sound <x> <y> <z>".to_owned());
+    };
+    let coordinate = |text: &str| text.parse::<f64>().map_err(|_| format!("not a number: {text}"));
+    let position = (coordinate(x)?, coordinate(y)?, coordinate(z)?);
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, position, 1.0, 1.0);
+    Ok(String::new())
+}
+
+/// `order <player> <x> <y> <z>`: in one call, plays a stone sound and an anvil sound through the
+/// world, stops the stone sound for the player, and plays a pig sound to the player.
+async fn order(words: &[&str]) -> Result<String, String> {
+    let [name, x, y, z] = words else {
+        return Err("order <player> <x> <y> <z>".to_owned());
+    };
+    let coordinate = |text: &str| text.parse::<f64>().map_err(|_| format!("not a number: {text}"));
+    let position = (coordinate(x)?, coordinate(y)?, coordinate(z)?);
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    let player = server
+        .get_player_by_name(name)
+        .ok_or_else(|| format!("no player {name}"))?;
+    world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, position, 1.0, 1.0);
+    world.play_sound(Sound::BlockAnvilLand, SoundCategory::Players, position, 1.0, 1.0);
+    player.stop_sound(Some(Sound::BlockStoneBreak), None);
+    player.play_sound(Sound::EntityPigAmbient, SoundCategory::Players, 1.0, 1.0);
+    Ok(String::new())
 }
 
 /// `equip <x> <y> <z>`: spawns a pig and sets a golden sword in its main hand through the v0.2
@@ -424,11 +495,31 @@ impl Guest for Component {
 
     async fn handle_event(event_id: u32, _server: ServerInstance, mut event: Event) -> Event {
         match handle(event_id, &mut event) {
-            Ok(true) => {
-                ItemStack::new("minecraft:golden_sword", 1).damage_item(1).await;
+            Ok((damage, sounds)) => {
+                if damage {
+                    ItemStack::new("minecraft:golden_sword", 1).damage_item(1).await;
+                }
+                if sounds
+                    && let Some(server) = STATE
+                        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+                    && let Some(world) = server.get_all_worlds().into_iter().next()
+                {
+                    let position = (9000.5, 100.0, 9000.5);
+                    world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, position, 1.0, 1.0);
+                    world.play_sound(Sound::BlockAnvilLand, SoundCategory::Players, position, 1.0, 1.0);
+                }
             }
-            Ok(false) => {}
             Err(error) => STATE.with_borrow_mut(|state| state.log.push(format!("error {error}"))),
+        }
+        // Only the first handler replays, so each sound causes one more sound.
+        if event_id == 0
+            && let Event::PlayLevelSoundEventAtPosition(data) = &event
+            && STATE.with_borrow(|state| state.replay)
+            && let Some(server) = STATE
+                .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+            && let Some(world) = server.get_all_worlds().into_iter().next()
+        {
+            world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, data.position, 1.0, 1.0);
         }
         event
     }
@@ -479,6 +570,12 @@ impl Guest for Component {
             ["log"] => STATE.with_borrow_mut(|state| std::mem::take(&mut state.log).join("\n")),
             ["spawn", rest @ ..] => spawn(rest).await?,
             ["perform", rest @ ..] => perform(rest).await?,
+            ["sound", rest @ ..] => sound(rest).await?,
+            ["order", rest @ ..] => order(rest).await?,
+            ["replay", flag] => {
+                STATE.with_borrow_mut(|state| state.replay = *flag == "on");
+                String::new()
+            }
             ["equip", rest @ ..] => equip(rest).await?,
             _ => return Err(format!("unknown message: {message}")),
         };

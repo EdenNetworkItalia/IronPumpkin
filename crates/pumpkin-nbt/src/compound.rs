@@ -234,6 +234,25 @@ impl NbtCompound {
         self.get(name).and_then(super::tag::NbtTag::extract_short)
     }
 
+    /// Returns any named numeric value as a byte
+    #[must_use]
+    pub fn get_numeric_byte(&self, name: &str) -> Option<i8> {
+        self.get(name).and_then(super::tag::NbtTag::as_numeric_byte)
+    }
+
+    /// Returns any named numeric value as a long
+    #[must_use]
+    pub fn get_numeric_long(&self, name: &str) -> Option<i64> {
+        self.get(name).and_then(super::tag::NbtTag::as_numeric_long)
+    }
+
+    /// Returns any named numeric value as a double
+    #[must_use]
+    pub fn get_numeric_double(&self, name: &str) -> Option<f64> {
+        self.get(name)
+            .and_then(super::tag::NbtTag::as_numeric_double)
+    }
+
     /// Returns any named numeric value as a short
     #[must_use]
     pub fn get_numeric_short(&self, name: &str) -> Option<i16> {

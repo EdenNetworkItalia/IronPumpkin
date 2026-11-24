@@ -142,6 +142,29 @@ pub(crate) trait RequireServer {
     fn require_server(&self) -> wasmtime::Result<&std::sync::Arc<pumpkin_core::server::Server>>;
 }
 
+/// Defers host work until the guest call can release the store, in call order.
+pub(crate) trait DeferHost {
+    /// Queues `run` on the queue of the store. `label` names it in the log. See
+    /// [`pumpkin_wasm_host_common::deferred`].
+    fn defer(
+        &self,
+        label: impl Into<String>,
+        run: impl FnOnce() + Send + 'static,
+    ) -> wasmtime::Result<()>;
+}
+
+impl DeferHost for PluginHostState {
+    fn defer(
+        &self,
+        label: impl Into<String>,
+        run: impl FnOnce() + Send + 'static,
+    ) -> wasmtime::Result<()> {
+        let runtime = self.require_server()?.runtime.clone();
+        self.deferred.push(&runtime, label, run);
+        Ok(())
+    }
+}
+
 impl RequireServer for PluginHostState {
     fn require_server(&self) -> wasmtime::Result<&std::sync::Arc<pumpkin_core::server::Server>> {
         self.server

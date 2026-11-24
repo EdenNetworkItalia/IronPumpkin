@@ -139,7 +139,11 @@ impl ItemBehaviour for GlassBottleItem {
                     SoundCategory::Neutral,
                     &player.position(),
                 );
-                world.emit_game_event(GameEvent::FluidPickup.name(), player.position());
+                world.emit_game_event_by(
+                    GameEvent::FluidPickup.name(),
+                    player.position(),
+                    &player.living_entity.entity,
+                );
                 Self::turn_bottle_into_item(
                     player,
                     hand,
@@ -167,7 +171,11 @@ impl ItemBehaviour for GlassBottleItem {
                     SoundCategory::Neutral,
                     &hit_pos.to_f64(),
                 );
-                world.emit_game_event(GameEvent::FluidPickup.name(), hit_pos.to_f64());
+                world.emit_game_event_by(
+                    GameEvent::FluidPickup.name(),
+                    hit_pos.to_f64(),
+                    &player.living_entity.entity,
+                );
                 Self::turn_bottle_into_item(player, hand, held, water_bottle());
             }
         }
@@ -195,7 +203,11 @@ impl ItemBehaviour for GlassBottleItem {
             SoundCategory::Neutral,
             &location.to_f64(),
         );
-        world.emit_game_event(GameEvent::FluidPickup.name(), location.to_f64());
+        world.emit_game_event_by(
+            GameEvent::FluidPickup.name(),
+            location.to_f64(),
+            &player.living_entity.entity,
+        );
         player.increment_stat(StatisticCategory::Used, i32::from(Item::GLASS_BOTTLE.id), 1);
         create_filled_result(item, player, water_bottle(), true);
         BlockActionResult::Success

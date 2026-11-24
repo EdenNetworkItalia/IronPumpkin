@@ -139,6 +139,8 @@ pub struct Server {
     pub stopwatches: std::sync::Mutex<crate::world::stopwatches::Stopwatches>,
     /// Global server random sequences
     pub random_sequences: std::sync::Mutex<crate::world::random_sequences::RandomSequences>,
+    /// Serialises the saves of `random_sequences.dat`.
+    random_sequences_save: std::sync::Mutex<()>,
     // Manages player advancement
     pub advancement_manager: Arc<AdvancementManager>,
     // Whether the server whitelist is on or off
@@ -365,8 +367,11 @@ impl Server {
             command_storage: std::sync::Mutex::new(std::collections::HashMap::new()),
             stopwatches: std::sync::Mutex::new(crate::world::stopwatches::Stopwatches::new()),
             random_sequences: std::sync::Mutex::new(
-                crate::world::random_sequences::RandomSequences::new(),
+                crate::world::random_sequences::RandomSequences::from_data(
+                    &pumpkin_world::world_info::data_files::read_random_sequences(&world_path),
+                ),
             ),
+            random_sequences_save: std::sync::Mutex::new(()),
             advancement_manager,
             white_list,
             tick_rate_manager,
@@ -616,7 +621,28 @@ impl Server {
     pub fn save_world_info(&self) -> Result<(), WorldInfoError> {
         let level_data = self.level_info.load();
         self.world_info_writer
-            .write_world_info(&level_data, &self.basic_config.get_world_path())
+            .write_world_info(&level_data, &self.basic_config.get_world_path())?;
+        self.save_random_sequences()
+    }
+
+    /// Writes `random_sequences.dat`. Vanilla saves it with the other saved data: on autosave, on
+    /// `/save-all` and on stop.
+    pub fn save_random_sequences(&self) -> Result<(), WorldInfoError> {
+        // One save at a time, so an older snapshot never replaces a newer file.
+        let _save = self
+            .random_sequences_save
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // The manager lock is free before the snapshot waits for a roll that holds a sequence.
+        let snapshot = self
+            .random_sequences
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot();
+        pumpkin_world::world_info::data_files::write_random_sequences(
+            &self.basic_config.get_world_path(),
+            &snapshot.into_data(pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION),
+        )
     }
 
     /// Loads the data packs and fires the loot table events before the manager stores the tables.
@@ -645,15 +671,24 @@ impl Server {
             .datapack_manager
             .execute_function(server, &source, "#minecraft:load");
 
-        let dynamic_recipes = self.recipe_manager.get_dynamic_recipes_internal();
+        self.sync_recipes();
+    }
+
+    /// Adds a plugin recipe and sends the recipes again to the players online.
+    pub fn add_recipe(&self, recipe: recipe::DynamicRecipe) {
+        self.recipe_manager.add_recipe(recipe);
+        self.sync_recipes();
+    }
+
+    /// Sends the recipe sync and the recipe book to every Java player, as vanilla
+    /// `PlayerList.reloadResources` does. A recipe keeps its display id, so the recipe book of
+    /// an open screen stays valid.
+    pub fn sync_recipes(&self) {
         for player in self.get_all_players() {
             if let crate::net::ClientPlatform::Java(java_client) = player.client.as_ref() {
-                let add_packet = pumpkin_protocol::java::client::play::CRecipeBookAdd::new(
-                    true,
-                    &dynamic_recipes,
-                );
-                if let Ok(data) = java_client.serialize_packet(&add_packet) {
-                    java_client.try_enqueue_packet(data);
+                recipe::send_update_recipes(java_client);
+                if recipe::gets_recipe_book(self, java_client) {
+                    recipe::send_recipe_book(java_client);
                 }
             }
         }
@@ -947,6 +982,9 @@ impl Server {
             .write_world_info(&level_data, &self.basic_config.get_world_path())
         {
             error!("Failed to save level.dat: {err}");
+        }
+        if let Err(err) = self.save_random_sequences() {
+            error!("Failed to save random_sequences.dat: {err}");
         }
         info!("Completed worlds");
     }

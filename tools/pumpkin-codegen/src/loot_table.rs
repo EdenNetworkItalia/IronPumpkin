@@ -175,6 +175,13 @@ impl Generator {
                     LootEntityTarget::This => quote! { LootEntityTarget::This },
                     LootEntityTarget::Attacker => quote! { LootEntityTarget::Attacker },
                     LootEntityTarget::DirectAttacker => quote! { LootEntityTarget::DirectAttacker },
+                    LootEntityTarget::AttackingPlayer => {
+                        quote! { LootEntityTarget::AttackingPlayer }
+                    }
+                    LootEntityTarget::TargetEntity => quote! { LootEntityTarget::TargetEntity },
+                    LootEntityTarget::InteractingEntity => {
+                        quote! { LootEntityTarget::InteractingEntity }
+                    }
                 };
                 let predicate = self.predicate(predicate);
                 quote! { LootCondition::EntityProperties { target: #target, predicate: #predicate } }
@@ -247,7 +254,9 @@ impl Generator {
                         let formula = bonus_tokens(formula);
                         quote! { LootFunctionKind::ApplyBonus(#formula) }
                     }
-                    LootFunctionKind::FurnaceSmelt => quote! { LootFunctionKind::FurnaceSmelt },
+                    LootFunctionKind::FurnaceSmelt { use_input_count } => {
+                        quote! { LootFunctionKind::FurnaceSmelt { use_input_count: #use_input_count } }
+                    }
                     LootFunctionKind::SetStewEffect(ref effects) => {
                         let effects = effects.iter().map(|effect| {
                             let name = effect.effect.as_ref();

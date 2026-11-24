@@ -138,6 +138,8 @@ pub struct PluginHostState {
     /// `GetEnchantmentLevelEvent`) run in this store now. Host work that a handler starts reads
     /// the item stacks with those events off, so the handler does not fire itself again.
     pub item_hook_handlers: Arc<std::sync::atomic::AtomicU32>,
+    /// The host work that a synchronous import defers until the guest call returns.
+    pub deferred: crate::deferred::DeferredQueue,
 }
 
 /// Counts one running handler of an event that the item stack reads fire, until it drops, also
@@ -183,6 +185,7 @@ impl PluginHostState {
             name: None,
             marketplace_metadata: None,
             item_hook_handlers: Arc::default(),
+            deferred: crate::deferred::DeferredQueue::default(),
         }
     }
 

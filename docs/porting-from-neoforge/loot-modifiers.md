@@ -166,6 +166,26 @@ The added loot is rolled without modifiers. The modifiers after this one see it,
 
 Every roll of a table by its id runs the modifiers: block drops, entity drops, chests and other containers, fishing, archaeology, bartering, gifts, vaults and trial spawners, and `/loot`. A table that another table nests runs no modifiers, as `getRandomItemsRaw` does in NeoForge. When no data pack has a modifier file, a roll does no extra work.
 
+## Context parameters
+
+`context.params()` is a `LootContextParameters`: one field per `LootContextParams` key. A field that the roll does not set is `None`.
+
+| `LootContextParams` | Field |
+| :--- | :--- |
+| `THIS_ENTITY` | `this_entity` |
+| `ATTACKING_ENTITY`, `DIRECT_ATTACKING_ENTITY` | `killer_entity`, `direct_killer_entity` |
+| `LAST_DAMAGE_PLAYER` | `last_damage_player` |
+| `DAMAGE_SOURCE` | `damage_source`: the damage type, the attacker and the direct entity |
+| `INTERACTING_ENTITY`, `TARGET_ENTITY` | `interacting_entity`, `target_entity` |
+| `ORIGIN` | `position` |
+| `BLOCK_STATE`, `BLOCK_ENTITY` | `block_state`, `block_entity` |
+| `TOOL` | `tool` |
+| `EXPLOSION_RADIUS`, `ENCHANTMENT_LEVEL` | `explosion_radius`, `enchantment_level` |
+
+The luck of the roll is `luck`. The conditions `entity_properties` with `attacking_player`, `target_entity` and `interacting_entity`, and `killed_by_player`, read these fields. Each roll sets the keys of its vanilla parameter set: a hoe on a block sets the block state, the origin, the block entity, the interacting entity and the tool, and a decorated pot sets the origin only, as vanilla passes no player to it.
+
+A roll of a container with the seed 0 uses the random sequence of its table, and the sequence goes on after the roll. A table with no `random_sequence` gets a new random source.
+
 ## Do and don't
 
 **Do**

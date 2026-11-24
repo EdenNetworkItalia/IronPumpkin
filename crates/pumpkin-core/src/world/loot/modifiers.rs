@@ -24,7 +24,7 @@ use std::{
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::loot_table::parser::parse_condition_with_predicates;
-use pumpkin_util::random::xoroshiro128::Xoroshiro;
+use pumpkin_util::random::RandomGenerator;
 use serde_json::Value;
 use tracing::error;
 
@@ -339,18 +339,13 @@ fn generate(
     params: &LootContextParameters<'_>,
     modifiers: &LootModifiers,
 ) -> Vec<ItemStack> {
-    generate_with_rng(
-        handle,
-        &mut Xoroshiro::from_seed(seed as u64),
-        params,
-        modifiers,
-    )
+    generate_with_rng(handle, &mut super::random_source(seed), params, modifiers)
 }
 
 /// [`generate`] on the random source of the caller, which `LootTable.fill` goes on with.
 pub(super) fn generate_with_rng(
     handle: &LootTableHandle,
-    random: &mut Xoroshiro,
+    random: &mut RandomGenerator,
     params: &LootContextParameters<'_>,
     modifiers: &LootModifiers,
 ) -> Vec<ItemStack> {
@@ -367,7 +362,7 @@ pub(super) fn generate_with_rng(
 pub struct LootContext<'a, 'b> {
     params: &'a LootContextParameters<'b>,
     queried_loot_table_id: &'a str,
-    random: &'a mut Xoroshiro,
+    random: &'a mut RandomGenerator,
 }
 
 impl<'a, 'b> LootContext<'a, 'b> {
@@ -375,7 +370,7 @@ impl<'a, 'b> LootContext<'a, 'b> {
     pub const fn new(
         params: &'a LootContextParameters<'b>,
         queried_loot_table_id: &'a str,
-        random: &'a mut Xoroshiro,
+        random: &'a mut RandomGenerator,
     ) -> Self {
         Self {
             params,
@@ -398,7 +393,7 @@ impl<'a, 'b> LootContext<'a, 'b> {
     }
 
     /// `LootContext.getRandom`: the random source of the roll.
-    pub const fn random(&mut self) -> &mut Xoroshiro {
+    pub const fn random(&mut self) -> &mut RandomGenerator {
         self.random
     }
 

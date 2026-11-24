@@ -13,6 +13,7 @@ interface neoforge-events {
     use game-rules.{game-rule, game-rule-value};
     use damage-types.{damage-type};
     use permission.{permission-level};
+    use sounds.{sound-category};
 
     /// NeoForge `TriState`: allow, let vanilla decide, or refuse.
     enum tri-state {
@@ -920,6 +921,39 @@ interface neoforge-events {
     record loot-table-load-event-data {
         /// The id of the table, such as `mymod:blocks/ruby_ore`.
         name: string,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PlayLevelSoundEvent.AtPosition`: a world plays a sound at a position, before it
+    /// sends the packet. Settable: `sound`, `source`, `new-volume`, `new-pitch` and `cancelled`.
+    /// A cancel, or a `sound` of none, sends nothing.
+    record play-level-sound-event-at-position-data {
+        target-world: %world,
+        position: position,
+        /// The name of the sound event, such as `minecraft:entity.arrow.shoot` or
+        /// `mymod:zap`, or none for no sound. A name that no registry knows plays as a direct
+        /// event with the default range.
+        sound: option<string>,
+        source: sound-category,
+        original-volume: f32,
+        original-pitch: f32,
+        new-volume: f32,
+        new-pitch: f32,
+        cancelled: bool,
+    }
+
+    /// NeoForge `PlayLevelSoundEvent.AtEntity`: a world plays a sound that follows an entity,
+    /// before it sends the packet. The settable fields are those of
+    /// `play-level-sound-event-at-position-data`.
+    record play-level-sound-event-at-entity-data {
+        entity: entity,
+        target-world: %world,
+        sound: option<string>,
+        source: sound-category,
+        original-volume: f32,
+        original-pitch: f32,
+        new-volume: f32,
+        new-pitch: f32,
         cancelled: bool,
     }
 

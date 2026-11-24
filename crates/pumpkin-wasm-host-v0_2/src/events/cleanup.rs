@@ -814,5 +814,9 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::PlayerBrewedPotionEvent(_)) => {
             super::neoforge_item::cleanup_neoforge_item_event(event, state);
         }
+        event @ (Event::PlayLevelSoundEventAtPosition(_)
+        | Event::PlayLevelSoundEventAtEntity(_)) => {
+            super::neoforge_sound::cleanup_neoforge_sound_event(event, state);
+        }
     }
 }

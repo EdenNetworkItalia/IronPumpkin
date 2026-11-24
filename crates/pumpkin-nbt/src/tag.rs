@@ -470,6 +470,51 @@ impl NbtTag {
         }
     }
 
+    /// Converts any numeric tag to a byte, `NumericTag.byteValue`.
+    #[must_use]
+    #[expect(clippy::cast_possible_truncation)]
+    pub const fn as_numeric_byte(&self) -> Option<i8> {
+        match *self {
+            Self::Byte(byte) => Some(byte),
+            Self::Short(short) => Some(short as i8),
+            Self::Int(int) => Some(int as i8),
+            Self::Long(long) => Some(long as i8),
+            Self::Float(float) => Some(float.floor() as i32 as i8),
+            Self::Double(double) => Some(double.floor() as i32 as i8),
+            _ => None,
+        }
+    }
+
+    /// Converts any numeric tag to a long, `NumericTag.longValue`.
+    #[must_use]
+    #[expect(clippy::cast_possible_truncation)]
+    pub fn as_numeric_long(&self) -> Option<i64> {
+        match *self {
+            Self::Byte(byte) => Some(byte.into()),
+            Self::Short(short) => Some(short.into()),
+            Self::Int(int) => Some(int.into()),
+            Self::Long(long) => Some(long),
+            Self::Float(float) => Some(float.floor() as i64),
+            Self::Double(double) => Some(double.floor() as i64),
+            _ => None,
+        }
+    }
+
+    /// Converts any numeric tag to a double, `NumericTag.doubleValue`.
+    #[must_use]
+    #[expect(clippy::cast_precision_loss)]
+    pub fn as_numeric_double(&self) -> Option<f64> {
+        match *self {
+            Self::Byte(byte) => Some(byte.into()),
+            Self::Short(short) => Some(short.into()),
+            Self::Int(int) => Some(int.into()),
+            Self::Long(long) => Some(long as f64),
+            Self::Float(float) => Some(float.into()),
+            Self::Double(double) => Some(double),
+            _ => None,
+        }
+    }
+
     /// Converts any numeric tag to a short, `NumericTag.shortValue`.
     #[must_use]
     #[expect(clippy::cast_possible_truncation)]

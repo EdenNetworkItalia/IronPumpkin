@@ -206,6 +206,7 @@ pub fn open(
     inventory: &Arc<MinecartInventory>,
     title: TextComponent,
     hopper: bool,
+    minecart: Option<&dyn crate::entity::EntityBase>,
 ) -> bool {
     if !player.is_spectator() {
         let world = entity.world.load();
@@ -213,6 +214,9 @@ pub fn open(
             world: Some(&world),
             position: Some(entity.pos.load()),
             this_entity: Some(player.as_ref()),
+            // `ContainerEntity.unpackChestVehicleLootTable`: a container minecart is the
+            // attacking entity of the roll.
+            killer_entity: minecart,
             luck: player
                 .living_entity
                 .get_attribute_value(&pumpkin_data::attributes::Attributes::LUCK)

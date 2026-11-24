@@ -49,7 +49,11 @@ impl CakeBlock {
             1,
         );
         player.hunger_manager.eat(player, 2, 0.4);
-        world.emit_game_event(GameEvent::Eat.name(), location.to_centered_f64());
+        world.emit_game_event_by(
+            GameEvent::Eat.name(),
+            location.to_centered_f64(),
+            &player.living_entity.entity,
+        );
 
         let mut properties = CakeLikeProperties::from_state_id(state_id);
         if properties.bites < 6 {
@@ -65,7 +69,11 @@ impl CakeBlock {
                 Block::AIR.default_state.id,
                 BlockFlags::NOTIFY_ALL,
             );
-            world.emit_game_event(GameEvent::BlockDestroy.name(), location.to_centered_f64());
+            world.emit_game_event_by(
+                GameEvent::BlockDestroy.name(),
+                location.to_centered_f64(),
+                &player.living_entity.entity,
+            );
         }
         BlockActionResult::Success
     }

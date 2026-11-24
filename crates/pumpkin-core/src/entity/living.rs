@@ -34,7 +34,7 @@ use crate::entity::mob::equipment::DEFAULT_EQUIPMENT_DROP_CHANCE;
 use crate::entity::mob::neutral::find_by_uuid;
 use crate::entity::player::statistics::{CustomStatistic, StatisticCategory};
 use crate::server::Server;
-use crate::world::loot::LootContextParameters;
+use crate::world::loot::{LootContextParameters, player_luck};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::attributes::Attributes;
@@ -2969,9 +2969,21 @@ impl LivingEntity {
             let is_thundering = world.is_thundering();
 
             let has_player_kill = self.last_hurt_by_player_memory_time.load(Relaxed) > 0;
+            let last_damage_player = has_player_kill
+                .then(|| self.get_last_hurt_by_player())
+                .flatten();
 
+            // `LivingEntity.dropFromLootTable`: a player kill sets the player and its luck.
             let params = LootContextParameters {
-                killed_by_player: Some(has_player_kill),
+                luck: last_damage_player.as_deref().map_or(0.0, player_luck),
+                last_damage_player: last_damage_player
+                    .as_deref()
+                    .map(|player| player as &dyn EntityBase),
+                damage_source: Some(crate::world::loot::LootDamageSource {
+                    damage_type,
+                    attacker: killer,
+                    direct: source,
+                }),
                 world: Some(&world),
                 this_entity: Some(dyn_self.as_ref()),
                 killer_entity: killer,
@@ -3003,7 +3015,7 @@ impl LivingEntity {
 
             // Award experience
             if perished
-                && params.killed_by_player.unwrap_or(false)
+                && has_player_kill
                 && world.level_info.load().game_rules.mob_drops
                 && dyn_self.should_drop_experience()
             {
@@ -3268,12 +3280,10 @@ impl LivingEntity {
             });
         let world = self.entity.world.load();
         if let Some(loot_table) = world.get_loot_table(&key) {
-            let seed = mob
-                .map(|mob| mob.death_loot_table_seed.load(Relaxed))
-                .filter(|seed| *seed != 0)
-                .unwrap_or_else(rand::random);
+            // `LivingEntity.getLootTableSeed`: 0 is no seed, so the roll draws from the sequence.
+            let seed = mob.map_or(0, |mob| mob.death_loot_table_seed.load(Relaxed));
             let pos = self.entity.block_pos.load();
-            for stack in crate::world::loot::generate_loot_from_handle(&loot_table, seed, params) {
+            for stack in crate::world::loot::roll_loot(&loot_table, seed, params) {
                 world.drop_stack(&pos, stack);
             }
         }

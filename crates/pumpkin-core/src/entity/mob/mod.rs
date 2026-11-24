@@ -1361,8 +1361,7 @@ pub(crate) fn drop_from_gift_loot_table(
         this_entity: Some(this_entity),
         ..Default::default()
     };
-    let drops =
-        crate::world::loot::generate_loot_from_handle(&table, mob.get_random().random(), &params);
+    let drops = crate::world::loot::roll_loot(&table, 0, &params);
     let mut dropped = false;
     for stack in drops {
         let mut drop_event =

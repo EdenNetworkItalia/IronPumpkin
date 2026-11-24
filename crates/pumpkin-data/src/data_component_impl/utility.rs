@@ -170,7 +170,8 @@ impl CookingFuelImpl {
             NbtTag::Compound(compound) => {
                 let burn_time = if let Some(id) = compound.get_string("burn_time") {
                     IntProvider::Id(Cow::Owned(id.to_string()))
-                } else if let Some(val) = compound.get("burn_time").and_then(NbtTag::extract_int) {
+                } else if let Some(val) = compound.get("burn_time").and_then(NbtTag::as_numeric_int)
+                {
                     IntProvider::Inline(val)
                 } else {
                     return None;
@@ -180,7 +181,7 @@ impl CookingFuelImpl {
                     FloatProvider::Id(Cow::Owned(id.to_string()))
                 } else if let Some(val) = compound
                     .get("speed_multiplier")
-                    .and_then(NbtTag::extract_float)
+                    .and_then(NbtTag::as_numeric_float)
                 {
                     FloatProvider::Inline(val)
                 } else {
@@ -264,7 +265,7 @@ impl DyeImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let color = if let Some(s) = data.extract_string() {
             crate::dye_color::DyeColor::by_name(s)?
-        } else if let Some(id) = data.extract_int() {
+        } else if let Some(id) = data.as_numeric_int() {
             crate::dye_color::DyeColor::by_id(id as u8)?
         } else {
             return None;
@@ -361,7 +362,7 @@ impl BrewingFuelImpl {
         }
         let uses = if let Some(id) = compound.get_string("uses") {
             IntProvider::Id(Cow::Owned(id.to_string()))
-        } else if let Some(val) = compound.get("uses").and_then(NbtTag::extract_int) {
+        } else if let Some(val) = compound.get("uses").and_then(NbtTag::as_numeric_int) {
             IntProvider::Inline(val)
         } else {
             return None;
@@ -370,7 +371,7 @@ impl BrewingFuelImpl {
             FloatProvider::Id(Cow::Owned(id.to_string()))
         } else if let Some(val) = compound
             .get("speed_multiplier")
-            .and_then(NbtTag::extract_float)
+            .and_then(NbtTag::as_numeric_float)
         {
             FloatProvider::Inline(val)
         } else {
@@ -430,7 +431,7 @@ pub struct DyedColorImpl {
 }
 impl DyedColorImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|rgb| Self { rgb })
+        data.as_numeric_int().map(|rgb| Self { rgb })
     }
 }
 impl DataComponentImpl for DyedColorImpl {
@@ -449,7 +450,7 @@ pub struct MapIdImpl {
 }
 impl MapIdImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|id| Self { id })
+        data.as_numeric_int().map(|id| Self { id })
     }
 }
 impl DataComponentImpl for MapIdImpl {
@@ -498,7 +499,7 @@ impl MapPostProcessingImpl {
 
     #[must_use]
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        if let Some(val) = data.extract_int() {
+        if let Some(val) = data.as_numeric_int() {
             let processing = match val {
                 0 => Some(MapPostProcessing::Lock),
                 1 => Some(MapPostProcessing::Scale),
@@ -979,9 +980,9 @@ impl FireworksImpl {
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         let compound = tag.extract_compound()?;
         let flight_duration = compound
-            .get_byte("flight_duration")
+            .get_numeric_byte("flight_duration")
             .map(i32::from)
-            .or_else(|| compound.get_int("flight_duration"))
+            .or_else(|| compound.get_numeric_int("flight_duration"))
             .unwrap_or(1);
         let mut explosions = Vec::new();
         if let Some(list) = compound.get_list("explosions") {

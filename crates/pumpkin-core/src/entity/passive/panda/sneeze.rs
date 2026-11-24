@@ -13,7 +13,7 @@ use crate::entity::EntityBase;
 use crate::entity::ageable::AgeableMob;
 use crate::entity::ai::goal::{Goal, GoalReach, to_goal_ticks};
 use crate::entity::mob::Mob;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, roll_loot};
 
 /// `PandaSneezeGoal.canUse`: a weak baby sneezes on one in this many `nextInt` rolls.
 const WEAK_BABY_SNEEZE_BOUND: i32 = 500;
@@ -105,7 +105,7 @@ impl PandaEntity {
             }
         }
 
-        self.drop_sneeze_gift(self.get_random().random());
+        self.drop_sneeze_gift(0);
     }
 
     fn roll_sneeze_gift(&self, seed: i64) -> Vec<ItemStack> {
@@ -119,7 +119,7 @@ impl PandaEntity {
             this_entity: Some(self),
             ..Default::default()
         };
-        generate_loot_from_handle(&table, seed, &params)
+        roll_loot(&table, seed, &params)
     }
 
     /// The end of vanilla `afterSneeze`. A plugin can cancel each stack through `EntityDropItemEvent`.
@@ -257,7 +257,8 @@ mod tests {
         let folder = tempfile::tempdir()?;
         let world = world(&folder);
         let panda = spawn_panda(&world, 0.5, 0.5);
-        let winning_seed = (0..100_000)
+        // The seed 0 is no seed: it rolls from the random sequence.
+        let winning_seed = (1..100_000)
             .find(|seed| !panda.roll_sneeze_gift(*seed).is_empty())
             .ok_or("no seed wins the gift")?;
         let gift = panda.roll_sneeze_gift(winning_seed);

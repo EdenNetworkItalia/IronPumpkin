@@ -55,6 +55,7 @@ pub mod loom_screen_handler;
 pub mod merchant;
 pub mod mount_screen_handler;
 pub mod player;
+pub mod recipe_index;
 pub mod screen_handler;
 pub mod slot;
 pub mod smithing_table_screen_handler;

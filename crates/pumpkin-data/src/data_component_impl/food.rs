@@ -23,8 +23,8 @@ pub struct FoodImpl {
 impl FoodImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
-        let nutrition = compound.get_int("nutrition")?;
-        let saturation = compound.get_float("saturation")?;
+        let nutrition = compound.get_numeric_int("nutrition")?;
+        let saturation = compound.get_numeric_float("saturation")?;
         let can_always_eat = compound.get_bool("can_always_eat").unwrap_or(false);
         Some(Self {
             nutrition,
@@ -65,8 +65,8 @@ impl StatusEffectInstance {
     pub fn read_data(nbt: &NbtTag) -> Option<Self> {
         let compound = nbt.extract_compound()?;
         let effect_id = Cow::Owned(compound.get_string("id")?.to_string());
-        let amplifier = compound.get_int("amplifier")?;
-        let duration = compound.get_int("duration")?;
+        let amplifier = compound.get_numeric_int("amplifier")?;
+        let duration = compound.get_numeric_int("duration")?;
         let ambient = compound.get_bool("ambient")?;
         let show_particles = compound.get_bool("show_particles")?;
         let show_icon = compound.get_bool("show_icon")?;
@@ -227,7 +227,7 @@ impl ConsumeEffect {
             }
             "clear_all_effects" => Some(Self::ClearAllEffects),
             "teleport_randomly" => {
-                let dst = compound.get_float("diameter")?;
+                let dst = compound.get_numeric_float("diameter")?;
                 Some(Self::TeleportRandomly(dst))
             }
             "play_sound" => {
@@ -235,7 +235,7 @@ impl ConsumeEffect {
                 Some(Self::PlaySound(sound))
             }
             "apply_effects" => {
-                let probability = compound.get_float("probability")?;
+                let probability = compound.get_numeric_float("probability")?;
                 let effects_vec: Vec<StatusEffectInstance> = compound
                     .get_list("effects")?
                     .iter()
@@ -333,7 +333,7 @@ impl ConsumableImpl {
     }
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
-        let consume_seconds = compound.get_float("consume_seconds")?;
+        let consume_seconds = compound.get_numeric_float("consume_seconds")?;
         let animation = compound
             .get_string("animation")?
             .parse::<ConsumeAnimation>()
@@ -423,7 +423,9 @@ impl UseEffectsImpl {
         Some(Self {
             can_sprint: compound.get_bool("can_sprint").unwrap_or(false),
             interact_vibrations: compound.get_bool("interact_vibrations").unwrap_or(true),
-            speed_multiplier: compound.get_float("speed_multiplier").unwrap_or(0.2),
+            speed_multiplier: compound
+                .get_numeric_float("speed_multiplier")
+                .unwrap_or(0.2),
         })
     }
 }
@@ -516,7 +518,7 @@ impl VillagerFoodImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let nutrition = match data {
             NbtTag::Int(n) => *n,
-            NbtTag::Compound(c) => c.get_int("nutrition")?,
+            NbtTag::Compound(c) => c.get_numeric_int("nutrition")?,
             _ => return None,
         };
         Some(Self { nutrition })
@@ -548,7 +550,7 @@ impl UseCooldownImpl {
     }
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
-        let seconds = compound.get_float("seconds")?;
+        let seconds = compound.get_numeric_float("seconds")?;
         let cooldown_group = compound.get_string("cooldown_group").map(|s| s.to_string());
         Some(Self {
             seconds,
@@ -593,7 +595,7 @@ pub struct PotionContentsImpl {
 impl PotionContentsImpl {
     pub fn read_data(tag: &NbtTag) -> Option<Self> {
         let compound = tag.extract_compound()?;
-        let potion_id = if let Some(id) = compound.get_int("potion") {
+        let potion_id = if let Some(id) = compound.get_numeric_int("potion") {
             Some(id)
         } else if let Some(name) = compound.get_string("potion") {
             let name = name.strip_prefix("minecraft:").unwrap_or(name);
@@ -601,7 +603,7 @@ impl PotionContentsImpl {
         } else {
             None
         };
-        let custom_color = compound.get_int("custom_color");
+        let custom_color = compound.get_numeric_int("custom_color");
         let custom_name = compound.get_string("custom_name").map(|s| s.to_string());
         let custom_effects = compound
             .get_list("custom_effects")
@@ -612,12 +614,12 @@ impl PotionContentsImpl {
                         let id: Cow<'static, str> =
                             Cow::Owned(effect_tag.get_string("id")?.to_string());
                         let amplifier = effect_tag
-                            .get_int("amplifier")
-                            .or_else(|| effect_tag.get_byte("amplifier").map(i32::from))
+                            .get_numeric_int("amplifier")
+                            .or_else(|| effect_tag.get_numeric_byte("amplifier").map(i32::from))
                             .unwrap_or(0);
                         let duration = effect_tag
-                            .get_int("duration")
-                            .or_else(|| effect_tag.get_byte("duration").map(i32::from))
+                            .get_numeric_int("duration")
+                            .or_else(|| effect_tag.get_numeric_byte("duration").map(i32::from))
                             .unwrap_or(0);
                         let ambient = effect_tag.get_bool("ambient").unwrap_or(false);
                         let show_particles = effect_tag.get_bool("show_particles").unwrap_or(true);
@@ -701,7 +703,7 @@ pub struct PotionDurationScaleImpl {
 }
 impl PotionDurationScaleImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_float().map(|scale| Self { scale })
+        data.as_numeric_float().map(|scale| Self { scale })
     }
 }
 impl DataComponentImpl for PotionDurationScaleImpl {
@@ -773,7 +775,7 @@ impl SuspiciousStewEffectsImpl {
                         let effect = tag.extract_compound()?;
                         Some(SuspiciousStewEffect {
                             effect: Cow::Owned(effect.get_string("id")?.to_owned()),
-                            duration: effect.get_int("duration").unwrap_or(160),
+                            duration: effect.get_numeric_int("duration").unwrap_or(160),
                         })
                     })
                     .collect(),

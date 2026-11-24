@@ -93,7 +93,11 @@ impl ItemBehaviour for MinecartItem {
             Some(player),
         );
         world.spawn_entity(minecart_entity);
-        world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+        world.emit_game_event_by(
+            GameEvent::EntityPlace.name(),
+            pos,
+            &player.living_entity.entity,
+        );
         item.decrement_unless_creative(player.gamemode.load(), 1);
         BlockActionResult::Success
     }

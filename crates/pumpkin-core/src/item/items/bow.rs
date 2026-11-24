@@ -10,8 +10,6 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::statistic::StatisticCategory;
-use pumpkin_protocol::IdOr;
-use pumpkin_protocol::java::client::play::CSoundEffect;
 use pumpkin_util::{GameMode, Hand};
 
 pub struct BowItem;
@@ -196,16 +194,13 @@ impl BowItem {
         );
 
         let sound_pitch = 1.0 / (rand::random::<f32>() * 0.4 + 1.2) + power * 0.5;
-        let sound_packet = CSoundEffect::new(
-            IdOr::Id(Sound::EntityArrowShoot as u16),
+        world.play_sound_fine(
+            Sound::EntityArrowShoot,
             SoundCategory::Players,
             &player.position(),
             1.0,
             sound_pitch,
-            0,
         );
-        let chunk_pos = player.get_entity().chunk_pos.load();
-        world.broadcast_to_chunk(chunk_pos, &sound_packet);
     }
 
     /// Fire an arrow from the bow with explicit critical flag

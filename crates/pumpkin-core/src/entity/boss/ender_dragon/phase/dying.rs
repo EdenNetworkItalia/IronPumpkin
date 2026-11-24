@@ -2,8 +2,8 @@ use super::EnderDragonPhase;
 use crate::entity::boss::ender_dragon::{DEATH_TIMER_MAX, EnderDragonEntity, Vector3Ext};
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use pumpkin_data::particle::Particle;
-use pumpkin_data::sound::{Sound, SoundCategory};
-use pumpkin_util::math::{vector2::Vector2, vector3::Vector3};
+use pumpkin_data::world::WorldEvent;
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2, vector3::Vector3};
 
 pub struct DyingPhase;
 
@@ -83,9 +83,14 @@ impl super::Phase for DyingPhase {
             }
         }
 
-        // 3. Play death sound at tick 1
-        if death_time == 1 {
-            world.play_sound(Sound::EntityEnderDragonDeath, SoundCategory::Hostile, &pos);
+        // 3. The death sound is a global level event, `ServerLevel.globalLevelEvent(1028, ..)`:
+        // every player hears it, not only the players within 16 blocks.
+        if death_time == 1 && !entity.is_silent() {
+            world.sync_global_world_event(
+                WorldEvent::SoundDragonDeath,
+                BlockPos::floored_v(pos),
+                0,
+            );
         }
 
         // 4. Explosion particles matching doClientTick (every 10 ticks and during final ticks)
