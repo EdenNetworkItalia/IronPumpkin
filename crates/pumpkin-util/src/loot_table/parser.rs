@@ -506,7 +506,7 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                                 .unwrap_or(false),
                         }
                     }
-                    "furnace_smelt" => LootFunctionKind::FurnaceSmelt,
+                    "furnace_smelt" => furnace_smelt(function),
                     "apply_bonus" => {
                         let formula = function.get("formula").and_then(Value::as_str)?;
                         let parameters = function.get("parameters");
@@ -586,5 +586,15 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                 })
             })
             .collect()
+    }
+}
+
+/// Vanilla `SmeltItemFunction.MAP_CODEC`: `use_input_count` defaults to `true`.
+fn furnace_smelt(function: &Value) -> LootFunctionKind {
+    LootFunctionKind::FurnaceSmelt {
+        use_input_count: function
+            .get("use_input_count")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
     }
 }

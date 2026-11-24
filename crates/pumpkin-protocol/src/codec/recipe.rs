@@ -1,9 +1,12 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
-use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name};
+use pumpkin_data::dynamic::{DynamicTaggable, data_pack_item_tag, namespaced_name, tag_ids};
 use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::tag::RegistryKey;
+use pumpkin_nbt::compound::NbtCompound;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedRecipeIngredient {
     Simple(String),
     Tagged(String),
@@ -13,17 +16,66 @@ pub enum OwnedRecipeIngredient {
 impl OwnedRecipeIngredient {
     #[must_use]
     pub fn match_item(&self, item: &Item) -> bool {
+        // An id without a namespace is in `minecraft`, as `Identifier.parse` reads it.
+        let name = namespaced_name(item.registry_key);
+        match self {
+            Self::Simple(id) => namespaced_name(id) == name,
+            Self::Tagged(tag) => {
+                item.has_tag_dynamic(tag)
+                    || data_pack_item_tag(tag).is_some_and(|ids| ids.contains(&item.id))
+            }
+            Self::OneOf(ids) => ids.iter().any(|id| namespaced_name(id) == name),
+        }
+    }
+
+    /// Vanilla `Ingredient.testOptionalIngredient`: an absent ingredient takes only an empty
+    /// slot, which holds air.
+    #[must_use]
+    pub fn match_optional(ingredient: Option<&Self>, item: &Item) -> bool {
+        ingredient.map_or(item.id == Item::AIR.id, |ingredient| {
+            ingredient.match_item(item)
+        })
+    }
+
+    /// The items that [`Self::match_item`] accepts, in tag order and without duplicates. A tag
+    /// resolves through the server's tag lookup, so a mod tag and the custom members of a tag
+    /// are in the list.
+    #[must_use]
+    pub fn items(&self) -> Vec<&'static Item> {
+        let mut items: Vec<&'static Item> = Vec::new();
+        let mut push = |item: &'static Item| {
+            if !items.iter().any(|known| known.id == item.id) {
+                items.push(item);
+            }
+        };
         match self {
             Self::Simple(id) => {
-                let name = namespaced_name(item.registry_key);
-                name == *id
+                if let Some(item) = Item::from_registry_key(id) {
+                    push(item);
+                }
             }
-            Self::Tagged(tag) => item.has_tag_dynamic(tag),
+            Self::Tagged(tag) => {
+                if let Some((generated, custom)) = tag_ids(RegistryKey::Item, tag) {
+                    for item in generated
+                        .iter()
+                        .chain(custom)
+                        .filter_map(|&id| Item::from_id(id))
+                    {
+                        push(item);
+                    }
+                } else if let Some(ids) = data_pack_item_tag(tag) {
+                    for item in ids.iter().filter_map(|&id| Item::from_id(id)) {
+                        push(item);
+                    }
+                }
+            }
             Self::OneOf(ids) => {
-                let name = namespaced_name(item.registry_key);
-                ids.iter().any(|id| *id == name)
+                for item in ids.iter().filter_map(|id| Item::from_registry_key(id)) {
+                    push(item);
+                }
             }
         }
+        items
     }
 }
 
@@ -31,7 +83,29 @@ impl OwnedRecipeIngredient {
 pub struct OwnedRecipeResult {
     pub item_id: String,
     pub count: u8,
-    // TODO: Add components/enchantments if needed for the display result
+    /// The `components` of the `ItemStackTemplate`, in NBT form.
+    pub components: Option<NbtCompound>,
+}
+
+impl OwnedRecipeResult {
+    /// The result stack with its components, as vanilla `ItemStackTemplate.create`. It is empty
+    /// when the item does not exist, and has no components when they do not decode.
+    #[must_use]
+    pub fn to_stack(&self) -> ItemStack {
+        if let Some(components) = &self.components {
+            let mut compound = NbtCompound::new();
+            compound.put_string("id", self.item_id.clone());
+            compound.put_int("count", i32::from(self.count));
+            compound.put_compound("components", components.clone());
+            if let Some(stack) = ItemStack::read_item_stack(&compound) {
+                return stack;
+            }
+        }
+        Item::from_registry_key(&self.item_id).map_or_else(
+            || ItemStack::EMPTY.clone(),
+            |item| ItemStack::new(self.count, item),
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -76,9 +150,9 @@ pub enum OwnedCookingRecipeType {
 #[derive(Clone, Debug)]
 pub struct OwnedBrewingRecipe {
     pub recipe_id: String,
-    pub input_item: String,
+    pub input_item: OwnedRecipeIngredient,
     pub input_potion: Option<String>,
-    pub reagent: String,
+    pub reagent: OwnedRecipeIngredient,
     pub output_item: String,
     pub output_potion: Option<String>,
 }
@@ -94,9 +168,11 @@ pub struct OwnedStonecutterRecipe {
 #[derive(Clone, Debug)]
 pub struct OwnedSmithingTransformRecipe {
     pub recipe_id: String,
-    pub template: OwnedRecipeIngredient,
+    /// Optional, as in vanilla `SmithingTransformRecipe`: without it the slot must be empty.
+    pub template: Option<OwnedRecipeIngredient>,
     pub base: OwnedRecipeIngredient,
-    pub addition: OwnedRecipeIngredient,
+    /// Optional, as in vanilla `SmithingTransformRecipe`: without it the slot must be empty.
+    pub addition: Option<OwnedRecipeIngredient>,
     pub result: OwnedRecipeResult,
 }
 
@@ -124,6 +200,12 @@ pub enum DynamicRecipe {
     SmithingTransform(OwnedSmithingTransformRecipe),
     SmithingTrim(OwnedSmithingTrimRecipe),
     SpecialCrafting(OwnedSpecialCraftingRecipe),
+    /// A recipe that vanilla `RecipeManager.finalizeRecipeLoading` ignores. Vanilla keeps it in
+    /// the recipe map (`RecipeManager.java:63-90`), so its id still replaces a lower recipe
+    /// with that id, but no lookup, sync or recipe book holds it.
+    Ignored {
+        recipe_id: String,
+    },
 }
 
 impl DynamicRecipe {
@@ -145,6 +227,39 @@ impl DynamicRecipe {
             Self::SmithingTransform(r) => Some(&r.recipe_id),
             Self::SmithingTrim(r) => Some(&r.recipe_id),
             Self::SpecialCrafting(r) => Some(&r.recipe_id),
+            Self::Ignored { recipe_id } => Some(recipe_id),
         }
+    }
+}
+
+/// A vanilla `RecipePropertySet` to sync: the items of `ingredients`.
+pub struct PropertySetSync<'a> {
+    /// The `minecraft:recipe_property_set` key, for example `minecraft:furnace_input`.
+    pub key: &'a str,
+    pub ingredients: &'a [OwnedRecipeIngredient],
+}
+
+/// A stonecutter recipe to sync.
+pub struct StonecutterSync<'a> {
+    pub ingredient: &'a OwnedRecipeIngredient,
+    /// The result with its components, which vanilla `ItemStackTemplate.STREAM_CODEC` sends.
+    pub result: ItemStack,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OwnedRecipeIngredient;
+    use pumpkin_data::item::Item;
+
+    #[test]
+    fn an_id_without_a_namespace_matches_the_vanilla_item() {
+        let simple = OwnedRecipeIngredient::Simple("stone".to_string());
+        assert!(simple.match_item(&Item::STONE));
+        assert!(!simple.match_item(&Item::DIRT));
+        let one_of = OwnedRecipeIngredient::OneOf(vec!["dirt".to_string()]);
+        assert!(one_of.match_item(&Item::DIRT));
+        assert!(
+            OwnedRecipeIngredient::Simple("minecraft:stone".to_string()).match_item(&Item::STONE)
+        );
     }
 }

@@ -254,7 +254,9 @@ impl Generator {
                         let formula = bonus_tokens(formula);
                         quote! { LootFunctionKind::ApplyBonus(#formula) }
                     }
-                    LootFunctionKind::FurnaceSmelt => quote! { LootFunctionKind::FurnaceSmelt },
+                    LootFunctionKind::FurnaceSmelt { use_input_count } => {
+                        quote! { LootFunctionKind::FurnaceSmelt { use_input_count: #use_input_count } }
+                    }
                     LootFunctionKind::SetStewEffect(ref effects) => {
                         let effects = effects.iter().map(|effect| {
                             let name = effect.effect.as_ref();

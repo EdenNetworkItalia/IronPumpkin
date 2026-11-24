@@ -485,11 +485,7 @@ impl BedrockClient {
                                     )
                                     .and_then(|(out_id, out_aux)| {
                                         available.iter().position(|r| {
-                                            let item_id = r
-                                                .result_id
-                                                .strip_prefix("minecraft:")
-                                                .unwrap_or(&r.result_id);
-                                            pumpkin_data::item::Item::from_registry_key(item_id)
+                                            r.item()
                                                 .and_then(|item| {
                                                     pumpkin_data::item::JavaToBedrockItemMapping::from_java_item_id(
                                                         item.id,
@@ -1741,7 +1737,8 @@ mod tests {
         };
 
         // Stonecutter
-        let stonecutter = StonecutterScreenHandler::new(1, &inventory, None);
+        let stonecutter =
+            StonecutterScreenHandler::new(1, &inventory, pumpkin_data::dynamic::ContentIds::Real);
         assert_eq!(
             get_output_screen_slot(
                 &stonecutter,

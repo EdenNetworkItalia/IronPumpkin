@@ -87,7 +87,7 @@ impl WrittenBookContentImpl {
             if let Some(s) = c.get_string("author") {
                 author = s.to_string();
             }
-            generation = c.get_int("generation").unwrap_or(0).clamp(0, 3);
+            generation = c.get_numeric_int("generation").unwrap_or(0).clamp(0, 3);
             if let Some(NbtTag::List(l)) = c.get("pages") {
                 for item in l {
                     if let Some(page) = read_component(item) {

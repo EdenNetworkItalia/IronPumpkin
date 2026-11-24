@@ -5,9 +5,9 @@ use crate::world::World;
 use pumpkin_data::Block;
 use pumpkin_data::block_properties::CampfireLikeProperties;
 use pumpkin_data::entity::EntityType;
-use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient};
+use pumpkin_data::recipes::CookingRecipeKind;
+use pumpkin_inventory::recipe_index;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::math::position::BlockPos;
@@ -21,6 +21,8 @@ pub struct CampfireBlockEntity {
     pub items: [Arc<Mutex<ItemStack>>; Self::SLOT_COUNT],
     pub cooking_times: [Mutex<i32>; Self::SLOT_COUNT],
     pub cooking_total_times: [Mutex<i32>; Self::SLOT_COUNT],
+    /// The recipe hint of vanilla `CampfireBlock` `quickCheck`, one per block entity.
+    pub last_recipe: Mutex<Option<String>>,
 }
 
 impl BlockEntity for CampfireBlockEntity {
@@ -99,6 +101,7 @@ impl BlockEntity for CampfireBlockEntity {
 
         let mut changed = false;
         let mut completed = false;
+        let recipes = recipe_index::current();
 
         for slot in 0..Self::SLOT_COUNT {
             let stack = self.items[slot]
@@ -109,18 +112,18 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let Some(recipe) =
-                get_cooking_recipe_with_ingredient(stack.item, CookingRecipeKind::CampfireCooking)
-            else {
-                continue;
-            };
+            // Vanilla `CampfireBlockEntity.cookTick` cooks the slot without a recipe too and
+            // drops the raw item, for example after a reload removed its recipe.
+            let recipe = self.find_recipe(&recipes, stack.item);
 
             let total = {
                 let mut total = self.cooking_total_times[slot]
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if *total <= 0 {
-                    let mut cooking_time = recipe.cookingtime;
+                if *total <= 0
+                    && let Some(recipe) = recipe
+                {
+                    let mut cooking_time = recipe.cooking_time;
                     if let Some(server) = world.server.upgrade() {
                         let mut event = crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
                             self.position,
@@ -153,11 +156,11 @@ impl BlockEntity for CampfireBlockEntity {
                 continue;
             }
 
-            let Some(result_item) = Item::from_registry_key(recipe.result.id) else {
+            let mut result =
+                recipe.map_or_else(|| stack.clone(), |recipe| recipe.result.assemble());
+            if result.is_empty() {
                 continue;
-            };
-
-            let mut result = ItemStack::new(recipe.result.count, result_item);
+            }
             if let Some(server) = world.server.upgrade() {
                 let mut event = crate::plugin::api::events::block::block_cook::BlockCookEvent::new(
                     self.position,
@@ -253,6 +256,30 @@ impl CampfireBlockEntity {
     pub const ID: &'static str = "minecraft:campfire";
     pub const SLOT_COUNT: usize = 4;
 
+    /// Vanilla `quickCheck.getRecipeFor` (`CampfireBlockEntity.java:69`): the last recipe while
+    /// it still takes `item`, else the first recipe. The found recipe becomes the last recipe.
+    fn find_recipe<'a>(
+        &self,
+        recipes: &'a recipe_index::RecipeIndex,
+        item: &pumpkin_data::item::Item,
+    ) -> Option<&'a recipe_index::CookingEntry> {
+        let mut last = self
+            .last_recipe
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let recipe = recipes.cooking_recipe_with_hint(
+            item,
+            &CookingRecipeKind::CampfireCooking,
+            last.as_deref(),
+        );
+        if let Some(recipe) = recipe
+            && last.as_deref() != Some(recipe.recipe_id.as_str())
+        {
+            *last = Some(recipe.recipe_id.clone());
+        }
+        recipe
+    }
+
     #[must_use]
     pub fn new(position: BlockPos) -> Self {
         Self {
@@ -260,6 +287,7 @@ impl CampfireBlockEntity {
             items: std::array::from_fn(|_| Arc::new(Mutex::new(ItemStack::EMPTY.clone()))),
             cooking_times: std::array::from_fn(|_| Mutex::new(0)),
             cooking_total_times: std::array::from_fn(|_| Mutex::new(0)),
+            last_recipe: Mutex::new(None),
         }
     }
 
@@ -365,6 +393,7 @@ pub fn build_campfire_actor(position: BlockPos, items: &[ItemStack; 4]) -> NbtCo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_data::item::Item;
 
     #[test]
     fn campfire_actor_builder() {

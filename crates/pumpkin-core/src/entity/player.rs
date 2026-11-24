@@ -9110,6 +9110,13 @@ impl InventoryPlayer for Player {
         self
     }
 
+    fn content_ids(&self) -> pumpkin_data::dynamic::ContentIds {
+        match self.client.as_ref() {
+            ClientPlatform::Java(java) => java.encoding_key().content_ids(),
+            ClientPlatform::Bedrock(_) => pumpkin_data::dynamic::ContentIds::Real,
+        }
+    }
+
     fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
         self.drop_item(item);
     }

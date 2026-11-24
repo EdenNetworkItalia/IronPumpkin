@@ -72,12 +72,11 @@ impl BrewingStandBlockEntity {
         let Some(server) = world.server.upgrade() else {
             return false;
         };
-        let key = format!("minecraft:{}", stack.get_item().registry_key);
         server
             .recipe_manager
             .get_dynamic_recipes_internal()
             .iter()
-            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.reagent == key))
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.reagent.match_item(stack.get_item())))
     }
 
     fn is_dynamic_potion_input(&self, stack: &ItemStack) -> bool {
@@ -87,12 +86,11 @@ impl BrewingStandBlockEntity {
         let Some(server) = world.server.upgrade() else {
             return false;
         };
-        let key = format!("minecraft:{}", stack.get_item().registry_key);
         server
             .recipe_manager
             .get_dynamic_recipes_internal()
             .iter()
-            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.input_item == key))
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.input_item.match_item(stack.get_item())))
     }
 
     /// Vanilla `setChanged` only persists the entity, comparators react to slot changes instead.
@@ -144,12 +142,10 @@ impl BrewingStandBlockEntity {
             // 2. Check dynamic brewing recipes from loaded datapacks
             if let Some(server) = world.server.upgrade() {
                 let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                let slot_key = format!("minecraft:{}", slot.get_item().registry_key);
-                let ing_key = format!("minecraft:{}", ingredient.get_item().registry_key);
                 for dyn_recipe in &dynamic_recipes {
                     if let DynamicRecipe::Brewing(r) = dyn_recipe
-                        && r.input_item == slot_key
-                        && r.reagent == ing_key
+                        && r.input_item.match_item(slot.get_item())
+                        && r.reagent.match_item(ingredient.get_item())
                     {
                         if let Some(req_pot) = &r.input_potion {
                             let current_pot = potion_id
@@ -233,12 +229,10 @@ impl BrewingStandBlockEntity {
                 // 2. Try dynamic brewing recipes from loaded datapacks
                 if let Some(server) = world.server.upgrade() {
                     let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                    let slot_key = format!("minecraft:{}", slot.get_item().registry_key);
-                    let ing_key = format!("minecraft:{}", ingredient.get_item().registry_key);
                     for dyn_recipe in &dynamic_recipes {
                         if let DynamicRecipe::Brewing(r) = dyn_recipe
-                            && r.input_item == slot_key
-                            && r.reagent == ing_key
+                            && r.input_item.match_item(slot.get_item())
+                            && r.reagent.match_item(ingredient.get_item())
                         {
                             if let Some(req_pot) = &r.input_potion {
                                 let current_pot = potion_id

@@ -6,7 +6,7 @@ use pumpkin_data::{
     effect::StatusEffect,
     fluid::Fluid,
     game_event::GameEvent,
-    recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
+    recipes::CookingRecipeKind,
     tag::{self, Taggable},
     world::WorldEvent,
 };
@@ -75,10 +75,9 @@ impl BlockBehaviour for CampfireBlock {
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
         if let Some(block_entity) = args.world.get_block_entity(args.position)
             && let Some(campfire) = block_entity.as_any().downcast_ref::<CampfireBlockEntity>()
-            && let Some(recipe) = get_cooking_recipe_with_ingredient(
-                args.item_stack.item,
-                CookingRecipeKind::CampfireCooking,
-            )
+            && let Some(recipe) = pumpkin_inventory::recipe_index::current()
+                .cooking_recipe(args.item_stack.item, &CookingRecipeKind::CampfireCooking)
+                .cloned()
         {
             for slot in 0..CampfireBlockEntity::SLOT_COUNT {
                 let mut stored = campfire.items[slot]
@@ -96,7 +95,7 @@ impl BlockBehaviour for CampfireBlock {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
                 *campfire.cooking_total_times[slot]
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cookingtime;
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
                 drop(stored);
 
                 args.player.increment_stat(

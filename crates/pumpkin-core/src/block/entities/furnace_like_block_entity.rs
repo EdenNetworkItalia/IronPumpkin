@@ -1,4 +1,5 @@
-use pumpkin_data::{item_stack::ItemStack, recipes::CookingRecipe};
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_inventory::recipe_index::CookingEntry;
 
 use crate::block::entities::{BlockEntity, PropertyDelegate};
 pub use pumpkin_inventory::ExperienceContainer;
@@ -14,11 +15,16 @@ pub trait CookingBlockEntityBase:
     fn get_lit_total_time(&self) -> u16;
 
     /// Track that a recipe was used (for XP calculation on extraction)
-    /// Uses the result item ID as the recipe identifier
-    fn add_recipe_used(&self, recipe: &CookingRecipe);
-    /// Extract and reset accumulated experience, returning the total as an integer
-    /// Calculates XP from tracked recipes and clears the `recipes_used` map
-    fn extract_experience_from_recipes(&self) -> i32;
+    fn add_recipe_used(&self, recipe: &CookingEntry);
+    /// Extracts the experience of the used recipes and clears them, as vanilla
+    /// `getRecipesToAwardAndPopExperience` does. `roll` draws the random fraction rounding of
+    /// [`recipes_experience`].
+    fn extract_experience_with(&self, roll: &mut dyn FnMut() -> f32) -> i32;
+
+    /// [`Self::extract_experience_with`] with a random roll.
+    fn extract_experience_from_recipes(&self) -> i32 {
+        self.extract_experience_with(&mut || rand::random::<f32>())
+    }
 
     fn get_input_item(&self) -> ItemStack;
     fn get_fuel_item(&self) -> ItemStack;
@@ -30,8 +36,8 @@ pub trait CookingBlockEntityBase:
     fn set_lit_total_time(&self, total_time: u16);
 
     fn is_burning(&self) -> bool;
-    fn can_accept_recipe_output(&self, recipe: Option<&CookingRecipe>, max_count: u8) -> bool;
-    fn craft_recipe(&self, recipe: Option<&CookingRecipe>) -> bool;
+    fn can_accept_recipe_output(&self, recipe: Option<&CookingEntry>, max_count: u8) -> bool;
+    fn craft_recipe(&self, recipe: Option<&CookingEntry>) -> bool;
 }
 
 #[macro_export]
@@ -99,9 +105,9 @@ macro_rules! impl_cooking_block_entity_base {
                 self.get_lit_time_remaining() > 0
             }
 
-            fn add_recipe_used(&self, recipe: &pumpkin_data::recipes::CookingRecipe) {
+            fn add_recipe_used(&self, recipe: &pumpkin_inventory::recipe_index::CookingEntry) {
                 // Track recipe usage by recipe ID for XP calculation
-                let recipe_id = recipe.recipe_id.to_string();
+                let recipe_id = recipe.recipe_id.clone();
                 let mut recipes = self
                     .recipes_used
                     .lock()
@@ -109,56 +115,54 @@ macro_rules! impl_cooking_block_entity_base {
                 *recipes.entry(recipe_id).or_insert(0) += 1;
             }
 
-            fn extract_experience_from_recipes(&self) -> i32 {
-                // Calculate total XP from tracked recipes and clear the map (vanilla behavior)
+            fn extract_experience_with(&self, roll: &mut dyn FnMut() -> f32) -> i32 {
                 let mut recipes = self
                     .recipes_used
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                let mut total_xp: f32 = 0.0;
-                for (recipe_id, count) in recipes.iter() {
-                    // Look up the recipe's XP value
-                    if let Some(xp) = pumpkin_data::recipes::get_recipe_experience(recipe_id) {
-                        total_xp += xp * (*count as f32);
-                    }
-                }
+                let index = pumpkin_inventory::recipe_index::current();
+                let total_xp =
+                    $crate::block::entities::furnace_like_block_entity::recipes_experience(
+                        recipes.iter().filter_map(|(id, count)| {
+                            Some((*count, index.cooking_experience(id)?))
+                        }),
+                        roll,
+                    );
                 recipes.clear();
-                total_xp.floor() as i32
+                total_xp
             }
 
             fn can_accept_recipe_output(
                 &self,
-                recipe: Option<&pumpkin_data::recipes::CookingRecipe>,
+                recipe: Option<&pumpkin_inventory::recipe_index::CookingEntry>,
                 max_count: u8,
             ) -> bool {
                 let Some(recipe) = recipe else { return false };
                 let Ok(items) = self.items.try_read() else {
                     return false;
                 };
-
-                let is_top_items_empty = items[0].is_empty();
-                let side_item_stack = &items[2];
-
-                if side_item_stack.is_empty() {
-                    return !is_top_items_empty;
+                if items[0].is_empty() {
+                    return false;
                 }
-
-                if let Some(recipe_output_item) = pumpkin_data::item::Item::from_registry_key(
-                    recipe
-                        .result
-                        .id
-                        .strip_prefix("minecraft:")
-                        .unwrap_or(&recipe.result.id),
-                ) && !is_top_items_empty
-                    && recipe_output_item.id == side_item_stack.item.id
-                    && side_item_stack.item_count < max_count
-                    && side_item_stack.item_count < side_item_stack.get_max_stack_size()
-                {
+                // Vanilla `AbstractFurnaceBlockEntity.canBurn`.
+                let result = recipe.result.assemble();
+                if result.is_empty() {
+                    return false;
+                }
+                let output = &items[2];
+                if output.is_empty() {
                     return true;
                 }
-                false
+                if !output.are_items_and_components_equal(&result) {
+                    return false;
+                }
+                let count = u32::from(output.item_count) + u32::from(result.item_count);
+                count <= u32::from(max_count.min(result.get_max_stack_size()))
             }
-            fn craft_recipe(&self, recipe: Option<&pumpkin_data::recipes::CookingRecipe>) -> bool {
+            fn craft_recipe(
+                &self,
+                recipe: Option<&pumpkin_inventory::recipe_index::CookingEntry>,
+            ) -> bool {
                 let can_accept_output =
                     self.can_accept_recipe_output(recipe, self.get_max_count_per_stack());
                 if let Some(recipe) = recipe {
@@ -166,21 +170,16 @@ macro_rules! impl_cooking_block_entity_base {
                         let Ok(mut items) = self.items.try_write() else {
                             return false;
                         };
-                        let Some(output_item) = pumpkin_data::item::Item::from_registry_key(
-                            recipe
-                                .result
-                                .id
-                                .strip_prefix("minecraft:")
-                                .unwrap_or(&recipe.result.id),
-                        ) else {
+                        let output_item_stack = recipe.result.assemble();
+                        if output_item_stack.is_empty() {
                             return false;
-                        };
-                        let output_item_stack = ItemStack::new(recipe.result.count, output_item);
+                        }
 
-                        if items[2].are_equal(ItemStack::EMPTY) {
+                        // Vanilla `AbstractFurnaceBlockEntity.burn`.
+                        if items[2].is_empty() {
                             items[2] = output_item_stack;
                         } else if items[2].are_items_and_components_equal(&output_item_stack) {
-                            items[2].increment(1);
+                            items[2].increment(output_item_stack.item_count);
                         }
 
                         // Track recipe usage for XP calculation (vanilla RecipesUsed format)
@@ -406,18 +405,46 @@ macro_rules! impl_inventory_for_cooking {
         }
 
         impl $struct_name {
+            /// Vanilla `quickCheck.getRecipeFor`: the last recipe if it still takes `item`, else
+            /// the first recipe in vanilla order. The found recipe becomes the last recipe.
+            fn find_recipe<'a>(
+                &self,
+                index: &'a pumpkin_inventory::recipe_index::RecipeIndex,
+                item: &pumpkin_data::item::Item,
+            ) -> Option<&'a pumpkin_inventory::recipe_index::CookingEntry> {
+                let mut last = self
+                    .last_recipe
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let recipe = index.cooking_recipe_with_hint(item, &$recipe_kind, last.as_deref());
+                if let Some(recipe) = recipe
+                    && last.as_deref() != Some(recipe.recipe_id.as_str())
+                {
+                    *last = Some(recipe.recipe_id.clone());
+                }
+                recipe
+            }
+
+            /// Vanilla `AbstractFurnaceBlockEntity.getTotalCookTime`: the cooking time of the
+            /// recipe for `input`, or 200 ticks without a recipe.
+            fn total_cook_time_for(&self, input: &ItemStack) -> u16 {
+                let index = pumpkin_inventory::recipe_index::current();
+                self.find_recipe(&index, input.item).map_or(200, |recipe| {
+                    u16::try_from(recipe.cooking_time.max(0)).unwrap_or(u16::MAX)
+                })
+            }
+
+            /// The reset of vanilla `AbstractFurnaceBlockEntity.setItem` when `input` replaces
+            /// the input item: a new total cooking time and no progress.
+            pub fn reset_cooking(&self, input: &ItemStack) {
+                self.set_cooking_total_time(self.total_cook_time_for(input));
+                self.set_cooking_time_spent(0);
+            }
+
             /// Vanilla `AbstractFurnaceBlockEntity.setItem`: a different input item restarts cooking.
             fn on_stack_set(&self, slot: usize, is_same_item: bool, stack: &ItemStack) {
                 if slot == 0 && !is_same_item {
-                    if let Some(recipe) = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
-                        stack.item,
-                        $recipe_kind,
-                    ) {
-                        self.set_cooking_total_time(recipe.cookingtime as u16);
-                    } else {
-                        self.set_cooking_total_time(0);
-                    }
-                    self.set_cooking_time_spent(0);
+                    self.reset_cooking(stack);
                 }
             }
         }
@@ -447,10 +474,12 @@ macro_rules! impl_block_entity_for_cooking {
 
                 let is_top_items_empty = top_item.is_empty();
 
-                let furnace_recipe = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
-                    top_item.item,
-                    $recipe_kind,
-                );
+                let recipe_index = pumpkin_inventory::recipe_index::current();
+                let furnace_recipe = if is_top_items_empty {
+                    None
+                } else {
+                    self.find_recipe(&recipe_index, top_item.item)
+                };
 
                 let can_accept_output = self
                     .can_accept_recipe_output(furnace_recipe, self.get_max_count_per_stack());
@@ -485,6 +514,22 @@ macro_rules! impl_block_entity_for_cooking {
                         if !burn_cancelled {
                             self.set_lit_time_remaining(burn_ticks);
                             self.set_lit_total_time(burn_ticks);
+                            // Vanilla `AbstractFurnaceBlockEntity.serverTick`
+                            // (`AbstractFurnaceBlockEntity.java:186-190`): lighting takes the
+                            // cook time of the recipe and keeps the progress ratio.
+                            if let Some(recipe) = furnace_recipe {
+                                let total = self.get_cooking_total_time();
+                                let spent = self.get_cooking_time_spent();
+                                if total > 0 && spent < total {
+                                    let ratio = f32::from(spent) / f32::from(total);
+                                    let new_total =
+                                        u16::try_from(recipe.cooking_time.max(0)).unwrap_or(u16::MAX);
+                                    self.set_cooking_total_time(new_total);
+                                    self.set_cooking_time_spent(
+                                        (ratio * f32::from(new_total)).ceil() as u16,
+                                    );
+                                }
+                            }
 
                             if self.is_burning() {
                                 is_dirty = true;
@@ -538,18 +583,20 @@ macro_rules! impl_block_entity_for_cooking {
                         if !start_cancelled {
                             self.cooking_time_spent.fetch_add(1, Ordering::Relaxed);
 
-                            if self.get_cooking_time_spent() == self.get_cooking_total_time() {
+                            if self.get_cooking_time_spent() >= self.get_cooking_total_time() {
                                 self.set_cooking_time_spent(0);
                                 if let Some(cooking_recipe) = furnace_recipe {
-                                    let cooking_total_time = cooking_recipe.cookingtime;
-                                    self.set_cooking_total_time(cooking_total_time as u16);
+                                    let cooking_total_time = cooking_recipe.cooking_time.max(0);
+                                    self.set_cooking_total_time(
+                                        u16::try_from(cooking_total_time).unwrap_or(u16::MAX),
+                                    );
 
                                     let mut smelt_cancelled = false;
                                     if let Some(server) = world.server.upgrade() {
                                         let mut smelt_event = $crate::plugin::api::events::inventory::furnace_smelt::FurnaceSmeltEvent::new(
                                             self.position,
                                             top_item.item.registry_key.to_string(),
-                                            cooking_recipe.result.id.to_string(),
+                                            cooking_recipe.result.item_id.clone(),
                                         );
                                         server.plugin_manager.fire_blocking(&server, &mut smelt_event);
                                         if smelt_event.cancelled {
@@ -647,6 +694,7 @@ macro_rules! impl_block_entity_for_cooking {
                     lit_total_time,
                     lit_time_remaining,
                     recipes_used: std::sync::Mutex::new(recipes_used_map),
+                    last_recipe: std::sync::Mutex::new(None),
                     metadata: $crate::block::entities::ContainerMetadata::from_nbt(nbt),
                 };
                 pumpkin_inventory::sync_read_items_from_nbt(nbt, furnace.items.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));
@@ -775,6 +823,30 @@ macro_rules! impl_block_entity_for_cooking {
             }
         }
     };
+}
+
+/// The experience of the used cooking recipes, as `(count, experience)` pairs.
+///
+/// It is vanilla `AbstractFurnaceBlockEntity.createExperience`
+/// (`AbstractFurnaceBlockEntity.java:442-450`) for each used recipe (`:432-436`): the floor of
+/// `count * experience`, plus 1 when `roll` returns less than the fraction.
+pub fn recipes_experience(
+    recipes: impl IntoIterator<Item = (u32, f32)>,
+    mut roll: impl FnMut() -> f32,
+) -> i32 {
+    recipes
+        .into_iter()
+        .map(|(count, experience)| {
+            let total = count as f32 * experience;
+            let fraction = total - total.floor();
+            let reward = total.floor() as i32;
+            if fraction != 0.0 && roll() < fraction {
+                reward + 1
+            } else {
+                reward
+            }
+        })
+        .sum()
 }
 
 /// Builds the Bedrock block-actor NBT for cooking appliances (Furnace, Smoker, `BlastFurnace`).
