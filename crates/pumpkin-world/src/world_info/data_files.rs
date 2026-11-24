@@ -1,7 +1,9 @@
 use std::{
+    collections::BTreeMap,
     fs::{self, File},
-    io::BufWriter,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use pumpkin_data::game_rules::{GameRule, GameRuleRegistry, GameRuleValue};
@@ -679,6 +681,128 @@ pub fn write_random_sequences_stub(
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
 }
 
+/// The content of `random_sequences.dat`, in the shape of vanilla `RandomSequences.CODEC`.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct RandomSequencesData {
+    pub salt: i32,
+    pub include_world_seed: bool,
+    pub include_sequence_id: bool,
+    /// The 128-bit Xoroshiro state `(lo, hi)` of each sequence, by sequence id.
+    pub sequences: BTreeMap<String, (i64, i64)>,
+    pub data_version: i32,
+}
+
+impl Default for RandomSequencesData {
+    fn default() -> Self {
+        Self {
+            salt: 0,
+            include_world_seed: true,
+            include_sequence_id: true,
+            sequences: BTreeMap::new(),
+            data_version: 0,
+        }
+    }
+}
+
+/// Reads `random_sequences.dat`. A missing or unreadable file gives the defaults. An entry with no
+/// valid `source` is skipped.
+#[must_use]
+pub fn read_random_sequences(level_folder: &Path) -> RandomSequencesData {
+    let path = minecraft_data_dir(level_folder).join("random_sequences.dat");
+    if !path.exists() {
+        return RandomSequencesData::default();
+    }
+    let compound = match File::open(&path)
+        .map_err(|e| e.to_string())
+        .and_then(|f| read_gzip_compound_tag(f).map_err(|e| e.to_string()))
+    {
+        Ok(compound) => compound,
+        Err(e) => {
+            warn!("Failed to read random_sequences.dat, using defaults: {e}");
+            return RandomSequencesData::default();
+        }
+    };
+    let data_compound = compound.get_compound("data");
+    let c = data_compound.as_ref().map_or(&compound, |v| v);
+    let mut data = RandomSequencesData {
+        salt: c.get_int("salt").unwrap_or(0),
+        include_world_seed: c.get_bool("include_world_seed").unwrap_or(true),
+        include_sequence_id: c.get_bool("include_sequence_id").unwrap_or(true),
+        sequences: BTreeMap::new(),
+        data_version: compound.get_int("DataVersion").unwrap_or(0),
+    };
+    if let Some(sequences) = c.get_compound("sequences") {
+        for (id, tag) in &sequences.child_tags {
+            let state = tag
+                .extract_compound()
+                .and_then(|entry| entry.get_long_array("source"))
+                .and_then(|source| match source {
+                    [lo, hi] => Some((*lo, *hi)),
+                    _ => None,
+                });
+            if let Some(state) = state {
+                data.sequences.insert(id.to_string(), state);
+            } else {
+                warn!("random_sequences.dat: skipped the sequence {id}, it has no source");
+            }
+        }
+    }
+    data
+}
+
+/// The number of saves of `random_sequences.dat`, for the name of a temporary file.
+static SAVES: AtomicU64 = AtomicU64::new(0);
+
+/// Writes `random_sequences.dat`. The file is complete or unchanged: a crash during the write
+/// leaves the old file.
+pub fn write_random_sequences(
+    level_folder: &Path,
+    data: &RandomSequencesData,
+) -> Result<(), WorldInfoError> {
+    let dir = ensure_minecraft_data_dir(level_folder)?;
+    let mut sequences = NbtCompound::new();
+    for (id, (lo, hi)) in &data.sequences {
+        let mut entry = NbtCompound::new();
+        entry.put("source", NbtTag::LongArray(vec![*lo, *hi]));
+        sequences.put_compound(id, entry);
+    }
+    let mut inner = NbtCompound::new();
+    inner.put_int("salt", data.salt);
+    // Vanilla leaves a default option out of the file.
+    if !data.include_world_seed {
+        inner.put_bool("include_world_seed", false);
+    }
+    if !data.include_sequence_id {
+        inner.put_bool("include_sequence_id", false);
+    }
+    inner.put_compound("sequences", sequences);
+    let mut root = NbtCompound::new();
+    root.put_int("DataVersion", data.data_version);
+    root.put_compound("data", inner);
+
+    // The whole file is in memory before any file exists, so a failed write never leaves a
+    // truncated file under the final name. The temporary name is unique, so two saves at once
+    // never share a file.
+    let bytes = pumpkin_nbt::nbt_compress::write_gzip_compound_tag_to_bytes(root)
+        .map_err(|e| WorldInfoError::SerializationError(e.to_string()))?;
+    let path = dir.join("random_sequences.dat");
+    let path_new = dir.join(format!(
+        "random_sequences.dat_new.{}.{}",
+        std::process::id(),
+        SAVES.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = (|| {
+        let mut file = File::create(&path_new)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        fs::rename(&path_new, &path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&path_new);
+    }
+    Ok(written?)
+}
+
 pub fn write_scoreboard_stub(level_folder: &Path, data_version: i32) -> Result<(), WorldInfoError> {
     let dir = ensure_minecraft_data_dir(level_folder)?;
     let path = dir.join("scoreboard.dat");
@@ -714,4 +838,136 @@ pub fn write_stopwatches_stub(
     let file = File::create(&path)?;
     pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, file)
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))
+}
+
+#[cfg(test)]
+mod random_sequences_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn written_file(dir: &TempDir) -> NbtCompound {
+        read_gzip_compound_tag(
+            File::open(minecraft_data_dir(dir.path()).join("random_sequences.dat")).unwrap(),
+        )
+        .unwrap()
+    }
+
+    /// The shape of vanilla 26.3 `RandomSequences.CODEC`: `salt`, the `sequences` map of ids to
+    /// a `source` long array `[lo, hi]`, and the two options only when they are not the default.
+    #[test]
+    fn the_file_has_the_vanilla_shape() {
+        let dir = TempDir::new().unwrap();
+        let mut data = RandomSequencesData {
+            salt: -4,
+            data_version: 5023,
+            ..RandomSequencesData::default()
+        };
+        data.sequences
+            .insert("minecraft:blocks/stone".to_string(), (i64::MIN, 7));
+        write_random_sequences(dir.path(), &data).unwrap();
+
+        let root = written_file(&dir);
+        assert_eq!(root.get_int("DataVersion"), Some(5023));
+        let inner = root.get_compound("data").unwrap();
+        assert_eq!(inner.get_int("salt"), Some(-4));
+        assert!(!inner.has("include_world_seed") && !inner.has("include_sequence_id"));
+        let source = inner
+            .get_compound("sequences")
+            .and_then(|sequences| sequences.get_compound("minecraft:blocks/stone"))
+            .and_then(|entry| entry.get_long_array("source"));
+        assert_eq!(source, Some(&[i64::MIN, 7][..]));
+        assert_eq!(read_random_sequences(dir.path()), data);
+
+        data.include_world_seed = false;
+        data.include_sequence_id = false;
+        write_random_sequences(dir.path(), &data).unwrap();
+        let root = written_file(&dir);
+        let inner = root.get_compound("data").unwrap();
+        assert_eq!(inner.get_bool("include_world_seed"), Some(false));
+        assert_eq!(inner.get_bool("include_sequence_id"), Some(false));
+        assert_eq!(read_random_sequences(dir.path()), data);
+        assert_eq!(files_of(&dir), ["random_sequences.dat"]);
+    }
+
+    fn files_of(dir: &TempDir) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(minecraft_data_dir(dir.path()))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Two saves at once never share a temporary file: each save leaves a whole file, and no
+    /// temporary file stays.
+    #[test]
+    fn saves_at_the_same_time_leave_one_whole_file() {
+        let dir = TempDir::new().unwrap();
+        std::thread::scope(|scope| {
+            for salt in 0..16 {
+                let dir = &dir;
+                scope.spawn(move || {
+                    let mut data = RandomSequencesData {
+                        salt,
+                        ..RandomSequencesData::default()
+                    };
+                    for sequence in 0..200 {
+                        data.sequences.insert(
+                            format!("minecraft:sequence_{sequence}"),
+                            (i64::from(salt), 1),
+                        );
+                    }
+                    for _ in 0..5 {
+                        write_random_sequences(dir.path(), &data).unwrap();
+                    }
+                });
+            }
+        });
+        let data = read_random_sequences(dir.path());
+        assert_eq!(data.sequences.len(), 200);
+        assert!(
+            data.sequences
+                .values()
+                .all(|(lo, _)| *lo == i64::from(data.salt))
+        );
+        assert_eq!(files_of(&dir), ["random_sequences.dat"]);
+    }
+
+    #[test]
+    fn a_missing_file_or_a_bad_entry_does_not_stop_the_load() {
+        let dir = TempDir::new().unwrap();
+        assert_eq!(
+            read_random_sequences(dir.path()),
+            RandomSequencesData::default()
+        );
+
+        // The stub of a new world has no sequence.
+        write_random_sequences_stub(dir.path(), 5023).unwrap();
+        assert!(read_random_sequences(dir.path()).sequences.is_empty());
+
+        let mut good = NbtCompound::new();
+        good.put("source", NbtTag::LongArray(vec![1, 2]));
+        let mut short = NbtCompound::new();
+        short.put("source", NbtTag::LongArray(vec![1]));
+        let mut sequences = NbtCompound::new();
+        sequences.put_compound("minecraft:good", good);
+        sequences.put_compound("minecraft:short", short);
+        sequences.put_compound("minecraft:empty", NbtCompound::new());
+        let mut inner = NbtCompound::new();
+        inner.put_int("salt", 9);
+        inner.put_compound("sequences", sequences);
+        let mut root = NbtCompound::new();
+        root.put_int("DataVersion", 5023);
+        root.put_compound("data", inner);
+        let path = minecraft_data_dir(dir.path()).join("random_sequences.dat");
+        pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, File::create(path).unwrap())
+            .unwrap();
+
+        let data = read_random_sequences(dir.path());
+        assert_eq!(data.salt, 9);
+        assert_eq!(
+            data.sequences.into_iter().collect::<Vec<_>>(),
+            [("minecraft:good".to_string(), (1, 2))]
+        );
+    }
 }

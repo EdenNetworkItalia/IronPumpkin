@@ -93,7 +93,7 @@ pub(super) fn load_mod_packs(
             }
         };
         let (description, pack_format, _) = read_pack_mcmeta(&pack_path);
-        let counts = load_pack_contents(&pack_path, acc);
+        let counts = load_pack_contents(&pack_path, &pack_id(&pack.mod_id), acc);
         info!(
             "Loaded the data pack of mod '{}': {} file(s), {} recipe(s), {} function(s), {} loot table(s), {} advancement(s), {} tag(s)",
             pack.mod_id,
@@ -645,21 +645,21 @@ mod override_tests {
             &[
                 (
                     "data/gems/predicate/p.json",
-                    br#"{"condition":"minecraft:survives_explosion","from":"mod"}"#,
+                    br#"{"type":"minecraft:survives_explosion","from":"mod"}"#,
                 ),
                 (
                     "data/gems/item_modifier/m.json",
-                    br#"{"function":"minecraft:set_count","count":1}"#,
+                    br#"{"type":"minecraft:set_count","count":1}"#,
                 ),
             ],
             &[
                 (
                     "data/gems/predicate/p.json",
-                    br#"{"condition":"minecraft:survives_explosion","from":"world"}"#,
+                    br#"{"type":"minecraft:survives_explosion","from":"world"}"#,
                 ),
                 (
                     "data/gems/item_modifier/m.json",
-                    br#"{"function":"minecraft:set_count","count":2}"#,
+                    br#"{"type":"minecraft:set_count","count":2}"#,
                 ),
             ],
         );

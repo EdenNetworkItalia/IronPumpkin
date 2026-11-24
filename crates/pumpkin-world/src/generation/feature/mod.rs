@@ -7,3 +7,5 @@ pub mod placed_features;
 
 pub mod features;
 mod size;
+#[cfg(test)]
+mod vanilla_feature_tests;

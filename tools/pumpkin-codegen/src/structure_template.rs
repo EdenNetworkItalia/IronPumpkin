@@ -478,7 +478,7 @@ pub fn build() -> TokenStream {
                         let props: Vec<TokenStream> = entry
                             .properties
                             .iter()
-                            .map(|(k, v)| crate::processor_list::prop_tokens(k, v))
+                            .map(|(k, v)| crate::processor_list::prop_tokens(&quote!(crate), k, v))
                             .collect();
                         quote! {
                             StaticPaletteEntry {

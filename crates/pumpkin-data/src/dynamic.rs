@@ -2185,8 +2185,10 @@ fn tag_tables_of(key: RegistryKey) -> Option<&'static TagTables> {
     }
 }
 
-/// The item tags that only a data pack of the world defines, by namespaced name. A world data
-/// pack loads at runtime, after the tag tables freeze, so these tags live in their own table.
+/// The item tags that a data pack of the world defines or changes, by namespaced name, with
+/// their members as recipes see them. A world data pack loads at runtime, after the tag tables
+/// freeze, so these tags live in their own table. A tag here replaces the generated or mod tag
+/// with that name.
 static DATA_PACK_ITEM_TAGS: LazyLock<RwLock<HashMap<String, Arc<[u16]>>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
@@ -2201,16 +2203,19 @@ pub fn set_data_pack_item_tags(tags: HashMap<String, Vec<u16>>) {
         .collect();
 }
 
-/// The item ids of a tag that only a data pack defines. A leading `#` is optional and a name
-/// without a namespace uses `minecraft`.
+/// The item ids of a tag that a data pack defines or changes: the members that a recipe sees.
+/// `None` when no data pack touches the tag, so the generated or mod tag applies. A leading `#`
+/// is optional and a name without a namespace uses `minecraft`.
 #[must_use]
 pub fn data_pack_item_tag(tag: &str) -> Option<Arc<[u16]>> {
-    let tag = tag.strip_prefix('#').unwrap_or(tag);
-    DATA_PACK_ITEM_TAGS
+    let tags = DATA_PACK_ITEM_TAGS
         .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(&*namespaced_name(tag))
-        .cloned()
+        .unwrap_or_else(PoisonError::into_inner);
+    if tags.is_empty() {
+        return None;
+    }
+    let tag = tag.strip_prefix('#').unwrap_or(tag);
+    tags.get(&*namespaced_name(tag)).cloned()
 }
 
 /// The custom ids in a generated or mod tag, by tag name.

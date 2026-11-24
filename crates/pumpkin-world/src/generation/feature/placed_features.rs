@@ -63,12 +63,13 @@ impl PlacedFeature {
         }) else {
             return false;
         };
-        if let ConfiguredFeature::SculkPatch(feature) = feature {
-            feature.generate_in_proto_chunk(chunk, random, pos)
-        } else {
-            let min_y = chunk.generation_bottom_y();
-            let height = chunk.generation_height();
-            self.generate(
+        let min_y = chunk.generation_bottom_y();
+        let height = chunk.generation_height();
+        if !matches!(
+            feature,
+            ConfiguredFeature::SculkPatch(_) | ConfiguredFeature::Sequence(_)
+        ) {
+            return self.generate(
                 chunk,
                 block_registry,
                 min_y,
@@ -76,8 +77,41 @@ impl PlacedFeature {
                 feature_name,
                 random,
                 pos,
-            )
+            );
         }
+        // The sculk patch of an ancient city is the first feature of a sequence. Both use their
+        // proto-chunk entry point, after the placement modifiers as in vanilla `FeaturePlacer`.
+        generate_with_modifiers(
+            chunk,
+            0,
+            self.placement.len(),
+            random,
+            pos,
+            &|chunk, modifier_index, random, pos| {
+                self.placement[modifier_index].get_positions(
+                    chunk,
+                    block_registry,
+                    min_y,
+                    height,
+                    feature_name,
+                    random,
+                    pos,
+                )
+            },
+            &|chunk, random, pos| match feature {
+                ConfiguredFeature::SculkPatch(feature) => {
+                    feature.generate_in_proto_chunk(chunk, random, pos)
+                }
+                ConfiguredFeature::Sequence(feature) => feature.generate_in_proto_chunk(
+                    chunk,
+                    block_registry,
+                    feature_name,
+                    random,
+                    pos,
+                ),
+                _ => unreachable!(),
+            },
+        )
     }
 
     #[expect(clippy::too_many_arguments)]
@@ -696,7 +730,7 @@ pub const fn all_placed_feature_names() -> &'static [&'static str] {
 include!("../../../../pumpkin-data/src/generated/placed_features_generated.rs");
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use pumpkin_data::dimension::Dimension;
     use pumpkin_util::math::int_provider::{NormalIntProvider, UniformIntProvider};
     use pumpkin_util::random::xoroshiro128::Xoroshiro;
@@ -706,7 +740,7 @@ mod tests {
     use crate::ProtoChunk;
     use crate::generation::generator::{GeneratorInit, VanillaGenerator, WorldGenerator};
 
-    struct TestPortal;
+    pub(in crate::generation::feature) struct TestPortal;
 
     impl WorldPortalExt for TestPortal {
         fn can_place_at(
@@ -749,7 +783,35 @@ mod tests {
 
     const ORIGIN: BlockPos = BlockPos(Vector3::new(0, 64, 0));
 
-    fn empty_chunk() -> ProtoChunk {
+    #[test]
+    fn proto_chunk_sequence_applies_its_placement() {
+        // Vanilla `FeaturePlacer` runs the placement modifiers of a placed feature of a jigsaw
+        // pool element. An empty sequence places, so the count decides the result.
+        use crate::generation::feature::features::sequence::SequenceFeature;
+        use pumpkin_util::math::int_provider::IntProvider;
+        for (count, expected) in [(0, false), (1, true)] {
+            let feature = PlacedFeature {
+                feature: Feature::Inlined(Box::new(ConfiguredFeature::Sequence(SequenceFeature {
+                    features: Vec::new(),
+                }))),
+                placement: vec![PlacementModifier::Count(CountPlacementModifier {
+                    count: IntProvider::Constant(count),
+                })],
+            };
+            let mut chunk = empty_chunk();
+            let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(0));
+            let placed = feature.generate_in_proto_chunk(
+                &mut chunk,
+                &TestPortal,
+                pumpkin_data::placed_feature::PlacedFeature::DesertWell,
+                &mut random,
+                BlockPos(Vector3::new(8, 64, 8)),
+            );
+            assert_eq!(placed, expected, "count {count}");
+        }
+    }
+
+    pub(in crate::generation::feature) fn empty_chunk() -> ProtoChunk {
         let world_gen = WorldGenerator::Noise(Box::new(VanillaGenerator::new(
             Seed(42),
             Dimension::OVERWORLD,

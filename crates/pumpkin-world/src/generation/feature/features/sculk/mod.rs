@@ -25,30 +25,28 @@ pub mod vein;
 
 /// The 18 non-corner neighbours of a block.
 ///
-/// Every offset in the 3×3×3 cube that shares at least one zero-axis
-/// (i.e. is NOT a corner) and is not the centre itself.
+/// Every offset in the 3x3x3 cube that has at least one zero axis (not a corner) and is not the
+/// centre. The order is vanilla `SculkSpreader.ChargeCursor.NON_CORNER_NEIGHBOURS`: the
+/// `BlockPos.betweenClosed` order from (-1, -1, -1) to (1, 1, 1), x first, then y, then z. The
+/// cursor shuffles this list with the feature random, so the order sets where the sculk spreads.
 pub const NON_CORNER_NEIGHBOURS: [Vector3<i32>; 18] = [
-    // Face-adjacent — 6
+    Vector3::new(0, -1, -1),
+    Vector3::new(-1, 0, -1),
+    Vector3::new(0, 0, -1),
+    Vector3::new(1, 0, -1),
+    Vector3::new(0, 1, -1),
+    Vector3::new(-1, -1, 0),
+    Vector3::new(0, -1, 0),
+    Vector3::new(1, -1, 0),
     Vector3::new(-1, 0, 0),
     Vector3::new(1, 0, 0),
-    Vector3::new(0, -1, 0),
-    Vector3::new(0, 1, 0),
-    Vector3::new(0, 0, -1),
-    Vector3::new(0, 0, 1),
-    // Edge-adjacent (same Y plane) — 4
-    Vector3::new(-1, 0, -1),
-    Vector3::new(-1, 0, 1),
-    Vector3::new(1, 0, -1),
-    Vector3::new(1, 0, 1),
-    // Edge-adjacent (vertical X) — 4
-    Vector3::new(-1, -1, 0),
     Vector3::new(-1, 1, 0),
-    Vector3::new(1, -1, 0),
+    Vector3::new(0, 1, 0),
     Vector3::new(1, 1, 0),
-    // Edge-adjacent (vertical Z) — 4
-    Vector3::new(0, -1, -1),
     Vector3::new(0, -1, 1),
-    Vector3::new(0, 1, -1),
+    Vector3::new(-1, 0, 1),
+    Vector3::new(0, 0, 1),
+    Vector3::new(1, 0, 1),
     Vector3::new(0, 1, 1),
 ];
 

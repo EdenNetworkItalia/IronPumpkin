@@ -1,3 +1,13 @@
+//! The ticking chunks of a world, with the two levels of vanilla `ChunkLevel`: entity ticking
+//! (level 31 or lower) and block ticking (level 32 or lower).
+//!
+//! A ticket level spreads by one per chunk in a Chebyshev square. A player's simulation ticket
+//! (`DistanceManager.getPlayerTicketLevel`, level `31 - simulation distance`) makes a square of
+//! radius `simulation distance` entity ticking and a square one chunk wider block ticking. A
+//! forced ticket (`ChunkMap.FORCED_TICKET_LEVEL`, level 31) makes its own chunk entity ticking
+//! and its 8 neighbours block ticking.
+
+use pumpkin_data::chunk_view_lut::{MAX_CHEBYSHEV_RADIUS, get_chebyshev_square};
 use pumpkin_util::math::vector2::Vector2;
 use rustc_hash::{FxHashMap, FxHashSet};
 use uuid::Uuid;
@@ -8,117 +18,167 @@ pub(super) struct ActivePlayerArea {
     pub simulation_distance: i32,
 }
 
+/// The ticking sets that the tracker writes, and the chunks that became block ticking.
+pub(super) struct TickingSets<'a> {
+    pub entity: &'a mut FxHashSet<Vector2<i32>>,
+    pub block: &'a mut FxHashSet<Vector2<i32>>,
+    pub newly_block_ticking: &'a mut Vec<Vector2<i32>>,
+}
+
+/// A source of ticking chunks: the chunks within `radius` are entity ticking, the chunks within
+/// `radius + 1` block ticking.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Square {
+    center: Vector2<i32>,
+    radius: i32,
+}
+
+impl Square {
+    fn new(center: Vector2<i32>, radius: i32) -> Self {
+        // The offset table stops at `MAX_CHEBYSHEV_RADIUS`; the block square must fit in it, or
+        // the offsets and `contains` disagree and the counts drift.
+        Self {
+            center,
+            radius: radius.clamp(0, i32::from(MAX_CHEBYSHEV_RADIUS) - 1),
+        }
+    }
+
+    const fn widened(self) -> Self {
+        Self {
+            center: self.center,
+            radius: self.radius + 1,
+        }
+    }
+
+    const fn contains(self, pos: Vector2<i32>) -> bool {
+        (pos.x - self.center.x).abs() <= self.radius && (pos.y - self.center.y).abs() <= self.radius
+    }
+
+    fn chunks(self) -> impl Iterator<Item = Vector2<i32>> {
+        get_chebyshev_square(self.radius as u8)
+            .iter()
+            .map(move |&(dx, dz)| self.center.add_raw(i32::from(dx), i32::from(dz)))
+    }
+}
+
 #[derive(Default)]
 pub(super) struct ActiveChunkTracker {
     pub players: FxHashMap<Uuid, ActivePlayerArea>,
-    pub loaded_active_chunks: FxHashSet<Vector2<i32>>,
-    watcher_counts: FxHashMap<Vector2<i32>, u32>,
+    /// Block ticking chunks that are loaded and had their block entities migrated.
+    pub loaded_block_ticking_chunks: FxHashSet<Vector2<i32>>,
+    entity_counts: FxHashMap<Vector2<i32>, u32>,
+    block_counts: FxHashMap<Vector2<i32>, u32>,
     forced_chunks: FxHashSet<Vector2<i32>>,
 }
 
 impl ActiveChunkTracker {
-    fn add_chunk(
-        &mut self,
-        pos: Vector2<i32>,
-        active_chunks: &mut FxHashSet<Vector2<i32>>,
-        newly_active: &mut Vec<Vector2<i32>>,
-    ) {
-        let count = self.watcher_counts.entry(pos).or_default();
+    fn add_entity(&mut self, pos: Vector2<i32>, sets: &mut TickingSets<'_>) {
+        let count = self.entity_counts.entry(pos).or_default();
         *count += 1;
         if *count == 1 {
-            active_chunks.insert(pos);
-            newly_active.push(pos);
+            sets.entity.insert(pos);
         }
     }
 
-    fn remove_chunk(&mut self, pos: Vector2<i32>, active_chunks: &mut FxHashSet<Vector2<i32>>) {
-        let Some(count) = self.watcher_counts.get_mut(&pos) else {
+    fn remove_entity(&mut self, pos: Vector2<i32>, sets: &mut TickingSets<'_>) {
+        let Some(count) = self.entity_counts.get_mut(&pos) else {
             return;
         };
         *count -= 1;
         if *count == 0 {
-            self.watcher_counts.remove(&pos);
-            self.loaded_active_chunks.remove(&pos);
-            active_chunks.remove(&pos);
+            self.entity_counts.remove(&pos);
+            sets.entity.remove(&pos);
         }
     }
 
-    fn add_area(
-        &mut self,
-        area: ActivePlayerArea,
-        active_chunks: &mut FxHashSet<Vector2<i32>>,
-        newly_active: &mut Vec<Vector2<i32>>,
-    ) {
-        let offsets = pumpkin_data::chunk_view_lut::get_chebyshev_square(
-            area.simulation_distance.max(0) as u8,
-        );
-        for &(dx, dz) in offsets {
-            self.add_chunk(
-                area.center.add_raw(dx as i32, dz as i32),
-                active_chunks,
-                newly_active,
-            );
+    fn add_block(&mut self, pos: Vector2<i32>, sets: &mut TickingSets<'_>) {
+        let count = self.block_counts.entry(pos).or_default();
+        *count += 1;
+        if *count == 1 {
+            sets.block.insert(pos);
+            sets.newly_block_ticking.push(pos);
         }
     }
 
-    fn remove_area(&mut self, area: ActivePlayerArea, active_chunks: &mut FxHashSet<Vector2<i32>>) {
-        let offsets = pumpkin_data::chunk_view_lut::get_chebyshev_square(
-            area.simulation_distance.max(0) as u8,
-        );
-        for &(dx, dz) in offsets {
-            self.remove_chunk(area.center.add_raw(dx as i32, dz as i32), active_chunks);
+    fn remove_block(&mut self, pos: Vector2<i32>, sets: &mut TickingSets<'_>) {
+        let Some(count) = self.block_counts.get_mut(&pos) else {
+            return;
+        };
+        *count -= 1;
+        if *count == 0 {
+            self.block_counts.remove(&pos);
+            self.loaded_block_ticking_chunks.remove(&pos);
+            sets.block.remove(&pos);
         }
     }
 
-    pub fn update_player(
-        &mut self,
-        id: Uuid,
-        area: ActivePlayerArea,
-        active_chunks: &mut FxHashSet<Vector2<i32>>,
-        newly_active: &mut Vec<Vector2<i32>>,
-    ) {
-        let previous = self.players.insert(id, area);
-        match previous {
-            None => self.add_area(area, active_chunks, newly_active),
-            Some(previous) if previous != area => {
-                let prev_offsets = pumpkin_data::chunk_view_lut::get_chebyshev_square(
-                    previous.simulation_distance.max(0) as u8,
-                );
-                for &(dx, dz) in prev_offsets {
-                    let pos = previous.center.add_raw(dx as i32, dz as i32);
-                    if (pos.x - area.center.x).abs() > area.simulation_distance
-                        || (pos.y - area.center.y).abs() > area.simulation_distance
-                    {
-                        self.remove_chunk(pos, active_chunks);
-                    }
-                }
-                let curr_offsets = pumpkin_data::chunk_view_lut::get_chebyshev_square(
-                    area.simulation_distance.max(0) as u8,
-                );
-                for &(dx, dz) in curr_offsets {
-                    let pos = area.center.add_raw(dx as i32, dz as i32);
-                    if (pos.x - previous.center.x).abs() > previous.simulation_distance
-                        || (pos.y - previous.center.y).abs() > previous.simulation_distance
-                    {
-                        self.add_chunk(pos, active_chunks, newly_active);
-                    }
-                }
-            }
+    fn add_square(&mut self, square: Square, sets: &mut TickingSets<'_>) {
+        for pos in square.chunks() {
+            self.add_entity(pos, sets);
+        }
+        for pos in square.widened().chunks() {
+            self.add_block(pos, sets);
+        }
+    }
+
+    fn remove_square(&mut self, square: Square, sets: &mut TickingSets<'_>) {
+        for pos in square.chunks() {
+            self.remove_entity(pos, sets);
+        }
+        for pos in square.widened().chunks() {
+            self.remove_block(pos, sets);
+        }
+    }
+
+    /// Changes only the chunks that one square holds and the other does not.
+    fn move_square(&mut self, previous: Square, current: Square, sets: &mut TickingSets<'_>) {
+        for pos in previous.chunks().filter(|pos| !current.contains(*pos)) {
+            self.remove_entity(pos, sets);
+        }
+        for pos in current.chunks().filter(|pos| !previous.contains(*pos)) {
+            self.add_entity(pos, sets);
+        }
+        let (previous, current) = (previous.widened(), current.widened());
+        for pos in previous.chunks().filter(|pos| !current.contains(*pos)) {
+            self.remove_block(pos, sets);
+        }
+        for pos in current.chunks().filter(|pos| !previous.contains(*pos)) {
+            self.add_block(pos, sets);
+        }
+    }
+
+    /// Vanilla `DistanceManager.getPlayerTicketLevel` is `max(0, 31 - simulation distance)`, so
+    /// entity ticking stops at a radius of 31.
+    fn player_square(area: ActivePlayerArea) -> Square {
+        Square::new(area.center, area.simulation_distance.min(31))
+    }
+
+    pub fn update_player(&mut self, id: Uuid, area: ActivePlayerArea, sets: &mut TickingSets<'_>) {
+        match self.players.insert(id, area) {
+            None => self.add_square(Self::player_square(area), sets),
+            Some(previous) if previous != area => self.move_square(
+                Self::player_square(previous),
+                Self::player_square(area),
+                sets,
+            ),
             Some(_) => {}
         }
     }
 
-    pub fn remove_player(&mut self, id: Uuid, active_chunks: &mut FxHashSet<Vector2<i32>>) {
+    pub fn remove_player(&mut self, id: Uuid, sets: &mut TickingSets<'_>) {
         if let Some(area) = self.players.remove(&id) {
-            self.remove_area(area, active_chunks);
+            self.remove_square(Self::player_square(area), sets);
         }
+    }
+
+    pub fn forced_chunks_equal(&self, forced_chunks: &FxHashSet<Vector2<i32>>) -> bool {
+        self.forced_chunks == *forced_chunks
     }
 
     pub fn sync_forced_chunks(
         &mut self,
         forced_chunks: &FxHashSet<Vector2<i32>>,
-        active_chunks: &mut FxHashSet<Vector2<i32>>,
-        newly_active: &mut Vec<Vector2<i32>>,
+        sets: &mut TickingSets<'_>,
     ) {
         let removed: Vec<_> = self
             .forced_chunks
@@ -130,10 +190,10 @@ impl ActiveChunkTracker {
             .copied()
             .collect();
         for pos in removed {
-            self.remove_chunk(pos, active_chunks);
+            self.remove_square(Square::new(pos, 0), sets);
         }
         for pos in added {
-            self.add_chunk(pos, active_chunks, newly_active);
+            self.add_square(Square::new(pos, 0), sets);
         }
         self.forced_chunks.clone_from(forced_chunks);
     }
@@ -150,37 +210,94 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct Sets {
+        entity: FxHashSet<Vector2<i32>>,
+        block: FxHashSet<Vector2<i32>>,
+        newly_block_ticking: Vec<Vector2<i32>>,
+    }
+
+    impl Sets {
+        fn view(&mut self) -> TickingSets<'_> {
+            TickingSets {
+                entity: &mut self.entity,
+                block: &mut self.block,
+                newly_block_ticking: &mut self.newly_block_ticking,
+            }
+        }
+    }
+
     #[test]
     fn follows_player_boundary_crossing() {
         let id = Uuid::from_u128(1);
         let mut tracker = ActiveChunkTracker::default();
-        let mut active = FxHashSet::default();
-        let mut newly_active = Vec::new();
+        let mut sets = Sets::default();
 
-        tracker.update_player(id, area(0, 0, 1), &mut active, &mut newly_active);
-        assert_eq!(active.len(), 9);
-        newly_active.clear();
+        tracker.update_player(id, area(0, 0, 1), &mut sets.view());
+        assert_eq!(sets.entity.len(), 9);
+        assert_eq!(sets.block.len(), 25);
+        sets.newly_block_ticking.clear();
 
-        tracker.update_player(id, area(1, 0, 1), &mut active, &mut newly_active);
+        tracker.update_player(id, area(1, 0, 1), &mut sets.view());
 
-        assert_eq!(active.len(), 9);
-        assert_eq!(newly_active.len(), 3);
-        assert!(!active.contains(&Vector2::new(-1, 0)));
-        assert!(active.contains(&Vector2::new(2, 0)));
+        assert_eq!(sets.entity.len(), 9);
+        assert_eq!(sets.block.len(), 25);
+        assert_eq!(sets.newly_block_ticking.len(), 5);
+        assert!(!sets.entity.contains(&Vector2::new(-1, 0)));
+        assert!(sets.entity.contains(&Vector2::new(2, 0)));
+        assert!(!sets.block.contains(&Vector2::new(-2, 0)));
+        assert!(sets.block.contains(&Vector2::new(3, 0)));
+    }
+
+    /// The ring at the simulation distance plus one is block ticking only, like level 32 of
+    /// vanilla `ChunkLevel`.
+    #[test]
+    fn the_ring_past_the_simulation_distance_is_block_ticking_only() {
+        let mut tracker = ActiveChunkTracker::default();
+        let mut sets = Sets::default();
+
+        tracker.update_player(Uuid::from_u128(1), area(0, 0, 3), &mut sets.view());
+
+        for (x, z) in [(3, 3), (-3, 0), (0, 3)] {
+            let pos = Vector2::new(x, z);
+            assert!(sets.entity.contains(&pos) && sets.block.contains(&pos));
+        }
+        for (x, z) in [(4, 4), (-4, 0), (0, 4), (4, -2)] {
+            let pos = Vector2::new(x, z);
+            assert!(!sets.entity.contains(&pos) && sets.block.contains(&pos));
+        }
+        assert!(!sets.block.contains(&Vector2::new(5, 0)));
+    }
+
+    #[test]
+    fn a_forced_chunk_makes_its_neighbours_block_ticking() {
+        let mut tracker = ActiveChunkTracker::default();
+        let mut sets = Sets::default();
+        let forced = FxHashSet::from_iter([Vector2::new(10, 10)]);
+
+        tracker.sync_forced_chunks(&forced, &mut sets.view());
+
+        assert_eq!(sets.entity, forced);
+        assert_eq!(sets.block.len(), 9);
+        assert!(sets.block.contains(&Vector2::new(9, 11)));
+        assert_eq!(sets.newly_block_ticking.len(), 9);
+
+        tracker.sync_forced_chunks(&FxHashSet::default(), &mut sets.view());
+        assert!(sets.entity.is_empty() && sets.block.is_empty());
+        assert!(tracker.entity_counts.is_empty() && tracker.block_counts.is_empty());
     }
 
     #[test]
     fn removes_chunks_when_player_leaves() {
         let id = Uuid::from_u128(1);
         let mut tracker = ActiveChunkTracker::default();
-        let mut active = FxHashSet::default();
-        let mut newly_active = Vec::new();
+        let mut sets = Sets::default();
 
-        tracker.update_player(id, area(0, 0, 1), &mut active, &mut newly_active);
-        tracker.remove_player(id, &mut active);
+        tracker.update_player(id, area(0, 0, 1), &mut sets.view());
+        tracker.remove_player(id, &mut sets.view());
 
-        assert!(active.is_empty());
-        assert!(tracker.watcher_counts.is_empty());
+        assert!(sets.entity.is_empty() && sets.block.is_empty());
+        assert!(tracker.entity_counts.is_empty() && tracker.block_counts.is_empty());
     }
 
     #[test]
@@ -188,17 +305,50 @@ mod tests {
         let first = Uuid::from_u128(1);
         let second = Uuid::from_u128(2);
         let mut tracker = ActiveChunkTracker::default();
-        let mut active = FxHashSet::default();
-        let mut newly_active = Vec::new();
+        let mut sets = Sets::default();
 
-        tracker.update_player(first, area(0, 0, 1), &mut active, &mut newly_active);
-        tracker.update_player(second, area(0, 0, 1), &mut active, &mut newly_active);
-        tracker.remove_player(first, &mut active);
+        tracker.update_player(first, area(0, 0, 1), &mut sets.view());
+        tracker.update_player(second, area(0, 0, 1), &mut sets.view());
+        tracker.remove_player(first, &mut sets.view());
 
-        assert_eq!(active.len(), 9);
-        assert!(tracker.watcher_counts.values().all(|count| *count == 1));
+        assert_eq!(sets.entity.len(), 9);
+        assert_eq!(sets.block.len(), 25);
+        assert!(tracker.entity_counts.values().all(|count| *count == 1));
+        assert!(tracker.block_counts.values().all(|count| *count == 1));
 
-        tracker.remove_player(second, &mut active);
-        assert!(active.is_empty());
+        tracker.remove_player(second, &mut sets.view());
+        assert!(sets.entity.is_empty() && sets.block.is_empty());
+    }
+
+    /// At a simulation distance above 31, vanilla entity ticks a radius of 31 and block ticks a
+    /// radius of 32.
+    #[test]
+    fn a_simulation_distance_above_31_ticks_as_31() {
+        let mut tracker = ActiveChunkTracker::default();
+        let mut sets = Sets::default();
+
+        tracker.update_player(Uuid::from_u128(1), area(0, 0, 40), &mut sets.view());
+
+        assert_eq!(sets.entity.len(), 63 * 63);
+        assert_eq!(sets.block.len(), 65 * 65);
+        assert!(sets.entity.contains(&Vector2::new(31, -31)));
+        assert!(!sets.entity.contains(&Vector2::new(32, 0)));
+        assert!(sets.block.contains(&Vector2::new(-32, 32)));
+        assert!(!sets.block.contains(&Vector2::new(33, 0)));
+    }
+
+    /// A simulation distance past the offset table keeps the counts in agreement with the sets.
+    #[test]
+    fn a_simulation_distance_past_the_offset_table_keeps_the_counts() {
+        let id = Uuid::from_u128(1);
+        let mut tracker = ActiveChunkTracker::default();
+        let mut sets = Sets::default();
+
+        tracker.update_player(id, area(0, 0, 200), &mut sets.view());
+        tracker.update_player(id, area(3, -2, 200), &mut sets.view());
+        tracker.remove_player(id, &mut sets.view());
+
+        assert!(sets.entity.is_empty() && sets.block.is_empty());
+        assert!(tracker.entity_counts.is_empty() && tracker.block_counts.is_empty());
     }
 }

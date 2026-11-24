@@ -585,16 +585,20 @@ impl HostLivingEntityWithStore<PluginHostState> for HasSelf<PluginHostState> {
         };
 
         let entity = accessor.get_res(&this)?;
-        if let Some(living) = entity.get_living_entity() {
-            let slot = from_wit_equipment_slot(slot);
-            {
-                let mut equipment = living.entity_equipment.lock_ignore_poison();
-                equipment.put(&slot, item_stack.clone());
-            };
+        let slot = from_wit_equipment_slot(slot);
+        // `send_equipment_changes` reads the attribute modifiers of the stack, which fires
+        // `ItemAttributeModifierEvent`: a handler of this plugin must run while this call waits.
+        run_blocking(accessor, move || {
+            if let Some(living) = entity.get_living_entity() {
+                {
+                    let mut equipment = living.entity_equipment.lock_ignore_poison();
+                    equipment.put(&slot, item_stack.clone());
+                };
 
-            living.send_equipment_changes(&[(slot, item_stack)]);
-        }
-        Ok(())
+                living.send_equipment_changes(&[(slot, item_stack)]);
+            }
+        })
+        .await
     }
 
     async fn heal(

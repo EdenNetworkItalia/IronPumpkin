@@ -21,6 +21,7 @@ use crate::entity::{EntityBase, combat::AttackType, player::Player};
 use crate::net::PlayerConfig;
 use crate::plugin::api::events::{
     Payload,
+    inventory::PlayerBrewedPotionEvent,
     player::{
         anvil_craft::{AnvilCraftEventPost, AnvilCraftEventPre},
         arrow::{ArrowLooseEvent, ArrowNockEvent},
@@ -82,6 +83,20 @@ where
     let mut event = make(player.clone());
     server.plugin_manager.fire_blocking(&server, &mut event);
     Some(event)
+}
+
+/// Fires [`PlayerBrewedPotionEvent`] when `player` takes `stack`, a brewed potion, out of a
+/// brewing stand (`EventHooks.onPlayerBrewedPotion`). The take runs under the lock of the screen
+/// handler, so the event fires after the active [`Deferral`] (the slot click).
+pub fn brewed_potion(player: &Player, stack: &ItemStack) {
+    let Some(server) = listening::<PlayerBrewedPotionEvent>(player) else {
+        return;
+    };
+    let Some(shared) = shared(player) else {
+        return;
+    };
+    let event = PlayerBrewedPotionEvent::new(shared, stack.clone());
+    defer(move || fire_event(&server, event));
 }
 
 /// Fires `event`, whose changes nobody reads.

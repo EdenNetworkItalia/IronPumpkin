@@ -1796,6 +1796,16 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
                     ctx, &handler, priority, blocking, event_type,
                 );
             }
+            event_type @ (EventType::ItemAttributeModifierEvent
+            | EventType::ItemStackedOnOtherEvent
+            | EventType::GetEnchantmentLevelEvent
+            | EventType::EnchantedBlockLootEvent
+            | EventType::EnchantedEntityLootEvent
+            | EventType::PlayerBrewedPotionEvent) => {
+                crate::events::neoforge_item::register_neoforge_item_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type @ (EventType::PlayLevelSoundEventAtPosition
             | EventType::PlayLevelSoundEventAtEntity) => {
                 crate::events::neoforge_sound::register_neoforge_sound_event(

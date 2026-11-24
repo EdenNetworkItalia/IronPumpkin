@@ -1,10 +1,13 @@
 pub mod advancement_loader;
+pub mod context_provider_eval;
 pub mod context_provider_loader;
 pub mod damage_type_loader;
 pub mod dynamic_registry_loader;
 pub mod dynamic_registry_manager;
 pub mod function_loader;
 pub mod item_modifier_loader;
+mod item_tags;
+mod load_error;
 pub mod loot_modifier_loader;
 pub mod loot_table_loader;
 pub mod mod_packs;
@@ -273,7 +276,7 @@ impl DatapackManager {
         let damage_type_registry = build_damage_type_registry(all_damage_type_defs);
 
         // Vanilla loads the tags before the recipes, so a recipe can use a tag of the pack.
-        pumpkin_data::dynamic::set_data_pack_item_tags(data_pack_item_tags(&all_tags));
+        pumpkin_data::dynamic::set_data_pack_item_tags(item_tags::data_pack_item_tags(&all_tags));
         recipe_manager.set_recipes(all_recipes);
         *self
             .loaded_packs
@@ -1739,7 +1742,7 @@ fn load_enabled_datapacks(
         }
 
         let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-        let counts = load_pack_contents(&pack_path, acc);
+        let counts = load_pack_contents(&pack_path, &id, acc);
         let kind = if bundled {
             "bundled datapack"
         } else {
@@ -1782,6 +1785,7 @@ fn load_enabled_datapacks(
 #[allow(clippy::too_many_lines)]
 fn load_pack_contents(
     pack_path: &Path,
+    pack_id: &str,
     acc: &mut PackContentAccumulators<'_>,
 ) -> PackContentCounts {
     let data_dir = pack_path.join("data");
@@ -1803,6 +1807,7 @@ fn load_pack_contents(
                 if recipe_dir.is_dir() {
                     load_recipes_from_dir(
                         &namespace,
+                        pack_id,
                         &recipe_dir,
                         acc.recipes,
                         &mut counts.recipes,
@@ -1859,6 +1864,8 @@ fn load_pack_contents(
                     counts.int_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_INT_PROVIDER,
                             &provider_dir,
                             acc.context_int_providers,
                         );
@@ -1872,6 +1879,8 @@ fn load_pack_contents(
                     counts.float_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_FLOAT_PROVIDER,
                             &provider_dir,
                             acc.context_float_providers,
                         );
@@ -1884,6 +1893,7 @@ fn load_pack_contents(
                 if lt_dir.is_dir() {
                     counts.loot_tables += loot_table_loader::load_loot_tables_from_dir(
                         &namespace,
+                        pack_id,
                         &lt_dir,
                         acc.loot_tables,
                     );
@@ -1905,6 +1915,7 @@ fn load_pack_contents(
                 if adv_dir.is_dir() {
                     counts.advancements += advancement_loader::load_advancements_from_dir(
                         &namespace,
+                        pack_id,
                         &adv_dir,
                         acc.advancements,
                     );
@@ -1917,6 +1928,7 @@ fn load_pack_contents(
                 if pred_dir.is_dir() {
                     counts.predicates += predicate_loader::load_predicates_from_dir(
                         &namespace,
+                        pack_id,
                         &pred_dir,
                         acc.predicates,
                     );
@@ -1929,6 +1941,7 @@ fn load_pack_contents(
                 if im_dir.is_dir() {
                     counts.item_modifiers += item_modifier_loader::load_item_modifiers_from_dir(
                         &namespace,
+                        pack_id,
                         &im_dir,
                         acc.item_modifiers,
                     );
@@ -1941,6 +1954,7 @@ fn load_pack_contents(
                 if ss_dir.is_dir() {
                     counts.slot_sources += slot_source_loader::load_slot_sources_from_dir(
                         &namespace,
+                        pack_id,
                         &ss_dir,
                         acc.slot_sources,
                     );
@@ -1985,6 +1999,7 @@ fn load_pack_contents(
                 if ts_dir.is_dir() {
                     counts.trade_sets += trade_loader::load_trade_sets_from_dir(
                         &namespace,
+                        pack_id,
                         &ts_dir,
                         &mut acc.trade_registry.trade_sets,
                     );
@@ -1997,6 +2012,7 @@ fn load_pack_contents(
                 if vt_dir.is_dir() {
                     counts.trades += trade_loader::load_trades_from_dir(
                         &namespace,
+                        pack_id,
                         &vt_dir,
                         &mut acc.trade_registry.trades,
                     );
@@ -2011,6 +2027,7 @@ fn load_pack_contents(
                     if vt_tag_dir.is_dir() {
                         counts.trade_tags += trade_loader::load_trade_tags_from_dir(
                             &namespace,
+                            pack_id,
                             &vt_tag_dir,
                             &mut acc.trade_registry.trade_tags,
                         );
@@ -2145,6 +2162,7 @@ fn read_pack_mcmeta(pack_path: &Path) -> (String, u32, Vec<KnownPackData>) {
 
 fn load_recipes_recursive(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
@@ -2156,7 +2174,7 @@ fn load_recipes_recursive(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_recipes_recursive(namespace, base_dir, &path, all_recipes, count);
+            load_recipes_recursive(namespace, pack, base_dir, &path, all_recipes, count);
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -2170,9 +2188,23 @@ fn load_recipes_recursive(
                 .to_string_lossy()
                 .replace('\\', "/");
 
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content)
-            {
+            let recipe_id = format!("{namespace}:{recipe_name}");
+            let file = load_error::Entry {
+                registry: load_error::RECIPE,
+                id: &recipe_id,
+                pack,
+            };
+            let Some((content, _)) = file.read_json(&path) else {
+                continue;
+            };
+            let recipe = match recipe_loader::try_parse_recipe(namespace, &recipe_name, &content) {
+                Ok(recipe) => Some(recipe),
+                Err(cause) => {
+                    file.skip(cause);
+                    None
+                }
+            };
+            if let Some(recipe) = recipe {
                 // Like `RecipeManager`, a recipe of a later pack replaces the earlier one with
                 // the same id.
                 let existing = recipe.recipe_id().and_then(|id| {
@@ -2190,70 +2222,14 @@ fn load_recipes_recursive(
     }
 }
 
-/// The item tags of the loaded packs that no generated or mod tag holds, as item ids. A `#tag`
-/// value adds the members of that tag. A value that names no item or tag is left out.
-fn data_pack_item_tags(
-    tags: &HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>>,
-) -> HashMap<String, Vec<u16>> {
-    fn resolve(
-        name: &str,
-        items: &HashMap<String, tag_loader::DynamicTagEntry>,
-        visiting: &mut Vec<String>,
-        out: &mut Vec<u16>,
-    ) {
-        let Some(entry) = items.get(name) else {
-            return;
-        };
-        if visiting.iter().any(|tag| tag == name) {
-            return;
-        }
-        visiting.push(name.to_string());
-        for value in &entry.values {
-            if let Some(tag) = value.strip_prefix('#') {
-                let tag = pumpkin_data::dynamic::namespaced_name(tag);
-                if let Some((generated, custom)) =
-                    pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &tag)
-                {
-                    for id in generated.iter().chain(custom) {
-                        if !out.contains(id) {
-                            out.push(*id);
-                        }
-                    }
-                } else {
-                    resolve(&tag, items, visiting, out);
-                }
-            } else if let Some(item) = pumpkin_data::item::Item::from_registry_key(value)
-                && !out.contains(&item.id)
-            {
-                out.push(item.id);
-            }
-        }
-        visiting.pop();
-    }
-
-    let Some(items) = tags.get("item") else {
-        return HashMap::new();
-    };
-    items
-        .keys()
-        .filter(|name| {
-            pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, name).is_none()
-        })
-        .map(|name| {
-            let mut ids = Vec::new();
-            resolve(name, items, &mut Vec::new(), &mut ids);
-            (name.clone(), ids)
-        })
-        .collect()
-}
-
 fn load_recipes_from_dir(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
     count: &mut usize,
 ) {
-    load_recipes_recursive(namespace, dir, dir, all_recipes, count);
+    load_recipes_recursive(namespace, pack, dir, dir, all_recipes, count);
 }
 #[cfg(test)]
 mod tests {
@@ -2462,7 +2438,7 @@ mod tests {
             tags: &mut tags,
         };
 
-        let counts = super::load_pack_contents(&datapack_path, &mut acc);
+        let counts = super::load_pack_contents(&datapack_path, "file/test", &mut acc);
         assert_eq!(counts.recipes, 2042, "all vanilla recipes must load");
         assert_eq!(
             counts.loot_tables, 1447,
@@ -2544,7 +2520,7 @@ mod tests {
                 tags: &mut tags,
             };
 
-            let counts = super::load_pack_contents(&pack_path, &mut acc);
+            let counts = super::load_pack_contents(&pack_path, "file/test", &mut acc);
             assert!(counts.trades > 0, "trade rebalance must load trades");
             assert!(
                 counts.trade_tags > 0,
@@ -2629,6 +2605,7 @@ mod tests {
             data.join("recipe/gem.json"),
             r##"{
                 "type": "minecraft:smelting",
+                "cookingtime": 200,
                 "ingredient": "#test:gems",
                 "result": { "id": "minecraft:diamond" }
             }"##,
@@ -2640,11 +2617,11 @@ mod tests {
             &["vanilla".to_owned(), "file/gems".to_owned()],
             &recipes,
         );
+        let loaded = recipes.get_dynamic_recipes_internal();
         let Some(pumpkin_protocol::codec::recipe::DynamicRecipe::Cooking(
             pumpkin_protocol::codec::recipe::OwnedCookingRecipeType::Smelting(gem),
-        )) = recipes
-            .get_dynamic_recipes_internal()
-            .into_iter()
+        )) = loaded
+            .iter()
             .find(|recipe| recipe.recipe_id() == Some("test:gem"))
         else {
             panic!("the recipe with the data pack tag must load");
@@ -2658,6 +2635,98 @@ mod tests {
                 .match_item(&pumpkin_data::item::Item::OAK_PLANKS)
         );
         assert!(!gem.ingredient.match_item(&pumpkin_data::item::Item::DIRT));
+    }
+
+    /// A world data pack that extends or replaces `minecraft:planks` changes what the vanilla
+    /// stick recipe takes.
+    #[test]
+    fn a_data_pack_tag_changes_what_a_vanilla_recipe_takes() {
+        use pumpkin_data::item::Item;
+        use pumpkin_data::item_stack::ItemStack;
+        use pumpkin_inventory::Inventory;
+        use pumpkin_inventory::crafting::crafting_inventory::CraftingInventory;
+        use pumpkin_inventory::crafting::crafting_screen_handler::match_crafting_recipe;
+
+        let crafts_a_stick = |item: &'static Item| {
+            let grid = CraftingInventory::new(2, 2);
+            grid.set_stack(0, ItemStack::new(1, item));
+            grid.set_stack(2, ItemStack::new(1, item));
+            match_crafting_recipe(&grid, None)
+                .is_some_and(|result| result.item_id == "minecraft:stick")
+        };
+        let load = |planks: &str| {
+            let world = tempfile::tempdir().expect("tempdir");
+            let tags = world
+                .path()
+                .join("datapacks/planks/data/minecraft/tags/item");
+            std::fs::create_dir_all(&tags).expect("create dir");
+            std::fs::write(tags.join("planks.json"), planks).expect("write");
+            DatapackManager::new().load_all(
+                world.path(),
+                &["vanilla".to_owned(), "file/planks".to_owned()],
+                &crate::server::recipe::RecipeManager::default(),
+            );
+        };
+
+        assert!(crafts_a_stick(&Item::OAK_PLANKS));
+        assert!(!crafts_a_stick(&Item::DIRT));
+
+        load(r#"{"values": ["minecraft:dirt"]}"#);
+        assert!(crafts_a_stick(&Item::DIRT), "the pack adds dirt to the tag");
+        assert!(
+            crafts_a_stick(&Item::OAK_PLANKS),
+            "the tag keeps its planks"
+        );
+
+        load(r#"{"replace": true, "values": ["minecraft:dirt"]}"#);
+        assert!(crafts_a_stick(&Item::DIRT));
+        assert!(
+            !crafts_a_stick(&Item::OAK_PLANKS),
+            "the pack replaces the planks of the tag"
+        );
+    }
+
+    /// Vanilla `charcoal.json` takes `#minecraft:logs_that_burn`, which lists
+    /// `#minecraft:oak_logs`. A pack that changes `oak_logs` changes what the furnace smelts.
+    #[test]
+    fn a_data_pack_tag_change_reaches_a_vanilla_recipe_through_a_tag_reference() {
+        use pumpkin_data::item::Item;
+        use pumpkin_data::recipes::{CookingRecipeType, RECIPES_COOKING};
+
+        let charcoal_takes = |item: &Item| {
+            RECIPES_COOKING
+                .iter()
+                .find_map(|recipe| match recipe {
+                    CookingRecipeType::Smelting(r) if r.recipe_id == "minecraft:charcoal" => {
+                        Some(r.ingredient.match_item(item))
+                    }
+                    _ => None,
+                })
+                .expect("the charcoal recipe")
+        };
+        let load = |oak_logs: &str| {
+            let world = tempfile::tempdir().expect("tempdir");
+            let tags = world.path().join("datapacks/logs/data/minecraft/tags/item");
+            std::fs::create_dir_all(&tags).expect("create dir");
+            std::fs::write(tags.join("oak_logs.json"), oak_logs).expect("write");
+            DatapackManager::new().load_all(
+                world.path(),
+                &["vanilla".to_owned(), "file/logs".to_owned()],
+                &crate::server::recipe::RecipeManager::default(),
+            );
+        };
+
+        assert!(charcoal_takes(&Item::OAK_LOG));
+        assert!(!charcoal_takes(&Item::DIRT));
+
+        load(r#"{"values": ["minecraft:dirt"]}"#);
+        assert!(charcoal_takes(&Item::DIRT));
+        assert!(charcoal_takes(&Item::OAK_LOG));
+
+        load(r#"{"replace": true, "values": ["minecraft:dirt"]}"#);
+        assert!(charcoal_takes(&Item::DIRT));
+        assert!(!charcoal_takes(&Item::OAK_LOG));
+        assert!(charcoal_takes(&Item::BIRCH_LOG));
     }
 
     #[test]

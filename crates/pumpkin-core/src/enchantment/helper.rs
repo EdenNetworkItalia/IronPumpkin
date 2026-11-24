@@ -8,7 +8,7 @@ use crate::entity::{Entity, EntityBase};
 use crate::world::World;
 use crate::world::loot::LootContextParameters;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{EnchantmentsImpl, EquipmentSlot};
+use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::enchantment::{Enchantment, EnchantmentEntityEffect, EnchantmentTarget};
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
@@ -50,11 +50,17 @@ impl EnchantmentHelper {
         };
         caller.get_player().map_or_else(
             || {
-                living
+                // `level` fires `GetEnchantmentLevelEvent`: read the stacks with no lock held.
+                let stacks: Vec<_> = living
                     .entity_equipment
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .equipment
+                    .iter()
+                    .filter(|(_, stack)| !stack.is_empty())
+                    .map(|(slot, stack)| (slot.clone(), stack.clone()))
+                    .collect();
+                stacks
                     .iter()
                     .map(|(slot, stack)| level(slot, stack))
                     .max()
@@ -79,7 +85,7 @@ impl EnchantmentHelper {
     where
         F: FnMut(&'static Enchantment, i32),
     {
-        if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = item_stack.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 visitor(enchantment, *level);
             }
@@ -344,7 +350,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn process_projectile_spread(weapon: &ItemStack, base_spread: f32) -> f32 {
         let mut spread = base_spread;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_projectile_spread(*level, &mut spread);
             }
@@ -356,7 +362,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn process_projectile_count(weapon: &ItemStack, base_count: usize) -> usize {
         let mut count = base_count as f32;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_projectile_count(*level, &mut count);
             }
@@ -368,7 +374,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn process_projectile_piercing(weapon: &ItemStack, base_piercing: u8) -> u8 {
         let mut piercing = f32::from(base_piercing);
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_piercing_count(*level, &mut piercing);
             }
@@ -381,7 +387,7 @@ impl EnchantmentHelper {
     pub fn process_ammo_use(weapon: &ItemStack, projectile: &ItemStack, base_ammo: i32) -> i32 {
         let mut ammo = base_ammo as f32;
         if projectile.item.id == Item::ARROW.id
-            && let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>()
+            && let Some(enchantments) = weapon.get_all_enchantments()
         {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_ammo_count(*level, &mut ammo);
@@ -394,7 +400,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_damage(weapon: &ItemStack, base_damage: f64) -> f64 {
         let mut damage = base_damage;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_damage(*level, &mut damage);
             }
@@ -410,7 +416,7 @@ impl EnchantmentHelper {
         victim_type: Option<&'static EntityType>,
     ) -> f64 {
         let mut damage = base_damage;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_damage_against(*level, &mut damage, victim_type);
             }
@@ -497,7 +503,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_fall_based_damage(weapon: &ItemStack, base_damage: f64) -> f64 {
         let mut damage = base_damage;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_fall_based_damage(*level, &mut damage);
             }
@@ -509,7 +515,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_knockback(weapon: &ItemStack, base_knockback: f32) -> f32 {
         let mut knockback = base_knockback;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_knockback(*level, &mut knockback);
             }
@@ -521,7 +527,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_armor_effectiveness(weapon: &ItemStack, base_effectiveness: f32) -> f32 {
         let mut effectiveness = base_effectiveness;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_armor_effectiveness(*level, &mut effectiveness);
             }
@@ -533,7 +539,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_crossbow_charge_time(weapon: &ItemStack, base_ticks: i32) -> i32 {
         let mut charge_time = base_ticks as f32;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 let mut change_sec = 0.0f32;
                 enchantment.modify_crossbow_charge_time(*level, &mut change_sec);
@@ -547,7 +553,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_durability_change(item: &ItemStack, base_change: f32) -> f32 {
         let mut change = base_change;
-        if let Some(enchantments) = item.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = item.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 for effect in enchantment.effects.item_damage {
                     change = effect.effect.process(*level, change);
@@ -561,7 +567,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_block_experience(tool: &ItemStack, base_xp: i32) -> i32 {
         let mut xp = base_xp as f32;
-        if let Some(enchantments) = tool.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = tool.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_block_experience(*level, &mut xp);
             }
@@ -573,7 +579,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_mob_experience(weapon: &ItemStack, base_xp: i32) -> i32 {
         let mut xp = base_xp as f32;
-        if let Some(enchantments) = weapon.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = weapon.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_mob_experience(*level, &mut xp);
             }
@@ -585,7 +591,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_durability_to_repair_from_xp(item: &ItemStack, base_repair: f32) -> f32 {
         let mut repair = base_repair;
-        if let Some(enchantments) = item.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = item.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_durability_to_repair_from_xp(*level, &mut repair);
             }
@@ -597,7 +603,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_trident_return_acceleration(trident: &ItemStack, base_accel: f32) -> f32 {
         let mut accel = base_accel;
-        if let Some(enchantments) = trident.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = trident.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_trident_return_to_owner_acceleration(*level, &mut accel);
             }
@@ -609,7 +615,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_trident_spin_attack_strength(trident: &ItemStack, base_strength: f32) -> f32 {
         let mut strength = base_strength;
-        if let Some(enchantments) = trident.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = trident.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_trident_spin_attack_strength(*level, &mut strength);
             }
@@ -621,7 +627,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_fishing_time_reduction(rod: &ItemStack, base_reduction: f32) -> f32 {
         let mut reduction = base_reduction;
-        if let Some(enchantments) = rod.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = rod.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_fishing_time_reduction(*level, &mut reduction);
             }
@@ -633,7 +639,7 @@ impl EnchantmentHelper {
     #[must_use]
     pub fn modify_fishing_luck_bonus(rod: &ItemStack, base_luck: f32) -> f32 {
         let mut luck = base_luck;
-        if let Some(enchantments) = rod.get_data_component::<EnchantmentsImpl>() {
+        if let Some(enchantments) = rod.get_all_enchantments() {
             for (enchantment, level) in enchantments.enchantment.iter() {
                 enchantment.modify_fishing_luck_bonus(*level, &mut luck);
             }
@@ -649,7 +655,7 @@ impl EnchantmentHelper {
     ) -> f32 {
         let mut protection = base_protection;
         for item in armor_items {
-            if let Some(enchantments) = item.get_data_component::<EnchantmentsImpl>() {
+            if let Some(enchantments) = item.get_all_enchantments() {
                 for (enchantment, level) in enchantments.enchantment.iter() {
                     for effect in enchantment.effects.damage_protection {
                         protection = effect.effect.process(*level, protection);

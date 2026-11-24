@@ -23,7 +23,11 @@ static ERROR_FAILED_REMOVE: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_FORCELOAD_REMOVED_FAILURE,
     "No world in source",
 );
-static ERROR_FAILED_QUERY: CommandErrorType<0> = CommandErrorType::new(
+static ERROR_FAILED_QUERY: CommandErrorType<2> = CommandErrorType::new(
+    translation::java::COMMANDS_FORCELOAD_QUERY_FAILURE,
+    "Chunk is not marked for force loading",
+);
+static ERROR_NO_WORLD: CommandErrorType<0> = CommandErrorType::new(
     translation::java::COMMANDS_FORCELOAD_QUERY_FAILURE,
     "No world in source",
 );
@@ -65,18 +69,69 @@ fn chunk_area(
 }
 
 fn chunk_text(pos: Vector2<i32>) -> TextComponent {
-    TextComponent::text(format!("[{}, {}]", pos.x, pos.y))
+    TextComponent::text(chunk_string(pos))
 }
 
-/// The reply that vanilla sends for the chunks that `add` or `remove` changed.
+/// Vanilla `ChunkPos.toString`.
+fn chunk_string(pos: Vector2<i32>) -> String {
+    format!("[{}, {}]", pos.x, pos.y)
+}
+
+/// The dimension as vanilla `translationArg(dimension.identifier())` names it.
+fn dimension_identifier(dimension: &'static str) -> TextComponent {
+    TextComponent::text(dimension)
+}
+
+/// `NeoForge` `CommonHooks.getDimensionDescription` and `Level.getDescription`: the
+/// `dimension.<namespace>.<path>` translation, with the identifier as the fallback.
+fn dimension_description(dimension: &'static str) -> TextComponent {
+    let (namespace, path) = dimension
+        .split_once(':')
+        .unwrap_or(("minecraft", dimension));
+    TextComponent::translate_with_fallback(format!("dimension.{namespace}.{path}"), dimension, [])
+}
+
+/// Vanilla `ChunkPos.pack`: the order of `/forceload query` lists.
+fn packed(pos: Vector2<i32>) -> i64 {
+    (i64::from(pos.x) & 0xFFFF_FFFF) | (i64::from(pos.y) << 32)
+}
+
+/// Vanilla `ForceLoadCommand.listForceLoad`: the reply, or `None` for `added.none`.
+fn list_feedback(forced: &[Vector2<i32>], dimension: &'static str) -> Option<TextComponent> {
+    let mut sorted = forced.to_vec();
+    sorted.sort_unstable_by_key(|pos| packed(*pos));
+    let list = TextComponent::text(
+        sorted
+            .into_iter()
+            .map(chunk_string)
+            .collect::<Vec<_>>()
+            .join(", "),
+    );
+    let description = dimension_description(dimension);
+    match forced.len() {
+        0 => None,
+        1 => Some(TextComponent::translate_cross(
+            translation::java::COMMANDS_FORCELOAD_LIST_SINGLE,
+            translation::java::COMMANDS_FORCELOAD_LIST_SINGLE,
+            [description, list],
+        )),
+        count => Some(TextComponent::translate_cross(
+            translation::java::COMMANDS_FORCELOAD_LIST_MULTIPLE,
+            translation::java::COMMANDS_FORCELOAD_LIST_MULTIPLE,
+            [TextComponent::text(count.to_string()), description, list],
+        )),
+    }
+}
+
+/// The reply that vanilla sends for the chunks that `add` or `remove` changed. `NeoForge` names
+/// the dimension by its description in the `multiple` replies only.
 fn change_feedback(
     add: bool,
     changed: &[Vector2<i32>],
-    dimension: &str,
+    dimension: &'static str,
     min: Vector2<i32>,
     max: Vector2<i32>,
 ) -> Result<TextComponent, CommandSyntaxError> {
-    let dimension = TextComponent::text(dimension.to_owned());
     match changed {
         [] => Err(if add {
             ERROR_FAILED_ADD.create_without_context()
@@ -92,7 +147,7 @@ fn change_feedback(
             Ok(TextComponent::translate_cross(
                 key,
                 key,
-                [chunk_text(*only), dimension],
+                [chunk_text(*only), dimension_identifier(dimension)],
             ))
         }
         _ => {
@@ -106,7 +161,7 @@ fn change_feedback(
                 key,
                 [
                     TextComponent::text(changed.len().to_string()),
-                    dimension,
+                    dimension_description(dimension),
                     chunk_text(min),
                     chunk_text(max),
                 ],
@@ -188,12 +243,10 @@ impl CommandExecutor for ForceloadRemoveAllExecutor {
 
         world.update_active_chunks();
 
-        let dimension_name = world.dimension.minecraft_name.to_string();
-
         let text = TextComponent::translate_cross(
             translation::java::COMMANDS_FORCELOAD_REMOVED_ALL,
             translation::java::COMMANDS_FORCELOAD_REMOVED_ALL,
-            [TextComponent::text(dimension_name)],
+            [dimension_description(world.dimension.minecraft_name)],
         );
         context.source.send_feedback(text, true);
 
@@ -201,6 +254,7 @@ impl CommandExecutor for ForceloadRemoveAllExecutor {
     }
 }
 
+/// Vanilla `ForceLoadCommand.queryForceLoad`.
 struct ForceloadQueryExecutor;
 
 impl CommandExecutor for ForceloadQueryExecutor {
@@ -209,95 +263,58 @@ impl CommandExecutor for ForceloadQueryExecutor {
             .source
             .world
             .as_ref()
-            .ok_or_else(|| ERROR_FAILED_QUERY.create_without_context())?;
-
-        let chunk_pos = if context.get_argument::<Coordinates>("pos").is_ok() {
-            let pos = ColumnPosArgumentType::get_column_pos(context, "pos")?;
-            Vector2::new(pos.0.x >> 4, pos.0.y >> 4)
-        } else {
-            let block_x = context.source.position.x.floor() as i32;
-            let block_z = context.source.position.z.floor() as i32;
-            Vector2::new(block_x >> 4, block_z >> 4)
-        };
-
-        let is_forced = {
-            let forced = world
-                .forced_chunks
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            forced.contains(&chunk_pos)
-        };
-
-        let dimension_name = world.dimension.minecraft_name.to_string();
-
-        if is_forced {
-            let text = TextComponent::translate_cross(
+            .ok_or_else(|| ERROR_NO_WORLD.create_without_context())?;
+        let pos = ColumnPosArgumentType::get_column_pos(context, "pos")?;
+        let chunk = Vector2::new(pos.0.x >> 4, pos.0.y >> 4);
+        let forced = world
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&chunk);
+        let dimension = dimension_description(world.dimension.minecraft_name);
+        if !forced {
+            return Err(ERROR_FAILED_QUERY.create_without_context(chunk_text(chunk), dimension));
+        }
+        context.source.send_feedback(
+            TextComponent::translate_cross(
                 translation::java::COMMANDS_FORCELOAD_QUERY_SUCCESS,
                 translation::java::COMMANDS_FORCELOAD_QUERY_SUCCESS,
-                [
-                    TextComponent::text(format!("[{}, {}]", chunk_pos.x, chunk_pos.y)),
-                    TextComponent::text(dimension_name),
-                ],
-            );
+                [chunk_text(chunk), dimension],
+            ),
+            false,
+        );
+        Ok(1)
+    }
+}
+
+/// Vanilla `ForceLoadCommand.listForceLoad`: returns the count of forced chunks.
+struct ForceloadListExecutor;
+
+impl CommandExecutor for ForceloadListExecutor {
+    fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
+        let world = context
+            .source
+            .world
+            .as_ref()
+            .ok_or_else(|| ERROR_NO_WORLD.create_without_context())?;
+        let forced: Vec<_> = world
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .copied()
+            .collect();
+        let dimension = world.dimension.minecraft_name;
+        if let Some(text) = list_feedback(&forced, dimension) {
             context.source.send_feedback(text, false);
         } else {
-            let text = TextComponent::translate_cross(
-                translation::java::COMMANDS_FORCELOAD_QUERY_FAILURE,
-                translation::java::COMMANDS_FORCELOAD_QUERY_FAILURE,
-                [
-                    TextComponent::text(format!("[{}, {}]", chunk_pos.x, chunk_pos.y)),
-                    TextComponent::text(dimension_name),
-                ],
-            );
-            context.source.send_error(text);
-        }
-
-        let all_forced = {
-            let forced = world
-                .forced_chunks
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            forced
-                .iter()
-                .map(|pos| format!("[{}, {}]", pos.x, pos.y))
-                .collect::<Vec<_>>()
-        };
-
-        if all_forced.is_empty() {
-            let text = TextComponent::translate_cross(
+            context.source.send_error(TextComponent::translate_cross(
                 translation::java::COMMANDS_FORCELOAD_ADDED_NONE,
                 translation::java::COMMANDS_FORCELOAD_ADDED_NONE,
-                [TextComponent::text(
-                    world.dimension.minecraft_name.to_string(),
-                )],
-            );
-            context.source.send_error(text);
-        } else {
-            let list_str = all_forced.join(", ");
-            let text = if all_forced.len() == 1 {
-                TextComponent::translate_cross(
-                    translation::java::COMMANDS_FORCELOAD_LIST_SINGLE,
-                    translation::java::COMMANDS_FORCELOAD_LIST_SINGLE,
-                    [
-                        TextComponent::text(world.dimension.minecraft_name.to_string()),
-                        TextComponent::text(list_str),
-                    ],
-                )
-            } else {
-                TextComponent::translate_cross(
-                    translation::java::COMMANDS_FORCELOAD_LIST_MULTIPLE,
-                    translation::java::COMMANDS_FORCELOAD_LIST_MULTIPLE,
-                    [
-                        TextComponent::text(all_forced.len().to_string()),
-                        TextComponent::text(world.dimension.minecraft_name.to_string()),
-                        TextComponent::text(list_str),
-                    ],
-                )
-            };
-            context.source.send_feedback(text, false);
+                [dimension_description(dimension)],
+            ));
         }
-
-        Ok(i32::from(is_forced))
+        Ok(forced.len() as i32)
     }
 }
 
@@ -330,7 +347,7 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
         )
         .then(
             literal("query")
-                .executes(ForceloadQueryExecutor)
+                .executes(ForceloadListExecutor)
                 .then(argument("pos", ColumnPosArgumentType).executes(ForceloadQueryExecutor)),
         );
 
@@ -441,9 +458,68 @@ mod tests {
         let changed = [at(0, 0), at(1, 0), at(0, 1)];
         let text =
             change_feedback(false, &changed, "minecraft:the_end", at(0, 0), at(1, 1)).unwrap();
-        let (key, args) = translation_of(&text);
-        assert_eq!(key, "commands.forceload.removed.multiple");
-        assert_eq!(args, ["3", "minecraft:the_end", "[0, 0]", "[1, 1]"]);
+        let TextContent::Translate {
+            translate, with, ..
+        } = &*text.0.content
+        else {
+            panic!("not a translation");
+        };
+        assert_eq!(translate, "commands.forceload.removed.multiple");
+        assert_eq!(with.len(), 4);
+        assert_eq!(
+            TextComponent(with[1].clone()),
+            dimension_description("minecraft:the_end")
+        );
+    }
+
+    #[test]
+    fn the_dimension_description_is_the_neoforge_translation_with_the_identifier_fallback() {
+        let TextContent::Translate {
+            translate,
+            fallback,
+            with,
+            ..
+        } = &*dimension_description("minecraft:the_nether").0.content
+        else {
+            panic!("not a translation");
+        };
+        assert_eq!(translate, "dimension.minecraft.the_nether");
+        assert_eq!(fallback.as_deref(), Some("minecraft:the_nether"));
+        assert!(with.is_empty());
+    }
+
+    fn list_of(text: &TextComponent) -> (&str, usize, String) {
+        let TextContent::Translate {
+            translate, with, ..
+        } = &*text.0.content
+        else {
+            panic!("not a translation");
+        };
+        let TextContent::Text { text: list } = &*with.last().unwrap().content else {
+            panic!("not a text list");
+        };
+        (translate, with.len(), list.to_string())
+    }
+
+    /// Vanilla sorts the list by `ChunkPos.pack`: by z, then by x as an unsigned 32-bit value.
+    #[test]
+    fn the_list_is_in_packed_chunk_order() {
+        let forced = [at(1, 0), at(-1, 0), at(0, -1), at(5, 2), at(0, 0)];
+        let text = list_feedback(&forced, "minecraft:overworld").unwrap();
+        let (key, args, list) = list_of(&text);
+        assert_eq!(key, "commands.forceload.list.multiple");
+        assert_eq!(args, 3);
+        assert_eq!(list, "[0, -1], [0, 0], [1, 0], [-1, 0], [5, 2]");
+    }
+
+    #[test]
+    fn one_forced_chunk_is_the_single_list_and_none_is_no_reply() {
+        let text = list_feedback(&[at(-3, 7)], "minecraft:overworld").unwrap();
+        let (key, args, list) = list_of(&text);
+        assert_eq!(key, "commands.forceload.list.single");
+        assert_eq!(args, 2);
+        assert_eq!(list, "[-3, 7]");
+        assert!(list_feedback(&[], "minecraft:overworld").is_none());
     }
 
     #[test]

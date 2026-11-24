@@ -4,18 +4,22 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use super::load_error::{self, Entry};
+
 pub fn load_predicates_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     predicates: &mut HashMap<String, Value, S>,
 ) -> usize {
     let mut loaded = 0;
-    load_predicates_recursive(namespace, dir, dir, predicates, &mut loaded);
+    load_predicates_recursive(namespace, pack, dir, dir, predicates, &mut loaded);
     loaded
 }
 
 fn load_predicates_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     predicates: &mut HashMap<String, Value, S>,
@@ -27,22 +31,18 @@ fn load_predicates_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_predicates_recursive(namespace, base_dir, &path, predicates, loaded);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-            let stem_path = stem_path.replace('\\', "/");
-            let predicate_id = format!("{namespace}:{stem_path}");
-
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Ok(val) = serde_json::from_str::<Value>(&content)
-            {
+            load_predicates_recursive(namespace, pack, base_dir, &path, predicates, loaded);
+        } else if let Some(predicate_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: load_error::PREDICATE,
+                id: &predicate_id,
+                pack,
+            };
+            if let Some((_, val)) = file.read_json(&path) {
+                if let Err(cause) = load_error::type_of(&val) {
+                    file.skip(cause);
+                    continue;
+                }
                 predicates.insert(predicate_id, val);
                 *loaded += 1;
             }
@@ -66,7 +66,7 @@ mod tests {
         .expect("write");
 
         let mut map = HashMap::new();
-        let loaded = load_predicates_from_dir("custom", &pred_dir, &mut map);
+        let loaded = load_predicates_from_dir("custom", "file/test", &pred_dir, &mut map);
         assert_eq!(loaded, 1);
         assert!(map.contains_key("custom:test_pred"));
     }

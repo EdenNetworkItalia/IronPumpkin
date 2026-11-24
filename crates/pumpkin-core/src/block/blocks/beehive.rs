@@ -82,7 +82,7 @@ impl BeehiveBlock {
                         Some(args.player.as_ref() as &dyn EntityBase),
                         Some(args.item_stack.clone()),
                     );
-                    crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+                    crate::world::loot::roll_loot(&handle, 0, &params)
                 },
             );
 

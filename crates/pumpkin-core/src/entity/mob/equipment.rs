@@ -23,8 +23,8 @@ use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::Enchantment;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::data_component_impl::{
-    AttributeModifiersImpl, CustomNameImpl, EnchantmentsImpl, EquipmentSlot, EquipmentType,
-    EquippableImpl, IDSet, Operation,
+    CustomNameImpl, EnchantmentsImpl, EquipmentSlot, EquipmentType, EquippableImpl, IDSet,
+    Operation,
 };
 use pumpkin_data::dynamic::DynamicTaggable;
 use pumpkin_data::enchantment_provider::EnchantmentProvider;
@@ -894,7 +894,7 @@ fn approximate_attribute_with(
     let mut add_value = 0.0;
     let mut add_multiplied_base = 0.0;
     let mut multiplied_total = 1.0;
-    if let Some(modifiers) = stack.get_data_component::<AttributeModifiersImpl>() {
+    if let Some(modifiers) = stack.get_attribute_modifiers() {
         for modifier in modifiers.attribute_modifiers.iter() {
             if modifier.r#type.id != attribute.id || !attribute_slot_matches(&modifier.slot, slot) {
                 continue;
