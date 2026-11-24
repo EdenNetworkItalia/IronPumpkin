@@ -163,11 +163,15 @@ macro_rules! impl_cooking_block_entity_base {
                     .write()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let output_item_stack = recipe.result.assemble();
-                if !$crate::block::entities::furnace_like_block_entity::can_burn(
-                    &*items,
-                    &output_item_stack,
-                    max_count,
-                ) {
+                // Vanilla `burn` shrinks the input that it took the recipe from. An event
+                // handler can swap the input before the burn, so the input must still take it.
+                if !recipe.ingredient.match_item(items[0].item)
+                    || !$crate::block::entities::furnace_like_block_entity::can_burn(
+                        &*items,
+                        &output_item_stack,
+                        max_count,
+                    )
+                {
                     return false;
                 }
 

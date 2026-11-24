@@ -413,3 +413,31 @@ fn the_bottle_state_waits_for_a_push_that_the_brewing_start_event_starts() {
         Some([true, false, false])
     );
 }
+
+/// Vanilla `burn` shrinks the input that it took the recipe from. A `FurnaceSmeltEvent` handler
+/// that swaps the input gets no result for the new input.
+#[test]
+fn the_burn_skips_an_input_that_the_smelt_event_swaps() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(0, 100, 2);
+    place(&world, pos, &Block::FURNACE);
+    let furnace = Arc::new(FurnaceBlockEntity::new(pos));
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    on({
+        let furnace = furnace.clone();
+        move |event: &mut pumpkin_core::plugin::inventory::furnace_smelt::FurnaceSmeltEvent| {
+            if event.block_pos == pos {
+                furnace.set_stack(0, ItemStack::new(1, &Item::COBBLESTONE));
+            }
+        }
+    });
+    for _ in 0..COOKING_TIME {
+        furnace.tick(&world);
+    }
+    assert!(furnace.get_stack(2).is_empty());
+    assert_eq!(furnace.get_stack(0).item.id, Item::COBBLESTONE.id);
+    assert_eq!(furnace.get_stack(0).item_count, 1);
+}
