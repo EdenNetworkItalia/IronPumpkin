@@ -135,11 +135,14 @@ fn change_forceload(context: &CommandContext, add: bool) -> CommandExecutorResul
     for x in min.x..=max.x {
         for z in min.y..=max.y {
             let pos = Vector2::new(x, z);
-            world.set_chunk_forced(pos, add);
-            changed.push(pos);
+            if world.set_chunk_forced(pos, add) {
+                changed.push(pos);
+            }
         }
     }
-    world.update_active_chunks();
+    if !changed.is_empty() {
+        world.update_active_chunks();
+    }
 
     let text = change_feedback(add, &changed, world.dimension.minecraft_name, min, max)?;
     context.source.send_feedback(text, true);
@@ -416,5 +419,38 @@ mod tests {
             chunk_area(at(31, -1), at(-16, 16)).unwrap(),
             (at(-1, -1), at(1, 1))
         );
+    }
+
+    #[test]
+    fn one_changed_chunk_is_named_in_the_single_reply() {
+        let text = change_feedback(
+            true,
+            &[at(3, -4)],
+            "minecraft:overworld",
+            at(0, 0),
+            at(5, 5),
+        )
+        .unwrap();
+        let (key, args) = translation_of(&text);
+        assert_eq!(key, "commands.forceload.added.single");
+        assert_eq!(args, ["[3, -4]", "minecraft:overworld"]);
+    }
+
+    #[test]
+    fn several_changed_chunks_count_only_the_changed_ones() {
+        let changed = [at(0, 0), at(1, 0), at(0, 1)];
+        let text =
+            change_feedback(false, &changed, "minecraft:the_end", at(0, 0), at(1, 1)).unwrap();
+        let (key, args) = translation_of(&text);
+        assert_eq!(key, "commands.forceload.removed.multiple");
+        assert_eq!(args, ["3", "minecraft:the_end", "[0, 0]", "[1, 1]"]);
+    }
+
+    #[test]
+    fn no_changed_chunk_is_a_failure() {
+        let add = change_feedback(true, &[], "minecraft:overworld", at(0, 0), at(0, 0));
+        assert!(error_key(&add.unwrap_err()).contains("commands.forceload.added.failure"));
+        let remove = change_feedback(false, &[], "minecraft:overworld", at(0, 0), at(0, 0));
+        assert!(error_key(&remove.unwrap_err()).contains("commands.forceload.removed.failure"));
     }
 }

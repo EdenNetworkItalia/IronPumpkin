@@ -96,6 +96,32 @@ fn run(command: &str) -> Result<i32, String> {
         .map_err(|error| format!("{:?}", error.error_type))
 }
 
+/// `/forceload` counts the chunks that changed, fails when none changed and rejects what
+/// vanilla rejects.
+#[test]
+fn forceload_counts_changed_chunks_and_fails_when_none_changed() {
+    let _serial = support::serial();
+
+    assert_eq!(run("forceload add 544 544 560 544"), Ok(2));
+    assert_eq!(run("forceload add 544 544 560 560"), Ok(2));
+    let again = run("forceload add 544 544 560 560").unwrap_err();
+    assert!(
+        again.contains("commands.forceload.added.failure"),
+        "{again}"
+    );
+
+    assert_eq!(run("forceload remove 544 544 560 560"), Ok(4));
+    let again = run("forceload remove 544 544").unwrap_err();
+    assert!(
+        again.contains("commands.forceload.removed.failure"),
+        "{again}"
+    );
+
+    assert_eq!(run("forceload add 544 544"), Ok(1));
+    assert_eq!(run("forceload remove all"), Ok(0));
+    assert!(support::world().forced_chunks.lock().unwrap().is_empty());
+}
+
 #[test]
 fn forceload_rejects_a_huge_area_and_coordinates_outside_the_world() {
     let _serial = support::serial();
