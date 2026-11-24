@@ -565,3 +565,29 @@ fn the_bottle_state_does_not_update_the_neighbors() {
     );
     assert_eq!(updates.load(Ordering::Relaxed), 0);
 }
+
+/// A cancelled `BrewingStartEvent` stops only the brew: the stand still sets its bottle state,
+/// as the rest of vanilla `serverTick` does.
+#[test]
+fn a_cancelled_brewing_start_still_updates_the_bottle_state() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(12, 100, 2);
+    place(&world, pos, &Block::BREWING_STAND);
+    let stand = BrewingStandBlockEntity::new(pos);
+    stand.set_stack(0, water_bottle());
+    stand.set_stack(3, ItemStack::new(1, &Item::NETHER_WART));
+    stand.fuel.store(5, Ordering::Relaxed);
+    on(move |event: &mut BrewingStartEvent| {
+        if event.block_pos == pos {
+            event.cancelled = true;
+        }
+    });
+    stand.tick(&world);
+    assert_eq!(stand.brew_time.load(Ordering::Relaxed), 0);
+    assert_eq!(stand.fuel.load(Ordering::Relaxed), 5);
+    assert_eq!(
+        *stand.last_potion_count.lock().unwrap(),
+        Some([true, false, false])
+    );
+}

@@ -784,33 +784,35 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             }
         } else if brewable && self.fuel.load(Ordering::Relaxed) > 0 {
             let default_ticks = self.effective_brew_ticks();
-            let brew_time = if let Some(server) = world.server.upgrade() {
-                let mut start_event =
-                    crate::plugin::api::events::block::brewing_start::BrewingStartEvent::new(
-                        self.position,
-                        world.clone(),
-                        default_ticks,
-                    );
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut start_event);
-                if start_event.cancelled {
-                    return;
-                }
-                start_event.brewing_time
-            } else {
-                default_ticks
-            };
+            let brew_time = world
+                .server
+                .upgrade()
+                .map_or(Some(default_ticks), |server| {
+                    let mut start_event =
+                        crate::plugin::api::events::block::brewing_start::BrewingStartEvent::new(
+                            self.position,
+                            world.clone(),
+                            default_ticks,
+                        );
+                    server
+                        .plugin_manager
+                        .fire_blocking(&server, &mut start_event);
+                    // A cancelled start stops only the brew: the bottle state below still updates.
+                    (!start_event.cancelled).then_some(start_event.brewing_time)
+                });
 
-            // Start new brewing cycle
-            self.fuel.fetch_sub(1, Ordering::Relaxed);
-            self.brew_time.store(brew_time, Ordering::Relaxed);
-            self.total_brew_time.store(brew_time, Ordering::Relaxed);
-            *self
-                .ingredient_item
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ingredient.get_item());
-            self.mark_timer_dirty();
+            if let Some(brew_time) = brew_time {
+                // Start new brewing cycle
+                self.fuel.fetch_sub(1, Ordering::Relaxed);
+                self.brew_time.store(brew_time, Ordering::Relaxed);
+                self.total_brew_time.store(brew_time, Ordering::Relaxed);
+                *self
+                    .ingredient_item
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some(ingredient.get_item());
+                self.mark_timer_dirty();
+            }
         } else if fuel_refilled {
             // Mark dirty if fuel was refilled to update fuel indicator
             self.mark_timer_dirty();
