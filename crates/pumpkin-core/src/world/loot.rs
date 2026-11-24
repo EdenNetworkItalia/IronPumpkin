@@ -79,6 +79,47 @@ impl LootContextParameters<'_> {
     }
 }
 
+impl<'a> LootContextParameters<'a> {
+    /// `Block.dropFromBlockInteractLootTable`: the `block_interact` parameter set. `state` is the
+    /// state of the block before the interaction changes it, and `position` is its position.
+    #[must_use]
+    pub fn block_interact(
+        world: &'a World,
+        position: &pumpkin_util::math::position::BlockPos,
+        state: &'static BlockState,
+        block_entity: Option<&'a dyn BlockEntity>,
+        interacting_entity: Option<&'a dyn EntityBase>,
+        tool: Option<ItemStack>,
+    ) -> Self {
+        Self {
+            world: Some(world),
+            position: Some(position.to_centered_f64()),
+            block_state: Some(state),
+            block_entity,
+            interacting_entity,
+            tool,
+            ..Default::default()
+        }
+    }
+
+    /// `LivingEntity.dropFromEntityInteractLootTable`: the `entity_interact` parameter set.
+    #[must_use]
+    pub fn entity_interact(
+        world: &'a World,
+        target: &'a dyn EntityBase,
+        interacting_entity: Option<&'a dyn EntityBase>,
+        tool: ItemStack,
+    ) -> Self {
+        Self {
+            world: Some(world),
+            target_entity: Some(target),
+            interacting_entity,
+            tool: Some(tool),
+            ..Default::default()
+        }
+    }
+}
+
 /// `Player.getLuck`: the luck of the player, `withLuck` of the vanilla loot params.
 #[must_use]
 pub fn player_luck(player: &crate::entity::player::Player) -> f32 {

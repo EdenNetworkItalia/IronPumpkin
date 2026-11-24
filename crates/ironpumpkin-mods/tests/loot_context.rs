@@ -21,8 +21,13 @@ use ironpumpkin_mods::{
     loot::{GlobalLootModifier, ItemStack, LootContext, Value},
     pumpkin_core::{
         block::{
-            BlockBehaviour, BlockHitResult, UseWithItemArgs,
-            blocks::vault::VaultBlock,
+            BlockBehaviour, BlockHitResult, NormalUseArgs, UseWithItemArgs,
+            blocks::{
+                beehive::BeehiveBlock,
+                plant::{cave_vines::CaveVinesBlock, crop::sweet_berry_bush::SweetBerryBushBlock},
+                pumpkin::PumpkinBlock,
+                vault::VaultBlock,
+            },
             collect_loot,
             entities::{
                 BlockEntity,
@@ -35,7 +40,7 @@ use ironpumpkin_mods::{
             },
             registry::BlockActionResult,
         },
-        entity::EntityBase,
+        entity::{EntityBase, passive::armadillo::ArmadilloEntity},
         item::{
             ItemBehaviour,
             items::{brush::BrushItem, hoe::HoeItem},
@@ -49,7 +54,10 @@ use ironpumpkin_mods::{
     pumpkin_data::{
         Block, BlockDirection, BlockStateId,
         attributes::Attributes,
-        block_properties::{SuspiciousSandLikeProperties, VaultLikeProperties, VaultState},
+        block_properties::{
+            BeeNestLikeProperties, CaveVinesLikeProperties, NetherWartLikeProperties,
+            SuspiciousSandLikeProperties, VaultLikeProperties, VaultState,
+        },
         damage::DamageType,
         entity::EntityType,
         item::Item,
@@ -624,4 +632,196 @@ fn a_player_kill_rolls_with_the_last_damage_player_and_its_luck() {
     assert_eq!(roll.attacking_entity, player_id);
     assert_eq!(roll.this_entity, Some(entity_id(chicken.as_ref())));
     assert_eq!(roll.damage_type, Some("player"));
+}
+
+fn use_with_item(
+    behaviour: &dyn BlockBehaviour,
+    block: &'static Block,
+    pos: BlockPos,
+    player: &Arc<ironpumpkin_mods::pumpkin_core::entity::player::Player>,
+    item: &mut ItemStack,
+) -> BlockActionResult {
+    let world = support::world();
+    behaviour.use_with_item(UseWithItemArgs {
+        server: support::server(),
+        world: &world,
+        block,
+        position: &pos,
+        player,
+        hit: &BlockHitResult {
+            face: &BlockDirection::Up,
+            cursor_pos: &Vector3::new(0.5, 1.0, 0.5),
+        },
+        item_stack: item,
+        equipment_slot:
+            &ironpumpkin_mods::pumpkin_data::data_component_impl::EquipmentSlot::MAIN_HAND,
+    })
+}
+
+fn normal_use(
+    behaviour: &dyn BlockBehaviour,
+    block: &'static Block,
+    pos: BlockPos,
+    player: &Arc<ironpumpkin_mods::pumpkin_core::entity::player::Player>,
+) -> BlockActionResult {
+    let world = support::world();
+    behaviour.normal_use(NormalUseArgs {
+        server: support::server(),
+        world: &world,
+        block,
+        position: &pos,
+        player,
+        hit: &BlockHitResult {
+            face: &BlockDirection::Up,
+            cursor_pos: &Vector3::new(0.5, 1.0, 0.5),
+        },
+    })
+}
+
+/// The `block_interact` set: the state before the interaction, the centered origin, the block
+/// entity, the interacting entity and the tool. `this_entity` stays empty.
+fn block_interact_roll(
+    table: &str,
+    pos: &BlockPos,
+    state: BlockStateId,
+    player: &Arc<ironpumpkin_mods::pumpkin_core::entity::player::Player>,
+    tool: Option<&'static str>,
+) -> Roll {
+    Roll {
+        table: table.to_owned(),
+        origin: Some(center(pos)),
+        block_state: Some(state),
+        tool,
+        interacting_entity: Some(entity_id(player.as_ref())),
+        ..Roll::default()
+    }
+}
+
+#[test]
+fn sweet_berry_bush_rolls_the_block_interact_set() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let player = support::player("berry_picker");
+    let pos = BlockPos::new(80, 100, 0);
+    let mut props = NetherWartLikeProperties::default(&Block::SWEET_BERRY_BUSH);
+    props.age = 3;
+    let state = props.to_state_id(&Block::SWEET_BERRY_BUSH);
+    set(pos, state);
+
+    let table = "minecraft:harvest/sweet_berry_bush";
+    let rolls = rolls_of(table, || {
+        normal_use(&SweetBerryBushBlock, &Block::SWEET_BERRY_BUSH, pos, &player);
+    });
+    assert_eq!(
+        rolls,
+        [block_interact_roll(table, &pos, state, &player, None)]
+    );
+}
+
+#[test]
+fn cave_vines_roll_the_block_interact_set() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let player = support::player("vine_picker");
+    let pos = BlockPos::new(90, 100, 0);
+    let mut props = CaveVinesLikeProperties::default(&Block::CAVE_VINES);
+    props.berries = true;
+    let state = props.to_state_id(&Block::CAVE_VINES);
+    set(pos, state);
+
+    let table = "minecraft:harvest/cave_vine";
+    let rolls = rolls_of(table, || {
+        normal_use(&CaveVinesBlock, &Block::CAVE_VINES, pos, &player);
+    });
+    assert_eq!(
+        rolls,
+        [block_interact_roll(table, &pos, state, &player, None)]
+    );
+}
+
+#[test]
+fn beehive_rolls_the_block_interact_set_with_the_shears() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let player = support::player("beekeeper");
+    let pos = BlockPos::new(100, 100, 0);
+    let mut props = BeeNestLikeProperties::default(&Block::BEEHIVE);
+    props.honey_level = 5;
+    let state = props.to_state_id(&Block::BEEHIVE);
+    set(pos, state);
+
+    let table = "minecraft:harvest/beehive";
+    let mut shears = ItemStack::new(1, &Item::SHEARS);
+    let rolls = rolls_of(table, || {
+        use_with_item(&BeehiveBlock, &Block::BEEHIVE, pos, &player, &mut shears);
+    });
+    assert_eq!(
+        rolls,
+        [Roll {
+            // The hive has its block entity.
+            block_entity: Some(pos),
+            ..block_interact_roll(table, &pos, state, &player, Some("shears"))
+        }]
+    );
+}
+
+#[test]
+fn pumpkin_rolls_the_block_interact_set_with_the_state_before_carving() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let player = support::player("carver");
+    let pos = BlockPos::new(110, 100, 0);
+    let state = Block::PUMPKIN.default_state.id;
+    set(pos, state);
+
+    let table = "minecraft:carve/pumpkin";
+    let mut shears = ItemStack::new(1, &Item::SHEARS);
+    let rolls = rolls_of(table, || {
+        use_with_item(&PumpkinBlock, &Block::PUMPKIN, pos, &player, &mut shears);
+    });
+    assert_eq!(
+        rolls,
+        [block_interact_roll(
+            table,
+            &pos,
+            state,
+            &player,
+            Some("shears")
+        )]
+    );
+}
+
+#[test]
+fn armadillo_brush_rolls_the_entity_interact_set() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("armadillo_brusher");
+    set(BlockPos::new(120, 100, 0), Block::STONE.default_state.id);
+    let armadillo = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::ARMADILLO,
+        Vector3::new(120.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(armadillo.clone()));
+    let brush = ItemStack::new(1, &Item::BRUSH);
+    let entity = armadillo
+        .cast_any()
+        .downcast_ref::<ArmadilloEntity>()
+        .unwrap();
+
+    let rolls = rolls_of("minecraft:brush/armadillo", || {
+        assert!(entity.brush_off_scute(Some(player.as_ref()), &brush));
+    });
+    assert_eq!(
+        rolls,
+        [Roll {
+            table: "minecraft:brush/armadillo".to_owned(),
+            tool: Some("brush"),
+            target_entity: Some(entity_id(armadillo.as_ref())),
+            interacting_entity: Some(entity_id(player.as_ref())),
+            ..Roll::default()
+        }]
+    );
 }

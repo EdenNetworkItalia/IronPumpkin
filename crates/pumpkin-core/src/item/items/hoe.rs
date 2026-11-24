@@ -71,15 +71,14 @@ impl ItemBehaviour for HoeItem {
                 let drops = loot_table.generate_loot_with_context(
                     seed,
                     // `Block.dropFromBlockInteractLootTable`: the `block_interact` parameter set.
-                    &crate::world::loot::LootContextParameters {
-                        world: Some(&world),
-                        block_state: Some(old_state),
-                        position: Some(location.to_centered_f64()),
-                        block_entity: block_entity.as_deref(),
-                        interacting_entity: Some(player as &dyn EntityBase),
-                        tool: Some(tool),
-                        ..Default::default()
-                    },
+                    &crate::world::loot::LootContextParameters::block_interact(
+                        &world,
+                        &location,
+                        old_state,
+                        block_entity.as_deref(),
+                        Some(player as &dyn EntityBase),
+                        Some(tool),
+                    ),
                 );
                 for drop_stack in drops {
                     if result.entry.drop_strategy == Some(DropStrategy::ClickedFace) {

@@ -1054,13 +1054,16 @@ impl DispenserBlock {
         ctx.world
             .play_block_sound(Sound::BlockBeehiveShear, SoundCategory::Blocks, target);
         if let Some(table) = ctx.world.get_loot_table("minecraft:harvest/beehive") {
-            let params = crate::world::loot::LootContextParameters {
-                world: Some(ctx.world),
-                position: Some(target.to_f64()),
-                block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
-                tool: Some(tool.clone()),
-                ..Default::default()
-            };
+            // `ShearsDispenseItemBehavior` drops the honeycomb with no interacting entity.
+            let block_entity = ctx.world.get_block_entity(&target);
+            let params = crate::world::loot::LootContextParameters::block_interact(
+                ctx.world,
+                &target,
+                pumpkin_data::BlockState::from_id(state_id),
+                block_entity.as_deref(),
+                None,
+                Some(tool.clone()),
+            );
             for stack in
                 crate::world::loot::generate_loot_from_handle(&table, rand::random(), &params)
             {
