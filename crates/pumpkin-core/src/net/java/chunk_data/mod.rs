@@ -84,6 +84,10 @@ impl<'a> CChunkData<'a> {
                 })
             })
             .collect();
+        #[expect(
+            clippy::needless_collect,
+            reason = "the block entities are built after the pending lock is released"
+        )]
         let pending: Vec<(BlockPos, u16, Option<NbtCompound>)> = chunk
             .pending_block_entities
             .lock()
