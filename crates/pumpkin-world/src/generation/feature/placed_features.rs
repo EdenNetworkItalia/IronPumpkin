@@ -288,10 +288,8 @@ pub struct NoiseBasedCountPlacementModifier {
 
 impl CountPlacementModifierBase for NoiseBasedCountPlacementModifier {
     fn get_count(&self, _random: &mut RandomGenerator, pos: BlockPos) -> i32 {
-        let noise = FOLIAGE_NOISE.sample(
-            pos.0.x as f64 / self.factor,
-            pos.0.z as f64 / self.factor,
-            false,
+        let noise = f64::from(
+            FOLIAGE_NOISE.sample_f32(pos.0.x as f64 / self.factor, pos.0.z as f64 / self.factor),
         );
         ((noise + self.offset) * self.to_count_ratio as f64).ceil() as i32
     }
@@ -305,7 +303,8 @@ pub struct NoiseThresholdCountPlacementModifier {
 
 impl CountPlacementModifierBase for NoiseThresholdCountPlacementModifier {
     fn get_count(&self, _random: &mut RandomGenerator, pos: BlockPos) -> i32 {
-        let noise = FOLIAGE_NOISE.sample(pos.0.x as f64 / 200.0, pos.0.z as f64 / 200.0, false);
+        let noise =
+            f64::from(FOLIAGE_NOISE.sample_f32(pos.0.x as f64 / 200.0, pos.0.z as f64 / 200.0));
         if noise < self.noise_level {
             self.below_noise
         } else {
@@ -739,6 +738,23 @@ pub(super) mod tests {
     use super::*;
     use crate::ProtoChunk;
     use crate::generation::generator::{GeneratorInit, VanillaGenerator, WorldGenerator};
+
+    /// At these positions the noise of `warm_ocean_vegetation` (ratio 20, factor 400) is within
+    /// a `f32` rounding of a count boundary. The counts are those of vanilla 26.3
+    /// `NoiseBasedCountPlacement.count`; the noise in `f64` gives 11 and 8.
+    #[test]
+    fn noise_based_count_rounds_the_noise_as_vanilla() {
+        let placement = NoiseBasedCountPlacementModifier {
+            to_count_ratio: 20,
+            factor: 400.0,
+            offset: 0.0,
+        };
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(0));
+        for (x, z, count) in [(-79070, 1786, 10), (-78588, 3217, 9), (768, -1824, 10)] {
+            let pos = BlockPos(Vector3::new(x, 0, z));
+            assert_eq!(placement.get_count(&mut random, pos), count, "{x} {z}");
+        }
+    }
 
     pub(in crate::generation::feature) struct TestPortal;
 
