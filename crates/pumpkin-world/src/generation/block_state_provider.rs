@@ -306,6 +306,10 @@ impl RotatedBlockProvider {
 
     /// Sets the `axis` and `facing` properties of the state, as vanilla `trySetValue` with
     /// `AXIS`, `FACING` and `HORIZONTAL_FACING` does.
+    ///
+    /// The property kind is read from the values that the block accepts. Vanilla matches the
+    /// property object, so it skips a mod block with its own `axis` or `facing` object; this
+    /// rotates such a block when its values equal those of a vanilla kind.
     fn rotate(state: &'static BlockState, direction: BlockDirection) -> &'static BlockState {
         let block = Block::from_id(state.id.to_block_id());
         if block.properties(state.id).is_none() {
