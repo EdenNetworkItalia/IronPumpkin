@@ -1,9 +1,5 @@
 //! The cost of the enchantment level and attribute modifier reads of an item stack once a hook is
 //! set (issue #180): with no live handler, a read allocates nothing.
-#![expect(
-    clippy::unwrap_used,
-    reason = "a test fails on the first missing value"
-)]
 
 mod support;
 
