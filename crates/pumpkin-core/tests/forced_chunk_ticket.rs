@@ -8,9 +8,19 @@ use std::{
     time::{Duration, Instant},
 };
 
-use pumpkin_core::command::CommandSender;
-use pumpkin_util::math::vector2::Vector2;
-use pumpkin_world::chunk_system::ChunkLoading;
+use std::{
+    num::NonZeroI32,
+    sync::{Arc, atomic::Ordering},
+};
+
+use pumpkin_core::{
+    block::entities::{BlockEntity, furnace::FurnaceBlockEntity},
+    command::CommandSender,
+    entity::EntityBase,
+};
+use pumpkin_data::{Block, BlockStateId, block_properties::RedstoneOreLikeProperties};
+use pumpkin_util::math::{position::BlockPos, vector2::Vector2};
+use pumpkin_world::{chunk_system::ChunkLoading, tick::TickPriority, world::BlockFlags};
 
 fn wait_until_loaded(chunk: Vector2<i32>) {
     let world = support::world();
@@ -37,8 +47,7 @@ fn forcing_a_chunk_loads_it() {
     assert!(!world.forced_chunks.lock().unwrap().contains(&chunk));
 }
 
-/// A forced chunk that no player is near ticks: entities, block entities, scheduled ticks and
-/// random ticks all run in the active chunks.
+/// A forced chunk that no player is near is entity ticking: everything ticks in it.
 #[test]
 fn a_forced_chunk_without_a_player_is_active() {
     let _serial = support::serial();
@@ -150,4 +159,161 @@ fn the_chunks_within_two_of_a_forced_chunk_load_at_full() {
 
     world.set_chunk_forced(chunk, false);
     world.update_active_chunks();
+}
+
+const fn block_at(chunk: Vector2<i32>, y: i32) -> BlockPos {
+    BlockPos::new(chunk.x * 16 + 8, y, chunk.y * 16 + 8)
+}
+
+fn lit_lamp() -> BlockStateId {
+    RedstoneOreLikeProperties { lit: true }.to_state_id(&Block::REDSTONE_LAMP)
+}
+
+/// A furnace that burns for 100 ticks, with nothing to smelt.
+fn burning_furnace(pos: BlockPos) -> Arc<FurnaceBlockEntity> {
+    let world = support::world();
+    world.set_block_state(&pos, Block::FURNACE.default_state.id, BlockFlags::empty());
+    let furnace = Arc::new(FurnaceBlockEntity::new(pos));
+    furnace.lit_time_remaining.store(100, Ordering::Relaxed);
+    furnace.lit_total_time.store(100, Ordering::Relaxed);
+    world.add_block_entity(furnace.clone() as Arc<dyn BlockEntity>);
+    furnace
+}
+
+/// A forced chunk is entity ticking (level 31); its 8 neighbours are block ticking (level 32),
+/// and the ring past them is loaded at FULL (level 33) and does not tick. Vanilla runs block
+/// entities (`Level.tickBlockEntities` through `shouldTickBlocksAt`) and scheduled ticks
+/// (`LevelTicks` through `isPositionTicking`) in block ticking chunks, and random ticks
+/// (`ServerChunkCache.tickChunks`, `forEachBlockTickingChunk` through
+/// `forEachEntityTickingChunk`) in entity ticking chunks only.
+#[test]
+fn the_neighbours_of_a_forced_chunk_tick_blocks_and_not_random_ticks() {
+    let _serial = support::serial();
+    let world = support::world();
+    let server = support::server();
+    let forced = Vector2::new(60, 60);
+    let neighbour = Vector2::new(61, 60);
+    let outside = Vector2::new(62, 60);
+
+    world.set_chunk_forced(forced, true);
+    for chunk in [forced, neighbour, outside] {
+        wait_until_loaded(chunk);
+    }
+    world.update_active_chunks();
+    let entity = world.active_chunks.read().unwrap().clone();
+    let block = world.block_ticking_chunks.read().unwrap().clone();
+    assert!(entity.contains(&forced) && block.contains(&forced));
+    assert!(!entity.contains(&neighbour) && block.contains(&neighbour));
+    assert!(!entity.contains(&outside) && !block.contains(&outside));
+
+    let crop = |chunk| {
+        let pos = block_at(chunk, 200);
+        world.set_block_state(
+            &pos.down(),
+            Block::FARMLAND.default_state.id,
+            BlockFlags::empty(),
+        );
+        world.set_block_state(&pos, Block::WHEAT.default_state.id, BlockFlags::empty());
+        pos
+    };
+    let forced_crop = crop(forced);
+    let neighbour_crop = crop(neighbour);
+    let lamp = |chunk| {
+        let pos = block_at(chunk, 210);
+        world.set_block_state(&pos, lit_lamp(), BlockFlags::empty());
+        world.schedule_block_tick(&Block::REDSTONE_LAMP, pos, 1, TickPriority::Normal);
+        pos
+    };
+    let neighbour_lamp = lamp(neighbour);
+    let outside_lamp = lamp(outside);
+    let neighbour_furnace = burning_furnace(block_at(neighbour, 220));
+    let outside_furnace = burning_furnace(block_at(outside, 220));
+
+    let previous = world.level_info.load_full();
+    world.level_info.rcu(|info| {
+        let mut info = (**info).clone();
+        info.game_rules.random_tick_speed = 4096;
+        info
+    });
+    // At 4096 a section takes about one random tick per block and tick, and a crop grows with
+    // a chance of 1 in 26 or more: in 400 ticks a crop that random ticks reach grows with a
+    // chance above 1 - 1e-6. The loop does not stop early, so the neighbour crop gets the
+    // same number of ticks.
+    for _ in 0..400 {
+        world.tick(server);
+    }
+    world.level_info.store(previous);
+
+    assert_ne!(
+        world.get_block_state_id(&forced_crop),
+        Block::WHEAT.default_state.id,
+        "random ticks run in the forced chunk"
+    );
+    assert_eq!(
+        world.get_block_state_id(&neighbour_crop),
+        Block::WHEAT.default_state.id,
+        "random ticks do not run in a block ticking chunk"
+    );
+    assert_eq!(
+        world.get_block_state_id(&neighbour_lamp),
+        Block::REDSTONE_LAMP.default_state.id,
+        "a scheduled tick runs in a block ticking chunk"
+    );
+    assert_eq!(world.get_block_state_id(&outside_lamp), lit_lamp());
+    assert!(neighbour_furnace.lit_time_remaining.load(Ordering::Relaxed) < 100);
+    assert_eq!(
+        outside_furnace.lit_time_remaining.load(Ordering::Relaxed),
+        100
+    );
+
+    world.set_chunk_forced(forced, false);
+    world.update_active_chunks();
+}
+
+/// The ring at the simulation distance plus one is at level 32 of the player's simulation
+/// ticket (`31 - simulation distance`): block ticking, not entity ticking.
+#[test]
+fn the_ring_past_the_simulation_distance_of_a_player_is_block_ticking_only() {
+    let _serial = support::serial();
+    let world = support::world();
+    let player = support::player("SimulationEdge");
+    world.update_active_chunks();
+    let center = player.get_entity().chunk_pos.load();
+    let distance = NonZeroI32::from(
+        support::server()
+            .advanced_config
+            .networking
+            .java
+            .simulation_distance,
+    )
+    .get();
+    let entity = world.active_chunks.read().unwrap().clone();
+    let block = world.block_ticking_chunks.read().unwrap().clone();
+    for (dx, dz) in [(distance, 0), (-distance, distance), (3, -distance)] {
+        let chunk = center.add_raw(dx, dz);
+        assert!(
+            entity.contains(&chunk) && block.contains(&chunk),
+            "{dx} {dz}"
+        );
+    }
+    let edge = distance + 1;
+    for (dx, dz) in [(edge, 0), (-edge, 3), (edge, edge), (0, -edge)] {
+        let chunk = center.add_raw(dx, dz);
+        assert!(
+            !entity.contains(&chunk) && block.contains(&chunk),
+            "{dx} {dz}"
+        );
+    }
+    let chunk = center.add_raw(distance + 2, 0);
+    assert!(!entity.contains(&chunk) && !block.contains(&chunk));
+
+    support::RUNTIME.block_on(world.remove_player(&player, false));
+    world.update_active_chunks();
+    assert!(
+        !world
+            .block_ticking_chunks
+            .read()
+            .unwrap()
+            .contains(&center.add_raw(distance + 1, 0))
+    );
 }

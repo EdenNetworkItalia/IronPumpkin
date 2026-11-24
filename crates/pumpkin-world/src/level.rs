@@ -574,9 +574,13 @@ impl Level {
         });
     }
 
+    /// Collects random ticks in `random_tick_chunks` and the due scheduled ticks in
+    /// `scheduled_tick_chunks`. A loaded chunk outside `scheduled_tick_chunks` keeps its
+    /// scheduled ticks, and their delays wait until the chunk ticks again.
     pub fn get_tick_data(
         &self,
-        active_chunks: &FxHashSet<Vector2<i32>>,
+        random_tick_chunks: &FxHashSet<Vector2<i32>>,
+        scheduled_tick_chunks: &FxHashSet<Vector2<i32>>,
         random_tick_speed: i64,
     ) -> TickData {
         let samples_per_section = random_tick_speed.max(0);
@@ -584,11 +588,11 @@ impl Level {
         let mut ticks = TickData {
             block_ticks: Vec::new(),
             fluid_ticks: Vec::new(),
-            random_ticks: Vec::with_capacity(active_chunks.len() * 3),
+            random_ticks: Vec::with_capacity(random_tick_chunks.len() * 3),
         };
 
-        // 1. Process active chunks (random ticks, block entities)
-        for pos in active_chunks {
+        // 1. Random ticks
+        for pos in random_tick_chunks {
             if let Some(chunk) = self.loaded_chunks.get(pos) {
                 let chunk = chunk.value();
                 let chunk_x_base = chunk.x * 16;
@@ -645,6 +649,9 @@ impl Level {
             .collect();
         for pos in scheduled_chunk_pos {
             if let Some(chunk) = self.loaded_chunks.get(&pos) {
+                if !scheduled_tick_chunks.contains(&pos) {
+                    continue;
+                }
                 let chunk = chunk.value();
                 ticks.block_ticks.append(&mut chunk.block_ticks.step_tick());
                 ticks.fluid_ticks.append(&mut chunk.fluid_ticks.step_tick());
