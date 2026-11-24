@@ -74,17 +74,10 @@ fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
         Value::Array(arr) => {
             let mut ids = Vec::new();
             for item in arr {
-                if let Some(s) = item.as_str() {
-                    // `HolderSetCodec` reads a list of item ids only: a tag in it fails the
-                    // recipe.
-                    if s.starts_with('#') {
-                        return None;
-                    }
-                    ids.push(normalize_id(s));
-                } else {
-                    // A `{"tag": ..}` object or a value that is no item id fails the recipe.
-                    ids.push(normalize_id(item.get("item").and_then(Value::as_str)?));
-                }
+                // `HolderSetCodec` reads a list of item ids only: a tag, an object (the legacy
+                // `{"item": ..}` form too) or any other value in it fails the recipe.
+                let id = item.as_str().filter(|id| !id.starts_with('#'))?;
+                ids.push(normalize_id(id));
             }
             if ids.is_empty() {
                 None
@@ -625,6 +618,18 @@ mod tests {
                 "{entry}"
             );
         }
+    }
+
+    /// The ingredient codec of vanilla 26.3 takes an id, a tag string or a list of ids. The
+    /// legacy `{"item": ..}` object is none of them.
+    #[test]
+    fn a_legacy_item_object_inside_an_ingredient_list_fails_the_recipe() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "ingredient": ["minecraft:stick", { "item": "minecraft:dirt" }],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"#;
+        assert!(parse_recipe("test", "legacy_list", json).is_none());
     }
 
     #[test]
