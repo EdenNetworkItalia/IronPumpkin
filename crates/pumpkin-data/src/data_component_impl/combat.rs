@@ -1,4 +1,3 @@
-use super::Digest;
 use crate::Block;
 use crate::Enchantment;
 use crate::attributes::Attributes;
@@ -6,7 +5,7 @@ use crate::damage::DamageType;
 use crate::data_component_impl::basic::SoundEvent;
 use crate::data_component_impl::{
     DataComponentImpl, EquipmentSlot, IDSet, IDSetContent, IdOr, get_f32_hash, get_i32_hash,
-    get_idor, get_idor_hash, get_idset_hash, get_str_hash, hash_ops, put_idor,
+    get_idor, get_str_hash, hash_ops, put_idor,
 };
 use crate::dynamic::DynamicTaggable;
 use crate::entity_type::EntityType;
@@ -474,7 +473,7 @@ pub struct DamageResistantImpl {
 }
 impl Hash for DamageResistantImpl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        get_idset_hash(&self.types).hash(state);
+        crate::data_component_impl::hash_ops::holder_set(&self.types).hash(state);
     }
 }
 impl DamageResistantImpl {
@@ -885,7 +884,7 @@ pub struct RepairableImpl {
 
 impl Hash for RepairableImpl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        get_idset_hash(&self.items).hash(state);
+        crate::data_component_impl::hash_ops::holder_set(&self.items).hash(state);
     }
 }
 
@@ -1010,7 +1009,10 @@ pub struct DamageReduction {
 impl Hash for DamageReduction {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.horizontal_blocking_angle.to_bits().hash(state);
-        self.damage_type.as_ref().map(get_idset_hash).hash(state);
+        self.damage_type
+            .as_ref()
+            .map(hash_ops::holder_set)
+            .hash(state);
         self.base.to_bits().hash(state);
         self.factor.to_bits().hash(state);
     }
@@ -1084,7 +1086,10 @@ impl Hash for BlocksAttacksImpl {
         self.disable_cooldown_scale.to_bits().hash(state);
         self.damage_reductions.hash(state);
         self.item_damage.hash(state);
-        self.bypassed_by.as_ref().map(get_idset_hash).hash(state);
+        self.bypassed_by
+            .as_ref()
+            .map(hash_ops::holder_set)
+            .hash(state);
         self.block_sound.hash(state);
         self.disabled_sound.hash(state);
     }
@@ -1381,11 +1386,6 @@ impl KineticConditionImpl {
         condition.put_float("min_speed", self.min_speed);
         condition.put_float("min_relative_speed", self.min_relative_speed);
         compound.put(key, NbtTag::Compound(condition));
-    }
-    fn update_digest(&self, digest: &mut Digest) {
-        digest.update(&get_i32_hash(self.max_duration_ticks).to_le_bytes());
-        digest.update(&get_f32_hash(self.min_speed).to_le_bytes());
-        digest.update(&get_f32_hash(self.min_relative_speed).to_le_bytes());
     }
 }
 impl Hash for KineticConditionImpl {
@@ -1701,7 +1701,7 @@ pub struct MobVisibilityImpl {
 }
 impl Hash for MobVisibilityImpl {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        get_idset_hash(&self.targeting_entity_types).hash(state);
+        crate::data_component_impl::hash_ops::holder_set(&self.targeting_entity_types).hash(state);
         self.visibility.to_bits().hash(state);
     }
 }

@@ -1,8 +1,7 @@
-use super::Digest;
 use crate::data_component_impl::basic::SoundEvent;
 use crate::data_component_impl::{
-    DataComponentImpl, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor, get_idor_hash,
-    get_idset_hash, get_str_hash, hash_ops, put_idor,
+    DataComponentImpl, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor, get_str_hash, hash_ops,
+    put_idor,
 };
 use crate::effect::StatusEffect;
 use crate::item::Item;

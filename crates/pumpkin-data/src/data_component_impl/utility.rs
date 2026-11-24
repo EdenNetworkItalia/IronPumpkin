@@ -1,4 +1,3 @@
-use super::Digest;
 use crate::data_component_impl::combat::SwingAnimationImpl;
 use crate::data_component_impl::{
     DataComponentImpl, get_f32_hash, get_i32_hash, get_str_hash, hash_ops,

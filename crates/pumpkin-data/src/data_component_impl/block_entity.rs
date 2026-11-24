@@ -1,4 +1,3 @@
-use super::Digest;
 use crate::data_component_impl::{DataComponentImpl, hash_ops};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;

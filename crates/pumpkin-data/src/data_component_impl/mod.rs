@@ -11,26 +11,6 @@ use pumpkin_nbt::tag::NbtTag;
 use std::any::Any;
 use std::borrow::Cow;
 
-/// CRC-32C state for vanilla's data component hashes.
-#[derive(Default)]
-pub struct Digest(u32);
-
-impl Digest {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self(0)
-    }
-
-    pub fn update(&mut self, bytes: &[u8]) {
-        self.0 = crc32c::crc32c_append(self.0, bytes);
-    }
-
-    #[must_use]
-    pub const fn finalize(&self) -> u64 {
-        self.0 as u64
-    }
-}
-
 pub trait DataComponentImpl: Send + Sync {
     fn write_data(&self) -> NbtTag {
         NbtTag::End
@@ -142,28 +122,6 @@ pub fn get_f32_hash(val: f32) -> u32 {
     hash_ops::float(val)
 }
 
-pub fn get_idor_hash(val: &IdOr<basic::SoundEvent>) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[6u8]);
-    match val {
-        IdOr::Id(sound) => {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(sound.to_name()).to_le_bytes());
-        }
-        IdOr::Value(sound) => {
-            digest.update(&[2u8]);
-            digest.update(&get_str_hash(sound.sound_name.as_str()).to_le_bytes());
-            if let Some(range) = sound.range {
-                digest.update(&[1u8]);
-                digest.update(&get_f32_hash(range).to_le_bytes());
-            } else {
-                digest.update(&[0u8]);
-            }
-        }
-    }
-    digest.finalize() as u32
-}
-
 pub fn put_idor(nbt: &mut NbtCompound, key: &str, val: &IdOr<basic::SoundEvent>) {
     match val {
         IdOr::Id(id) => nbt.put_string(key, format!("minecraft:{}", id.to_name())),
@@ -195,29 +153,6 @@ pub fn get_idor(nbt: &NbtCompound, key: &str, default: Sound) -> IdOr<basic::Sou
     } else {
         IdOr::Id(default)
     }
-}
-
-pub fn get_idset_hash<T: IDSetContent>(val: &IDSet<T>) -> u32 {
-    let mut digest = Digest::new();
-    match val {
-        IDSet::Tag(tag) => {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(tag).to_le_bytes());
-        }
-        IDSet::IDs(ids) => {
-            digest.update(&[2u8]);
-            for id in ids.iter() {
-                digest.update(&[3u8]);
-                // The hash a `Display` client computes. Custom ids in a set are rare, and a
-                // mismatch only resends the slot.
-                digest.update(
-                    &get_i32_hash(id.registry_id(crate::dynamic::ContentIds::Display) as i32)
-                        .to_le_bytes(),
-                );
-            }
-        }
-    }
-    digest.finalize() as u32
 }
 
 pub trait IDSetContent {

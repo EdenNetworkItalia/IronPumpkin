@@ -1,6 +1,4 @@
-use crate::data_component_impl::{
-    DataComponentImpl, IdOr, get_i32_hash, get_idor_hash, get_str_hash, hash_ops,
-};
+use crate::data_component_impl::{DataComponentImpl, IdOr, get_i32_hash, get_str_hash, hash_ops};
 use crate::sound::Sound;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
