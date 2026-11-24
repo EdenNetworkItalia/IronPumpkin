@@ -455,6 +455,7 @@ impl JavaClient {
             .collect();
 
         let key = self.encoding_key();
+        let world = player.world();
         let (tx, rx) = oneshot::channel();
         server.compute_pool.spawn(move || {
             let mut serialized = Vec::with_capacity(valid_chunks.len());
@@ -467,7 +468,8 @@ impl JavaClient {
                     serialized.push((pos, None));
                     continue;
                 }
-                if let Err(err) = CChunkData(&chunk).write_packet_data(&mut buf, &key) {
+                if let Err(err) = CChunkData::new(&world, &chunk).write_packet_data(&mut buf, &key)
+                {
                     error!("Failed to write chunk data: {err:?}");
                     serialized.push((pos, None));
                     continue;

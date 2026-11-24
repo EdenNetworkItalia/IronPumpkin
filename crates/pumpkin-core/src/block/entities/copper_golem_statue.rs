@@ -49,10 +49,9 @@ impl BlockEntity for CopperGolemStatueBlockEntity {
         }
     }
 
+    /// Vanilla sends an update packet with the empty default update tag.
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        self.write_nbt(&mut nbt);
-        Some(nbt)
+        Some(NbtCompound::new())
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

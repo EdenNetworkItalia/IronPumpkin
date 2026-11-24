@@ -111,21 +111,26 @@ pub trait BlockEntity: Any + Send + Sync {
         nbt.put_int("z", position.0.z);
         self.write_nbt(nbt);
     }
-    fn get_id(&self) -> u32 {
-        let name = self
-            .resource_location()
-            .split(':')
-            .next_back()
-            .unwrap_or("");
-        pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
-            .iter()
-            .position(|block_entity_name| *block_entity_name == name)
-            .unwrap_or(0) as u32
+    fn get_id(&self) -> Option<u16> {
+        block_entity_type_id(self.resource_location())
     }
 
-    /// Obtain NBT data for sending to the client in `ChunkData`
+    /// The update tag: what the client gets in the chunk packet and in the block entity data
+    /// packet (vanilla `getUpdateTag`). `None` for the types that keep the empty default.
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         None
+    }
+
+    /// The update tag in the block state `state`. Vanilla `getUpdateTag` of some types reads
+    /// `getBlockState()`; the other types return [`Self::chunk_data_nbt`].
+    fn update_tag(&self, _state: BlockStateId) -> Option<NbtCompound> {
+        self.chunk_data_nbt()
+    }
+
+    /// Whether a change sends the update tag in a block entity data packet: vanilla
+    /// `getUpdatePacket` is not null.
+    fn sends_update_packet(&self) -> bool {
+        true
     }
 
     /// Obtain block actor NBT for fields Bedrock does not include in its block state.
@@ -359,11 +364,17 @@ pub fn block_entity_from_generic<T: BlockEntity>(nbt: &NbtCompound) -> T {
 #[allow(clippy::too_many_lines)]
 pub fn block_entity_from_nbt(nbt: &NbtCompound) -> Option<Arc<dyn BlockEntity>> {
     let id = nbt.get_string("id")?;
+    // Vanilla `Identifier.parse` reads a name without a namespace as `minecraft`.
+    let id: std::borrow::Cow<'_, str> = if id.contains(':') {
+        id.into()
+    } else {
+        format!("minecraft:{id}").into()
+    };
     let x = nbt.get_int("x")?;
     let y = nbt.get_int("y")?;
     let z = nbt.get_int("z")?;
     let pos = BlockPos::new(x, y, z);
-    match id {
+    match id.as_ref() {
         barrel::BarrelBlockEntity::ID => {
             Some(Arc::new(barrel::BarrelBlockEntity::from_nbt(nbt, pos)))
         }
@@ -502,6 +513,59 @@ pub fn block_entity_from_nbt(nbt: &NbtCompound) -> Option<Arc<dyn BlockEntity>> 
             potent_sulfur::PotentSulfurBlockEntity::from_nbt(nbt, pos),
         )),
         _ => None,
+    }
+}
+
+/// The network id of the block entity type `name`. The generated list answers only for the
+/// `minecraft` namespace; a name without a namespace is in it, as `Identifier.parse` reads it.
+#[must_use]
+pub fn block_entity_type_id(name: &str) -> Option<u16> {
+    let path = match name.split_once(':') {
+        Some(("minecraft", path)) => path,
+        Some(_) => return None,
+        None => name,
+    };
+    BLOCK_ENTITY_TYPES
+        .iter()
+        .position(|ty| *ty == path)
+        .and_then(|id| u16::try_from(id).ok())
+}
+
+/// How vanilla `BlockEntity.getUpdateTag` builds the update tag of a block entity type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UpdateTagSource {
+    /// The empty default tag.
+    Empty,
+    /// A tag of its own, without `saveAdditional`.
+    Own,
+    /// `saveCustomOnly` or `saveWithoutMetadata`: the saved data.
+    SavedData,
+}
+
+/// The update tag source of the block entity type `name`, `Empty` for a type outside the
+/// `minecraft` namespace.
+#[must_use]
+pub fn update_tag_source(name: &str) -> UpdateTagSource {
+    match name.strip_prefix("minecraft:").unwrap_or(name) {
+        "banner"
+        | "beacon"
+        | "conduit"
+        | "creaking_heart"
+        | "decorated_pot"
+        | "end_gateway"
+        | "hanging_sign"
+        | "jigsaw"
+        | "mob_spawner"
+        | "piston"
+        | "sign"
+        | "skull"
+        | "structure_block"
+        | "test_block"
+        | "test_instance_block" => UpdateTagSource::SavedData,
+        "brushable_block" | "campfire" | "shelf" | "trial_spawner" | "vault" => {
+            UpdateTagSource::Own
+        }
+        _ => UpdateTagSource::Empty,
     }
 }
 

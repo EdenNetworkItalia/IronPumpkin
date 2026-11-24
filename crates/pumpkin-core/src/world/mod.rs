@@ -1,4 +1,6 @@
-use crate::block::entities::{BlockEntity, block_entity_from_nbt};
+use crate::block::entities::{
+    BlockEntity, UpdateTagSource, block_entity_from_nbt, update_tag_source,
+};
 use crossbeam::channel::Receiver;
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
@@ -753,14 +755,7 @@ impl World {
         self.save_entities_by_chunk(&entities, self.level.live_entity_chunk_positions())
             .await;
 
-        let chunks: Vec<Vector2<i32>> = self
-            .block_entities
-            .iter()
-            .map(|chunk_block_entities| *chunk_block_entities.key())
-            .collect();
-        for chunk_pos in chunks {
-            self.save_block_entities(chunk_pos);
-        }
+        self.save_live_block_entities();
         crate::plugin::attachments::save_level(self);
         if let Err(e) = self.save_forced_chunks() {
             error!("Failed to save the forced chunks: {e}");
@@ -827,6 +822,17 @@ impl World {
         }
     }
 
+    fn save_live_block_entities(&self) {
+        let chunks: Vec<Vector2<i32>> = self
+            .block_entities
+            .iter()
+            .map(|chunk_block_entities| *chunk_block_entities.key())
+            .collect();
+        for chunk_pos in chunks {
+            self.save_block_entities(chunk_pos);
+        }
+    }
+
     /// Serializes the live block entities of a chunk back into that chunk's block
     /// entity data. The live map is the source of truth while a chunk is loaded -
     /// `get_block_entity` takes the saved NBT out of the chunk when it wakes an
@@ -842,18 +848,48 @@ impl World {
         };
 
         for block_entity in block_entities {
-            let mut nbt = NbtCompound::new();
-            block_entity.write_internal(&mut nbt);
-            if let Some(custom_data) = self
-                .custom_block_entity_data
-                .get(&block_entity.get_position())
-                && !custom_data.is_empty()
-            {
-                nbt.put_compound("PumpkinCustomData", custom_data.clone());
-            }
-            crate::plugin::attachments::write_block_entity(self, &block_entity, &mut nbt);
-            self.add_block_entity_nbt(block_entity.get_position(), &nbt);
+            let nbt = self.block_entity_save_nbt(&block_entity);
+            self.store_live_block_entity_nbt(&block_entity, &nbt);
         }
+    }
+
+    /// Stores `nbt` as the saved data of `block_entity` only while it is still in the live map.
+    /// The check and the store run under the lock that [`Self::remove_block_entity`] holds, so a
+    /// removal after the copy of the live map does not bring the entity back.
+    fn store_live_block_entity_nbt(&self, block_entity: &Arc<dyn BlockEntity>, nbt: &NbtCompound) {
+        let pos = block_entity.get_position();
+        let chunk_pos = pos.chunk_position();
+        self.level.read_chunk_sync(&chunk_pos, |chunk| {
+            let mut pending = chunk
+                .pending_block_entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let live = self.block_entities.get(&chunk_pos).is_some_and(|entities| {
+                entities
+                    .get(&pos)
+                    .is_some_and(|entity| Arc::ptr_eq(entity, block_entity))
+            });
+            if live {
+                pending.insert(pos, nbt.clone());
+                chunk.mark_dirty(true);
+            }
+        });
+    }
+
+    /// The saved form of `block_entity`, as the chunk writer stores it: vanilla
+    /// `saveWithFullMetadata`.
+    fn block_entity_save_nbt(&self, block_entity: &Arc<dyn BlockEntity>) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        block_entity.write_internal(&mut nbt);
+        if let Some(custom_data) = self
+            .custom_block_entity_data
+            .get(&block_entity.get_position())
+            && !custom_data.is_empty()
+        {
+            nbt.put_compound("PumpkinCustomData", custom_data.clone());
+        }
+        crate::plugin::attachments::write_block_entity(self, block_entity, &mut nbt);
+        nbt
     }
 
     /// Broadcasts an entity status update / event to all players tracking the specified entity,
@@ -2142,18 +2178,10 @@ impl World {
                     &CBlockUpdate::new(block_pos, i32::from(block_state_id.as_u16()).into()),
                     &pumpkin_protocol::bedrock::client::CUpdateBlock::new(block_pos, be_block_id),
                 );
-                if let Some(block_entity) = self.get_block_entity(&block_pos)
-                    && let Some(nbt) = block_entity.chunk_data_nbt()
-                {
-                    let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
-                    self.broadcast_to_chunk(
-                        chunk_pos,
-                        &CBlockEntityData::new(
-                            block_pos,
-                            VarInt(block_entity.get_id() as i32),
-                            bytes.as_ref().into(),
-                        ),
-                    );
+                if let Some(packet) = self.get_block_entity(&block_pos).and_then(|block_entity| {
+                    self.block_entity_data_packet(&block_entity, block_state_id)
+                }) {
+                    self.broadcast_to_chunk(chunk_pos, &packet);
                 }
                 if let Some(data) = self.bedrock_block_entity_data(block_state_id, block_pos) {
                     self.broadcast_to_chunk_bedrock(
@@ -2212,19 +2240,13 @@ impl World {
                     java_recipients.into_iter(),
                 );
 
-                for (block_pos, _) in &updates {
-                    if let Some(block_entity) = self.get_block_entity(block_pos)
-                        && let Some(nbt) = block_entity.chunk_data_nbt()
+                for (block_pos, block_state_id) in &updates {
+                    if let Some(packet) =
+                        self.get_block_entity(block_pos).and_then(|block_entity| {
+                            self.block_entity_data_packet(&block_entity, *block_state_id)
+                        })
                     {
-                        let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
-                        self.broadcast_to_chunk(
-                            chunk_pos,
-                            &CBlockEntityData::new(
-                                *block_pos,
-                                VarInt(block_entity.get_id() as i32),
-                                bytes.as_ref().into(),
-                            ),
-                        );
+                        self.broadcast_to_chunk(chunk_pos, &packet);
                     }
                 }
             }
@@ -2262,7 +2284,7 @@ impl World {
     }
 
     pub fn tick_environment(self: &Arc<Self>) {
-        let (is_night, time_of_day) = {
+        let (is_night, time_of_day, autosave_now) = {
             let mut level_time = self
                 .level_time
                 .lock()
@@ -2296,15 +2318,18 @@ impl World {
                     }
                 }
             }
-            if self.level.autosave_ticks > 0 && self.level.save_enabled.load(Relaxed) {
-                let autosave = self.level.autosave_ticks as i64;
-                if autosave > 0 && level_time.world_age % autosave == 0 {
-                    self.level.should_save.store(true, Relaxed);
-                    self.level.level_channel.notify();
-                }
-            }
-            (level_time.is_night(), level_time.time_of_day)
+            let autosave = self.level.autosave_ticks as i64;
+            let autosave_now = autosave > 0
+                && self.level.save_enabled.load(Relaxed)
+                && level_time.world_age % autosave == 0;
+            (level_time.is_night(), level_time.time_of_day, autosave_now)
         };
+        if autosave_now {
+            // The chunk writer reads the saved block entity data, not the live block entities.
+            self.save_live_block_entities();
+            self.level.should_save.store(true, Relaxed);
+            self.level.level_channel.notify();
+        }
 
         let (should_reset_weather, weather_cycle_enabled) = {
             let mut weather = self
@@ -7476,46 +7501,66 @@ impl World {
         }
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
-        let entity_id = block_entity.resource_location().to_string();
-
-        if let Some(nbt) = &block_entity_nbt {
-            let bytes = pumpkin_nbt::Nbt::from(nbt.clone()).write_unnamed();
-            self.broadcast_to_chunk(
-                chunk_pos,
-                &CBlockEntityData::new(
-                    block_entity.get_position(),
-                    VarInt(block_entity.get_id() as i32),
-                    bytes.as_ref().into(),
-                ),
-            );
-        }
 
         let state = self.get_block_state(&block_pos);
+        if let Some(packet) = self.block_entity_data_packet(&block_entity, state.id) {
+            self.broadcast_to_chunk(chunk_pos, &packet);
+        }
+
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
             self.broadcast_to_chunk_bedrock(chunk_pos, &CBlockActorData::new(block_pos, data));
         }
 
+        let saved = self.block_entity_save_nbt(&block_entity);
         self.block_entities
             .entry(chunk_pos)
             .or_default()
             .insert(block_pos, block_entity);
-
-        if let Some(nbt) = block_entity_nbt {
-            let mut full_nbt = nbt;
-            full_nbt.put_string("id", entity_id);
-            full_nbt.put_int("x", block_pos.0.x);
-            full_nbt.put_int("y", block_pos.0.y);
-            full_nbt.put_int("z", block_pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
+        self.add_block_entity_nbt(block_pos, &saved);
 
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             chunk.mark_dirty(true);
         });
         crate::plugin::capabilities::invalidate_block(self, &block_pos);
+    }
+
+    /// The update tag of `block_entity` in the block state `state`. `NeoForge`
+    /// `BlockEntity.saveAdditional` adds the attachments to the types whose update tag is the
+    /// saved data.
+    #[must_use]
+    pub fn block_entity_update_tag(
+        &self,
+        block_entity: &Arc<dyn BlockEntity>,
+        state: BlockStateId,
+    ) -> Option<NbtCompound> {
+        let mut tag = block_entity.update_tag(state)?;
+        if update_tag_source(block_entity.resource_location()) == UpdateTagSource::SavedData {
+            crate::plugin::attachments::write_block_entity(self, block_entity, &mut tag);
+        }
+        Some(tag)
+    }
+
+    /// The block entity data packet of `block_entity` in the block state `state`: vanilla
+    /// `getUpdatePacket`.
+    #[must_use]
+    pub fn block_entity_data_packet(
+        &self,
+        block_entity: &Arc<dyn BlockEntity>,
+        state: BlockStateId,
+    ) -> Option<CBlockEntityData> {
+        if !block_entity.sends_update_packet() {
+            return None;
+        }
+        let type_id = block_entity.get_id()?;
+        let nbt = self.block_entity_update_tag(block_entity, state)?;
+        let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
+        Some(CBlockEntityData::new(
+            block_entity.get_position(),
+            VarInt(i32::from(type_id)),
+            bytes.as_ref().into(),
+        ))
     }
 
     pub fn add_block_entity_nbt(&self, block_pos: BlockPos, nbt: &NbtCompound) {
@@ -7538,28 +7583,31 @@ impl World {
 
     pub fn remove_block_entity(&self, block_pos: &BlockPos) {
         let chunk_pos = block_pos.chunk_position();
-        // The NBT copy also serves lazy loading; leaving it revives removed entities.
-        let removed_pending = self
-            .level
-            .read_chunk_sync(&chunk_pos, |chunk| {
-                let removed = chunk
-                    .pending_block_entities
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .remove(block_pos)
-                    .is_some();
-                if removed {
-                    chunk.mark_dirty(true);
-                }
-                removed
-            })
-            .unwrap_or(false);
-        let removed =
+        let remove_live = || {
             self.block_entities
                 .get_mut(&chunk_pos)
                 .is_some_and(|mut chunk_block_entities| {
                     chunk_block_entities.remove(block_pos).is_some()
-                });
+                })
+        };
+        // The NBT copy also serves lazy loading; leaving it revives removed entities. Both maps
+        // change under the pending lock, which `store_live_block_entity_nbt` also holds.
+        let (removed_pending, removed) = self
+            .level
+            .read_chunk_sync(&chunk_pos, |chunk| {
+                let mut pending = chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let removed_pending = pending.remove(block_pos).is_some();
+                let removed = remove_live();
+                drop(pending);
+                if removed_pending {
+                    chunk.mark_dirty(true);
+                }
+                (removed_pending, removed)
+            })
+            .unwrap_or_else(|| (false, remove_live()));
         if removed || removed_pending {
             self.custom_block_entity_data.remove(block_pos);
             self.attachments.remove_block_entity(block_pos);
@@ -7600,28 +7648,13 @@ impl World {
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
-
-        if let Some(nbt) = &block_entity_nbt {
-            let bytes = pumpkin_nbt::Nbt::from(nbt.clone()).write_unnamed();
-            self.broadcast_to_chunk(
-                chunk_pos,
-                &CBlockEntityData::new(
-                    block_entity.get_position(),
-                    VarInt(block_entity.get_id() as i32),
-                    bytes.as_ref().into(),
-                ),
-            );
-            let mut full_nbt = nbt.clone();
-            full_nbt.put_string("id", block_entity.resource_location().to_string());
-            let pos = block_entity.get_position();
-            full_nbt.put_int("x", pos.0.x);
-            full_nbt.put_int("y", pos.0.y);
-            full_nbt.put_int("z", pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
 
         let state = self.get_block_state(&block_pos);
+        if let Some(packet) = self.block_entity_data_packet(block_entity, state.id) {
+            self.broadcast_to_chunk(chunk_pos, &packet);
+        }
+        self.store_live_block_entity_nbt(block_entity, &self.block_entity_save_nbt(block_entity));
+
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
@@ -8166,14 +8199,7 @@ impl World {
         self.save_entities_by_chunk(&entities, self.level.live_entity_chunk_positions())
             .await;
 
-        let chunks: Vec<Vector2<i32>> = self
-            .block_entities
-            .iter()
-            .map(|chunk_block_entities| *chunk_block_entities.key())
-            .collect();
-        for chunk_pos in chunks {
-            self.save_block_entities(chunk_pos);
-        }
+        self.save_live_block_entities();
 
         if let Ok(mut portal_poi) = self.portal_poi.try_lock() {
             let _ = portal_poi.save_all();
@@ -9277,6 +9303,106 @@ mod tests {
         );
 
         world.level.shutdown().await;
+        Ok(())
+    }
+
+    fn chest_with_diamonds(pos: BlockPos) -> NbtCompound {
+        let mut item = NbtCompound::new();
+        item.put_string("id", "minecraft:diamond".to_string());
+        item.put_int("count", 64);
+        item.put_byte("Slot", 0);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:chest".to_string());
+        nbt.put_int("x", pos.0.x);
+        nbt.put_int("y", pos.0.y);
+        nbt.put_int("z", pos.0.z);
+        nbt.put_list("Items", vec![pumpkin_nbt::tag::NbtTag::Compound(item)]);
+        nbt
+    }
+
+    fn saved_block_entity(world: &World, pos: BlockPos) -> Option<NbtCompound> {
+        world
+            .level
+            .read_chunk_sync(&pos.chunk_position(), |chunk| {
+                chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .get(&pos)
+                    .cloned()
+            })
+            .flatten()
+    }
+
+    #[tokio::test]
+    async fn a_placed_chest_is_saved_with_its_items() -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        let saved_on_add = saved_block_entity(&world, pos);
+        world.update_block_entity(&chest);
+        let saved_on_update = saved_block_entity(&world, pos);
+        world.level.shutdown().await;
+
+        for saved in [saved_on_add, saved_on_update] {
+            let saved = saved.expect("the chunk holds the saved chest");
+            assert_eq!(saved.get_string("id"), Some("minecraft:chest"));
+            assert_eq!(saved.get_list("Items").map(<[_]>::len), Some(1));
+        }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_save_after_the_removal_does_not_bring_the_block_entity_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        let nbt = world.block_entity_save_nbt(&chest);
+        world.remove_block_entity(&pos);
+        world.store_live_block_entity_nbt(&chest, &nbt);
+        let revived = saved_block_entity(&world, pos);
+        let live = world.get_block_entity(&pos);
+        world.level.shutdown().await;
+
+        assert!(revived.is_none());
+        assert!(live.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_update_after_the_removal_does_not_bring_the_block_entity_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        world.remove_block_entity(&pos);
+        world.update_block_entity(&chest);
+        let revived = saved_block_entity(&world, pos);
+        world.level.shutdown().await;
+
+        assert!(revived.is_none());
         Ok(())
     }
 }

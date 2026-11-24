@@ -11,6 +11,7 @@ use pumpkin_data::potion::Effect;
 use pumpkin_data::sound::{Sound, SoundCategory};
 use pumpkin_data::trial_spawner::TrialSpawnerKey;
 use pumpkin_data::world::WorldEvent;
+use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::Difficulty;
@@ -808,6 +809,47 @@ impl TrialSpawnerStateData {
             nbt.put_string("ejecting_loot_table", loot.clone());
         }
     }
+
+    fn update_tag_fields(&self) -> UpdateTagFields {
+        UpdateTagFields {
+            next_mob_spawns_at: self.next_mob_spawns_at,
+            spawn_data: self.next_spawn_data.as_ref().map(|spawn_data| {
+                let mut spawn_cmp = NbtCompound::new();
+                spawn_data.write_nbt(&mut spawn_cmp);
+                spawn_cmp
+            }),
+        }
+    }
+}
+
+/// The fields of vanilla `TrialSpawnerStateData.getUpdateTag`, copied after each change of the
+/// spawner, so a packet encoded while the tick holds the spawner lock still has them.
+#[derive(Default)]
+struct UpdateTagFields {
+    next_mob_spawns_at: i64,
+    spawn_data: Option<NbtCompound>,
+}
+
+impl UpdateTagFields {
+    fn update_tag(&self, state: TrialSpawnerState) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        if state == TrialSpawnerState::Active {
+            nbt.put_long("next_mob_spawns_at", self.next_mob_spawns_at);
+        }
+        if let Some(spawn_data) = &self.spawn_data {
+            nbt.put_compound("spawn_data", spawn_data.clone());
+        }
+        nbt
+    }
+}
+
+/// The spawner state of the block state `state_id`, inactive for another block.
+fn spawner_state(state_id: BlockStateId) -> TrialSpawnerState {
+    if Block::from_state_id(state_id).id == pumpkin_data::BlockId::TRIAL_SPAWNER {
+        TrialSpawnerLikeProperties::from_state_id(state_id).trial_spawner_state
+    } else {
+        TrialSpawnerState::Inactive
+    }
 }
 
 /// Core Trial Spawner engine and state machine logic.
@@ -980,13 +1022,7 @@ impl TrialSpawner {
     }
 
     pub fn get_state(&self, world: &World, spawner_pos: BlockPos) -> TrialSpawnerState {
-        let block_id = world.get_block_state_id(&spawner_pos);
-        let block = world.get_block(&spawner_pos);
-        if block.id == pumpkin_data::BlockId::TRIAL_SPAWNER {
-            TrialSpawnerLikeProperties::from_state_id(block_id).trial_spawner_state
-        } else {
-            TrialSpawnerState::Inactive
-        }
+        spawner_state(world.get_block_state_id(&spawner_pos))
     }
 
     pub fn set_state(&self, world: &Arc<World>, spawner_pos: BlockPos, state: TrialSpawnerState) {
@@ -1594,7 +1630,8 @@ impl TrialSpawner {
 
 pub struct TrialSpawnerBlockEntity {
     pub position: BlockPos,
-    pub trial_spawner: Mutex<TrialSpawner>,
+    trial_spawner: Mutex<TrialSpawner>,
+    update_tag_fields: Mutex<UpdateTagFields>,
 }
 
 impl BlockEntity for TrialSpawnerBlockEntity {
@@ -1615,9 +1652,7 @@ impl BlockEntity for TrialSpawnerBlockEntity {
             false
         };
 
-        if let Ok(mut spawner) = self.trial_spawner.lock() {
-            spawner.tick_server(world, self.position, is_ominous);
-        }
+        self.with_spawner(|spawner| spawner.tick_server(world, self.position, is_ominous));
     }
 
     fn from_nbt(nbt: &NbtCompound, position: BlockPos) -> Self
@@ -1626,10 +1661,7 @@ impl BlockEntity for TrialSpawnerBlockEntity {
     {
         let mut spawner = TrialSpawner::default();
         spawner.load(nbt);
-        Self {
-            position,
-            trial_spawner: Mutex::new(spawner),
-        }
+        Self::with_spawner_state(position, spawner)
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
@@ -1638,12 +1670,12 @@ impl BlockEntity for TrialSpawnerBlockEntity {
         }
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        self.trial_spawner.try_lock().ok().map(|spawner| {
-            let mut nbt = NbtCompound::new();
-            spawner.store(&mut nbt);
-            nbt
-        })
+    fn update_tag(&self, state: BlockStateId) -> Option<NbtCompound> {
+        let fields = self
+            .update_tag_fields
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        Some(fields.update_tag(spawner_state(state)))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -1656,18 +1688,42 @@ impl TrialSpawnerBlockEntity {
 
     #[must_use]
     pub fn new(position: BlockPos) -> Self {
-        Self {
-            position,
-            trial_spawner: Mutex::new(TrialSpawner::default()),
-        }
+        Self::with_spawner_state(position, TrialSpawner::default())
     }
 
     #[must_use]
     pub fn with_config(position: BlockPos, config: TrialSpawnerFullConfig) -> Self {
+        Self::with_spawner_state(
+            position,
+            TrialSpawner::new(config, PlayerDetector::default()),
+        )
+    }
+
+    /// Runs `body` while the spawner lock is held, as the tick holds it.
+    #[cfg(test)]
+    pub(crate) fn hold_spawner_for_test<R>(&self, body: impl FnOnce() -> R) -> R {
+        let _spawner = self.trial_spawner.lock().unwrap();
+        body()
+    }
+
+    fn with_spawner_state(position: BlockPos, spawner: TrialSpawner) -> Self {
         Self {
             position,
-            trial_spawner: Mutex::new(TrialSpawner::new(config, PlayerDetector::default())),
+            update_tag_fields: Mutex::new(spawner.data.update_tag_fields()),
+            trial_spawner: Mutex::new(spawner),
         }
+    }
+
+    /// Runs `change` with the spawner locked, then copies the update tag fields. The fields lock
+    /// is taken last and held only for the copy.
+    fn with_spawner<R>(&self, change: impl FnOnce(&mut TrialSpawner) -> R) -> Option<R> {
+        let mut spawner = self.trial_spawner.lock().ok()?;
+        let result = change(&mut spawner);
+        *self
+            .update_tag_fields
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = spawner.data.update_tag_fields();
+        Some(result)
     }
 
     #[must_use]
@@ -1676,17 +1732,17 @@ impl TrialSpawnerBlockEntity {
     }
 
     pub fn set_entity_type(&self, entity_type: &'static EntityType, world: &Arc<World>) {
-        if let Ok(mut spawner) = self.trial_spawner.lock() {
+        self.with_spawner(|spawner| {
             spawner.override_entity_to_spawn(entity_type, world, self.position);
-        }
+        });
     }
 
     pub fn set_trial_spawner_key(&self, key: &TrialSpawnerKey, world: &Arc<World>) {
-        if let Ok(mut spawner) = self.trial_spawner.lock() {
+        self.with_spawner(|spawner| {
             spawner.config = TrialSpawnerFullConfig::from_key(key);
             spawner.data.reset();
             spawner.set_state(world, self.position, TrialSpawnerState::Inactive);
-        }
+        });
     }
 }
 

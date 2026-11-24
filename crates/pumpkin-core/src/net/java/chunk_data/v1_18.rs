@@ -1,3 +1,4 @@
+use super::ChunkBlockEntity;
 use super::util::write_compound_nbt;
 use pumpkin_protocol::codec::bit_set::BitSet;
 use pumpkin_protocol::codec::var_int::VarInt;
@@ -14,6 +15,7 @@ use std::io::Write;
 #[expect(clippy::too_many_lines)]
 pub fn write_chunk_data(
     chunk: &ChunkData,
+    block_entities: &[ChunkBlockEntity],
     mut write: impl Write,
     version: &pumpkin_protocol::EncodingKey,
 ) -> Result<(), WritingError> {
@@ -180,36 +182,18 @@ pub fn write_chunk_data(
         write.write_slice(&blocks_and_biomes_buf)?;
     };
 
-    let block_entities = chunk
-        .pending_block_entities
-        .lock()
-        .map_err(|_| WritingError::Message("block_entities lock poisoned".into()))?;
     write.write_var_int(&VarInt(block_entities.len() as i32))?;
-    for (pos, nbt) in block_entities.iter() {
+    for block_entity in block_entities {
+        let pos = block_entity.position;
         let local_xz = ((get_local_cord(pos.0.x) & 0xF) << 4) | (get_local_cord(pos.0.z) & 0xF);
-
         write.write_u8(local_xz as u8)?;
         write.write_i16_be(pos.0.y as i16)?;
-
-        let id = nbt.get_string("id").map_or(0, |id_str| {
-            let name = id_str.split(':').next_back().unwrap_or(id_str);
-            pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
-                .iter()
-                .position(|&n| n == name)
-                .unwrap_or(0)
-        });
-        write.write_var_int(&VarInt(id as i32))?;
-
-        let mut client_nbt = nbt.clone();
-        client_nbt.child_tags.remove("id");
-        client_nbt.child_tags.remove("x");
-        client_nbt.child_tags.remove("y");
-        client_nbt.child_tags.remove("z");
-        client_nbt.child_tags.remove("LootTable");
-        client_nbt.child_tags.remove("LootTableSeed");
-        client_nbt.child_tags.remove("PumpkinCustomData");
-        client_nbt.child_tags.remove("BukkitValues");
-        write_compound_nbt(&mut write, &client_nbt, version.version())?;
+        write.write_var_int(&VarInt(i32::from(block_entity.type_id)))?;
+        // Vanilla `OPTIONAL_COMPOUND_TAG`: an empty update tag goes out as no tag.
+        write.write_compound_nbt_with_version(
+            (!block_entity.tag.is_empty()).then_some(&block_entity.tag),
+            &version.version(),
+        )?;
     }
 
     {

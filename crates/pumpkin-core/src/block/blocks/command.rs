@@ -15,8 +15,11 @@ use crate::{
 
 use pumpkin_data::block_properties::{CommandBlockLikeProperties, Facing};
 use pumpkin_data::{Block, BlockId, BlockState, BlockStateId, FacingExt, Rotation};
+use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::codec::var_int::VarInt;
+use pumpkin_protocol::java::client::play::CBlockEntityData;
 
-use pumpkin_util::{GameMode, PermissionLvl, math::position::BlockPos};
+use pumpkin_util::{GameMode, math::position::BlockPos};
 use pumpkin_world::tick::TickPriority;
 use tracing::warn;
 
@@ -242,13 +245,26 @@ impl BlockBehaviour for CommandBlock {
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         {
-            if args.player.permission_lvl.load() < PermissionLvl::Two {
+            if !args.player.can_use_game_master_blocks() {
                 return BlockActionResult::Pass;
             }
             let Some(block_entity) = args.world.get_block_entity(args.position) else {
                 return BlockActionResult::Pass;
             };
-            args.world.update_block_entity(&block_entity);
+            // Vanilla `ServerPlayer.openCommandBlock`: the command goes to the opener only.
+            if let Some(type_id) = block_entity.get_id() {
+                let mut nbt = NbtCompound::new();
+                block_entity.write_nbt(&mut nbt);
+                let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
+                World::broadcast_java_players(
+                    &CBlockEntityData::new(
+                        *args.position,
+                        VarInt(i32::from(type_id)),
+                        bytes.as_ref().into(),
+                    ),
+                    std::iter::once(args.player),
+                );
+            }
             BlockActionResult::SuccessServer
         }
     }
