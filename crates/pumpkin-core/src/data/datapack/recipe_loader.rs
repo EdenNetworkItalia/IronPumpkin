@@ -74,6 +74,11 @@ fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
             let mut ids = Vec::new();
             for item in arr {
                 if let Some(s) = item.as_str() {
+                    // `HolderSetCodec` reads a list of item ids only: a tag in it fails the
+                    // recipe.
+                    if s.starts_with('#') {
+                        return None;
+                    }
                     ids.push(normalize_id(s));
                 } else if let Some(obj_item) = item.get("item").and_then(Value::as_str) {
                     ids.push(normalize_id(obj_item));
@@ -386,9 +391,11 @@ fn parse_smithing_transform(
     recipe_id: String,
     value: &Value,
 ) -> Option<OwnedSmithingTransformRecipe> {
-    let template = parse_ingredient(value.get("template")?)?;
+    // Vanilla `SmithingTransformRecipe.MAP_CODEC`: `template` and `addition` are optional.
+    let optional = |field: &str| value.get(field).map(parse_ingredient);
+    let template = optional("template").map_or(Some(None), |parsed| parsed.map(Some))?;
     let base = parse_ingredient(value.get("base")?)?;
-    let addition = parse_ingredient(value.get("addition")?)?;
+    let addition = optional("addition").map_or(Some(None), |parsed| parsed.map(Some))?;
     let result = parse_result(value.get("result")?)?;
     Some(OwnedSmithingTransformRecipe {
         recipe_id,
@@ -574,6 +581,33 @@ mod tests {
         } else {
             panic!("Expected brewing recipe");
         }
+    }
+
+    #[test]
+    fn a_tag_inside_an_ingredient_list_fails_the_recipe() {
+        let json = r##"{
+            "type": "minecraft:smelting",
+            "ingredient": ["#c:ingots", "minecraft:stick"],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        assert!(parse_recipe("test", "bad_list", json).is_none());
+    }
+
+    #[test]
+    fn a_smithing_transform_can_leave_out_the_template_and_the_addition() {
+        let json = r#"{
+            "type": "minecraft:smithing_transform",
+            "base": "minecraft:iron_sword",
+            "result": { "id": "minecraft:diamond_sword" }
+        }"#;
+        let Some(DynamicRecipe::SmithingTransform(recipe)) = parse_recipe("test", "plain", json)
+        else {
+            panic!("Expected smithing transform recipe");
+        };
+        assert_eq!(recipe.template, None);
+        assert_eq!(recipe.addition, None);
+        assert!(OwnedRecipeIngredient::match_optional(None, &Item::AIR));
+        assert!(!OwnedRecipeIngredient::match_optional(None, &Item::STICK));
     }
 
     #[test]

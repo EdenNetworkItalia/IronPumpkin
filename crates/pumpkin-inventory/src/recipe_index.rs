@@ -108,10 +108,11 @@ pub const BREWING_REAGENT: &str = "minecraft:brewing_reagent";
 enum Entry {
     Cooking(CookingEntry),
     Stonecutter(StonecutterEntry),
+    /// A smithing recipe. A transform recipe can leave out the template and the addition.
     Smithing {
-        template: OwnedRecipeIngredient,
+        template: Option<OwnedRecipeIngredient>,
         base: OwnedRecipeIngredient,
-        addition: OwnedRecipeIngredient,
+        addition: Option<OwnedRecipeIngredient>,
     },
     Brewing {
         input: OwnedRecipeIngredient,
@@ -197,9 +198,9 @@ fn dynamic_entry(recipe: &DynamicRecipe) -> Entry {
             addition: r.addition.clone(),
         },
         DynamicRecipe::SmithingTrim(r) => Entry::Smithing {
-            template: r.template.clone(),
+            template: Some(r.template.clone()),
             base: r.base.clone(),
-            addition: r.addition.clone(),
+            addition: Some(r.addition.clone()),
         },
         DynamicRecipe::Brewing(r) => Entry::Brewing {
             input: r.input_item.clone(),
@@ -240,9 +241,9 @@ fn generated_entries() -> BTreeMap<(String, String), Entry> {
         recipes.insert(
             sort_key(r.recipe_id),
             Entry::Smithing {
-                template: owned_ingredient(&r.template),
+                template: Some(owned_ingredient(&r.template)),
                 base: owned_ingredient(&r.base),
-                addition: owned_ingredient(&r.addition),
+                addition: Some(owned_ingredient(&r.addition)),
             },
         );
     }
@@ -250,9 +251,9 @@ fn generated_entries() -> BTreeMap<(String, String), Entry> {
         recipes.insert(
             sort_key(r.recipe_id),
             Entry::Smithing {
-                template: owned_ingredient(&r.template),
+                template: Some(owned_ingredient(&r.template)),
                 base: owned_ingredient(&r.base),
-                addition: owned_ingredient(&r.addition),
+                addition: Some(owned_ingredient(&r.addition)),
             },
         );
     }
@@ -316,9 +317,13 @@ impl RecipeIndex {
                     base,
                     addition,
                 } => {
-                    index.add_to_set(SMITHING_TEMPLATE, template);
+                    if let Some(template) = template {
+                        index.add_to_set(SMITHING_TEMPLATE, template);
+                    }
                     index.add_to_set(SMITHING_BASE, base);
-                    index.add_to_set(SMITHING_ADDITION, addition);
+                    if let Some(addition) = addition {
+                        index.add_to_set(SMITHING_ADDITION, addition);
+                    }
                 }
                 Entry::Brewing { input, reagent } => {
                     index.add_to_set(BREWING_INPUT, input);

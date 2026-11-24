@@ -27,6 +27,15 @@ impl OwnedRecipeIngredient {
         }
     }
 
+    /// Vanilla `Ingredient.testOptionalIngredient`: an absent ingredient takes only an empty
+    /// slot, which holds air.
+    #[must_use]
+    pub fn match_optional(ingredient: Option<&Self>, item: &Item) -> bool {
+        ingredient.map_or(item.id == Item::AIR.id, |ingredient| {
+            ingredient.match_item(item)
+        })
+    }
+
     /// The items that [`Self::match_item`] accepts, in tag order and without duplicates. A tag
     /// resolves through the server's tag lookup, so a mod tag and the custom members of a tag
     /// are in the list.
@@ -132,9 +141,11 @@ pub struct OwnedStonecutterRecipe {
 #[derive(Clone, Debug)]
 pub struct OwnedSmithingTransformRecipe {
     pub recipe_id: String,
-    pub template: OwnedRecipeIngredient,
+    /// Optional, as in vanilla `SmithingTransformRecipe`: without it the slot must be empty.
+    pub template: Option<OwnedRecipeIngredient>,
     pub base: OwnedRecipeIngredient,
-    pub addition: OwnedRecipeIngredient,
+    /// Optional, as in vanilla `SmithingTransformRecipe`: without it the slot must be empty.
+    pub addition: Option<OwnedRecipeIngredient>,
     pub result: OwnedRecipeResult,
 }
 

@@ -23,7 +23,7 @@ use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::world::WorldEvent;
 use pumpkin_nbt::tag::NbtTag;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
+use pumpkin_protocol::codec::recipe::{DynamicRecipe, OwnedRecipeIngredient};
 use pumpkin_protocol::java::server::play::SlotActionType;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,9 @@ pub fn is_smithing_template_item(item: &Item, provider: Option<&dyn RecipeProvid
             .any(|r| r.template.match_item(item))
         || provider.is_some_and(|p| {
             p.get_dynamic_recipes().iter().any(|d| match d {
-                DynamicRecipe::SmithingTransform(r) => r.template.match_item(item),
+                DynamicRecipe::SmithingTransform(r) => {
+                    r.template.as_ref().is_some_and(|i| i.match_item(item))
+                }
                 DynamicRecipe::SmithingTrim(r) => r.template.match_item(item),
                 _ => false,
             })
@@ -77,7 +79,9 @@ pub fn is_smithing_addition_item(item: &Item, provider: Option<&dyn RecipeProvid
             .any(|r| r.addition.match_item(item))
         || provider.is_some_and(|p| {
             p.get_dynamic_recipes().iter().any(|d| match d {
-                DynamicRecipe::SmithingTransform(r) => r.addition.match_item(item),
+                DynamicRecipe::SmithingTransform(r) => {
+                    r.addition.as_ref().is_some_and(|i| i.match_item(item))
+                }
                 DynamicRecipe::SmithingTrim(r) => r.addition.match_item(item),
                 _ => false,
             })
@@ -249,9 +253,15 @@ impl SmithingTableScreenHandler {
         if let Some(provider) = &self.recipe_provider {
             for dynamic in provider.get_dynamic_recipes() {
                 if let DynamicRecipe::SmithingTransform(recipe) = dynamic
-                    && recipe.template.match_item(template.item)
+                    && OwnedRecipeIngredient::match_optional(
+                        recipe.template.as_ref(),
+                        template.item,
+                    )
                     && recipe.base.match_item(base.item)
-                    && recipe.addition.match_item(addition.item)
+                    && OwnedRecipeIngredient::match_optional(
+                        recipe.addition.as_ref(),
+                        addition.item,
+                    )
                 {
                     let res_key = recipe
                         .result
@@ -310,9 +320,9 @@ impl SmithingTableScreenHandler {
         let base_stack = self.input_inventory.get_stack(1);
         let addition_stack = self.input_inventory.get_stack(2);
 
-        let all_inputs_present =
-            !template_stack.is_empty() && !base_stack.is_empty() && !addition_stack.is_empty();
-        if !all_inputs_present {
+        // Vanilla `SmithingMenu.createResult` looks up every input; a data pack transform recipe
+        // can leave out the template and the addition, but every recipe needs a base.
+        if base_stack.is_empty() {
             self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
             self.has_recipe_error.store(0, Ordering::Relaxed);
             return;
@@ -360,8 +370,12 @@ impl SmithingTableScreenHandler {
             return;
         }
 
+        // Vanilla `SmithingMenu.slotsChanged`: the error shows only when all three slots hold
+        // an item.
+        let all_inputs_present = !template_stack.is_empty() && !addition_stack.is_empty();
         self.output_inventory.set_stack(0, ItemStack::EMPTY.clone());
-        self.has_recipe_error.store(1, Ordering::Relaxed);
+        self.has_recipe_error
+            .store(i32::from(all_inputs_present), Ordering::Relaxed);
     }
 }
 
