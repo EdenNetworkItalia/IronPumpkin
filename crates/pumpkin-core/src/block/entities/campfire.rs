@@ -21,6 +21,8 @@ pub struct CampfireBlockEntity {
     pub items: [Arc<Mutex<ItemStack>>; Self::SLOT_COUNT],
     pub cooking_times: [Mutex<i32>; Self::SLOT_COUNT],
     pub cooking_total_times: [Mutex<i32>; Self::SLOT_COUNT],
+    /// The recipe hint of vanilla `CampfireBlock` `quickCheck`, one per block entity.
+    pub last_recipe: Mutex<Option<String>>,
 }
 
 impl BlockEntity for CampfireBlockEntity {
@@ -112,7 +114,7 @@ impl BlockEntity for CampfireBlockEntity {
 
             // Vanilla `CampfireBlockEntity.cookTick` cooks the slot without a recipe too and
             // drops the raw item, for example after a reload removed its recipe.
-            let recipe = recipes.cooking_recipe(stack.item, &CookingRecipeKind::CampfireCooking);
+            let recipe = self.find_recipe(&recipes, stack.item);
 
             let total = {
                 let mut total = self.cooking_total_times[slot]
@@ -253,6 +255,30 @@ impl CampfireBlockEntity {
     pub const ID: &'static str = "minecraft:campfire";
     pub const SLOT_COUNT: usize = 4;
 
+    /// Vanilla `quickCheck.getRecipeFor` (`CampfireBlockEntity.java:69`): the last recipe while
+    /// it still takes `item`, else the first recipe. The found recipe becomes the last recipe.
+    fn find_recipe<'a>(
+        &self,
+        recipes: &'a recipe_index::RecipeIndex,
+        item: &pumpkin_data::item::Item,
+    ) -> Option<&'a recipe_index::CookingEntry> {
+        let mut last = self
+            .last_recipe
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let recipe = recipes.cooking_recipe_with_hint(
+            item,
+            &CookingRecipeKind::CampfireCooking,
+            last.as_deref(),
+        );
+        if let Some(recipe) = recipe
+            && last.as_deref() != Some(recipe.recipe_id.as_str())
+        {
+            *last = Some(recipe.recipe_id.clone());
+        }
+        recipe
+    }
+
     #[must_use]
     pub fn new(position: BlockPos) -> Self {
         Self {
@@ -260,6 +286,7 @@ impl CampfireBlockEntity {
             items: std::array::from_fn(|_| Arc::new(Mutex::new(ItemStack::EMPTY.clone()))),
             cooking_times: std::array::from_fn(|_| Mutex::new(0)),
             cooking_total_times: std::array::from_fn(|_| Mutex::new(0)),
+            last_recipe: Mutex::new(None),
         }
     }
 

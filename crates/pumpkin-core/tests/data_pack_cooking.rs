@@ -348,3 +348,68 @@ fn a_campfire_drops_the_raw_item_when_a_reload_removes_its_recipe() {
         });
     assert!(dropped_stick, "the campfire drops the raw item");
 }
+
+fn campfire_dirt(id: &str, result: &str) -> DynamicRecipe {
+    DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(cooking(
+        id,
+        "minecraft:dirt",
+        result,
+    )))
+}
+
+/// The ids of the items that item entities hold around `pos`.
+fn dropped_items(world: &Arc<World>, pos: BlockPos) -> Vec<u16> {
+    let center = pos.to_f64();
+    let area = BoundingBox {
+        min: Vector3::new(center.x - 1.0, center.y, center.z - 1.0),
+        max: Vector3::new(center.x + 2.0, center.y + 3.0, center.z + 2.0),
+    };
+    world
+        .get_entities_at_box(&area)
+        .iter()
+        .filter_map(|entity| entity.get_item_entity())
+        .map(|item| {
+            let mut id = 0;
+            item.insert_into(|stack| {
+                id = stack.item.id;
+                stack
+            });
+            id
+        })
+        .collect()
+}
+
+/// The campfire keeps its last recipe as the furnace does (`CampfireBlockEntity.java:69`).
+#[test]
+fn a_campfire_keeps_its_last_recipe_when_a_reload_adds_an_earlier_one() {
+    let _serial = support::serial();
+    let manager = &support::server().recipe_manager;
+    manager.set_recipes(vec![campfire_dirt("a:zzz", "minecraft:emerald")]);
+    let world = support::world();
+    let pos = BlockPos::new(50, 100, 0);
+    place(&world, pos, &Block::CAMPFIRE);
+    let campfire = CampfireBlockEntity::new(pos);
+    let cook = || {
+        *campfire.items[0].lock().unwrap() = ItemStack::new(1, &Item::DIRT);
+        for _ in 0..20 {
+            if campfire.items[0].lock().unwrap().is_empty() {
+                break;
+            }
+            campfire.tick(&world);
+        }
+        assert!(campfire.items[0].lock().unwrap().is_empty());
+    };
+    cook();
+    manager.set_recipes(vec![
+        campfire_dirt("a:zzz", "minecraft:emerald"),
+        campfire_dirt("z:a", "minecraft:diamond"),
+    ]);
+    cook();
+    let dropped = dropped_items(&world, pos);
+    assert_eq!(
+        dropped.iter().filter(|id| **id == Item::EMERALD.id).count(),
+        2,
+        "{dropped:?}"
+    );
+    assert!(!dropped.contains(&Item::DIAMOND.id));
+}

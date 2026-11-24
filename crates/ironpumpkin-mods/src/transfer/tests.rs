@@ -490,6 +490,42 @@ fn a_transaction_reset_uses_the_recipes_of_the_furnace_type() {
     assert_eq!(furnace.get_cooking_time_spent(), 0);
 }
 
+/// Vanilla skips the input reset inside a transaction, so a rolled back write leaves the recipe
+/// hint of the furnace as it was.
+#[test]
+fn a_rolled_back_furnace_write_keeps_the_recipe_hint() {
+    use pumpkin_protocol::codec::recipe::{
+        DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
+        OwnedRecipeResult,
+    };
+    pumpkin_inventory::recipe_index::install(&[DynamicRecipe::Cooking(
+        OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+            recipe_id: "test:smelt_dirt".to_string(),
+            category: pumpkin_data::recipes::RecipeCategoryTypes::Misc,
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            cooking_time: 37,
+            experience: 0.0,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 1,
+                components: None,
+            },
+        }),
+    )]);
+    let furnace = Arc::new(FurnaceBlockEntity::new(BlockPos::new(0, 64, 0)));
+    let hint = Some("minecraft:iron_ingot_from_smelting_raw_iron".to_string());
+    *furnace.last_recipe.lock().unwrap() = hint.clone();
+    let wrapper = InventoryWrapper::of_kind(furnace.clone(), ContainerKind::Furnace);
+    {
+        let mut transaction = Transaction::open_root().unwrap();
+        let dirt = ItemResource::of_item(&Item::DIRT);
+        assert_eq!(wrapper.insert_at(0, &dirt, 1, &mut transaction), 1);
+    }
+    assert!(furnace.get_stack(0).is_empty());
+    assert_eq!(*furnace.last_recipe.lock().unwrap(), hint);
+}
+
 #[test]
 fn an_insert_into_an_empty_hopper_sets_its_cooldown_unless_aborted() {
     let hopper = Arc::new(HopperBlockEntity::new(BlockPos::new(0, 64, 0)));

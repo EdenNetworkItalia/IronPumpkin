@@ -202,18 +202,28 @@ macro_rules! with_furnace {
 
 /// Writes `stack` to `slot`. The Pumpkin furnace resets its cooking progress in `set_stack` when
 /// the input item changes; inside a transaction that reset waits for the root commit, as the
-/// `insideTransaction` flag of `NeoForge` defers it, so the write keeps the progress.
+/// `insideTransaction` flag of `NeoForge` defers it, so the write keeps the progress and the
+/// recipe hint (`AbstractFurnaceBlockEntity.java:346`).
 fn write_slot(inventory: &dyn Inventory, kind: ContainerKind, slot: usize, stack: ItemStack) {
     if kind == ContainerKind::Furnace && slot == FURNACE_INPUT {
         let progress = with_furnace!(inventory, |furnace| (
             furnace.get_cooking_time_spent(),
-            furnace.get_cooking_total_time()
+            furnace.get_cooking_total_time(),
+            furnace
+                .last_recipe
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
         ));
         inventory.set_stack(slot, stack);
-        if let Some((spent, total)) = progress {
+        if let Some((spent, total, hint)) = progress {
             with_furnace!(inventory, |furnace| {
                 furnace.set_cooking_time_spent(spent);
                 furnace.set_cooking_total_time(total);
+                *furnace
+                    .last_recipe
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = hint;
             });
         }
     } else {
