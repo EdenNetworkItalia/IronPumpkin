@@ -247,6 +247,21 @@ The contract of `StatAwardEvent`: `value` is the new total, and the server store
 
 `mapping-table.md` of the change folder (see the [index](./index.md)) lists the Pumpkin event for every other NeoForge event, with a status. The living entity events are in [the living section](#the-living-entity-events). The entity, mob and spawn events are in [their section](#the-entity-mob-and-spawn-events).
 
+## The item, enchantment and brewing events
+
+These events fire when the server reads the attribute modifiers or the enchantments of an item stack, when a player clicks a slot with a carried item, when the loot of a block or an entity reads an enchantment level, and when a player takes a brewed potion. They are in `ironpumpkin_mods::event::inventory` and `ironpumpkin_mods::event::enchantment`.
+
+| NeoForge event | IronPumpkin event | Notes |
+| :--- | :--- | :--- |
+| `ItemAttributeModifierEvent` | `inventory::ItemAttributeModifierEvent` | Fires on each read of `ItemStack::get_attribute_modifiers`: the attributes of the equipment of a living entity, the attack speed of a player attack and the spear. `modifiers` is settable. `add_modifier`, `remove_modifier`, `replace_modifier`, `remove_if`, `remove_all_modifiers_for` and `clear_modifiers` work as in NeoForge. A modifier is identified by its attribute and its id. |
+| `GetEnchantmentLevelEvent` | `enchantment::GetEnchantmentLevelEvent` | Fires on each read of `ItemStack::get_enchantment_level` (`target_enchant` is set) and `ItemStack::get_all_enchantments` (`target_enchant` is `None`). `enchantments` is settable. The stack keeps its component: `get_tag_enchantment_level` reads it. A lookup inside a handler returns the levels before the event. There is no `lookup` and no `getHolder`. |
+| `EnchantedBlockLootEvent` | `enchantment::EnchantedBlockLootEvent` | Fires when the loot of a block reads the enchantment level of the tool (`apply_bonus`, `table_bonus`). `enchantment_level` is settable. A negative level is ignored. |
+| `EnchantedEntityLootEvent` | `enchantment::EnchantedEntityLootEvent` | Fires when the loot of a killed living entity reads the level of the attacker (`enchanted_count_increase`, `random_chance_with_enchanted_bonus`). `enchantment_level` is settable. A negative level is ignored. The `EQUIPMENT_DROPS` effect does not exist in Pumpkin, so it fires nothing. |
+| `ItemStackedOnOtherEvent` | `inventory::ItemStackedOnOtherEvent` | Fires on a pickup click, outside the screen-handler lock, before the bundle logic. `carried_item` and `stacked_on_item` are settable. A cancel with `cancellation_result` true (the default) ends the click. A cancel with false runs the click without the bundle logic. `slot` is the slot index. A quick move fires nothing. |
+| `PlayerBrewedPotionEvent` | `inventory::PlayerBrewedPotionEvent` | Fires when a player takes a potion out of a brewing stand, at the end of the click and before the advancement trigger. `stack` is a copy: a change does nothing. |
+
+The reads of the item stack are on the hot path of the server. Before the first handler of `GetEnchantmentLevelEvent` or `ItemAttributeModifierEvent` registers, a read costs one atomic load and builds nothing. After that, the read fires the event on each server of the process that has a handler. An item stack has no server, so a process with two servers fires the event on both.
+
 ## The player events
 
 The package `event.entity.player` maps to `ironpumpkin_mods::event::player`. A nested class takes its parent name as a prefix: `PlayerEvent.BreakSpeed` is `PlayerEventBreakSpeed`, `PlayerXpEvent.PickupXp` is `PlayerXpEventPickupXp`. Where Pumpkin already had an event at the fire site, the NeoForge event maps to it: `PlayerRespawnPositionEvent` is `PlayerSpawnLocationEvent`, `PlayerSwitchHotbarSlotEvent.Pre` is `PlayerItemHeldEvent`. `mapping-table.md` names the Rust type of each row.

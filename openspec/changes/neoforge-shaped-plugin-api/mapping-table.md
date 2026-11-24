@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 498 | 498 | 0 | 0 | 0 | 410 | 97 |
-| Inventory, planned | 449 | 444 | 3 | 2 | 0 | 293 | 15 |
+| Inventory, supported | 504 | 504 | 0 | 0 | 0 | 413 | 97 |
+| Inventory, planned | 443 | 438 | 3 | 2 | 0 | 290 | 15 |
 | Inventory, not supported | 224 | 0 | 0 | 1 | 223 | 100 | 14 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -114,7 +114,7 @@ How to read it:
 | `ProjectileImpactEvent` | 12 | event class | `pumpkin_core::plugin::level::ProjectileImpactEvent` | supported |
 | `ExplosionEvent` | 12 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `EntityTickEvent.Pre` | 12 | event class | `pumpkin_core::plugin::level::EntityTickEventPre` | supported |
-| `ItemAttributeModifierEvent` | 11 | event class | `event-bus.event::item-attribute-modifier-event` | planned |
+| `ItemAttributeModifierEvent` | 11 | event class | `event-bus.event::item-attribute-modifier-event` | supported |
 | `MobSpawnEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PlayerEvent.ItemCraftedEvent` | 11 | event class | `event-bus.event::player-event-item-crafted-event` | supported |
 | `ChunkWatchEvent` | 11 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
@@ -205,11 +205,11 @@ How to read it:
 | `NoteBlockEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `NoteBlockEvent.Play` | 3 | event class | `event-bus.event::note-block-event-play` | supported |
 | `VillageSiegeEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
-| `ItemStackedOnOtherEvent` | 2 | event class | `event-bus.event::item-stacked-on-other-event` | planned |
+| `ItemStackedOnOtherEvent` | 2 | event class | `event-bus.event::item-stacked-on-other-event` | supported |
 | `PlayLevelSoundEvent` | 2 | event class | `event-bus.event::play-level-sound-event` | planned |
 | `PlayLevelSoundEvent.AtEntity` | 2 | event class | `event-bus.event::play-level-sound-event-at-entity` | planned |
 | `PlayLevelSoundEvent.AtPosition` | 2 | event class | `event-bus.event::play-level-sound-event-at-position` | planned |
-| `GetEnchantmentLevelEvent` | 2 | event class | `event-bus.event::get-enchantment-level-event` | planned |
+| `GetEnchantmentLevelEvent` | 2 | event class | `event-bus.event::get-enchantment-level-event` | supported |
 | `EntityEvent.EntityConstructing` | 2 | event class | `event-bus.event::entity-event-entity-constructing` | planned |
 | `EntityStruckByLightningEvent` | 2 | event class | `pumpkin_core::plugin::level::EntityStruckByLightningEvent` | supported |
 | `EntityTeleportEvent.SpreadPlayersCommand` | 2 | event class | `pumpkin_core::plugin::level::EntityTeleportEventSpreadPlayersCommand` | supported |
@@ -269,12 +269,12 @@ How to read it:
 | `SortedReloadListenerEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | supported |
 | `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (8 of the 61 vanilla game events from 10 sites, no vibration dispatch: gap) | planned |
-| `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
+| `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | supported |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PotionBrewEvent.Post` | 0 | event class | `pumpkin_core::plugin::inventory::PotionBrewEventPost` (after the brew and after a cancelled Pre; changed stacks apply if the stand did not change) | supported |
 | `PotionBrewEvent.Pre` | 0 | event class | `pumpkin_core::plugin::inventory::BrewEvent` (a cancel takes `stacks` only if the stand did not change, then Post fires) | supported |
-| `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | planned |
-| `EnchantedEntityLootEvent` | 0 | event class | `event-bus.event::enchanted-entity-loot-event` | planned |
+| `EnchantedBlockLootEvent` | 0 | event class | `event-bus.event::enchanted-block-loot-event` | supported |
+| `EnchantedEntityLootEvent` | 0 | event class | `event-bus.event::enchanted-entity-loot-event` | supported |
 | `EnchantmentLevelSetEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PrepareItemEnchantEvent` (has `pos`; `original_level_requirements()` returns the vanilla levels; fires outside the screen lock) | supported |
 | `EntityTeleportEvent.ItemConsumption` | 0 | event class | `event-bus.event::entity-teleport-event-item-consumption` | supported |
 | `EffectParticleModificationEvent` | 0 | event class | `pumpkin_core::plugin::living::EffectParticleModificationEvent` | supported |
