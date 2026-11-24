@@ -49,8 +49,7 @@ Rules for every task:
   - Needs: 6.1.
   - Add a generic `DecoderRegistry<T>` in `pumpkin-util`. Move `LootModifierTypes` onto it.
   - Reject a duplicate name and the `minecraft` namespace. Close the registry at the freeze.
-  - Add a manual `PartialEq` for each use-site enum that gets a `Custom` arm.
-  - Put the trait of a loot `Custom` arm in `pumpkin-util`. Let it read the loot context through a context trait that `pumpkin-core` implements.
+  - Add the six registries with demand in `pumpkin-core`, next to their use sites, with the traits that mods implement. Each trait takes the full `pumpkin-core` context.
   - Verify: requirements "Decoder registries" and "Decoder registries are server-only" of `neoforge-static-registries`.
 - [ ] 6.4 Mod block entity types
   - Needs: 6.2, #192.
@@ -137,7 +136,8 @@ Rules for every task:
   - Verify: requirements "Mod-defined registries", "Synced mod-defined registries are refused", "Registry callbacks" and "Holder set types" of `neoforge-static-registries`.
 - [ ] 6.14 Decoder registry use sites
   - Needs: 6.3.
-  - Add the `Custom` arm at `DynamicLootCondition`, `AdvancementTrigger` and the predicates.
+  - Add the `Custom` arm at `DynamicLootCondition`, `LootFunctionKind`, `DynamicLootEntryKind`, `AdvancementTrigger` and the predicates.
+  - Give each `pumpkin-util` arm a type-erased value with a manual `PartialEq`, and the parser a decode hook from `pumpkin-core`.
   - Cover `trigger_type`, `loot_function_type`, `loot_pool_entry_type`, `loot_condition_type`, `data_component_predicate_type` and `entity_sub_predicate_type`.
   - Expose a trigger fire call to mods.
   - Verify: requirement "Use sites call the decoded behaviour" of `neoforge-static-registries`.
