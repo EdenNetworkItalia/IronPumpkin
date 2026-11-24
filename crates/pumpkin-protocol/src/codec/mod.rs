@@ -6,6 +6,7 @@ pub mod little_endian;
 pub mod lp_vector_3d;
 pub mod optional_int;
 pub mod recipe;
+pub mod recipe_book;
 mod u24_type;
 pub mod uuid;
 pub mod var_int;

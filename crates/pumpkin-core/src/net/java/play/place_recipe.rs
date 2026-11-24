@@ -15,13 +15,9 @@ impl JavaClient {
         use crate::server::recipe::DynamicRecipe;
         use pumpkin_data::recipes::{CookingRecipeType, CraftingRecipeTypes};
         use pumpkin_data::screen::WindowType;
-        use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
         use pumpkin_protocol::codec::recipe::OwnedCookingRecipeType;
-        use pumpkin_protocol::java::client::play::{
-            book_cooking_recipes, book_crafting_recipes, book_dynamic_recipes,
-        };
+        use pumpkin_protocol::codec::recipe_book::BookRecipe;
 
-        let target_id = packet.recipe_display_id.0 as usize;
         let use_max = packet.use_max_items;
 
         let mut click_event = crate::plugin::api::events::player::player_recipe_book_click::PlayerRecipeBookClickEvent::new(
@@ -36,13 +32,14 @@ impl JavaClient {
             return;
         }
 
-        // The display ids of `CRecipeBookAdd`: generated crafting, generated cooking, dynamic.
-        let all_dynamic = server.recipe_manager.get_dynamic_recipes();
-        let crafting_recipes = book_crafting_recipes(&all_dynamic);
-        let crafting_display_count = crafting_recipes.len();
-        let cooking_recipes = book_cooking_recipes(&all_dynamic);
-        let cooking_display_count = cooking_recipes.len();
-        let dynamic_recipes: Vec<&DynamicRecipe> = book_dynamic_recipes(&all_dynamic).collect();
+        // The display ids of `CRecipeBookAdd`.
+        let index = pumpkin_inventory::recipe_index::current();
+        let Some(book_recipe) = index
+            .book()
+            .recipe(packet.recipe_display_id.0, index.dynamic_recipes())
+        else {
+            return;
+        };
 
         let (window_type, grid_width, crafting_inv) = {
             let screen_handler_arc = player
@@ -86,10 +83,7 @@ impl JavaClient {
         let mut ingredient_slots: Vec<Option<GenericIngredient<'_>>> = vec![None; grid_size];
 
         if is_cooking_window {
-            if target_id < crafting_display_count {
-                return;
-            }
-            if let Some(cooking_recipe) = cooking_recipes.get(target_id - crafting_display_count) {
+            if let BookRecipe::Cooking(cooking_recipe) = book_recipe {
                 let ingredient = match (window_type, cooking_recipe) {
                     (Some(WindowType::Furnace), CookingRecipeType::Smelting(r))
                     | (Some(WindowType::BlastFurnace), CookingRecipeType::Blasting(r))
@@ -98,8 +92,7 @@ impl JavaClient {
                 };
                 ingredient_slots[0] = Some(GenericIngredient::Vanilla(ingredient));
             } else {
-                let dynamic_id = target_id - crafting_display_count - cooking_display_count;
-                let Some(DynamicRecipe::Cooking(cooking)) = dynamic_recipes.get(dynamic_id) else {
+                let BookRecipe::Dynamic(DynamicRecipe::Cooking(cooking)) = book_recipe else {
                     return;
                 };
                 let ingredient = match (window_type, cooking) {
@@ -112,12 +105,7 @@ impl JavaClient {
                 };
                 ingredient_slots[0] = Some(GenericIngredient::Dynamic(ingredient));
             }
-        } else if target_id < crafting_display_count {
-            // Crafting recipe
-            let Some(recipe) = crafting_recipes.get(target_id).copied() else {
-                return;
-            };
-
+        } else if let BookRecipe::Crafting(recipe) = book_recipe {
             match recipe {
                 CraftingRecipeTypes::CraftingShaped { pattern, key, .. } => {
                     for (row, row_str) in pattern.iter().enumerate() {
@@ -155,11 +143,7 @@ impl JavaClient {
                 _ => return,
             }
         } else {
-            if target_id < crafting_display_count + cooking_display_count {
-                return;
-            }
-            let dynamic_id = target_id - crafting_display_count - cooking_display_count;
-            let Some(DynamicRecipe::Crafting(crafting)) = dynamic_recipes.get(dynamic_id) else {
+            let BookRecipe::Dynamic(DynamicRecipe::Crafting(crafting)) = book_recipe else {
                 return;
             };
 

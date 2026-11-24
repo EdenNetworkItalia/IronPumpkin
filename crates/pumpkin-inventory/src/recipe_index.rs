@@ -24,6 +24,7 @@ use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe,
     OwnedRecipeIngredient, OwnedRecipeResult,
 };
+use pumpkin_protocol::codec::recipe_book::RecipeBook;
 
 type Components = &'static [(DataComponent, &'static dyn DataComponentImpl)];
 
@@ -193,6 +194,9 @@ pub struct RecipeIndex {
     cooking: Vec<CookingEntry>,
     stonecutter: Vec<StonecutterEntry>,
     property_sets: Vec<PropertySet>,
+    /// The data pack and plugin recipes the index was built from.
+    dynamic: Vec<DynamicRecipe>,
+    book: RecipeBook,
 }
 
 /// The vanilla recipe registry sorts the recipe files by `Identifier.compareTo`: the path first,
@@ -342,6 +346,8 @@ impl RecipeIndex {
         }
 
         let mut index = Self {
+            dynamic: dynamic.to_vec(),
+            book: RecipeBook::new(dynamic),
             cooking: Vec::new(),
             stonecutter: Vec::new(),
             property_sets: [
@@ -401,6 +407,18 @@ impl RecipeIndex {
             }
         }
         index
+    }
+
+    /// The data pack and plugin recipes, with the placeholders of the ignored recipes.
+    #[must_use]
+    pub fn dynamic_recipes(&self) -> &[DynamicRecipe] {
+        &self.dynamic
+    }
+
+    /// The recipe book layout of [`Self::dynamic_recipes`].
+    #[must_use]
+    pub const fn book(&self) -> &RecipeBook {
+        &self.book
     }
 
     fn add_to_set(&mut self, key: &'static str, ingredient: OwnedRecipeIngredient) {

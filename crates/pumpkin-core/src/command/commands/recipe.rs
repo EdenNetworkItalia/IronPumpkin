@@ -9,12 +9,10 @@ use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProvide
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::entity::EntityBase;
 use pumpkin_data::translation;
+use pumpkin_inventory::recipe_index::RecipeIndex;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::codec::var_int::VarInt;
-use pumpkin_protocol::java::client::play::{
-    CRecipeBookAdd, CRecipeBookRemove, book_cooking_recipes, book_crafting_recipes,
-    book_dynamic_recipes,
-};
+use pumpkin_protocol::java::client::play::CRecipeBookRemove;
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -37,6 +35,24 @@ fn get_recipe_id(recipe: &DynamicRecipe) -> String {
         },
         str::to_string,
     )
+}
+
+/// The display ids of the recipe book entries that `recipe` names: every entry for `*`, else
+/// the data pack and plugin recipes with that id. Each id is the id of the whole book.
+fn book_ids(index: &RecipeIndex, recipe: &str) -> Vec<i32> {
+    if recipe == "*" {
+        return index.book().display_ids().collect();
+    }
+    index
+        .dynamic_recipes()
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| {
+            let id = get_recipe_id(r);
+            id == recipe || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe
+        })
+        .filter_map(|(i, _)| index.book().dynamic_display_id(i))
+        .collect()
 }
 
 struct RecipeSuggestionProvider;
@@ -74,33 +90,25 @@ impl CommandExecutor for RecipeGiveExecutor {
             context.get_argument::<Identifier>("recipe")?.to_string()
         };
 
-        let server = context.source.server.as_ref().ok_or_else(|| {
+        // The recipes live in the server.
+        context.source.server.as_ref().ok_or_else(|| {
             ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str.clone()))
         })?;
 
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-
-        let is_all = recipe_str == "*";
-        let matching_recipes = if is_all {
-            all_recipes
-        } else {
-            all_recipes
-                .iter()
-                .filter(|r| {
-                    let id = get_recipe_id(r);
-                    id == recipe_str || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe_str
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        if !is_all && matching_recipes.is_empty() {
-            return Err(ERROR_RECIPE_NOT_FOUND
-                .create_without_context(TextComponent::text(recipe_str.clone())));
+        let index = pumpkin_inventory::recipe_index::current();
+        let ids = book_ids(&index, &recipe_str);
+        if recipe_str != "*" && ids.is_empty() {
+            return Err(
+                ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str))
+            );
         }
 
-        let recipe_count = matching_recipes.len();
-        let packet = CRecipeBookAdd::new(false, &matching_recipes);
+        let recipe_count = ids.len();
+        let packet = pumpkin_protocol::codec::recipe_book::CRecipeBookEntries::subset(
+            index.book(),
+            index.dynamic_recipes(),
+            &ids,
+        );
         for player in &targets {
             player.try_send_client_packet(&packet);
         }
@@ -145,41 +153,21 @@ impl CommandExecutor for RecipeTakeExecutor {
             context.get_argument::<Identifier>("recipe")?.to_string()
         };
 
-        let server = context.source.server.as_ref().ok_or_else(|| {
+        // The recipes live in the server.
+        context.source.server.as_ref().ok_or_else(|| {
             ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str.clone()))
         })?;
 
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-
-        // The display ids of `CRecipeBookAdd`: generated crafting, generated cooking, dynamic.
-        let dynamic_recipe_offset =
-            book_crafting_recipes(&all_recipes).len() + book_cooking_recipes(&all_recipes).len();
-
-        let displayable_recipes: Vec<_> = book_dynamic_recipes(&all_recipes).collect();
-
-        let is_all = recipe_str == "*";
-
-        let recipe_ids_to_remove: Vec<VarInt> = if is_all {
-            (0..(dynamic_recipe_offset + displayable_recipes.len()))
-                .map(|id| VarInt(id as i32))
-                .collect()
-        } else {
-            displayable_recipes
-                .iter()
-                .enumerate()
-                .filter_map(|(idx, r)| {
-                    let id = get_recipe_id(r);
-                    let is_match = id == recipe_str
-                        || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe_str;
-
-                    is_match.then_some(VarInt((dynamic_recipe_offset + idx) as i32))
-                })
-                .collect()
-        };
+        let index = pumpkin_inventory::recipe_index::current();
+        let recipe_ids_to_remove: Vec<VarInt> = book_ids(&index, &recipe_str)
+            .into_iter()
+            .map(VarInt)
+            .collect();
 
         if recipe_ids_to_remove.is_empty() {
-            return Err(ERROR_RECIPE_NOT_FOUND
-                .create_without_context(TextComponent::text(recipe_str.clone())));
+            return Err(
+                ERROR_RECIPE_NOT_FOUND.create_without_context(TextComponent::text(recipe_str))
+            );
         }
 
         let taken_count = recipe_ids_to_remove.len();
