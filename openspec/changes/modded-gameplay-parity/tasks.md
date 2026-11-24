@@ -99,6 +99,7 @@ Rules for every task:
 - [ ] 6.41 Data pack tags
   - Needs: 6.2.
   - Build the effective tag table of each static registry at each data pack load and reload: the generated tags, the mod tags registered in code, then the tag files of the enabled packs in pack order, with `replace`, optional entries, nested tags and the NeoForge `remove` list.
+  - Emit the direct `#` references of each generated tag from the codegen. Rebuild every generated tag that reaches a changed tag, in dependency order.
   - Skip a tag with a missing required entry, with the vanilla log line. Skip a tag in a reference cycle.
   - Let `Taggable::has_tag` and the tag value lookups read the table, with the generated lookup when the table has no entry for the tag.
   - Send the effective members in the tags packet at the join and after a reload: mod ids to a `Real` connection, vanilla ids to a `Display` connection.

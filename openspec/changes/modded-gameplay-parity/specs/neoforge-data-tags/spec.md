@@ -20,6 +20,10 @@ The server SHALL build the tags of each static registry from the generated tags,
 ### Requirement: Merge rules
 The merge SHALL follow vanilla `TagLoader` and the NeoForge `remove` list: the files of one tag apply in pack order; `replace` clears the entries of the earlier packs; an entry with `"required": false` that names a missing element is left out; a `#` entry adds the members of the other tag; a `remove` entry takes a member out. Status: planned (wave 2).
 
+#### Scenario: A tag that names a changed tag
+- **WHEN** a data pack adds `minecraft:dirt` to `minecraft:oak_logs`
+- **THEN** dirt also has `minecraft:logs_that_burn`, which names `#minecraft:oak_logs`, and the charcoal recipe takes dirt
+
 #### Scenario: Replace
 - **WHEN** a data pack replaces `minecraft:planks` with the list `["minecraft:oak_planks"]`
 - **THEN** only oak planks have the tag
