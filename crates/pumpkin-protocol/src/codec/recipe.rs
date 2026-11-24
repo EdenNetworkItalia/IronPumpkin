@@ -1,7 +1,8 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
-use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name};
+use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name, tag_ids};
 use pumpkin_data::item::Item;
+use pumpkin_data::tag::RegistryKey;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedRecipeIngredient {
@@ -24,6 +25,43 @@ impl OwnedRecipeIngredient {
                 ids.iter().any(|id| *id == name)
             }
         }
+    }
+
+    /// The items that [`Self::match_item`] accepts, in tag order and without duplicates. A tag
+    /// resolves through the server's tag lookup, so a mod tag and the custom members of a tag
+    /// are in the list.
+    #[must_use]
+    pub fn items(&self) -> Vec<&'static Item> {
+        let mut items: Vec<&'static Item> = Vec::new();
+        let mut push = |item: &'static Item| {
+            if !items.iter().any(|known| known.id == item.id) {
+                items.push(item);
+            }
+        };
+        match self {
+            Self::Simple(id) => {
+                if let Some(item) = Item::from_registry_key(id) {
+                    push(item);
+                }
+            }
+            Self::Tagged(tag) => {
+                if let Some((generated, custom)) = tag_ids(RegistryKey::Item, tag) {
+                    for item in generated
+                        .iter()
+                        .chain(custom)
+                        .filter_map(|&id| Item::from_id(id))
+                    {
+                        push(item);
+                    }
+                }
+            }
+            Self::OneOf(ids) => {
+                for item in ids.iter().filter_map(|id| Item::from_registry_key(id)) {
+                    push(item);
+                }
+            }
+        }
+        items
     }
 }
 

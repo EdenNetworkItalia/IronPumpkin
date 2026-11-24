@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::{collections::HashMap, io::Write};
 
 use crate::codec::item_stack_seralizer::ItemStackTemplateSerializer;
+use crate::codec::recipe::OwnedRecipeIngredient;
 use crate::{ClientPacket, VarInt, WritingError, ser::NetworkWriteExt};
 
 // Recipe Display type IDs
@@ -106,44 +107,35 @@ fn write_any_fuel_slot_display(
     Ok(())
 }
 
+/// The items of `tag` as the server matches them: the generated and the custom members of a
+/// generated or mod tag, one item per network id of the connection. `None` when the tag is
+/// unknown or empty.
 pub(super) fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'static Item>> {
-    let tag = tag.strip_prefix('#').unwrap_or(tag);
-    let full_tag = if tag.contains(':') {
-        Cow::Borrowed(tag)
-    } else {
-        Cow::Owned(format!("minecraft:{tag}"))
-    };
-
-    let item_names = pumpkin_data::tag::get_registry_key_tags(
-        version.version(),
-        pumpkin_data::tag::RegistryKey::Item,
-    )
-    .and_then(|map| map.get(full_tag.as_ref()))
-    .map(|t| t.0)
-    .or_else(|| {
-        pumpkin_data::tag::get_tag_values(pumpkin_data::tag::RegistryKey::Item, full_tag.as_ref())
-    })?;
-
-    let mut items = Vec::new();
-    for name in item_names {
-        let key = name.strip_prefix("minecraft:").unwrap_or(name);
-        if let Some(item) = Item::from_registry_key(key) {
-            items.push(item);
-        }
-    }
-    // A custom item can map to its display item, which can already be in the set.
-    let custom = pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &full_tag)
-        .map_or(&[][..], |(_, custom)| custom);
-    for item in custom.iter().filter_map(|&id| Item::from_id(id)) {
-        let id = item.to_java_network_id(version.content_ids());
-        if !items
-            .iter()
-            .any(|known| known.to_java_network_id(version.content_ids()) == id)
-        {
-            items.push(item);
-        }
-    }
+    let mut ids = Vec::new();
+    let items: Vec<&'static Item> = OwnedRecipeIngredient::Tagged(tag.to_string())
+        .items()
+        .into_iter()
+        .filter(|item| {
+            let id = item.to_java_network_id(version.content_ids());
+            let new = !ids.contains(&id);
+            ids.push(id);
+            new
+        })
+        .collect();
     if items.is_empty() { None } else { Some(items) }
+}
+
+/// The network ids of `items` for the connection, without duplicates. A custom item can map to
+/// its display item, which can already be in the list.
+pub(super) fn network_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
+    let mut ids = Vec::with_capacity(items.len());
+    for item in items {
+        let id = i32::from(item.to_java_network_id(version.content_ids()));
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids
 }
 
 fn write_ingredient_slot_display(
@@ -787,61 +779,23 @@ fn write_dynamic_ingredient_slot_display(
     Ok(())
 }
 
+/// Writes `ingredient` as `ByteBufCodecs.holderSet`, always as a direct list: a client knows
+/// the items of the list, but a `Display` client does not know a mod tag.
 pub(super) fn write_dynamic_ingredient_holderset(
     write: &mut impl Write,
-    ingredient: &crate::codec::recipe::OwnedRecipeIngredient,
+    ingredient: &OwnedRecipeIngredient,
     version: EncodingKey,
 ) -> Result<(), WritingError> {
-    match ingredient {
-        crate::codec::recipe::OwnedRecipeIngredient::Simple(id) => {
-            let key = id.strip_prefix("minecraft:").unwrap_or(id);
-            write.write_var_int(&VarInt(2))?;
-            if let Some(item) = Item::from_registry_key(key) {
-                write.write_var_int(&VarInt(i32::from(
-                    item.to_java_network_id(version.content_ids()),
-                )))?;
-            } else {
-                write.write_var_int(&VarInt(0))?;
-            }
-        }
-        crate::codec::recipe::OwnedRecipeIngredient::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
-                write.write_var_int(&VarInt(items.len() as i32 + 1))?;
-                for item in &items {
-                    write.write_var_int(&VarInt(i32::from(
-                        item.to_java_network_id(version.content_ids()),
-                    )))?;
-                }
-            } else {
-                let tag = tag.strip_prefix('#').unwrap_or(tag);
-                let full_tag = if tag.contains(':') {
-                    tag.to_string()
-                } else {
-                    format!("minecraft:{tag}")
-                };
-                write.write_var_int(&VarInt(0))?;
-                write.write_string(&full_tag)?;
-            }
-        }
-        crate::codec::recipe::OwnedRecipeIngredient::OneOf(ids) => {
-            let items: Vec<i32> = ids
-                .iter()
-                .filter_map(|id| {
-                    let key = id.strip_prefix("minecraft:").unwrap_or(id);
-                    Item::from_registry_key(key)
-                        .map(|item| i32::from(item.to_java_network_id(version.content_ids())))
-                })
-                .collect();
-            if items.is_empty() {
-                write.write_var_int(&VarInt(2))?;
-                write.write_var_int(&VarInt(0))?;
-            } else {
-                write.write_var_int(&VarInt(items.len() as i32 + 1))?;
-                for id in &items {
-                    write.write_var_int(&VarInt(*id))?;
-                }
-            }
-        }
+    let ids = network_item_ids(&ingredient.items(), version);
+    // Vanilla `Ingredient` rejects an empty list, and `RecipeManager` drops such recipes.
+    if ids.is_empty() {
+        return Err(WritingError::Message(format!(
+            "recipe ingredient {ingredient:?} holds no item"
+        )));
+    }
+    write.write_var_int(&VarInt(ids.len() as i32 + 1))?;
+    for id in ids {
+        write.write_var_int(&VarInt(id))?;
     }
     Ok(())
 }

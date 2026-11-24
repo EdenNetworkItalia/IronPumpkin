@@ -11,7 +11,7 @@ use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
 
 use super::recipe_book_add::{
-    resolve_item_tag, write_dynamic_ingredient_holderset, write_empty_slot_display,
+    network_item_ids, write_dynamic_ingredient_holderset, write_empty_slot_display,
     write_item_stack_slot_display,
 };
 
@@ -41,7 +41,7 @@ impl<'a> CUpdateRecipes<'a> {
             let ids = property_set_item_ids(set.ingredients, version);
             write.write_var_int(&VarInt(ids.len() as i32))?;
             for id in ids {
-                write.write_var_int(&VarInt(i32::from(id)))?;
+                write.write_var_int(&VarInt(id))?;
             }
         }
         write.write_var_int(&VarInt(stonecutter.len() as i32))?;
@@ -60,34 +60,12 @@ impl<'a> CUpdateRecipes<'a> {
 
 /// The network ids of the items of `ingredients`, without duplicates. Vanilla holds them in a
 /// `Set`, so the order is free.
-fn property_set_item_ids(ingredients: &[OwnedRecipeIngredient], version: EncodingKey) -> Vec<u16> {
-    let mut ids = Vec::new();
-    let mut push = |item: &Item| {
-        let id = item.to_java_network_id(version.content_ids());
-        if !ids.contains(&id) {
-            ids.push(id);
-        }
-    };
-    for ingredient in ingredients {
-        match ingredient {
-            OwnedRecipeIngredient::Simple(id) => {
-                if let Some(item) = Item::from_registry_key(id) {
-                    push(item);
-                }
-            }
-            OwnedRecipeIngredient::Tagged(tag) => {
-                for item in resolve_item_tag(tag, version).unwrap_or_default() {
-                    push(item);
-                }
-            }
-            OwnedRecipeIngredient::OneOf(list) => {
-                for item in list.iter().filter_map(|id| Item::from_registry_key(id)) {
-                    push(item);
-                }
-            }
-        }
-    }
-    ids
+fn property_set_item_ids(ingredients: &[OwnedRecipeIngredient], version: EncodingKey) -> Vec<i32> {
+    let items: Vec<&'static Item> = ingredients
+        .iter()
+        .flat_map(OwnedRecipeIngredient::items)
+        .collect();
+    network_item_ids(&items, version)
 }
 
 impl ClientPacket for CUpdateRecipes<'_> {
@@ -178,8 +156,32 @@ mod tests {
             OwnedRecipeIngredient::Simple("minecraft:oak_planks".to_string()),
         ];
         let ids = property_set_item_ids(&ingredients, version);
-        let oak = Item::OAK_PLANKS.to_java_network_id(version.content_ids());
+        let oak = network_id(&Item::OAK_PLANKS, version);
         assert_eq!(ids.iter().filter(|id| **id == oak).count(), 1);
         assert!(ids.len() > 5);
+    }
+
+    #[test]
+    fn a_tag_ingredient_is_a_direct_list() {
+        let version = EncodingKey::from(JavaMinecraftVersion::V_26_3);
+        let logs = OwnedRecipeIngredient::Tagged("minecraft:planks".to_string());
+        let mut body = Vec::new();
+        write_dynamic_ingredient_holderset(&mut body, &logs, version).unwrap();
+        let members = logs.items().len() as i32;
+        assert!(members > 5);
+        assert_eq!(body[..1], var_int(members + 1)[..]);
+    }
+
+    #[test]
+    fn an_ingredient_without_items_is_an_error() {
+        let version = EncodingKey::from(JavaMinecraftVersion::V_26_3);
+        for ingredient in [
+            OwnedRecipeIngredient::Simple("test:missing".to_string()),
+            OwnedRecipeIngredient::Tagged("test:missing".to_string()),
+            OwnedRecipeIngredient::OneOf(vec!["test:missing".to_string()]),
+        ] {
+            let mut body = Vec::new();
+            assert!(write_dynamic_ingredient_holderset(&mut body, &ingredient, version).is_err());
+        }
     }
 }
