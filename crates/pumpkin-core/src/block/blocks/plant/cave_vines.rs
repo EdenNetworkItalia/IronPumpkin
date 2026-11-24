@@ -53,7 +53,7 @@ impl CaveVinesBlock {
                         Some(player as &dyn crate::entity::EntityBase),
                         None,
                     );
-                    crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+                    crate::world::loot::roll_loot(&handle, 0, &params)
                 },
             );
         for stack in drops {

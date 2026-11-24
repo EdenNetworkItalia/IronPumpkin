@@ -24,7 +24,8 @@ use crate::{
 
 pub const CHUNK_TICKETS_FILE_NAME: &str = "chunk_tickets.dat";
 const FORCED_TICKET_TYPE: &str = "minecraft:forced";
-/// `ChunkMap.FORCED_TICKET_LEVEL`: the level of `FullChunkStatus.ENTITY_TICKING`.
+/// `ChunkMap.FORCED_TICKET_LEVEL`: the level of `FullChunkStatus.ENTITY_TICKING`. It is on the
+/// vanilla scale; `ChunkLoading::FORCED_TICKET_LEVEL` is the same level on the Pumpkin scale.
 const FORCED_TICKET_LEVEL: i32 = 31;
 
 #[must_use]

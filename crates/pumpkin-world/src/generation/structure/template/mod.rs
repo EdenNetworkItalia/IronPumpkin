@@ -35,7 +35,7 @@ use pumpkin_data::Mirror;
 use pumpkin_data::Rotation;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::math::vector3::Vector3;
-use pumpkin_util::random::{RandomImpl, hash_block_pos, legacy_rand::LegacyRand};
+use pumpkin_util::random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand};
 
 use crate::ProtoChunk;
 
@@ -112,16 +112,127 @@ pub fn place_template_with_options(
     chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
     keep_jigsaws: bool,
 ) {
+    let blocks = template.blocks.iter().map(|block| {
+        (
+            block.pos,
+            &template.palette[block.state as usize],
+            block.nbt.as_ref(),
+        )
+    });
+    place_blocks(
+        placer,
+        blocks,
+        template.size,
+        origin,
+        offset,
+        rotation,
+        BlockFlags {
+            skip_air,
+            apply_waterlogging,
+            keep_jigsaws,
+        },
+        processors,
+        chunk_box,
+        None,
+    );
+}
+
+/// Places one palette of a template with a placement random, as vanilla `placeInWorld` does.
+///
+/// Vanilla `StructurePlaceSettings.setRandom` is set: the processors `block_rot` and `block_age`
+/// and the loot seeds of the containers draw from `random`. Air is placed, waterlogging applies,
+/// and no bounding box clips the template.
+pub fn place_template_palette_with_random(
+    placer: &mut impl BlockPlacer,
+    template: &StructureTemplate,
+    palette_index: usize,
+    origin: Vector3<i32>,
+    rotation: Rotation,
+    processors: &[StructureProcessor],
+    random: &mut RandomGenerator,
+) {
+    let blocks = template.palettes[palette_index]
+        .blocks()
+        .iter()
+        .map(|block| (block.pos, &block.state, block.nbt.as_ref()));
+    place_blocks(
+        placer,
+        blocks,
+        template.size,
+        origin,
+        (0, 0),
+        rotation,
+        BlockFlags {
+            skip_air: false,
+            apply_waterlogging: true,
+            keep_jigsaws: false,
+        },
+        processors,
+        None,
+        Some(random),
+    );
+}
+
+#[derive(Clone, Copy)]
+struct BlockFlags {
+    skip_air: bool,
+    apply_waterlogging: bool,
+    keep_jigsaws: bool,
+}
+
+/// A template block after the processors ran, ready to place.
+struct ProcessedBlock {
+    pos: Vector3<i32>,
+    state: &'static BlockState,
+    nbt: Option<NbtCompound>,
+}
+
+/// Vanilla `RandomizableContainer` block entities: their template NBT gets a new
+/// `LootTableSeed` from the placement random.
+fn is_randomizable_container(block: &pumpkin_data::Block) -> bool {
+    use pumpkin_data::BlockId;
+    matches!(
+        block.id,
+        BlockId::CHEST
+            | BlockId::TRAPPED_CHEST
+            | BlockId::BARREL
+            | BlockId::DECORATED_POT
+            | BlockId::CRAFTER
+            | BlockId::HOPPER
+            | BlockId::DISPENSER
+            | BlockId::DROPPER
+    ) || block
+        .id
+        .has_tag(pumpkin_data::tag::Block::MINECRAFT_SHULKER_BOXES)
+}
+
+#[expect(clippy::too_many_arguments)]
+fn place_blocks<'a>(
+    placer: &mut impl BlockPlacer,
+    blocks: impl Iterator<Item = (Vector3<i32>, &'a PaletteEntry, Option<&'a NbtCompound>)>,
+    size: Vector3<i32>,
+    origin: Vector3<i32>,
+    offset: (i32, i32),
+    rotation: Rotation,
+    flags: BlockFlags,
+    processors: &[StructureProcessor],
+    chunk_box: Option<&pumpkin_util::math::block_box::BlockBox>,
+    settings_random: Option<&mut RandomGenerator>,
+) {
     let (rotated_ox, rotated_oz) = rotation.rotate_offset(offset.0, offset.1);
     let world_x = origin.x + rotated_ox;
     let world_z = origin.z + rotated_oz;
 
     let mut context_rng = LegacyRand::from_seed(hash_block_pos(world_x, origin.y, world_z) as u64);
     let mut context = processor::ProcessorContext::new(origin, processors, &mut context_rng);
+    context.settings_random = settings_random;
 
-    for block in &template.blocks {
+    // Vanilla `StructureTemplate.processBlockInfos`: every block runs through the processors
+    // before the first block is placed.
+    let mut processed = Vec::new();
+    for (pos, palette_entry, nbt) in blocks {
         // Rotate block position within template bounds
-        let local_pos = rotation.transform_pos(block.pos, template.size);
+        let local_pos = rotation.transform_pos(pos, size);
 
         let wx = world_x + local_pos.x;
         let wy = origin.y + local_pos.y;
@@ -138,16 +249,14 @@ pub fn place_template_with_options(
             continue;
         }
 
-        let palette_entry = &template.palette[block.state as usize];
-
         // Structure blocks are data markers.
         if palette_entry.name == "minecraft:structure_block" {
             continue;
         }
 
-        let mut block_entity_nbt = block.nbt.clone();
+        let mut block_entity_nbt = nbt.cloned();
         let jigsaw_entry: PaletteEntry;
-        let placed_entry = if !keep_jigsaws && palette_entry.name == "minecraft:jigsaw" {
+        let placed_entry = if !flags.keep_jigsaws && palette_entry.name == "minecraft:jigsaw" {
             // Jigsaw blocks are replaced during template processing, before block entities are
             // collected. Keeping this in the placement pipeline avoids stale jigsaw entities.
             let final_state = block_entity_nbt
@@ -176,7 +285,7 @@ pub fn place_template_with_options(
 
         let world_pos = Vector3::new(wx, wy, wz);
 
-        if apply_waterlogging
+        if flags.apply_waterlogging
             && placer.get_block_state(&world_pos).to_block_id() == pumpkin_data::Block::WATER.id
             && let Some(waterlogged_state) = state.set_waterlogged(true)
         {
@@ -207,16 +316,33 @@ pub fn place_template_with_options(
             continue;
         }
         // Legacy pool elements ignore air after jigsaw replacement and custom processors.
-        if skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
+        if flags.skip_air && state.id.to_block_id() == pumpkin_data::Block::AIR.id {
             continue;
         }
+        processed.push(ProcessedBlock {
+            pos: world_pos,
+            state,
+            nbt: block_entity_nbt,
+        });
+    }
 
-        placer.set_block_state(&Vector3::new(wx, wy, wz), state);
+    place_processed(placer, processed, context.settings_random);
+}
+
+/// The placement loop of vanilla `placeInWorld`: blocks, block entities and loot seeds.
+fn place_processed(
+    placer: &mut impl BlockPlacer,
+    processed: Vec<ProcessedBlock>,
+    mut settings_random: Option<&mut RandomGenerator>,
+) {
+    for block in processed {
+        let (wx, wy, wz) = (block.pos.x, block.pos.y, block.pos.z);
+        placer.set_block_state(&block.pos, block.state);
 
         // Create block entities for interactive blocks (furnaces, chests, etc.)
-        let final_block = pumpkin_data::Block::from_id(state.id.to_block_id());
+        let final_block = pumpkin_data::Block::from_id(block.state.id.to_block_id());
         let block_entity_id = get_block_entity_id(final_block.name);
-        if block_entity_nbt.is_some() || block_entity_id.is_some() {
+        if block.nbt.is_some() || block_entity_id.is_some() {
             let fallback_id = block_entity_id.unwrap_or(final_block.name);
             let mut placed_nbt = NbtCompound::new();
 
@@ -225,7 +351,7 @@ pub fn place_template_with_options(
             placed_nbt.put_int("y", wy);
             placed_nbt.put_int("z", wz);
 
-            if let Some(template_nbt) = &block_entity_nbt {
+            if let Some(template_nbt) = &block.nbt {
                 for (key, value) in &template_nbt.child_tags {
                     if key.as_ref() != "x" && key.as_ref() != "y" && key.as_ref() != "z" {
                         placed_nbt.child_tags.insert(key.clone(), value.clone());
@@ -233,7 +359,11 @@ pub fn place_template_with_options(
                 }
             }
 
-            if placed_nbt.get_string("LootTable").is_some()
+            if let Some(random) = settings_random.as_deref_mut() {
+                if block.nbt.is_some() && is_randomizable_container(final_block) {
+                    placed_nbt.put_long("LootTableSeed", random.next_i64());
+                }
+            } else if placed_nbt.get_string("LootTable").is_some()
                 && placed_nbt.get_long("LootTableSeed").is_none()
             {
                 let mut random = LegacyRand::from_seed(hash_block_pos(wx, wy, wz) as u64);
@@ -252,16 +382,29 @@ pub(crate) fn place_template_entities(
     rotation: Rotation,
     chunk_box: &pumpkin_util::math::block_box::BlockBox,
 ) {
-    for entity in &template.entities {
+    for (block_pos, nbt) in template_entities(template, origin, rotation) {
+        if chunk_box.contains_pos(&block_pos) {
+            chunk.add_structure_entity(nbt);
+        }
+    }
+}
+
+/// The entities of a template placed at `origin`.
+///
+/// Vanilla `StructureTemplate.addEntitiesToWorld` builds them: the block position of each entity
+/// and its NBT with the placed `Pos` and rotation and without `UUID`.
+pub fn template_entities(
+    template: &StructureTemplate,
+    origin: Vector3<i32>,
+    rotation: Rotation,
+) -> impl Iterator<Item = (Vector3<i32>, NbtCompound)> + '_ {
+    template.entities.iter().map(move |entity| {
         let block_pos = rotation.transform_pos(entity.block_pos, template.size);
         let world_block_pos = Vector3::new(
             origin.x + block_pos.x,
             origin.y + block_pos.y,
             origin.z + block_pos.z,
         );
-        if !chunk_box.contains_pos(&world_block_pos) {
-            continue;
-        }
 
         let pos = match rotation {
             Rotation::None => entity.pos,
@@ -291,6 +434,16 @@ pub(crate) fn place_template_entities(
             ]),
         );
         nbt.child_tags.remove("UUID");
+        if nbt.child_tags.contains_key("block_pos") {
+            nbt.put(
+                "block_pos",
+                NbtTag::IntArray(vec![
+                    world_block_pos.x,
+                    world_block_pos.y,
+                    world_block_pos.z,
+                ]),
+            );
+        }
 
         if let Some(rotation_nbt) = nbt.get_list("Rotation")
             && rotation_nbt.len() == 2
@@ -306,8 +459,8 @@ pub(crate) fn place_template_entities(
             nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
         }
 
-        chunk.add_structure_entity(nbt);
-    }
+        (world_block_pos, nbt)
+    })
 }
 
 /// Returns the block entity ID for blocks that require one, or None if not needed.

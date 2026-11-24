@@ -489,11 +489,7 @@ impl Mob for EndermanEntity {
             tool: Some(tool),
             ..Default::default()
         };
-        for stack in crate::world::loot::generate_loot_from_handle(
-            &loot_table,
-            self.get_random().random(),
-            &params,
-        ) {
+        for stack in crate::world::loot::roll_loot(&loot_table, 0, &params) {
             entity.spawn_at_location(stack);
         }
     }

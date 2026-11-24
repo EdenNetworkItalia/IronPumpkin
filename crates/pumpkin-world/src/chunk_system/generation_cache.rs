@@ -362,6 +362,27 @@ impl GenerationCache for Cache {
         }
     }
 
+    fn add_entity(&mut self, pos: &Vector3<i32>, nbt: NbtCompound) {
+        let dx = (pos.x >> 4) - self.x;
+        let dz = (pos.z >> 4) - self.z;
+        if !(dx < self.size && dz < self.size && dx >= 0 && dz >= 0) {
+            debug!(
+                "illegal add_entity {pos:?} cache pos ({}, {}) size {}",
+                self.x, self.z, self.size
+            );
+            return;
+        }
+
+        match &mut self.chunks[(dx * self.size + dz) as usize] {
+            Chunk::Level(_) => {
+                debug!("add_entity on non-proto chunk at {pos:?}");
+            }
+            Chunk::Proto(data) => {
+                data.add_structure_entity(nbt);
+            }
+        }
+    }
+
     fn get_top_y(&self, heightmap: &HeightMap, x: i32, z: i32) -> i32 {
         match heightmap {
             HeightMap::WorldSurfaceWg => self.top_block_wg_height_exclusive(x, z),
