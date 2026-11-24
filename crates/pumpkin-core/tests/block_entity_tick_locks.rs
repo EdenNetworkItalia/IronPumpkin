@@ -467,3 +467,29 @@ fn the_furnace_does_not_light_when_the_burn_event_takes_the_fuel() {
     assert_eq!(furnace.get_cooking_time_spent(), 0);
     assert!(furnace.get_stack(1).is_empty());
 }
+
+/// The refuel takes the blaze powder that the stand read, also when a hopper adds one more
+/// during `BrewingStandFuelEvent`.
+#[test]
+fn the_refuel_takes_a_fuel_stack_that_grew_during_the_fuel_event() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(4, 100, 2);
+    place(&world, pos, &Block::BREWING_STAND);
+    let stand = Arc::new(BrewingStandBlockEntity::new(pos));
+    stand.set_stack(4, ItemStack::new(1, &Item::BLAZE_POWDER));
+    on({
+        let stand = stand.clone();
+        move |event: &mut BrewingStandFuelEvent| {
+            if event.block_pos == pos {
+                stand.update_stack(4, &mut |stack| {
+                    stack.increment(1);
+                    true
+                });
+            }
+        }
+    });
+    stand.tick(&world);
+    assert_eq!(stand.fuel.load(Ordering::Relaxed), 20);
+    assert_eq!(stand.get_stack(4).item_count, 1);
+}

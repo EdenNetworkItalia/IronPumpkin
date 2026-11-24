@@ -411,7 +411,8 @@ impl BrewingStandBlockEntity {
         let mut items = self.write_items();
         let refilled = if self.fuel.load(Ordering::Relaxed) <= 0
             && !items[4].is_empty()
-            && items[4].are_equal(&expected_fuel)
+            // A hopper can add fuel during the event: the count may differ.
+            && items[4].are_items_and_components_equal(&expected_fuel)
         {
             let remainder = items[4].crafting_remainder();
             self.fuel.store(fuel_power, Ordering::Relaxed);
