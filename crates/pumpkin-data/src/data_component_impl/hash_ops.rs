@@ -1222,5 +1222,45 @@ mod tests {
             };
             assert_eq!(hash(&fox), vanilla::string("snow"));
         }
+
+        /// `SignText.CODEC` omits `filtered_messages` when they equal the messages.
+        #[test]
+        fn sign_text_omits_filtered_messages_equal_to_the_messages() {
+            use crate::data_component_impl::SignTextFrontImpl;
+            let messages = [
+                Cow::Borrowed("a"),
+                Cow::Borrowed(""),
+                Cow::Borrowed(""),
+                Cow::Borrowed(""),
+            ];
+            let sign = SignTextFrontImpl {
+                messages: messages.clone(),
+                filtered_messages: Some(messages),
+                color: crate::dye_color::DyeColor::Black,
+                has_glowing_text: false,
+            };
+            let lines = vanilla::list(&[
+                vanilla::string("a"),
+                vanilla::string(""),
+                vanilla::string(""),
+                vanilla::string(""),
+            ]);
+            assert_eq!(
+                hash(&sign),
+                vanilla::map(&[
+                    ("messages", lines),
+                    ("color", vanilla::string("black")),
+                    ("has_glowing_text", vanilla::boolean(false)),
+                ])
+            );
+            let saved = sign.write_data();
+            assert!(
+                saved
+                    .extract_compound()
+                    .unwrap()
+                    .get("filtered_messages")
+                    .is_none()
+            );
+        }
     }
 }

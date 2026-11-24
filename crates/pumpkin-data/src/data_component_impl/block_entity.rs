@@ -369,7 +369,8 @@ fn write_sign_text(
             .map(|m| NbtTag::String(m.to_string().into()))
             .collect(),
     );
-    if let Some(filtered) = filtered_messages {
+    // `SignText.CODEC` omits the filtered messages when they equal the messages.
+    if let Some(filtered) = filtered_messages.filter(|filtered| *filtered != messages) {
         compound.put_list(
             "filtered_messages",
             filtered
