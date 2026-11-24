@@ -1,0 +1,4 @@
+// coral/horn_block world=ocean seed=1 origin=8, 51, 8 placed=true changed=3 next=950360058
+(7, 51, 8, 18620), // Block{minecraft:horn_coral_wall_fan}[facing=west,waterlogged=true]
+(8, 51, 8, 18503), // Block{minecraft:horn_coral_block}
+(8, 51, 9, 18586), // Block{minecraft:tube_coral_wall_fan}[facing=south,waterlogged=true]

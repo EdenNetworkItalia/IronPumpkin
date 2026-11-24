@@ -384,6 +384,27 @@ impl OctaveSimplexNoiseSampler {
 
         d
     }
+
+    /// Samples the octaves as vanilla 26.3 `NoiseStack.get(x, y)` does without noise offsets:
+    /// each octave value and amplitude is a `f32`, and the sum is a `f32`.
+    #[must_use]
+    pub fn sample_f32(&self, x: f64, y: f64) -> f32 {
+        let mut value = 0.0f32;
+        let mut frequency = self.lacunarity;
+        let mut amplitude = self.persistence;
+
+        for sampler in &self.octave_samplers {
+            if let Some(sampler) = sampler {
+                let octave = sampler.sample_2d(x * frequency, y * frequency) as f32;
+                value += amplitude as f32 * octave;
+            }
+
+            frequency /= 2.0;
+            amplitude *= 2.0;
+        }
+
+        value
+    }
 }
 
 /// Tests for the simplex noise implementations.

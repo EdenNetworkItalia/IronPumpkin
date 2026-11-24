@@ -14,6 +14,8 @@ pub mod stage_parity;
 pub mod structure_saves;
 #[cfg(test)]
 pub mod structure_starts;
+#[cfg(test)]
+pub mod warm_ocean;
 
 #[cfg(test)]
 pub(crate) fn surface_biomes(

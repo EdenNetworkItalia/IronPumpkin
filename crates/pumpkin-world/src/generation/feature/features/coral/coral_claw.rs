@@ -1,23 +1,43 @@
+use crate::generation::feature::placed_features::PlacedFeatureWrapper;
 use crate::{generation::proto_chunk::GenerationCache, world::WorldPortalExt};
-use pumpkin_data::{BlockDirection, tag};
+use pumpkin_data::BlockDirection;
 use pumpkin_util::{
     math::position::BlockPos,
     random::{RandomGenerator, RandomImpl},
 };
 
-use super::CoralFeature;
+use super::place_piece;
 
-pub struct CoralClawFeature;
+/// Vanilla `CoralClawFeature`: a claw of `feature` pieces.
+pub struct CoralClawFeature {
+    pub feature: Box<PlacedFeatureWrapper>,
+}
 
 impl CoralClawFeature {
+    #[expect(clippy::too_many_arguments)]
     pub fn generate<T: GenerationCache>(
+        &self,
         chunk: &mut T,
         block_registry: &dyn WorldPortalExt,
+        min_y: i8,
+        height: u16,
+        feature_name: pumpkin_data::placed_feature::PlacedFeature,
         random: &mut RandomGenerator,
         pos: BlockPos,
     ) -> bool {
-        let block = CoralFeature::get_random_tag_entry(tag::Block::MINECRAFT_CORAL_BLOCKS, random);
-        if !CoralFeature::generate_coral_piece(chunk, block_registry, random, block, pos) {
+        let place = |chunk: &mut T, random: &mut RandomGenerator, pos| {
+            place_piece(
+                &self.feature,
+                chunk,
+                block_registry,
+                min_y,
+                height,
+                feature_name,
+                random,
+                pos,
+            )
+        };
+        if !place(chunk, random, pos) {
             return false;
         }
         let claw_dir =
@@ -42,7 +62,8 @@ impl CoralClawFeature {
                 (claw_dir, random.next_bounded_i32(3) + 2)
             } else {
                 mut_pos = mut_pos.up();
-                let seg_dir = if random.next_bool() {
+                // Vanilla `Util.getRandom(new Direction[]{branchDirection, UP}, random)`.
+                let seg_dir = if random.next_bounded_i32(2) == 0 {
                     branch_direction
                 } else {
                     BlockDirection::Up
@@ -51,13 +72,7 @@ impl CoralClawFeature {
             };
 
             for _ in 0..sideway_length {
-                if !CoralFeature::generate_coral_piece(
-                    chunk,
-                    block_registry,
-                    random,
-                    block,
-                    mut_pos,
-                ) {
+                if !place(chunk, random, mut_pos) {
                     break;
                 }
                 mut_pos = mut_pos.offset(segment_direction.to_offset());
@@ -68,13 +83,7 @@ impl CoralClawFeature {
 
             for _ in 0..inway_length {
                 mut_pos = mut_pos.offset(claw_dir.to_offset());
-                if !CoralFeature::generate_coral_piece(
-                    chunk,
-                    block_registry,
-                    random,
-                    block,
-                    mut_pos,
-                ) {
+                if !place(chunk, random, mut_pos) {
                     break;
                 }
                 if random.next_f32() < 0.25 {

@@ -1,0 +1,18 @@
+// warm_ocean_vegetation:1 world=ocean seed=2 origin=8, 51, 8 placed=true changed=17 next=1302696367
+(8, 51, 8, 18499), // Block{minecraft:tube_coral_block}
+(8, 51, 9, 18499), // Block{minecraft:tube_coral_block}
+(8, 51, 10, 18610), // Block{minecraft:fire_coral_wall_fan}[facing=south,waterlogged=true]
+(8, 52, 10, 18499), // Block{minecraft:tube_coral_block}
+(8, 53, 9, 18588), // Block{minecraft:tube_coral_wall_fan}[facing=west,waterlogged=true]
+(8, 53, 10, 18616), // Block{minecraft:horn_coral_wall_fan}[facing=north,waterlogged=true]
+(8, 53, 11, 18499), // Block{minecraft:tube_coral_block}
+(8, 54, 11, 18538), // Block{minecraft:bubble_coral_fan}[waterlogged=true]
+(9, 52, 7, 18616), // Block{minecraft:horn_coral_wall_fan}[facing=north,waterlogged=true]
+(9, 52, 8, 18499), // Block{minecraft:tube_coral_block}
+(9, 52, 10, 18614), // Block{minecraft:fire_coral_wall_fan}[facing=east,waterlogged=true]
+(9, 53, 9, 18499), // Block{minecraft:tube_coral_block}
+(9, 53, 10, 18499), // Block{minecraft:tube_coral_block}
+(9, 53, 11, 18499), // Block{minecraft:tube_coral_block}
+(9, 54, 12, 18499), // Block{minecraft:tube_coral_block}
+(9, 54, 13, 18586), // Block{minecraft:tube_coral_wall_fan}[facing=south,waterlogged=true]
+(10, 53, 9, 18606), // Block{minecraft:bubble_coral_wall_fan}[facing=east,waterlogged=true]
