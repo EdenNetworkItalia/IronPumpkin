@@ -2931,11 +2931,16 @@ impl pumpkin::plugin::player::HostPlayerWithStore<PluginHostState> for HasSelf<P
             ))
         })?;
 
-        let command_str = command.strip_prefix('/').unwrap_or(&command);
-        let dispatcher = server.command_dispatcher.load();
-        let source = player.get_command_source(&server);
-        dispatcher.handle_command(&source, command_str);
-        Ok(true)
+        // `CommandEvent` can reach a Wasm handler, so the dispatch must not hold the store of the
+        // caller: `run_blocking` hands it back, as `execute_command` does.
+        run_blocking(accessor, move || {
+            let command_str = command.strip_prefix('/').unwrap_or(&command);
+            let dispatcher = server.command_dispatcher.load();
+            let source = player.get_command_source(&server);
+            dispatcher.handle_command(&source, command_str);
+            true
+        })
+        .await
     }
 
     async fn chat(
@@ -2952,9 +2957,13 @@ impl pumpkin::plugin::player::HostPlayerWithStore<PluginHostState> for HasSelf<P
         })?;
 
         if let Some(command) = message.strip_prefix('/') {
-            let dispatcher = server.command_dispatcher.load();
-            let source = player.get_command_source(&server);
-            dispatcher.handle_command(&source, command);
+            let command = command.to_owned();
+            run_blocking(accessor, move || {
+                let dispatcher = server.command_dispatcher.load();
+                let source = player.get_command_source(&server);
+                dispatcher.handle_command(&source, &command);
+            })
+            .await?;
         } else {
             let config = &server.advanced_config;
             let decorated = pumpkin_util::text::TextComponent::chat_decorated(

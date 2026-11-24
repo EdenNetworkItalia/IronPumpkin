@@ -35,7 +35,8 @@ use bindings::pumpkin::plugin::{
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
-const EVENTS: [EventType; 28] = [
+const EVENTS: [EventType; 29] = [
+    EventType::CommandEvent,
     EventType::BlockBreakEvent,
     EventType::BlockPlaceEvent,
     EventType::BlockEventEntityPlaceEvent,
@@ -149,6 +150,7 @@ fn view(event: &mut Event) -> Option<View<'_>> {
             Some(&mut data.exp),
             Some(&mut data.cancelled),
         ),
+        Event::CommandEvent(data) => ("CommandEvent", None, Some(&mut data.cancelled)),
         Event::BlockPlaceEvent(data) => ("BlockPlaceEvent", None, Some(&mut data.cancelled)),
         Event::BlockEventEntityPlaceEvent(data) => (
             "BlockEventEntityPlaceEvent",
@@ -328,6 +330,21 @@ fn configure(words: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
+/// `perform <player> <command...>`: the player performs a command through the v0.2 player
+/// import, and the reply is what the import returns.
+async fn perform(words: &[&str]) -> Result<String, String> {
+    let [name, command @ ..] = words else {
+        return Err("perform <player> <command...>".to_owned());
+    };
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let player = server
+        .get_player_by_name(name)
+        .ok_or_else(|| format!("no player {name}"))?;
+    Ok(player.perform_command(command.join(" ")).await.to_string())
+}
+
 /// `spawn <x> <y> <z>`: spawns a pig through the v0.2 world import, and returns its entity id.
 async fn spawn(words: &[&str]) -> Result<String, String> {
     let [x, y, z] = words else {
@@ -397,7 +414,7 @@ impl Guest for Component {
     async fn handle_task(_handler_id: u32, _server: ServerInstance) {}
 
     /// The test protocol: `reset`, `on ...` (see [`configure`]), `log` (returns and clears the
-    /// log) and `spawn ...` (see [`spawn`]).
+    /// log), `spawn ...` (see [`spawn`]) and `perform ...` (see [`perform`]).
     async fn handle_ipc_message(_sender: String, message: Vec<u8>) -> Result<Vec<u8>, String> {
         let message = String::from_utf8(message).map_err(|error| error.to_string())?;
         let words: Vec<&str> = message.split_whitespace().collect();
@@ -416,6 +433,7 @@ impl Guest for Component {
             }
             ["log"] => STATE.with_borrow_mut(|state| std::mem::take(&mut state.log).join("\n")),
             ["spawn", rest @ ..] => spawn(rest).await?,
+            ["perform", rest @ ..] => perform(rest).await?,
             _ => return Err(format!("unknown message: {message}")),
         };
         Ok(reply.into_bytes())
