@@ -1401,6 +1401,7 @@ fn deserialize_item_stack_template(
 ) -> Result<pumpkin_data::item_stack::ItemStack, ReadingError> {
     const MAX_COMPONENTS: i32 = 256;
 
+    let _nesting = crate::codec::item_stack_seralizer::enter_item_nesting()?;
     let item_id = seq.get_var_int()?.0 as u16;
     let item = pumpkin_data::item::Item::from_id(item_id)
         .ok_or_else(|| ReadingError::Message(format!("Unknown item ID: {item_id}")))?;

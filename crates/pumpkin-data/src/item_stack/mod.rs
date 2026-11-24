@@ -23,6 +23,7 @@ use std::num::NonZero;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 mod categories;
+pub mod nesting;
 
 mod ironpumpkin;
 
@@ -999,6 +1000,7 @@ impl ItemStack {
 
     #[must_use]
     pub fn read_item_stack(compound: &NbtCompound) -> Option<Self> {
+        let _nesting = nesting::NestingGuard::enter()?;
         // Get ID, which is a string like "minecraft:diamond_sword"
         let full_id = compound.get_string("id")?;
 

@@ -9,6 +9,7 @@ use pumpkin_data::dynamic::ContentIds;
 use pumpkin_data::dynamic_registries::{self, DataComponentTypeEntry};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::item_stack::nesting::NestingGuard;
 use pumpkin_nbt::serializer::NbtWriteHelperJava;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::TextComponent;
@@ -228,6 +229,11 @@ fn serialize_item_cost_with_id(
     write_custom_components(stack, version.content_ids(), false, write)
 }
 
+/// Enters one level of item stack nesting, or fails the decode of a value nested too deep.
+pub(crate) fn enter_item_nesting() -> Result<NestingGuard, ReadingError> {
+    NestingGuard::enter().ok_or_else(|| ReadingError::Message("Item stacks nested too deep".into()))
+}
+
 pub(crate) fn component_id(id_val: i32) -> Result<DataComponent, ReadingError> {
     let id_u8 = id_val
         .try_into()
@@ -349,6 +355,7 @@ impl ItemStackSerializer<'_> {
         if item_count.0 == 0 {
             return Ok(ItemStackSerializer(Cow::Borrowed(ItemStack::EMPTY)));
         }
+        let _nesting = enter_item_nesting()?;
 
         let item_id = read.get_var_int()?;
         let num_to_add = read.get_var_int()?.0;
@@ -508,6 +515,7 @@ impl ItemStackSerializer<'_> {
     ) -> Result<ItemStackSerializer<'static>, ReadingError> {
         const MAX_COMPONENTS: i32 = 256;
 
+        let _nesting = enter_item_nesting()?;
         let raw_item_id = read.get_var_int()?;
         let item_count = read.get_var_int()?;
 
@@ -598,6 +606,7 @@ impl ItemStackSerializer<'_> {
             .0
             .try_into()
             .map_err(|_| ReadingError::Message("Invalid item count!".into()))?;
+        let _nesting = enter_item_nesting()?;
 
         let item_id = read.get_var_int()?;
         let num_to_add = read.get_var_int()?.0;
@@ -1034,5 +1043,68 @@ mod tests {
         // The same number of components with another type does not match.
         let other = DataComponent::Damage;
         assert!(!client_hash(&Item::DECORATED_POT, other, expected).hash_equals(&stack));
+    }
+
+    /// A creative slot stack in the 26.3 shape: a bundle that holds `levels` bundles inside
+    /// each other, each an `ItemStackTemplate` with one `bundle_contents` entry.
+    fn nested_bundles(levels: usize) -> Vec<u8> {
+        let var_int = |value: i32| {
+            let mut bytes = Vec::new();
+            bytes.write_var_int(&VarInt(value)).unwrap();
+            bytes
+        };
+        let bundle = i32::from(Item::BUNDLE.id);
+        let contents = i32::from(DataComponent::BundleContents.to_id());
+        // Item, count, one added and no removed component, then one bundle entry.
+        let level = [
+            var_int(bundle),
+            var_int(1),
+            var_int(1),
+            var_int(0),
+            var_int(contents),
+            var_int(1),
+        ]
+        .concat();
+        let innermost = [var_int(bundle), var_int(1), var_int(0), var_int(0)].concat();
+        let mut data = var_int(1);
+        data.extend(level.repeat(levels - 1));
+        data.extend(innermost);
+        [
+            var_int(1),
+            var_int(bundle),
+            var_int(1),
+            var_int(0),
+            var_int(contents),
+            var_int(data.len() as i32),
+            data,
+        ]
+        .concat()
+    }
+
+    fn read_creative_stack(bytes: &[u8]) -> Result<ItemStackSerializer<'static>, ReadingError> {
+        ItemStackSerializer::read_length_prefixed_optional(&mut &*bytes)
+    }
+
+    #[test]
+    fn nested_templates_up_to_the_limit_decode_on_a_small_stack() {
+        use pumpkin_data::item_stack::nesting::MAX_ITEM_NESTING;
+        // The top stack and `MAX_ITEM_NESTING - 1` templates inside it.
+        let bytes = nested_bundles(MAX_ITEM_NESTING as usize - 1);
+        let decoded = std::thread::Builder::new()
+            .stack_size(1024 * 1024)
+            .spawn(move || read_creative_stack(&bytes).map(|stack| stack.to_stack()))
+            .unwrap()
+            .join()
+            .expect("decode does not overflow a 1 MiB stack");
+        assert_eq!(decoded.unwrap().item, &Item::BUNDLE);
+        assert!(read_creative_stack(&nested_bundles(MAX_ITEM_NESTING as usize)).is_err());
+    }
+
+    #[test]
+    fn deeply_nested_templates_fail_to_decode() {
+        let bytes = nested_bundles(100_000);
+        assert!(read_creative_stack(&bytes).is_err());
+        // The failed decode releases every level.
+        assert!(read_creative_stack(&nested_bundles(2)).is_ok());
     }
 }
