@@ -73,6 +73,10 @@ pub struct EntityType {
     pub spawn_dimensions_scale: f32,
     /// Spawn location restrictions for natural spawning.
     pub spawn_restriction: SpawnRestriction,
+    /// Whether vanilla `SpawnPlacements` has an entry for this type. A type without one carries a
+    /// default `spawn_restriction`. An extractor that does not write the flag means every type has one.
+    #[serde(default = "default_has_spawn_placement")]
+    pub has_spawn_placement: bool,
     pub passenger_attachments: Vec<[f64; 3]>,
     pub vehicle_attachment: [f64; 3],
     pub baby: Option<Baby>,
@@ -105,6 +109,10 @@ pub struct Baby {
     angry_sound: Option<String>,
     #[serde(default)]
     poses: BTreeMap<String, PoseDimensions>,
+}
+
+const fn default_has_spawn_placement() -> bool {
+    true
 }
 
 fn poses_tokens(poses: &BTreeMap<String, PoseDimensions>) -> TokenStream {
@@ -285,6 +293,8 @@ impl ToTokens for NamedEntityType<'_> {
             heightmap: #spawn_restriction_heightmap,
         }};
 
+        let has_spawn_placement = entity.has_spawn_placement;
+
         let spawn_category = match entity.category {
             MobCategory::MONSTER => quote! { MobCategory::MONSTER },
             MobCategory::CREATURE => quote! { MobCategory::CREATURE },
@@ -412,6 +422,7 @@ impl ToTokens for NamedEntityType<'_> {
                 eye_height: #eye_height,
                 spawn_dimensions_scale: #spawn_dimensions_scale,
                 spawn_restriction: #spawn_restriction,
+                has_spawn_placement: #has_spawn_placement,
                 attachments: #attachments,
                 baby_attachments: #baby_attachments,
                 baby_dimensions: #baby_dimensions,
@@ -537,6 +548,8 @@ pub fn build() -> TokenStream {
             pub eye_height: f32,
             pub spawn_dimensions_scale: f32,
             pub spawn_restriction: SpawnRestriction,
+            /// Whether vanilla `SpawnPlacements` has an entry for this type.
+            pub has_spawn_placement: bool,
             pub attachments: EntityAttachments,
             pub baby_attachments: Option<EntityAttachments>,
             pub baby_dimensions: Option<EntityDimensions>,

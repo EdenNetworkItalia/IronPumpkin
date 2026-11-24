@@ -1,9 +1,11 @@
 //! Spawn placements that native mods register, the backing of `NeoForge`
 //! `RegisterSpawnPlacementsEvent` and its `MergedSpawnPredicate`.
 //!
-//! A vanilla type always has a placement: its spawn restriction and the rules of
-//! [`check_spawn_rules`](crate::entity::r#type::check_spawn_rules). A custom type has one after
-//! its first registration, which must name the placement type and the heightmap. Mods register by
+//! A vanilla type with an entry in `SpawnPlacements` (`EntityType::has_spawn_placement`) has a
+//! placement: its spawn restriction and the rules of
+//! [`check_spawn_rules`](crate::entity::r#type::check_spawn_rules). A custom type and a vanilla
+//! type without an entry (`allay`, `sniffer`, `piglin_brute`, `player`) have one after their first
+//! registration, which must name the placement type and the heightmap. Mods register by
 //! name before the freeze. On the first lookup after it the placements become a table by entity
 //! type id.
 
@@ -87,10 +89,34 @@ pub fn register(
     if dynamic::tables().is_some() {
         return Err(SpawnPlacementError::RegistryFrozen);
     }
+    // A vanilla type has a placement when `SpawnPlacements` has an entry for it. `allay`, `sniffer`,
+    // `piglin_brute` and `player` have none, so a mod gives them one as it does to a custom type.
+    let vanilla_placement = EntityType::from_name(name)
+        .is_some_and(|ty| ty.id < EntityType::COUNT && ty.has_spawn_placement);
     let mut pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
-    let has_placement = pending.contains_key(name)
-        || EntityType::from_name(name).is_some_and(|ty| ty.id < EntityType::COUNT);
-    if !has_placement {
+    register_into(
+        &mut pending,
+        name,
+        vanilla_placement,
+        location,
+        heightmap,
+        predicate,
+        operation,
+    )?;
+    ANY.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+fn register_into(
+    pending: &mut BTreeMap<String, MergedSpawnPredicate>,
+    name: &str,
+    vanilla_placement: bool,
+    location: Option<SpawnLocation>,
+    heightmap: Option<HeightMap>,
+    predicate: SpawnPredicate,
+    operation: SpawnPlacementOperation,
+) -> Result<(), SpawnPlacementError> {
+    if !(vanilla_placement || pending.contains_key(name)) {
         let (Some(location), Some(heightmap)) = (location, heightmap) else {
             return Err(SpawnPlacementError::MissingPlacement);
         };
@@ -105,7 +131,6 @@ pub fn register(
                 heightmap: Some(heightmap),
             },
         );
-        ANY.store(true, Ordering::Relaxed);
         return Ok(());
     }
     if operation != SpawnPlacementOperation::Replace && (location.is_some() || heightmap.is_some())
@@ -135,7 +160,6 @@ pub fn register(
             }
         }
     }
-    ANY.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -213,4 +237,73 @@ fn build_table() -> FxHashMap<u16, Placement> {
             ))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn always() -> SpawnPredicate {
+        Arc::new(|_, _, _| true)
+    }
+
+    #[test]
+    fn a_type_without_a_placement_takes_the_first_registration_as_its_placement() {
+        let mut pending = BTreeMap::new();
+        let first = register_into(
+            &mut pending,
+            "minecraft:allay",
+            false,
+            Some(SpawnLocation::Unrestricted),
+            Some(HeightMap::MotionBlocking),
+            always(),
+            SpawnPlacementOperation::Replace,
+        );
+        assert_eq!(first, Ok(()));
+        let merged = &pending["minecraft:allay"];
+        assert!(merged.original.is_some());
+        assert!(merged.location.is_some() && merged.heightmap.is_some());
+        // The next registration changes the placement as for any type that has one.
+        let next = register_into(
+            &mut pending,
+            "minecraft:allay",
+            false,
+            Some(SpawnLocation::OnGround),
+            None,
+            always(),
+            SpawnPlacementOperation::Or,
+        );
+        assert_eq!(next, Err(SpawnPlacementError::PlacementWithoutReplace));
+    }
+
+    #[test]
+    fn a_type_without_a_placement_needs_its_placement_type_and_heightmap() {
+        let mut pending = BTreeMap::new();
+        let result = register_into(
+            &mut pending,
+            "minecraft:allay",
+            false,
+            None,
+            None,
+            always(),
+            SpawnPlacementOperation::Or,
+        );
+        assert_eq!(result, Err(SpawnPlacementError::MissingPlacement));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn a_type_with_a_placement_rejects_a_placement_type_without_replace() {
+        let mut pending = BTreeMap::new();
+        let result = register_into(
+            &mut pending,
+            "minecraft:zombie",
+            true,
+            Some(SpawnLocation::OnGround),
+            Some(HeightMap::MotionBlocking),
+            always(),
+            SpawnPlacementOperation::And,
+        );
+        assert_eq!(result, Err(SpawnPlacementError::PlacementWithoutReplace));
+    }
 }
