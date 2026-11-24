@@ -36,6 +36,21 @@ fn forcing_a_chunk_loads_it() {
     assert!(!world.forced_chunks.lock().unwrap().contains(&chunk));
 }
 
+/// A forced chunk that no player is near ticks: entities, block entities, scheduled ticks and
+/// random ticks all run in the active chunks.
+#[test]
+fn a_forced_chunk_without_a_player_is_active() {
+    let _serial = support::serial();
+    let world = support::world();
+    let chunk = Vector2::new(32, 32);
+
+    world.set_chunk_forced(chunk, true);
+    wait_until_loaded(chunk);
+    world.update_active_chunks();
+
+    assert!(world.active_chunks.read().unwrap().contains(&chunk));
+}
+
 #[test]
 fn concurrent_changes_of_one_chunk_keep_the_ticket_and_the_set_in_agreement() {
     let _serial = support::serial();
