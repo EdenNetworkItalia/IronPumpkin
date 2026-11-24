@@ -7,7 +7,8 @@ use super::{Attributes, ItemStack, Player};
 pub type SyncedTask = Box<dyn FnOnce() + Send>;
 
 /// The id of the marker packet that stands for one synced task in `Player::inbound_packets`.
-/// No client sends it: packet ids are not negative.
+/// The read loop of the connection disconnects a client that sends a negative packet id, so no
+/// client can send it.
 pub(super) const SYNCED_TASK_PACKET_ID: i32 = -1;
 
 impl Player {
@@ -88,12 +89,23 @@ impl Player {
     /// Queues `task` in the inbound packets of the player, where the tick runs it in order with
     /// the packets that arrived before and after it, as `PacketProcessor.scheduleIfPossible`
     /// queues a `NeoForge` task in the packet queue of the connection.
+    ///
+    /// A task for a player who left is dropped, and so is its result: the work gives `None`.
     pub(crate) fn schedule_synced_task(&self, task: SyncedTask) {
+        if self.client.closed() {
+            return;
+        }
         self.synced_tasks.push(task);
         self.inbound_packets.push(RawPacket {
             id: SYNCED_TASK_PACKET_ID,
             payload: Bytes::new(),
         });
+    }
+
+    /// Drops the synced tasks that the tick did not run, when the player leaves the server. Each
+    /// pending work gives `None`, and a task that holds the player no longer keeps it alive.
+    pub(super) fn drop_synced_tasks(&self) {
+        while self.synced_tasks.pop().is_some() {}
     }
 
     /// Runs the oldest synced task, which its marker packet reached.

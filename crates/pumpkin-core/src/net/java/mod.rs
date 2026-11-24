@@ -369,6 +369,26 @@ impl JavaClient {
         }
     }
 
+    /// Disconnects the client when `packet` has a negative id, and returns whether it did.
+    ///
+    /// Vanilla `IdDispatchCodec.decode` rejects a negative id. The id -1 also marks a synced task
+    /// in the inbound queue of the player, so the queue must never get it from a client.
+    async fn rejects_negative_packet_id(&self, packet: &RawPacket) -> bool {
+        if packet.id >= 0 {
+            return false;
+        }
+        warn!(
+            "Client {} ({}) sent the unknown packet id {}",
+            self.id, self.gameprofile.name, packet.id
+        );
+        self.kick(TextComponent::text(format!(
+            "Received unknown packet id {}",
+            packet.id
+        )))
+        .await;
+        true
+    }
+
     /// Joins the `neoforge:split` parts of the play phase; any other packet passes through. `None`
     /// while a split packet is incomplete, or after a broken one disconnected the client.
     async fn reassemble_split(
@@ -685,7 +705,7 @@ impl JavaClient {
             },
             packet_result = network_reader.get_raw_packet() => {
                 match packet_result {
-                    Ok(packet) => Some(packet),
+                    Ok(packet) => (!self.rejects_negative_packet_id(&packet).await).then_some(packet),
                     Err(err) => {
                         if !matches!(err, PacketDecodeError::ConnectionClosed) {
                             debug!("Failed to decode packet from client {}: {}", self.id, err);

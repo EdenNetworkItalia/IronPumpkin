@@ -122,6 +122,10 @@ static WORK_LOG: Mutex<Vec<(&str, u8, ThreadId)>> = Mutex::new(Vec::new());
 static WORKS: Mutex<Vec<(u8, PayloadWork<u8>)>> = Mutex::new(Vec::new());
 /// The byte on [`WORK_NETWORK`] whose task panics.
 const PANIC_IN_WORK: u8 = 255;
+/// The byte on [`WORK_NETWORK`] whose task holds the player that sent it.
+const HOLD_PLAYER: u8 = 200;
+/// The byte on [`WORK_NETWORK`] for the flood test.
+const FLOOD: u8 = 33;
 
 /// The handler of the work channels: it logs the payload, hands a task to `enqueue_work` and keeps
 /// the result. The task logs and doubles the byte.
@@ -131,7 +135,11 @@ fn enqueue(data: &[u8], context: &mut PayloadContext<'_>) {
         .lock()
         .unwrap()
         .push(("handler", byte, thread::current().id()));
+    let held = (byte == HOLD_PLAYER)
+        .then(|| context.player().cloned())
+        .flatten();
     let work = context.enqueue_work(move || {
+        drop(held);
         assert_ne!(byte, PANIC_IN_WORK, "a task that panics");
         WORK_LOG
             .lock()
@@ -1182,6 +1190,89 @@ fn a_network_handler_hands_work_to_the_tick_in_order_with_the_packets() {
             .unwrap()
             .unwrap();
     });
+}
+
+/// A player who leaves drops the tasks that the tick did not run: the work gives `None`, and a
+/// task that holds the player does not keep it alive.
+#[test]
+fn a_player_who_leaves_drops_its_queued_tasks() {
+    registered();
+    let (player, _peer) = player_with_peer(
+        "WorkLeave",
+        negotiated(ConnectionProtocol::Play, &[WORK_NETWORK]),
+    );
+    handle_play(&player, &play_payload(WORK_NETWORK, &[HOLD_PLAYER]));
+    assert!(Arc::strong_count(&player) > 1);
+    RUNTIME.block_on(player.remove(false));
+    assert_eq!(Arc::strong_count(&player), 1);
+    let (_, work) = {
+        let mut works = WORKS.lock().unwrap();
+        let index = works.iter().position(|(byte, _)| *byte == HOLD_PLAYER);
+        works.remove(index.unwrap())
+    };
+    let result =
+        RUNTIME.block_on(async { tokio::time::timeout(Duration::from_secs(5), work).await });
+    assert_eq!(result.unwrap(), None);
+}
+
+/// The tick runs at most 64 inbound packets and tasks of a player, and a task counts as a packet.
+#[test]
+fn the_tick_counts_a_task_as_a_packet() {
+    registered();
+    let (player, _peer) = player_with_peer(
+        "WorkFlood",
+        negotiated(ConnectionProtocol::Play, &[WORK_NETWORK]),
+    );
+    for _ in 0..100 {
+        handle_play(&player, &play_payload(WORK_NETWORK, &[FLOOD]));
+    }
+    let ran = || {
+        WORK_LOG
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(label, byte, _)| *label == "task" && *byte == FLOOD)
+            .count()
+    };
+    player.process_inbound_packets();
+    assert_eq!(ran(), 64);
+    player.process_inbound_packets();
+    assert_eq!(ran(), 100);
+}
+
+/// A client that sends a negative packet id is disconnected, as vanilla `IdDispatchCodec.decode`
+/// does, so it cannot forge the marker of a synced task in the inbound queue.
+#[test]
+fn a_negative_packet_id_disconnects_the_client() {
+    let server = registered();
+    let (player, peer) = player_with_peer(
+        "WorkForge",
+        negotiated(ConnectionProtocol::Play, &[WORK_NETWORK]),
+    );
+    let (_read, write) = peer.into_split();
+    let read_loop = {
+        let player = Arc::clone(&player);
+        RUNTIME.spawn(async move {
+            java_client(&player)
+                .progress_player_packets(&player, server)
+                .await;
+        })
+    };
+    RUNTIME.block_on(async {
+        let mut encoder = TCPNetworkEncoder::new(write);
+        // The `VarInt` -1.
+        encoder
+            .write_packet(Bytes::from_static(&[0xff, 0xff, 0xff, 0xff, 0x0f]))
+            .await
+            .unwrap();
+        encoder.flush().await.unwrap();
+        tokio::time::timeout(Duration::from_secs(10), read_loop)
+            .await
+            .unwrap()
+            .unwrap();
+    });
+    assert!(player.client.closed());
+    assert!(player.inbound_packets.is_empty());
 }
 
 /// `IPayloadContext#enqueueWork` on a `Main` handler, which already runs on the tick: the task

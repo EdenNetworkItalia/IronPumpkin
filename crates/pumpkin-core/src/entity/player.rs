@@ -1434,6 +1434,7 @@ impl Player {
     /// Removes the [`Player`] out of the current [`World`]. `fire_event` announces the leave with
     /// [`PlayerLeaveEvent`](crate::plugin::player::player_leave::PlayerLeaveEvent).
     pub async fn remove(self: &Arc<Self>, fire_event: bool) {
+        self.drop_synced_tasks();
         if !self
             .current_screen_handler
             .lock()
@@ -3164,7 +3165,13 @@ impl Player {
                 break;
             }
             if packet.id == SYNCED_TASK_PACKET_ID {
+                // A task counts as a packet, so a client that floods `Network` payloads gets
+                // bounded work per tick. Vanilla has no cap; the cap protects the server.
                 self.run_synced_task();
+                count += 1;
+                if count >= MAX_PACKETS_PER_TICK {
+                    break;
+                }
                 continue;
             }
 
