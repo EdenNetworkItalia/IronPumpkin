@@ -761,8 +761,10 @@ pub fn build() -> TokenStream {
     let mut stonecutting_recipes = Vec::new();
     let mut smithing_trim_recipes = Vec::new();
     let mut smithing_transform_recipes = Vec::new();
+    let mut crafting_recipe_ids = Vec::new();
 
     for (recipe_id, recipe) in recipes_assets {
+        let crafting_count = crafting_recipes.len();
         match recipe {
             RecipeTypes::Blasting(recipe) => {
                 let mut common_cooking_token = TokenStream::new();
@@ -956,6 +958,9 @@ pub fn build() -> TokenStream {
                 });
             }
             RecipeTypes::CraftingSpecial => {}
+        }
+        if crafting_recipes.len() > crafting_count {
+            crafting_recipe_ids.push(recipe_id);
         }
     }
 
@@ -1175,6 +1180,10 @@ pub fn build() -> TokenStream {
 
         pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
             #(#crafting_recipes),*
+        ];
+        /// The recipe id of each entry of `RECIPES_CRAFTING`, at the same index.
+        pub static RECIPES_CRAFTING_IDS: &[&str] = &[
+            #(#crafting_recipe_ids),*
         ];
         pub static RECIPES_COOKING: &[CookingRecipeType] = &[
             #(#cooking_recipes ),*

@@ -8,11 +8,13 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::entity::EntityBase;
-use pumpkin_data::recipes::{CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING};
 use pumpkin_data::translation;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::codec::var_int::VarInt;
-use pumpkin_protocol::java::client::play::{CRecipeBookAdd, CRecipeBookRemove};
+use pumpkin_protocol::java::client::play::{
+    CRecipeBookAdd, CRecipeBookRemove, book_cooking_recipes, book_crafting_recipes,
+    book_dynamic_recipes,
+};
 use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::permission::{Permission, PermissionDefault, PermissionRegistry};
@@ -146,23 +148,11 @@ impl CommandExecutor for RecipeTakeExecutor {
 
         let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
 
-        let crafting_display_count = RECIPES_CRAFTING
-            .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial(_)
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                )
-            })
-            .count();
+        // The display ids of `CRecipeBookAdd`: generated crafting, generated cooking, dynamic.
+        let dynamic_recipe_offset =
+            book_crafting_recipes(&all_recipes).len() + book_cooking_recipes(&all_recipes).len();
 
-        let dynamic_recipe_offset = crafting_display_count + RECIPES_COOKING.len();
-
-        let displayable_recipes: Vec<_> = all_recipes
-            .iter()
-            .filter(|r| matches!(r, DynamicRecipe::Crafting(_) | DynamicRecipe::Cooking(_)))
-            .collect();
+        let displayable_recipes: Vec<_> = book_dynamic_recipes(&all_recipes).collect();
 
         let is_all = recipe_str == "*";
 

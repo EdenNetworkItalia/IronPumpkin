@@ -3,8 +3,8 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::packet::clientbound::play::RECIPE_BOOK_ADD;
 use pumpkin_data::recipes::{
-    CookingRecipeType, CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING, RecipeCategoryTypes,
-    RecipeIngredientTypes, RecipeResultStruct,
+    CookingRecipeType, CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING,
+    RECIPES_CRAFTING_IDS, RecipeCategoryTypes, RecipeIngredientTypes, RecipeResultStruct,
 };
 use pumpkin_macros::java_packet;
 use std::borrow::Cow;
@@ -489,30 +489,40 @@ fn write_entry(
     Ok(false)
 }
 
-/// The number of generated crafting recipes in the recipe book, which take the first display
-/// ids. The book leaves out the special and the decorated pot recipes.
+/// The ids of the dynamic recipes. A data pack recipe replaces the generated recipe with its id,
+/// so the book holds one entry per id.
+fn replaced_ids(dynamic: &[DynamicRecipe]) -> HashSet<&str> {
+    dynamic
+        .iter()
+        .filter_map(DynamicRecipe::recipe_id)
+        .collect()
+}
+
+/// The generated crafting recipes in the recipe book, which take the first display ids. The
+/// book leaves out the special and the decorated pot recipes, and a recipe that a dynamic
+/// recipe replaces.
 #[must_use]
-pub fn book_crafting_count() -> usize {
+pub fn book_crafting_recipes(dynamic: &[DynamicRecipe]) -> Vec<&'static CraftingRecipeTypes> {
+    let replaced = replaced_ids(dynamic);
     RECIPES_CRAFTING
         .iter()
-        .filter(|r| {
+        .zip(RECIPES_CRAFTING_IDS)
+        .filter(|(recipe, id)| {
             !matches!(
-                r,
+                recipe,
                 CraftingRecipeTypes::CraftingSpecial(_)
                     | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-            )
+            ) && !replaced.contains(*id)
         })
-        .count()
+        .map(|(recipe, _)| recipe)
+        .collect()
 }
 
 /// The generated cooking recipes in the recipe book, after the crafting recipes. A dynamic
 /// recipe with the same id replaces one, as a data pack recipe does.
 #[must_use]
 pub fn book_cooking_recipes(dynamic: &[DynamicRecipe]) -> Vec<&'static CookingRecipeType> {
-    let replaced: HashSet<&str> = dynamic
-        .iter()
-        .filter_map(DynamicRecipe::recipe_id)
-        .collect();
+    let replaced = replaced_ids(dynamic);
     RECIPES_COOKING
         .iter()
         .filter(|recipe| {
@@ -554,8 +564,9 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         let campfire = Item::from_registry_key("campfire")
             .ok_or_else(|| WritingError::Message("campfire item must exist".into()))?;
 
+        let crafting_recipes = book_crafting_recipes(self.dynamic_recipes);
         let cooking_recipes = book_cooking_recipes(self.dynamic_recipes);
-        let total = book_crafting_count()
+        let total = crafting_recipes.len()
             + cooking_recipes.len()
             + book_dynamic_recipes(self.dynamic_recipes).count();
 
@@ -568,7 +579,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         let highlight = !self.replace;
 
         // Write crafting recipes
-        for recipe in RECIPES_CRAFTING {
+        for recipe in crafting_recipes {
             let (group, notification) = match recipe {
                 CraftingRecipeTypes::CraftingShaped {
                     group,
@@ -1033,5 +1044,36 @@ mod tests {
         CRecipeBookAdd::new(true, &dynamic)
             .write_packet_data(Vec::new(), &JavaMinecraftVersion::V_26_3.into())
             .unwrap();
+    }
+
+    #[test]
+    fn a_dynamic_crafting_recipe_replaces_the_generated_book_entry_with_its_id() {
+        use crate::codec::recipe::{OwnedCraftingRecipe, OwnedRecipeIngredient, OwnedRecipeResult};
+        assert_eq!(RECIPES_CRAFTING_IDS.len(), RECIPES_CRAFTING.len());
+        assert!(RECIPES_CRAFTING_IDS.contains(&"minecraft:stick"));
+        let dynamic = [DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless {
+            recipe_id: Some("minecraft:stick".to_string()),
+            category: RecipeCategoryTypes::Misc,
+            group: None,
+            ingredients: vec![OwnedRecipeIngredient::Simple("minecraft:dirt".to_string())],
+            result: OwnedRecipeResult {
+                item_id: "minecraft:stick".to_string(),
+                count: 1,
+                components: None,
+            },
+        })];
+        assert_eq!(
+            book_crafting_recipes(&dynamic).len(),
+            book_crafting_recipes(&[]).len() - 1
+        );
+        let mut body = Vec::new();
+        CRecipeBookAdd::new(true, &dynamic)
+            .write_packet_data(&mut body, &JavaMinecraftVersion::V_26_3.into())
+            .unwrap();
+        // One entry per id: the generated stick recipe is gone, the dynamic one is in.
+        let total = book_crafting_recipes(&dynamic).len() + RECIPES_COOKING.len() + 1;
+        let mut expected = Vec::new();
+        expected.write_var_int(&VarInt(total as i32)).unwrap();
+        assert_eq!(body[..expected.len()], expected[..]);
     }
 }

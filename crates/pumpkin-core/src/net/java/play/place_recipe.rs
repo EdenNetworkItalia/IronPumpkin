@@ -13,12 +13,12 @@ impl JavaClient {
             GenericIngredient, compute_biggest_craftable, take_n_ingredient,
         };
         use crate::server::recipe::DynamicRecipe;
-        use pumpkin_data::recipes::{CookingRecipeType, CraftingRecipeTypes, RECIPES_CRAFTING};
+        use pumpkin_data::recipes::{CookingRecipeType, CraftingRecipeTypes};
         use pumpkin_data::screen::WindowType;
         use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
         use pumpkin_protocol::codec::recipe::OwnedCookingRecipeType;
         use pumpkin_protocol::java::client::play::{
-            book_cooking_recipes, book_crafting_count, book_dynamic_recipes,
+            book_cooking_recipes, book_crafting_recipes, book_dynamic_recipes,
         };
 
         let target_id = packet.recipe_display_id.0 as usize;
@@ -37,8 +37,9 @@ impl JavaClient {
         }
 
         // The display ids of `CRecipeBookAdd`: generated crafting, generated cooking, dynamic.
-        let crafting_display_count = book_crafting_count();
         let all_dynamic = server.recipe_manager.get_dynamic_recipes();
+        let crafting_recipes = book_crafting_recipes(&all_dynamic);
+        let crafting_display_count = crafting_recipes.len();
         let cooking_recipes = book_cooking_recipes(&all_dynamic);
         let cooking_display_count = cooking_recipes.len();
         let dynamic_recipes: Vec<&DynamicRecipe> = book_dynamic_recipes(&all_dynamic).collect();
@@ -113,20 +114,9 @@ impl JavaClient {
             }
         } else if target_id < crafting_display_count {
             // Crafting recipe
-            let mut counter = 0usize;
-            let recipe = RECIPES_CRAFTING.iter().find(|r| {
-                if matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial(_)
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                ) {
-                    return false;
-                }
-                let found = counter == target_id;
-                counter += 1;
-                found
-            });
-            let Some(recipe) = recipe else { return };
+            let Some(recipe) = crafting_recipes.get(target_id).copied() else {
+                return;
+            };
 
             match recipe {
                 CraftingRecipeTypes::CraftingShaped { pattern, key, .. } => {
