@@ -306,7 +306,11 @@ fn neoforge_client_gets_the_data_maps_on_join_and_reload() {
         syncs[..REGISTRIES]
             .windows(2)
             .all(|pair| pair[1].0 == pair[0].0 + 1),
-        "the join sync is one run of payloads"
+        "the join sync is one run of payloads: {:?}",
+        play[syncs[0].0..=syncs[REGISTRIES - 1].0]
+            .iter()
+            .map(|entry| &entry.packet)
+            .collect::<Vec<_>>()
     );
     server.stop();
     let log = server.log();
