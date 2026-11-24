@@ -138,66 +138,58 @@ macro_rules! impl_cooking_block_entity_base {
                 max_count: u8,
             ) -> bool {
                 let Some(recipe) = recipe else { return false };
-                let Ok(items) = self.items.try_read() else {
-                    return false;
-                };
-                if items[0].is_empty() {
-                    return false;
-                }
-                // Vanilla `AbstractFurnaceBlockEntity.canBurn`.
-                let result = recipe.result.assemble();
-                if result.is_empty() {
-                    return false;
-                }
-                let output = &items[2];
-                if output.is_empty() {
-                    return true;
-                }
-                if !output.are_items_and_components_equal(&result) {
-                    return false;
-                }
-                let count = u32::from(output.item_count) + u32::from(result.item_count);
-                count <= u32::from(max_count.min(result.get_max_stack_size()))
+                // Block entities tick in parallel: a hopper push can hold the items lock now.
+                // Vanilla ticks them one after another, so the check waits for the push.
+                let items = self
+                    .items
+                    .read()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                $crate::block::entities::furnace_like_block_entity::can_burn(
+                    &*items,
+                    &recipe.result.assemble(),
+                    max_count,
+                )
             }
             fn craft_recipe(
                 &self,
                 recipe: Option<&pumpkin_inventory::recipe_index::CookingEntry>,
             ) -> bool {
-                let can_accept_output =
-                    self.can_accept_recipe_output(recipe, self.get_max_count_per_stack());
-                if let Some(recipe) = recipe {
-                    if can_accept_output {
-                        let Ok(mut items) = self.items.try_write() else {
-                            return false;
-                        };
-                        let output_item_stack = recipe.result.assemble();
-                        if output_item_stack.is_empty() {
-                            return false;
-                        }
-
-                        // Vanilla `AbstractFurnaceBlockEntity.burn`.
-                        if items[2].is_empty() {
-                            items[2] = output_item_stack;
-                        } else if items[2].are_items_and_components_equal(&output_item_stack) {
-                            items[2].increment(output_item_stack.item_count);
-                        }
-
-                        // Track recipe usage for XP calculation (vanilla RecipesUsed format)
-                        self.add_recipe_used(recipe);
-
-                        if items[0].item.id == pumpkin_data::item::Item::WET_SPONGE.id
-                            && !items[1].is_empty()
-                            && items[1].item.id == pumpkin_data::item::Item::BUCKET.id
-                        {
-                            items[1] = ItemStack::new(1, &pumpkin_data::item::Item::WATER_BUCKET);
-                        }
-
-                        items[0].decrement(1);
-                        return true;
-                    }
+                let Some(recipe) = recipe else { return false };
+                let max_count = self.get_max_count_per_stack();
+                // One guard for the check and the burn, so a push between them cannot change
+                // the slots. Lock order: items, then recipes_used.
+                let mut items = self
+                    .items
+                    .write()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let output_item_stack = recipe.result.assemble();
+                if !$crate::block::entities::furnace_like_block_entity::can_burn(
+                    &*items,
+                    &output_item_stack,
+                    max_count,
+                ) {
+                    return false;
                 }
 
-                false
+                // Vanilla `AbstractFurnaceBlockEntity.burn`.
+                if items[2].is_empty() {
+                    items[2] = output_item_stack;
+                } else {
+                    items[2].increment(output_item_stack.item_count);
+                }
+
+                // Track recipe usage for XP calculation (vanilla RecipesUsed format)
+                self.add_recipe_used(recipe);
+
+                if items[0].item.id == pumpkin_data::item::Item::WET_SPONGE.id
+                    && !items[1].is_empty()
+                    && items[1].item.id == pumpkin_data::item::Item::BUCKET.id
+                {
+                    items[1] = ItemStack::new(1, &pumpkin_data::item::Item::WATER_BUCKET);
+                }
+
+                items[0].decrement(1);
+                true
             }
         }
     };
@@ -466,10 +458,13 @@ macro_rules! impl_block_entity_for_cooking {
                     self.lit_time_remaining.fetch_sub(1, Ordering::Relaxed);
                 }
 
-                let (top_item, bottom_item) = if let Ok(items_guard) = self.items.try_read() {
-                    (items_guard[0].clone(), items_guard[1].clone())
-                } else {
-                    return;
+                // Wait for a push that holds the lock: vanilla never skips a furnace tick.
+                let (top_item, bottom_item) = {
+                    let items = self
+                        .items
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    (items[0].clone(), items[1].clone())
                 };
 
                 let is_top_items_empty = top_item.is_empty();
@@ -533,31 +528,40 @@ macro_rules! impl_block_entity_for_cooking {
 
                             if self.is_burning() {
                                 is_dirty = true;
-                                if let Ok(mut items_guard) = self.items.try_write() {
-                                    if !items_guard[1].is_empty() {
-                                        let remainder = items_guard[1].item.crafting_remainder;
-                                        items_guard[1].decrement(1);
-                                        if let Some(remainder_item) = remainder
-                                        {
+                                // Vanilla `consumeFuel`. A skipped write would light the
+                                // furnace for free, so it waits for the lock.
+                                let mut dropped_remainder = None;
+                                {
+                                    let mut items = self
+                                        .items
+                                        .write()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                    if !items[1].is_empty() {
+                                        let remainder = items[1].item.crafting_remainder;
+                                        items[1].decrement(1);
+                                        if let Some(remainder_item) = remainder {
                                             let remainder_stack = ItemStack::new(1, remainder_item);
-                                            if items_guard[1].is_empty() {
-                                                items_guard[1] = remainder_stack;
+                                            if items[1].is_empty() {
+                                                items[1] = remainder_stack;
                                             } else {
-                                                let pos = self.position.to_centered_f64();
-                                                let entity = $crate::entity::Entity::new(
-                                                    world.clone(),
-                                                    pos,
-                                                    &pumpkin_data::entity::EntityType::ITEM,
-                                                );
-                                                world.spawn_entity(std::sync::Arc::new(
-                                                    $crate::entity::item::ItemEntity::new(
-                                                        entity,
-                                                        remainder_stack,
-                                                    ),
-                                                ));
+                                                dropped_remainder = Some(remainder_stack);
                                             }
                                         }
                                     }
+                                }
+                                if let Some(remainder_stack) = dropped_remainder {
+                                    let pos = self.position.to_centered_f64();
+                                    let entity = $crate::entity::Entity::new(
+                                        world.clone(),
+                                        pos,
+                                        &pumpkin_data::entity::EntityType::ITEM,
+                                    );
+                                    world.spawn_entity(std::sync::Arc::new(
+                                        $crate::entity::item::ItemEntity::new(
+                                            entity,
+                                            remainder_stack,
+                                        ),
+                                    ));
                                 }
                             }
                         }
@@ -823,6 +827,24 @@ macro_rules! impl_block_entity_for_cooking {
             }
         }
     };
+}
+
+/// Vanilla `AbstractFurnaceBlockEntity.canBurn` for the furnace slots `items`: an input to burn,
+/// a `result`, and room for it in the output slot.
+#[must_use]
+pub fn can_burn(items: &[ItemStack], result: &ItemStack, max_count: u8) -> bool {
+    if items[0].is_empty() || result.is_empty() {
+        return false;
+    }
+    let output = &items[2];
+    if output.is_empty() {
+        return true;
+    }
+    if !output.are_items_and_components_equal(result) {
+        return false;
+    }
+    let count = u32::from(output.item_count) + u32::from(result.item_count);
+    count <= u32::from(max_count.min(result.get_max_stack_size()))
 }
 
 /// The experience of the used cooking recipes, as `(count, experience)` pairs.
