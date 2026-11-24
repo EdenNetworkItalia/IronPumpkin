@@ -317,3 +317,24 @@ fn the_ring_past_the_simulation_distance_of_a_player_is_block_ticking_only() {
             .contains(&center.add_raw(distance + 1, 0))
     );
 }
+
+/// `/forceload query` without a position lists the forced chunks and returns their count;
+/// with a position it returns 1 for a forced chunk and fails for another.
+#[test]
+fn forceload_query_returns_the_count_or_the_state_of_one_chunk() {
+    let _serial = support::serial();
+    run("forceload remove all").unwrap();
+
+    assert_eq!(run("forceload query"), Ok(0));
+    assert_eq!(run("forceload add 1600 1600 1616 1600"), Ok(2));
+    assert_eq!(run("forceload query"), Ok(2));
+    assert_eq!(run("forceload query 1616 1615"), Ok(1));
+    let missing = run("forceload query 1632 1600").unwrap_err();
+    assert!(
+        missing.contains("commands.forceload.query.failure"),
+        "{missing}"
+    );
+
+    assert_eq!(run("forceload remove all"), Ok(0));
+    assert_eq!(run("forceload query"), Ok(0));
+}
