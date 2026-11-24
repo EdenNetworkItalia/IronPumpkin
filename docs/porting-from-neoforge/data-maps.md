@@ -195,13 +195,13 @@ The vanilla behaviours read the loaded values where NeoForge reads them:
 | `VILLAGER_TYPES` | the type of a new villager in a biome | the vanilla biome table |
 | `VIBRATION_FREQUENCIES` | `game_event_frequency` | none |
 
-A value of `OXIDIZABLES` or `WAXABLES` with `generate_block_transform` (the default) gives the axe a transform that undoes the step. `MONSTER_ROOM_MOBS` with the default values keeps the vanilla pick, so the dungeons of a seed do not change.
+A value of `OXIDIZABLES` or `WAXABLES` with `generate_block_transform` (the default) gives the axe a transform that undoes the step. The next and previous stage of copper and the lightning clean-up read `OXIDIZABLES`. The age of a copper block and the check that a block is weathering copper follow the vanilla copper family, as `instanceof WeatheringCopper` does, so an entry for another block does not make it weathering copper. A walk back through the stages stops after 64 steps, so a cyclic map cannot hang the tick. `MONSTER_ROOM_MOBS` with the default values keeps the vanilla pick, so the dungeons of a seed do not change.
 
 Limits:
 
 - A server without sculk vibration listeners does not use `VIBRATION_FREQUENCIES` yet: sculk sensors do not listen to game events, so no behaviour reads the frequency.
 - A block that is not in the copper family does not get random ticks from an `OXIDIZABLES` value, because the engine ticks only blocks that have a behaviour.
-- A block transform from a data map reads a `rule_based` provider (or a simple or `copy_properties` provider) with the `matching_blocks`, `matching_block_tag` and `all_of` predicates, and a vanilla sound. It keeps the block of a state and not its properties. The loader ignores other transforms with a warning that names the part.
+- A block transform from a data map reads a `rule_based` provider (or a simple or `copy_properties` provider) with the `true`, `matching_blocks`, `matching_block_tag` and `all_of` predicates, and a vanilla sound. A predicate tag resolves as the server resolves it, so data pack tags count. The entry holds the default state of a block: a state with `properties` (except in the source of `copy_properties`), a provider that is a reference, another provider or predicate and a sound of a mod make the loader drop the transform with a warning that names the part. `consume_on_use` has no effect, and the loader warns when it is `false`.
 - A parrot imitates only the sounds of vanilla.
 - A biome that a data pack adds does not get a villager type. No test covers the other maps with the entries of a mod.
 
