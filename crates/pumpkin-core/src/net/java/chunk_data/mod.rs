@@ -8,6 +8,7 @@ use std::io::Write;
 use std::sync::Arc;
 
 use pumpkin_data::packet::clientbound::play::LEVEL_CHUNK_WITH_LIGHT;
+use pumpkin_data::{Block, BlockStateId};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::ClientPacket;
 use pumpkin_protocol::packet::MultiVersionJavaPacket;
@@ -68,7 +69,9 @@ impl<'a> CChunkData<'a> {
                 Some(ChunkBlockEntity {
                     position: entity.get_position(),
                     type_id: entity.get_id()?,
-                    tag: entity.chunk_data_nbt().unwrap_or_default(),
+                    tag: entity
+                        .update_tag(block_state_at(chunk, entity.get_position()))
+                        .unwrap_or_default(),
                 })
             })
             .collect();
@@ -85,7 +88,7 @@ impl<'a> CChunkData<'a> {
                         position: *position,
                         type_id: block_entity_type_id(nbt.get_string("id")?)?,
                         tag: block_entity_from_nbt(nbt)
-                            .and_then(|entity| entity.chunk_data_nbt())
+                            .and_then(|entity| entity.update_tag(block_state_at(chunk, *position)))
                             .unwrap_or_default(),
                     })
                 }),
@@ -96,6 +99,14 @@ impl<'a> CChunkData<'a> {
             block_entities,
         }
     }
+}
+
+fn block_state_at(chunk: &ChunkData, position: BlockPos) -> BlockStateId {
+    let relative = position.chunk_relative_position();
+    chunk
+        .section
+        .get_block_absolute_y(relative.x as usize, relative.y, relative.z as usize)
+        .unwrap_or(Block::AIR.default_state.id)
 }
 
 impl ClientPacket for CChunkData<'_> {
@@ -299,9 +310,58 @@ mod tests {
 
         let live =
             block_entity_from_nbt(&chunk.pending_block_entities.lock().unwrap()[&pos]).unwrap();
-        assert!(World::block_entity_data_packet(&live).is_none());
+        assert!(
+            World::block_entity_data_packet(
+                &live,
+                pumpkin_data::Block::MOVING_PISTON.default_state.id
+            )
+            .is_none()
+        );
         let sign = block_entity_from_nbt(&saved_sign(pos, "line")).unwrap();
-        assert!(World::block_entity_data_packet(&sign).is_some());
+        assert!(
+            World::block_entity_data_packet(&sign, pumpkin_data::Block::OAK_SIGN.default_state.id)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn trial_spawner_sends_only_its_vanilla_update_tag() {
+        use pumpkin_data::block_properties::{TrialSpawnerLikeProperties, TrialSpawnerState};
+        let pos = BlockPos::new(6, 64, 6);
+        let mut entity = NbtCompound::new();
+        entity.put_string("id", "minecraft:zombie".to_string());
+        let mut spawn_data = NbtCompound::new();
+        spawn_data.put_compound("entity", entity);
+        let mut nbt = saved("minecraft:trial_spawner", pos);
+        nbt.put_long("next_mob_spawns_at", 1234);
+        nbt.put_long("cooldown_ends_at", 99);
+        nbt.put_int("total_mobs_spawned", 3);
+        nbt.put_compound("spawn_data", spawn_data);
+        nbt.put_list(
+            "registered_players",
+            vec![NbtTag::IntArray(vec![1, 2, 3, 4])],
+        );
+        let spawner = block_entity_from_nbt(&nbt).unwrap();
+        let block = &pumpkin_data::Block::TRIAL_SPAWNER;
+        let mut props = TrialSpawnerLikeProperties::default(block);
+        props.trial_spawner_state = TrialSpawnerState::Active;
+        let active = spawner.update_tag(props.to_state_id(block)).unwrap();
+        props.trial_spawner_state = TrialSpawnerState::WaitingForPlayers;
+        let waiting = spawner.update_tag(props.to_state_id(block)).unwrap();
+
+        assert_eq!(active.get_long("next_mob_spawns_at"), Some(1234));
+        assert!(waiting.get_long("next_mob_spawns_at").is_none());
+        for tag in [&active, &waiting] {
+            assert_eq!(
+                tag.get_compound("spawn_data")
+                    .and_then(|data| data.get_compound("entity"))
+                    .and_then(|entity| entity.get_string("id")),
+                Some("minecraft:zombie")
+            );
+            assert!(tag.get("registered_players").is_none());
+            assert!(tag.get("cooldown_ends_at").is_none());
+            assert!(tag.get("total_mobs_spawned").is_none());
+        }
     }
 
     #[test]

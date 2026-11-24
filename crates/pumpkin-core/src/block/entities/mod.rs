@@ -121,6 +121,12 @@ pub trait BlockEntity: Any + Send + Sync {
         None
     }
 
+    /// The update tag in the block state `state`. Vanilla `getUpdateTag` of some types reads
+    /// `getBlockState()`; the other types return [`Self::chunk_data_nbt`].
+    fn update_tag(&self, _state: BlockStateId) -> Option<NbtCompound> {
+        self.chunk_data_nbt()
+    }
+
     /// Whether a change sends the update tag in a block entity data packet: vanilla
     /// `getUpdatePacket` is not null.
     fn sends_update_packet(&self) -> bool {

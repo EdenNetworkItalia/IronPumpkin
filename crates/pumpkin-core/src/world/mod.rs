@@ -2065,10 +2065,9 @@ impl World {
                     &CBlockUpdate::new(block_pos, i32::from(block_state_id.as_u16()).into()),
                     &pumpkin_protocol::bedrock::client::CUpdateBlock::new(block_pos, be_block_id),
                 );
-                if let Some(packet) = self
-                    .get_block_entity(&block_pos)
-                    .and_then(|block_entity| Self::block_entity_data_packet(&block_entity))
-                {
+                if let Some(packet) = self.get_block_entity(&block_pos).and_then(|block_entity| {
+                    Self::block_entity_data_packet(&block_entity, block_state_id)
+                }) {
                     self.broadcast_to_chunk(chunk_pos, &packet);
                 }
                 if let Some(data) = self.bedrock_block_entity_data(block_state_id, block_pos) {
@@ -2128,10 +2127,11 @@ impl World {
                     java_recipients.into_iter(),
                 );
 
-                for (block_pos, _) in &updates {
-                    if let Some(packet) = self
-                        .get_block_entity(block_pos)
-                        .and_then(|block_entity| Self::block_entity_data_packet(&block_entity))
+                for (block_pos, block_state_id) in &updates {
+                    if let Some(packet) =
+                        self.get_block_entity(block_pos).and_then(|block_entity| {
+                            Self::block_entity_data_packet(&block_entity, *block_state_id)
+                        })
                     {
                         self.broadcast_to_chunk(chunk_pos, &packet);
                     }
@@ -7390,11 +7390,11 @@ impl World {
         let block_entity_nbt = block_entity.chunk_data_nbt();
         let entity_id = block_entity.resource_location().to_string();
 
-        if let Some(packet) = Self::block_entity_data_packet(&block_entity) {
+        let state = self.get_block_state(&block_pos);
+        if let Some(packet) = Self::block_entity_data_packet(&block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
 
-        let state = self.get_block_state(&block_pos);
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
@@ -7421,16 +7421,18 @@ impl World {
         crate::plugin::capabilities::invalidate_block(self, &block_pos);
     }
 
-    /// The block entity data packet of `block_entity`: vanilla `getUpdatePacket`.
+    /// The block entity data packet of `block_entity` in the block state `state`: vanilla
+    /// `getUpdatePacket`.
     #[must_use]
     pub fn block_entity_data_packet(
         block_entity: &Arc<dyn BlockEntity>,
+        state: BlockStateId,
     ) -> Option<CBlockEntityData> {
         if !block_entity.sends_update_packet() {
             return None;
         }
         let type_id = block_entity.get_id()?;
-        let nbt = block_entity.chunk_data_nbt()?;
+        let nbt = block_entity.update_tag(state)?;
         let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
         Some(CBlockEntityData::new(
             block_entity.get_position(),
@@ -7523,7 +7525,8 @@ impl World {
         let chunk_pos = block_pos.chunk_position();
         let block_entity_nbt = block_entity.chunk_data_nbt();
 
-        if let Some(packet) = Self::block_entity_data_packet(block_entity) {
+        let state = self.get_block_state(&block_pos);
+        if let Some(packet) = Self::block_entity_data_packet(block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
         if let Some(nbt) = &block_entity_nbt {
@@ -7536,7 +7539,6 @@ impl World {
             self.add_block_entity_nbt(block_pos, &full_nbt);
         }
 
-        let state = self.get_block_state(&block_pos);
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
         {
