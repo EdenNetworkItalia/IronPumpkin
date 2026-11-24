@@ -94,7 +94,11 @@ impl ItemBehaviour for HangingEntityItem {
                 SoundCategory::Blocks,
                 &spawn_pos,
             );
-            world.emit_game_event(GameEvent::EntityPlace.name(), spawn_pos);
+            world.emit_game_event_by(
+                GameEvent::EntityPlace.name(),
+                spawn_pos,
+                &player.living_entity.entity,
+            );
             world.spawn_entity(painting);
         } else {
             if !world.is_in_build_limit(target_pos) {
@@ -126,7 +130,11 @@ impl ItemBehaviour for HangingEntityItem {
             let sound = frame.get_place_sound();
             let frame_arc = Arc::new(frame);
             world.play_sound(sound, SoundCategory::Blocks, &frame_pos);
-            world.emit_game_event(GameEvent::EntityPlace.name(), frame_pos);
+            world.emit_game_event_by(
+                GameEvent::EntityPlace.name(),
+                frame_pos,
+                &player.living_entity.entity,
+            );
             world.spawn_entity(frame_arc);
         }
         item.decrement_unless_creative(player.gamemode.load(), 1);

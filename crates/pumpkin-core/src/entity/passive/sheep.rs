@@ -198,7 +198,7 @@ impl Shearable for SheepEntity {
         let entity = self.get_entity();
         let world = entity.world.load();
         let pos = entity.pos.load();
-        world.play_sound(Sound::EntitySheepShear, category, &pos);
+        world.play_sound_at_entity(None, entity, Sound::EntitySheepShear, category, 1.0, 1.0);
         let color = DyeColor::from(self.get_color());
         if let Some(table) =
             world.get_loot_table(&format!("minecraft:shearing/sheep/{}", color.name()))

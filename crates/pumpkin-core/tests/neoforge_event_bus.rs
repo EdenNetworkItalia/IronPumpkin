@@ -1057,7 +1057,7 @@ fn one_event_per_fire_site_vanilla_game_event() {
             blocking(move |event: &mut GenericGameEvent| {
                 push(
                     &seen_by_handler,
-                    format!("{} {:?}", event.event_key, event.position),
+                    format!("{} {:?}", event.event_key(), event.position()),
                 );
             }),
             EventPriority::Normal,

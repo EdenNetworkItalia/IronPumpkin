@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 498 | 498 | 0 | 0 | 0 | 410 | 97 |
-| Inventory, planned | 449 | 444 | 3 | 2 | 0 | 293 | 15 |
+| Inventory, supported | 502 | 502 | 0 | 0 | 0 | 413 | 97 |
+| Inventory, planned | 445 | 440 | 3 | 2 | 0 | 290 | 15 |
 | Inventory, not supported | 224 | 0 | 0 | 1 | 223 | 100 | 14 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -206,9 +206,9 @@ How to read it:
 | `NoteBlockEvent.Play` | 3 | event class | `event-bus.event::note-block-event-play` | supported |
 | `VillageSiegeEvent` | 3 | event class | `event-bus` doc, not supported | not supported |
 | `ItemStackedOnOtherEvent` | 2 | event class | `event-bus.event::item-stacked-on-other-event` | planned |
-| `PlayLevelSoundEvent` | 2 | event class | `event-bus.event::play-level-sound-event` | planned |
-| `PlayLevelSoundEvent.AtEntity` | 2 | event class | `event-bus.event::play-level-sound-event-at-entity` | planned |
-| `PlayLevelSoundEvent.AtPosition` | 2 | event class | `event-bus.event::play-level-sound-event-at-position` | planned |
+| `PlayLevelSoundEvent` | 2 | event class | `event-bus.event::play-level-sound-event` | supported |
+| `PlayLevelSoundEvent.AtEntity` | 2 | event class | `event-bus.event::play-level-sound-event-at-entity` | supported |
+| `PlayLevelSoundEvent.AtPosition` | 2 | event class | `event-bus.event::play-level-sound-event-at-position` | supported |
 | `GetEnchantmentLevelEvent` | 2 | event class | `event-bus.event::get-enchantment-level-event` | planned |
 | `EntityEvent.EntityConstructing` | 2 | event class | `event-bus.event::entity-event-entity-constructing` | planned |
 | `EntityStruckByLightningEvent` | 2 | event class | `pumpkin_core::plugin::level::EntityStruckByLightningEvent` | supported |
@@ -268,7 +268,7 @@ How to read it:
 | `RegisterTooltipAppendersEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `SortedReloadListenerEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | supported |
-| `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (8 of the 61 vanilla game events from 10 sites, no vibration dispatch: gap) | planned |
+| `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (38 of the 61 vanilla game events from one emit path; 23 never emitted: gap) | supported |
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PotionBrewEvent.Post` | 0 | event class | `pumpkin_core::plugin::inventory::PotionBrewEventPost` (after the brew and after a cancelled Pre; changed stacks apply if the stand did not change) | supported |

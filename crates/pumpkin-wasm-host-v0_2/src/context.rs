@@ -1796,6 +1796,12 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
                     ctx, &handler, priority, blocking, event_type,
                 );
             }
+            event_type @ (EventType::PlayLevelSoundEventAtPosition
+            | EventType::PlayLevelSoundEventAtEntity) => {
+                crate::events::neoforge_sound::register_neoforge_sound_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type => {
                 register_player_event(ctx, &handler, priority, blocking, event_type);
             }

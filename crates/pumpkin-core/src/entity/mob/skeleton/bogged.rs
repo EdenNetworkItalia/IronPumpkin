@@ -57,9 +57,16 @@ impl Shearable for BoggedSkeletonEntity {
 
         let entity = self.get_entity();
         let world = entity.world.load();
-        let pos = entity.pos.load();
-        world.play_sound(Sound::EntityBoggedShear, sound_category, &pos);
+        world.play_sound_at_entity(
+            None,
+            entity,
+            Sound::EntityBoggedShear,
+            sound_category,
+            1.0,
+            1.0,
+        );
 
+        let pos = entity.pos.load();
         let drop_pos = Vector3::new(pos.x, pos.y + f64::from(entity.height()), pos.z);
         for drop in shearing_loot(self, BOGGED_SHEAR_LOOT_TABLE, tool) {
             world.spawn_entity(Arc::new(ItemEntity::new(

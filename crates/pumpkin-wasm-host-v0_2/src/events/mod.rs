@@ -70,6 +70,7 @@ pub mod neoforge_entity;
 pub mod neoforge_living;
 pub mod neoforge_player;
 pub mod neoforge_server;
+pub mod neoforge_sound;
 pub mod player;
 pub mod raid;
 pub mod server;

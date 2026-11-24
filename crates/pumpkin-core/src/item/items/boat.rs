@@ -181,7 +181,11 @@ impl ItemBehaviour for BoatItem {
             Some(player),
         );
         world.spawn_entity(boat_entity);
-        world.emit_game_event(GameEvent::EntityPlace.name(), hit_vec);
+        world.emit_game_event_by(
+            GameEvent::EntityPlace.name(),
+            hit_vec,
+            &player.living_entity.entity,
+        );
 
         if !stack.is_empty() && stack.item.id == item.id {
             stack.decrement_unless_creative(player.gamemode.load(), 1);

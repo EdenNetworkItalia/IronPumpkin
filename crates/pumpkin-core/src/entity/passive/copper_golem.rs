@@ -337,8 +337,14 @@ impl Shearable for CopperGolemEntity {
         }
         let entity = self.get_entity();
         let world = entity.world.load();
-        let pos = entity.pos.load();
-        world.play_sound(Sound::EntityCopperGolemShear, category, &pos);
+        world.play_sound_at_entity(
+            None,
+            entity,
+            Sound::EntityCopperGolemShear,
+            category,
+            1.0,
+            1.0,
+        );
         entity.spawn_at_location_with_offset(antenna_item, Vector3::new(0.0, 1.5, 0.0));
         true
     }

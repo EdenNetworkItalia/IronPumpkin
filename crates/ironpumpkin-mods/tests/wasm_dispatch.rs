@@ -1703,3 +1703,135 @@ fn a_plugin_performs_a_command_while_wasm_handlers_listen_to_the_command_event()
         ["W1 - false", "W2 - false"]
     );
 }
+
+/// A plugin that plays a sound while a Wasm handler listens to `PlayLevelSoundEvent.AtPosition`
+/// does not deadlock. The import is synchronous, so the guest call holds the root permit: the host
+/// plays the sound on a blocking task, the call returns, and then the event reaches the handlers
+/// of both plugins.
+#[test]
+fn a_plugin_plays_a_sound_while_wasm_handlers_listen_to_the_sound_event() {
+    let _serial = setup();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let reply = ipc(GUEST, "sound 5000 100 5000");
+        tx.send(reply).unwrap();
+    });
+
+    let reply = rx.recv_timeout(std::time::Duration::from_secs(60));
+    assert!(reply.is_ok(), "the sound call hangs");
+    assert_eq!(reply.unwrap(), "");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut seen = [Vec::new(), Vec::new()];
+    while seen.iter().any(|log| log.len() < 2) {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the handlers did not get the sound event: {seen:?}"
+        );
+        for (log, plugin) in seen.iter_mut().zip([GUEST, PEER]) {
+            log.extend(guest_log(plugin, "PlayLevelSoundEventAtPosition"));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    for log in &seen {
+        assert_eq!(
+            *log,
+            [
+                "W1 minecraft:block.stone.break false",
+                "W2 minecraft:block.stone.break false"
+            ]
+        );
+    }
+}
+
+/// The sound calls of one guest call reach the client in call order, also across the world and the
+/// player: the two world sounds, the stop of the first one, and the sound for the player.
+#[test]
+fn the_sound_calls_of_one_guest_call_keep_their_order() {
+    use pumpkin_protocol::{
+        java::{
+            client::play::{CSoundEffect, CStopSound},
+            packet_decoder::TCPNetworkDecoder,
+        },
+        packet::MultiVersionJavaPacket,
+        ser::NetworkReadExt,
+    };
+
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "OrderPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    let position = player.position();
+    let mut peer = TCPNetworkDecoder::new(tokio::io::BufReader::new(peer));
+
+    ipc(
+        GUEST,
+        &format!(
+            "order OrderPlayer {} {} {}",
+            position.x, position.y, position.z
+        ),
+    );
+
+    let seen = support::RUNTIME.block_on(async {
+        let mut seen = Vec::new();
+        while seen.len() < 4 {
+            let packet =
+                tokio::time::timeout(std::time::Duration::from_secs(60), peer.get_raw_packet())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            let mut body = &packet.payload[..];
+            if packet.id == CSoundEffect::to_id(pumpkin_data::packet::CURRENT_MC_VERSION) {
+                let id = body.get_var_int().unwrap().0;
+                seen.push(
+                    pumpkin_data::sound::Sound::NAMES[usize::try_from(id - 1).unwrap()].to_owned(),
+                );
+            } else if packet.id == CStopSound::to_id(pumpkin_data::packet::CURRENT_MC_VERSION) {
+                seen.push("stop".to_owned());
+            }
+        }
+        seen
+    });
+    assert_eq!(
+        seen,
+        [
+            "block.stone.break",
+            "block.anvil.land",
+            "stop",
+            "entity.pig.ambient"
+        ]
+    );
+}
+
+/// A handler of `PlayLevelSoundEvent.AtPosition` that plays one more sound each time does not loop
+/// forever: the queue drops the work at the depth of 64.
+#[test]
+fn a_wasm_handler_that_plays_a_sound_for_each_sound_stops_at_the_depth_limit() {
+    let _serial = setup();
+    ipc(GUEST, "replay on");
+
+    ipc(GUEST, "sound 7000 100 7000");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+    let mut fires = 0;
+    while fires < 64 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "only {fires} fires of the sound event"
+        );
+        fires += guest_log(GUEST, "PlayLevelSoundEventAtPosition")
+            .iter()
+            .filter(|entry| entry.starts_with("W1 "))
+            .count();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // The chain is over: no further fire arrives.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let extra = guest_log(GUEST, "PlayLevelSoundEventAtPosition")
+        .iter()
+        .filter(|entry| entry.starts_with("W1 "))
+        .count();
+    ipc(GUEST, "replay off");
+    assert_eq!((fires, extra), (64, 0));
+}

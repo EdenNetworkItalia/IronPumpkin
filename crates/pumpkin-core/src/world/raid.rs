@@ -427,15 +427,33 @@ impl Raid {
         None
     }
 
+    /// Sends the raid horn to the players within 64 blocks of `pos` on the horizontal plane, and
+    /// to the players in the raid, as `Raid.playSound`. Each player gets a packet of its own, with
+    /// the position of the sound 13 blocks from the player towards the raid. The packets go
+    /// straight to the players, so no sound event fires, as in vanilla.
     pub fn play_sound(&self, world: &World, pos: BlockPos) {
-        let sound_pos = pos.to_centered_f64();
-        world.play_sound_fine(
-            Sound::EventRaidHorn,
-            pumpkin_data::sound::SoundCategory::Neutral,
-            &sound_pos,
-            64.0,
-            1.0,
-        );
+        let raid = pos.to_centered_f64();
+        let seed = rand::random::<i64>();
+        for player in world.players.load().iter() {
+            let at = player.position();
+            let distance = (raid.x - at.x).hypot(raid.z - at.z);
+            if distance > 64.0 && !self.players_in_raid.contains(&player.gameprofile.id) {
+                continue;
+            }
+            let packet = pumpkin_protocol::java::client::play::CSoundEffect::new(
+                pumpkin_protocol::IdOr::Id(Sound::EventRaidHorn as u16),
+                pumpkin_data::sound::SoundCategory::Neutral,
+                &Vector3::new(
+                    at.x + 13.0 / distance * (raid.x - at.x),
+                    at.y,
+                    at.z + 13.0 / distance * (raid.z - at.z),
+                ),
+                64.0,
+                1.0,
+                seed,
+            );
+            player.try_send_client_packet(&packet);
+        }
     }
 
     pub fn update_players(&mut self, world: &World) {
