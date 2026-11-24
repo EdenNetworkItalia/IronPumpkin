@@ -945,9 +945,9 @@ impl DataComponentImpl for LockImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(self.predicate.clone())
     }
-    /// `ItemPredicate.CODEC` in the saved NBT form of the predicate.
+    /// `LockCode.CODEC` is `ItemPredicate.CODEC`.
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&NbtTag::Compound(self.predicate.clone())) as i32
+        hash_ops::predicate(&self.predicate) as i32
     }
     default_impl!(Lock);
 }

@@ -250,6 +250,51 @@ pub fn text(component: &TextComponent) -> u32 {
 /// the version of the client, so both use the current protocol.
 pub const TEXT_VERSION: JavaMinecraftVersion = JavaMinecraftVersion::V_26_3;
 
+/// The hash of `ItemPredicate.CODEC` or `BlockPredicate.CODEC` in its saved form. The expected
+/// components hash with the codec of each component. The other fields hash as saved codec
+/// values: they hold ids, numbers, strings and the boolean flags of partial predicates.
+#[must_use]
+pub fn predicate(compound: &NbtCompound) -> u32 {
+    map(compound
+        .child_tags
+        .iter()
+        .map(|(key, value)| {
+            let value = match (&**key, value) {
+                ("components", NbtTag::Compound(exact)) => exact_components(exact),
+                (_, value) => codec_nbt(value),
+            };
+            (string(key), value)
+        })
+        .collect())
+}
+
+/// The hash of `AdventureModePredicate.CODEC`: one block predicate, or a list of them.
+#[must_use]
+pub fn adventure_predicate(tag: &NbtTag) -> u32 {
+    let entry = |tag: &NbtTag| match tag {
+        NbtTag::Compound(compound) => predicate(compound),
+        tag => codec_nbt(tag),
+    };
+    match tag {
+        NbtTag::List(predicates) => list(predicates.iter().map(entry)),
+        tag => entry(tag),
+    }
+}
+
+/// `DataComponentExactPredicate.CODEC`: a map from the component id to its value.
+fn exact_components(exact: &NbtCompound) -> u32 {
+    map(exact
+        .child_tags
+        .iter()
+        .map(|(name, value)| {
+            let hash = crate::data_component::DataComponent::try_from_name(name)
+                .and_then(|id| crate::data_component_impl::read_data(id, value))
+                .map_or_else(|| codec_nbt(value), |component| component.get_hash() as u32);
+            (string(name), hash)
+        })
+        .collect())
+}
+
 /// The hash of a registry id string, such as a `Holder` reference or a `ResourceKey`.
 #[must_use]
 pub fn id(name: &str) -> u32 {
@@ -1309,6 +1354,55 @@ mod tests {
                 hash(&lore),
                 vanilla::list(&[vanilla::string("[Github Repository]")])
             );
+        }
+
+        /// `DataComponentExactPredicate.CODEC` encodes each expected component with its own
+        /// codec, so a byte field such as `flight_duration` stays a byte.
+        #[test]
+        fn predicates_hash_exact_components_with_their_codecs() {
+            use crate::data_component_impl::{CanPlaceOnImpl, LockImpl};
+            use pumpkin_nbt::compound::NbtCompound;
+            use pumpkin_nbt::tag::NbtTag;
+            let mut fireworks = NbtCompound::new();
+            fireworks.put_byte("flight_duration", 2);
+            let mut components = NbtCompound::new();
+            components.put_compound("minecraft:fireworks", fireworks);
+            let mut predicate = NbtCompound::new();
+            predicate.put_string("items", "minecraft:firework_rocket".to_owned());
+            predicate.put_compound("components", components.clone());
+            let exact = vanilla::map(&[(
+                "minecraft:fireworks",
+                vanilla::map(&[("flight_duration", vanilla::byte(2))]),
+            )]);
+            let lock = LockImpl {
+                predicate: predicate.clone(),
+            };
+            assert_eq!(
+                hash(&lock),
+                vanilla::map(&[
+                    ("items", vanilla::string("minecraft:firework_rocket")),
+                    ("components", exact),
+                ])
+            );
+            // `AdventureModePredicate.CODEC` is a compact list of block predicates.
+            let mut block = NbtCompound::new();
+            block.put_string("blocks", "#minecraft:logs".to_owned());
+            block.put_compound("components", components);
+            let block_hash = vanilla::map(&[
+                ("blocks", vanilla::string("#minecraft:logs")),
+                ("components", exact),
+            ]);
+            let one = CanPlaceOnImpl {
+                predicate: NbtTag::Compound(block.clone()),
+            };
+            assert_eq!(hash(&one), block_hash);
+            let two = CanPlaceOnImpl {
+                predicate: NbtTag::List(vec![
+                    NbtTag::Compound(block.clone()),
+                    NbtTag::Compound(block),
+                ]),
+            };
+            assert_eq!(hash(&two), vanilla::list(&[block_hash, block_hash]));
         }
     }
 }

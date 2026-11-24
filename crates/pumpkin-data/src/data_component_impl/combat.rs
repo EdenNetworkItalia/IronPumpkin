@@ -389,9 +389,8 @@ impl DataComponentImpl for CanPlaceOnImpl {
     fn write_data(&self) -> NbtTag {
         self.predicate.clone()
     }
-    /// `AdventureModePredicate.CODEC` in the saved NBT form of the predicate.
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&self.predicate) as i32
+        hash_ops::adventure_predicate(&self.predicate) as i32
     }
     default_impl!(CanPlaceOn);
 }
@@ -419,9 +418,8 @@ impl DataComponentImpl for CanBreakImpl {
     fn write_data(&self) -> NbtTag {
         self.predicate.clone()
     }
-    /// `AdventureModePredicate.CODEC` in the saved NBT form of the predicate.
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&self.predicate) as i32
+        hash_ops::adventure_predicate(&self.predicate) as i32
     }
     default_impl!(CanBreak);
 }
