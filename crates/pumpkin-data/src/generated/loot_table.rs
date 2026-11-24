@@ -54892,7 +54892,9 @@ pub static ENTITIES_CHICKEN: LootTable = LootTable {
                 condition: LootCondition::None,
                 functions: &[
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -54929,7 +54931,9 @@ pub static ENTITIES_COD: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::None,
                 functions: &[LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -55054,7 +55058,9 @@ pub static ENTITIES_COW: LootTable = LootTable {
                         condition: LootCondition::None,
                     },
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -55177,7 +55183,9 @@ pub static ENTITIES_DOLPHIN: LootTable = LootTable {
                     condition: LootCondition::None,
                 },
                 LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -55352,7 +55360,9 @@ pub static ENTITIES_ELDER_GUARDIAN: LootTable = LootTable {
                             condition: LootCondition::None,
                         },
                         LootFunction {
-                            kind: LootFunctionKind::FurnaceSmelt,
+                            kind: LootFunctionKind::FurnaceSmelt {
+                                use_input_count: true,
+                            },
                             enchantment: None,
                             condition: LootCondition::AnyOf(&[
                                 LootCondition::EntityOnFire,
@@ -55413,7 +55423,9 @@ pub static ENTITIES_ELDER_GUARDIAN: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::None,
                 functions: &[LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -55782,7 +55794,9 @@ pub static ENTITIES_GUARDIAN: LootTable = LootTable {
                             condition: LootCondition::None,
                         },
                         LootFunction {
-                            kind: LootFunctionKind::FurnaceSmelt,
+                            kind: LootFunctionKind::FurnaceSmelt {
+                                use_input_count: true,
+                            },
                             enchantment: None,
                             condition: LootCondition::AnyOf(&[
                                 LootCondition::EntityOnFire,
@@ -55830,7 +55844,9 @@ pub static ENTITIES_GUARDIAN: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::None,
                 functions: &[LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -55879,7 +55895,9 @@ pub static ENTITIES_HOGLIN: LootTable = LootTable {
                         condition: LootCondition::None,
                     },
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -56081,7 +56099,9 @@ pub static ENTITIES_HUSK: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::None,
                     functions: &[LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -56362,7 +56382,9 @@ pub static ENTITIES_MOOSHROOM: LootTable = LootTable {
                         condition: LootCondition::None,
                     },
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -56691,7 +56713,9 @@ pub static ENTITIES_PIG: LootTable = LootTable {
                     condition: LootCondition::None,
                 },
                 LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -56766,7 +56790,9 @@ pub static ENTITIES_POLAR_BEAR: LootTable = LootTable {
                 condition: LootCondition::None,
                 functions: &[
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -56804,7 +56830,9 @@ pub static ENTITIES_POLAR_BEAR: LootTable = LootTable {
                 condition: LootCondition::None,
                 functions: &[
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -56935,7 +56963,9 @@ pub static ENTITIES_RABBIT: LootTable = LootTable {
                         condition: LootCondition::None,
                     },
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -57016,7 +57046,9 @@ pub static ENTITIES_SALMON: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::None,
                 functions: &[LootFunction {
-                    kind: LootFunctionKind::FurnaceSmelt,
+                    kind: LootFunctionKind::FurnaceSmelt {
+                        use_input_count: true,
+                    },
                     enchantment: None,
                     condition: LootCondition::AnyOf(&[
                         LootCondition::EntityOnFire,
@@ -57066,7 +57098,9 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         condition: LootCondition::None,
                     },
                     LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -58712,7 +58746,9 @@ pub static ENTITIES_ZOMBIE: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::None,
                     functions: &[LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,
@@ -58894,7 +58930,9 @@ pub static ENTITIES_ZOMBIE_VILLAGER: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::None,
                     functions: &[LootFunction {
-                        kind: LootFunctionKind::FurnaceSmelt,
+                        kind: LootFunctionKind::FurnaceSmelt {
+                            use_input_count: true,
+                        },
                         enchantment: None,
                         condition: LootCondition::AnyOf(&[
                             LootCondition::EntityOnFire,

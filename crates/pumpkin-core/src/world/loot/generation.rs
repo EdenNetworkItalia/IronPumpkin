@@ -621,13 +621,15 @@ impl Generator<'_, '_> {
                                 .count() as i32;
                         }
                     }
-                    LootFunctionKind::FurnaceSmelt => {
+                    LootFunctionKind::FurnaceSmelt { use_input_count } => {
                         if stack.count <= 0 {
                             continue;
                         }
-                        let (item, count) = smelt(stack.item, stack.count);
-                        stack.item = item;
-                        stack.count = count;
+                        if let Some(result) = smelt(stack.item, stack.count, use_input_count) {
+                            stack.item = result.item;
+                            stack.count = i32::from(result.item_count);
+                            stack.patch = result.patch;
+                        }
                     }
                     LootFunctionKind::SetStewEffect(effects) => {
                         if stack.item != &Item::SUSPICIOUS_STEW || effects.is_empty() {

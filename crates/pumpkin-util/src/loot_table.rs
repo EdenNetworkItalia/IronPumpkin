@@ -115,7 +115,11 @@ pub enum LootFunctionKind {
     },
     ExplosionDecay,
     ApplyBonus(LootBonusFormula),
-    FurnaceSmelt,
+    /// Vanilla `SmeltItemFunction`. With `use_input_count`, the input count multiplies the
+    /// result count.
+    FurnaceSmelt {
+        use_input_count: bool,
+    },
     SetStewEffect(Cow<'static, [LootStewEffect]>),
 }
 

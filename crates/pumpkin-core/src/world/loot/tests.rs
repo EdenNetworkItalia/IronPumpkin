@@ -1078,3 +1078,50 @@ fn fill_places_with_the_random_source_of_the_roll() {
     }
     assert!(moved, "no seed tells the two random sources apart");
 }
+
+#[test]
+fn furnace_smelt_multiplies_by_the_input_count_up_to_a_stack() {
+    use pumpkin_protocol::codec::recipe::{
+        DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
+        OwnedRecipeResult,
+    };
+    pumpkin_inventory::recipe_index::install(&[DynamicRecipe::Cooking(
+        OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+            recipe_id: "test:three_diamonds".to_string(),
+            category: pumpkin_data::recipes::RecipeCategoryTypes::Misc,
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            cooking_time: 10,
+            experience: 0.0,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 3,
+            },
+        }),
+    )]);
+    let drops = |count: u32, function: &str| {
+        let json = format!(
+            r#"{{"pools":[{{"rolls":1,"entries":[{{"type":"minecraft:item","name":"minecraft:dirt","functions":[{{"function":"minecraft:set_count","count":{count}}},{function}]}}]}}]}}"#
+        );
+        generate_dynamic_loot(&parse_loot_table(&json).unwrap(), 0)
+            .iter()
+            .map(|stack| (stack.item.id, stack.item_count))
+            .collect::<Vec<_>>()
+    };
+    let diamond = Item::DIAMOND.id;
+    assert_eq!(
+        drops(2, r#"{"function":"minecraft:furnace_smelt"}"#),
+        [(diamond, 6)]
+    );
+    assert_eq!(
+        drops(40, r#"{"function":"minecraft:furnace_smelt"}"#),
+        [(diamond, 64)]
+    );
+    assert_eq!(
+        drops(
+            2,
+            r#"{"function":"minecraft:furnace_smelt","use_input_count":false}"#
+        ),
+        [(diamond, 3)]
+    );
+}
