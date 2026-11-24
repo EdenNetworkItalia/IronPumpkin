@@ -248,8 +248,10 @@ fn a_furnace_adds_the_result_count_and_stops_at_the_max_stack_size() {
     assert_eq!(furnace.get_stack(2).item_count, 63);
 }
 
+/// The input gets the 200-tick default without a recipe. Lighting takes the cook time of the
+/// recipe that a reload added, as vanilla `serverTick` does.
 #[test]
-fn an_input_without_a_recipe_waits_200_ticks_and_then_cooks_a_later_recipe() {
+fn lighting_takes_the_cook_time_of_a_recipe_that_a_reload_added() {
     let _serial = support::serial();
     support::server().recipe_manager.set_recipes(Vec::new());
     let world = support::world();
@@ -258,13 +260,34 @@ fn an_input_without_a_recipe_waits_200_ticks_and_then_cooks_a_later_recipe() {
     assert_eq!(furnace.get_cooking_total_time(), 200);
     install_recipes();
     furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
-    for _ in 0..199 {
+    furnace.tick(&world);
+    assert_eq!(i32::from(furnace.get_cooking_total_time()), COOKING_TIME);
+    for _ in 1..COOKING_TIME - 1 {
         furnace.tick(&world);
     }
     assert!(furnace.get_stack(2).is_empty());
     furnace.tick(&world);
     assert_eq!(furnace.get_stack(2).item.id, Item::DIAMOND.id);
+}
+
+/// A furnace that goes out keeps its progress. Lighting again scales the progress to the cook
+/// time of the recipe: 50 of 200 ticks is a quarter of the recipe time, rounded up.
+#[test]
+fn lighting_keeps_the_progress_ratio() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let furnace = furnace_with(&world, 14);
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_cooking_total_time(200);
+    furnace.set_cooking_time_spent(50);
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    furnace.tick(&world);
     assert_eq!(i32::from(furnace.get_cooking_total_time()), COOKING_TIME);
+    // The lit tick adds one tick of progress.
+    let quarter = (COOKING_TIME as f32 / 4.0).ceil() as i32;
+    assert_eq!(i32::from(furnace.get_cooking_time_spent()), quarter + 1);
+    assert!(furnace.get_stack(2).is_empty());
 }
 
 #[test]

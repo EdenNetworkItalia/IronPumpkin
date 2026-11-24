@@ -509,6 +509,22 @@ macro_rules! impl_block_entity_for_cooking {
                         if !burn_cancelled {
                             self.set_lit_time_remaining(burn_ticks);
                             self.set_lit_total_time(burn_ticks);
+                            // Vanilla `AbstractFurnaceBlockEntity.serverTick`
+                            // (`AbstractFurnaceBlockEntity.java:186-190`): lighting takes the
+                            // cook time of the recipe and keeps the progress ratio.
+                            if let Some(recipe) = furnace_recipe {
+                                let total = self.get_cooking_total_time();
+                                let spent = self.get_cooking_time_spent();
+                                if total > 0 && spent < total {
+                                    let ratio = f32::from(spent) / f32::from(total);
+                                    let new_total =
+                                        u16::try_from(recipe.cooking_time.max(0)).unwrap_or(u16::MAX);
+                                    self.set_cooking_total_time(new_total);
+                                    self.set_cooking_time_spent(
+                                        (ratio * f32::from(new_total)).ceil() as u16,
+                                    );
+                                }
+                            }
 
                             if self.is_burning() {
                                 is_dirty = true;
