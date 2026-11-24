@@ -2574,6 +2574,7 @@ mod tests {
             data.join("recipe/gem.json"),
             r##"{
                 "type": "minecraft:smelting",
+                "cookingtime": 200,
                 "ingredient": "#test:gems",
                 "result": { "id": "minecraft:diamond" }
             }"##,
