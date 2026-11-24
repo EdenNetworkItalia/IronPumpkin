@@ -20,7 +20,7 @@ use std::{
 
 use pumpkin_core::{
     data::datapack::loot_table_loader::parse_loot_table,
-    entity::{EntityBase, player::Player},
+    entity::{EntityBase, player::Player, r#type::from_type},
     plugin::{
         BoxFuture, EventHandler, EventPriority, Payload,
         enchantment::{
@@ -36,6 +36,7 @@ use pumpkin_data::{
     attributes::Attributes,
     damage::DamageType,
     data_component_impl::{EnchantmentsImpl, Modifier, ModifierDisplay, Operation},
+    entity::EntityType,
     item::Item,
     item_stack::ItemStack,
 };
@@ -47,7 +48,10 @@ use pumpkin_protocol::{
     codec::{item_stack_seralizer::OptionalItemStackHash, var_int::VarInt},
     java::server::play::{SClickSlot, SlotActionType},
 };
-use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
+use pumpkin_util::{
+    Hand,
+    math::{position::BlockPos, vector3::Vector3},
+};
 
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -678,4 +682,46 @@ fn loot_checks_read_the_enchantments_that_a_handler_adds() {
 
     assert_eq!(item_names(&smelt, &kill), ["cooked_beef"]);
     assert_eq!(item_names(&silk, &mine), ["diamond"]);
+}
+
+/// `processEquipmentDropChance` asks `getEntityLootEnchantmentLevel` for the looting level of the
+/// attacker: a kill of a villager (its loot table has no looting) fires `EnchantedEntityLootEvent`
+/// for the equipment drops.
+#[test]
+fn enchanted_entity_loot_event_fires_for_the_equipment_drops() {
+    let _serial = support::serial();
+    let killer = support::player("EquipmentLooter");
+    let mut sword = ItemStack::new(1, &Item::GOLDEN_SWORD);
+    sword.add_enchantment(&Enchantment::LOOTING, 2);
+    killer.inventory().set_stack_in_hand(Hand::Right, sword);
+    let world = support::world();
+    let villager: Arc<dyn EntityBase> = from_type(
+        &EntityType::VILLAGER,
+        Vector3::new(40.5, 120.0, 40.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    world.spawn_entity(villager.clone());
+    let villager_id = villager.get_entity().entity_id;
+    let seen = log();
+    let record = seen.clone();
+    on::<EnchantedEntityLootEvent, _>(move |event| {
+        if event.entity.get_entity().entity_id == villager_id {
+            push(
+                &record,
+                format!("{} {}", event.enchantment.name, event.enchantment_level),
+            );
+        }
+    });
+
+    villager.get_living_entity().unwrap().damage_with_context(
+        villager.as_ref(),
+        1000.0,
+        DamageType::PLAYER_ATTACK,
+        None,
+        Some(killer.as_ref()),
+        Some(killer.as_ref()),
+    );
+
+    assert_eq!(entries(&seen), ["minecraft:looting 2"]);
 }

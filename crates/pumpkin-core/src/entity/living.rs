@@ -3020,7 +3020,19 @@ impl LivingEntity {
             self.entity.pose.store(EntityPose::Dying);
 
             if should_drop_loot {
-                self.drop_equipment(looting_level);
+                // Vanilla `processEquipmentDropChance` asks `getEntityLootEnchantmentLevel` for
+                // the level of each equipment drop effect of the attacker.
+                let equipment_looting = if looting_level > 0 {
+                    crate::plugin::item_events::entity_loot_enchantment_level(
+                        &params,
+                        &Enchantment::LOOTING,
+                        looting_level.cast_signed(),
+                    )
+                    .cast_unsigned()
+                } else {
+                    0
+                };
+                self.drop_equipment(equipment_looting);
             }
             if perished && let Some(mob) = dyn_self.get_mob() {
                 mob.drop_inventory();
