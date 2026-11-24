@@ -21,7 +21,7 @@ How to read it:
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
 | Inventory, supported | 397 | 397 | 0 | 0 | 0 | 342 | 81 |
-| Inventory, planned | 337 | 292 | 43 | 2 | 0 | 210 | 42 |
+| Inventory, planned | 336 | 291 | 43 | 2 | 0 | 210 | 42 |
 | Inventory, not supported | 149 | 0 | 0 | 1 | 148 | 55 | 10 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -257,7 +257,6 @@ How to read it:
 | `RegisterCauldronFluidContentEvent` | 1 | event class | `event-bus` doc, not supported | planned |
 | `AddAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `DefaultDataComponentsBoundEvent` | 0 | event class | `event-bus` doc, not supported | planned |
-| `DifficultyChangeEvent` | 0 | event class | `event-bus.event::difficulty-change-event` | planned |
 | `GatherSkippedAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `ModMismatchEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `RegisterCauldronInteractionEvent` | 0 | event class | `event-bus` doc, not supported | planned |
