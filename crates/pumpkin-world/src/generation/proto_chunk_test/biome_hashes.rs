@@ -20,13 +20,15 @@ struct DimensionBiomeHashes {
 }
 
 fn verify_biome_hashes_for_dimension(dim: Dimension, data: &DimensionBiomeHashes, seed: u64) {
-    use rayon::prelude::*;
     let world_gen = get_world_gen(Seed(seed), dim, false, Vec::new(), String::new());
     let WorldGenerator::Noise(generator) = &*world_gen else {
         unreachable!()
     };
 
-    data.hashes.par_iter().for_each(|(cx, cz, expected_hash)| {
+    // The reference comes from a sequential run of the extractor's `BiomeHashes.kt` on one
+    // thread. An exact distance tie goes to the last leaf of the thread, as with vanilla
+    // `Climate.RTree.lastResult`, so the chunks must run in list order on one thread.
+    data.hashes.iter().for_each(|(cx, cz, expected_hash)| {
         let mut chunk = ProtoChunk::new(*cx, *cz, &world_gen);
         chunk.step_to_biomes(generator);
         let actual_hash =
