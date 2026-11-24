@@ -156,3 +156,23 @@ fn lava_spreads_with_the_source_the_destination_and_the_lava_block() {
 
     assert_spreads_to_the_sides(&log, pos, Block::LAVA.name);
 }
+
+#[test]
+fn a_cancelled_spread_leaves_the_target_block_in_place() {
+    let _serial = support::serial();
+    let pos = spot(3);
+    let target = pos.offset(SIDES[0]);
+    source_on_floor(pos, Block::WATER.default_state.id);
+    let grass = Block::SHORT_GRASS.default_state.id;
+    set(target, grass);
+    on(move |event| {
+        if event.from_pos == pos && event.to_pos == target {
+            event.set_cancelled(true);
+        }
+    });
+
+    tick(&Fluid::FLOWING_WATER, pos);
+
+    assert_eq!(state_at(target), grass);
+    assert_ne!(state_at(pos.offset(SIDES[1])), Block::AIR.default_state.id);
+}

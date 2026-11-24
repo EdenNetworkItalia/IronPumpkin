@@ -314,6 +314,7 @@ pub trait FlowingFluid: Send + Sync {
         new_props: FlowingFluidProperties,
     ) {
         let current_state_id = world.get_block_state_id(pos);
+        let mut breaks_block = false;
         if let Some(current_props) = self.get_effective_props(fluid, current_state_id) {
             let current_level = i32::from(current_props.level.to_index()) + 1;
             let new_level = i32::from(new_props.level.to_index()) + 1;
@@ -353,10 +354,7 @@ pub trait FlowingFluid: Send + Sync {
             }
         } else {
             // Replace non-fluid blocks
-            let block = world.get_block(pos);
-            if block.id != Block::AIR.id {
-                world.break_block(pos, None, BlockFlags::NOTIFY_ALL);
-            }
+            breaks_block = world.get_block(pos).id != Block::AIR.id;
         }
 
         let flowing_block = if fluid.id == Fluid::FLOWING_LAVA.id || fluid.id == Fluid::LAVA.id {
@@ -376,6 +374,9 @@ pub trait FlowingFluid: Send + Sync {
             return;
         }
 
+        if breaks_block {
+            world.break_block(pos, None, BlockFlags::NOTIFY_ALL);
+        }
         world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
 
         // Check for infinite source formation after placing new fluid
