@@ -65,6 +65,9 @@ impl PlacedFeature {
         };
         if let ConfiguredFeature::SculkPatch(feature) = feature {
             feature.generate_in_proto_chunk(chunk, random, pos)
+        } else if let ConfiguredFeature::Sequence(feature) = feature {
+            // The sculk patch of an ancient city is the first feature of a sequence.
+            feature.generate_in_proto_chunk(chunk, block_registry, feature_name, random, pos)
         } else {
             let min_y = chunk.generation_bottom_y();
             let height = chunk.generation_height();
@@ -696,7 +699,7 @@ pub const fn all_placed_feature_names() -> &'static [&'static str] {
 include!("../../../../pumpkin-data/src/generated/placed_features_generated.rs");
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use pumpkin_data::dimension::Dimension;
     use pumpkin_util::math::int_provider::{NormalIntProvider, UniformIntProvider};
     use pumpkin_util::random::xoroshiro128::Xoroshiro;
@@ -706,7 +709,7 @@ mod tests {
     use crate::ProtoChunk;
     use crate::generation::generator::{GeneratorInit, VanillaGenerator, WorldGenerator};
 
-    struct TestPortal;
+    pub(in crate::generation::feature) struct TestPortal;
 
     impl WorldPortalExt for TestPortal {
         fn can_place_at(
@@ -749,7 +752,7 @@ mod tests {
 
     const ORIGIN: BlockPos = BlockPos(Vector3::new(0, 64, 0));
 
-    fn empty_chunk() -> ProtoChunk {
+    pub(in crate::generation::feature) fn empty_chunk() -> ProtoChunk {
         let world_gen = WorldGenerator::Noise(Box::new(VanillaGenerator::new(
             Seed(42),
             Dimension::OVERWORLD,

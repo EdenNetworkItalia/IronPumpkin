@@ -61,11 +61,13 @@ use super::features::{
     sculk_patch::SculkPatchFeature,
     sea_pickle::SeaPickleFeature,
     seagrass::SeagrassFeature,
+    sequence::SequenceFeature,
     simple_block::SimpleBlockFeature,
     simple_random_selector::SimpleRandomFeature,
     single_block_pillar::SingleBlockPillarFeature,
     spring_feature::SpringFeatureFeature,
     stepped_column_cluster::SteppedColumnClusterFeature,
+    template::TemplateFeature,
     tree::TreeFeature,
     twisting_vines::TwistingVinesFeature,
     underwater_magma::UnderwaterMagmaFeature,
@@ -169,6 +171,8 @@ pub enum ConfiguredFeature {
     RandomNeighborSpread(RandomNeighborSpreadFeature),
     SingleBlockPillar(SingleBlockPillarFeature),
     SteppedColumnCluster(SteppedColumnClusterFeature),
+    Sequence(SequenceFeature),
+    Template(TemplateFeature),
 }
 
 // Yes this may look ugly and you wonder why this is hard coded, but it makes sense to hardcode since we have to add logic for these in code
@@ -536,6 +540,16 @@ impl ConfiguredFeature {
             Self::SteppedColumnCluster(feature) => {
                 feature.generate(chunk, block_registry, random, pos)
             }
+            Self::Sequence(feature) => feature.generate(
+                chunk,
+                block_registry,
+                min_y,
+                height,
+                feature_name,
+                random,
+                pos,
+            ),
+            Self::Template(feature) => feature.generate(chunk, random, pos),
             Self::NoOp => false,
         }
     }

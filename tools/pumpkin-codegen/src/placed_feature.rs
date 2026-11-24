@@ -106,6 +106,7 @@ pub fn build() -> TokenStream {
                 HasSturdyFacePredicate, InsideWorldBoundsBlockPredicate,
                 MatchingBlockTagPredicate, MatchingBlocksBlockPredicate, MatchingBlocksWrapper,
                 MatchingFluidsBlockPredicate, NotBlockPredicate, OffsetBlocksBlockPredicate,
+                VolumeMatchBlockPredicate,
                 ReplaceableBlockPredicate, SolidBlockPredicate, WouldSurviveBlockPredicate,
                 HeightRangeBlockPredicate,
             };
@@ -409,7 +410,19 @@ pub fn value_to_block_predicate(v: &Value) -> TokenStream {
 
     let type_str = v["type"].as_str().unwrap_or("");
     match type_str {
-        "minecraft:true" | "minecraft:volume_match" | "" => quote! { BlockPredicate::AlwaysTrue },
+        "minecraft:true" | "" => quote! { BlockPredicate::AlwaysTrue },
+        "minecraft:volume_match" => {
+            let min = value_to_vec3i(&v["min"]);
+            let max = value_to_vec3i(&v["max"]);
+            let predicate = value_to_block_predicate(&v["match"]);
+            quote! {
+                BlockPredicate::VolumeMatch(VolumeMatchBlockPredicate {
+                    min: #min,
+                    max: #max,
+                    predicate: Box::new(#predicate),
+                })
+            }
+        }
         "minecraft:matching_blocks" => {
             let offset = value_to_offset_predicate(&v["offset"]);
             let blocks = value_to_matching_blocks_wrapper(&v["blocks"]);
@@ -768,6 +781,17 @@ fn value_to_offset_predicate(v: &Value) -> TokenStream {
     }
 }
 
+/// Converts a required `[x, y, z]` JSON array into a `Vector3::new(x, y, z)` token stream.
+fn value_to_vec3i(v: &Value) -> TokenStream {
+    let coord = |i: usize| {
+        v[i].as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .unwrap_or_else(|| panic!("Expected an [x, y, z] integer array, got {v}"))
+    };
+    let (x, y, z) = (coord(0), coord(1), coord(2));
+    quote! { Vector3::new(#x, #y, #z) }
+}
+
 /// Converts a blocks/fluids JSON value into a `MatchingBlocksWrapper` token stream.
 ///
 /// # Arguments
@@ -887,4 +911,3 @@ fn value_to_option_i32(v: &Value) -> TokenStream {
         quote! { None }
     }
 }
-
