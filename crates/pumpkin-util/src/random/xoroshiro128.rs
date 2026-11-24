@@ -216,7 +216,8 @@ impl RandomImpl for Xoroshiro {
         let mut m = l.wrapping_mul(bound as u64);
         let mut n = m & 0xFFFF_FFFF;
         if n < bound as u64 {
-            let i = ((!bound).wrapping_add(1) as u64) % (bound as u64);
+            // `Integer.remainderUnsigned(~bound + 1, bound)`: both operands are 32-bit.
+            let i = ((!bound).wrapping_add(1) as u32 % bound as u32) as u64;
             while n < i {
                 l = (self.next_i32() as u64) & 0xFFFF_FFFF;
                 m = l.wrapping_mul(bound as u64);
@@ -344,6 +345,18 @@ mod tests {
         for (input, output) in values {
             assert_eq!(mix_stafford_13(input), output as u64);
         }
+    }
+
+    /// The first draw is rejected: its low word is below `294_967_274`, the unsigned 32-bit
+    /// remainder `(2^32 - bound) % bound`. The sign-extended remainder is another value and
+    /// accepts the draw. The expected values come from a Python transcription of
+    /// `XoroshiroRandomSource.nextInt(int)`.
+    #[test]
+    fn next_bounded_i32_rejects_with_the_unsigned_32_bit_remainder() {
+        let mut xoroshiro = Xoroshiro::from_seed(263);
+        assert_eq!(xoroshiro.next_bounded_i32(2_000_000_011), 1_573_593_854);
+        // The draw took two values, so the next one is the third of the stream.
+        assert_eq!(xoroshiro.next_i64(), -2_951_697_609_983_719_571);
     }
 
     #[test]
