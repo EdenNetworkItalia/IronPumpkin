@@ -1413,16 +1413,16 @@ fn get_operator_entries(server: &Server) -> Vec<Op> {
         .clone()
 }
 
-/// Fires `PermissionsChangedEvent` for the op of `op`, as `PlayerList.op` does for the
-/// operator methods of the server management protocol. Returns `true` when a handler cancelled
-/// it. Call it before the write lock of the op list.
+/// Fires `PermissionsChangedEvent` for the op of `op`, as `PlayerList.op` does for the operator
+/// methods of the server management protocol. Returns `true` when a handler cancelled it. Call it
+/// before the write lock of the op list.
+///
+/// As `EventHooks.onPermissionChanged` in `PlayerList.op`, the new level of the event is the
+/// operator level of the server, also when the call gives the entry another level.
 fn op_change_cancelled(server: &Arc<Server>, op: &OperatorDto) -> bool {
-    let level = op
-        .permission_level
-        .map_or(PermissionLvl::Four, u8_to_permission_lvl);
-    op.player
-        .id
-        .is_some_and(|id| permission_change_cancelled(server, id, level))
+    op.player.id.is_some_and(|id| {
+        permission_change_cancelled(server, id, server.basic_config.op_permission_level)
+    })
 }
 
 fn get_operators(server: &Server) -> Vec<OperatorDto> {

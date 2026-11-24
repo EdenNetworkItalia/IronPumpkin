@@ -809,3 +809,35 @@ fn a_management_op_sends_the_permission_packet() {
     );
     assert!(contains(&read_available(&mut peer), &status(0)));
 }
+
+/// `PlayerList.op` passes the operator level of the server to the event, also when the call gives
+/// the entry another level: the event has the server level and the op list has the given level.
+#[test]
+fn a_management_op_event_has_the_operator_level_of_the_server() {
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("RpcLevel");
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<PermissionsChangedEvent, _>(move |event| {
+        if event.player.gameprofile.name == "RpcLevel" {
+            push(
+                &seen_by_handler,
+                format!("{:?} -> {:?}", event.old_level, event.new_level),
+            );
+        }
+    });
+    let mut entry = operator(&player);
+    entry["permissionLevel"] = serde_json::json!(2);
+
+    rpc("operators/add", serde_json::json!({"add": [entry]}));
+
+    assert_eq!(
+        entries(&seen),
+        [format!(
+            "Zero -> {:?}",
+            server.basic_config.op_permission_level
+        )]
+    );
+    assert_eq!(op_level(server, &player), Some(PermissionLvl::Two));
+}
