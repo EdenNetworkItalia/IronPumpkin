@@ -93,16 +93,16 @@ pub fn send_update_recipes(client: &JavaClient) {
             ingredients: &set.ingredients,
         })
         .collect();
+    let encoding = client.encoding_key();
     let stonecutter: Vec<StonecutterSync<'_>> = index
-        .stonecutter_recipes()
-        .iter()
+        .stonecutter_recipes(encoding.content_ids())
         .map(|recipe| StonecutterSync {
             ingredient: &recipe.ingredient,
             result_item: &recipe.result.item_id,
             result_count: recipe.result.count,
         })
         .collect();
-    match CUpdateRecipes::encode(&property_sets, &stonecutter, client.encoding_key()) {
+    match CUpdateRecipes::encode(&property_sets, &stonecutter, encoding) {
         Ok(body) => {
             client.try_send_packet(&CUpdateRecipes::new(&body));
         }

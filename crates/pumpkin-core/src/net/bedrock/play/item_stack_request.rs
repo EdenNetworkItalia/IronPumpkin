@@ -1737,7 +1737,8 @@ mod tests {
         };
 
         // Stonecutter
-        let stonecutter = StonecutterScreenHandler::new(1, &inventory);
+        let stonecutter =
+            StonecutterScreenHandler::new(1, &inventory, pumpkin_data::dynamic::ContentIds::Real);
         assert_eq!(
             get_output_screen_slot(
                 &stonecutter,

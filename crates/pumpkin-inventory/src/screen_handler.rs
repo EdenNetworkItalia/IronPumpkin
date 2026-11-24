@@ -155,6 +155,11 @@ pub trait InventoryPlayer: Send + Sync {
         false
     }
 
+    /// The ids that the client of the player gets for custom content.
+    fn content_ids(&self) -> pumpkin_data::dynamic::ContentIds {
+        pumpkin_data::dynamic::ContentIds::Real
+    }
+
     /// Gets the player's experience level.
     fn experience_level(&self) -> i32;
 

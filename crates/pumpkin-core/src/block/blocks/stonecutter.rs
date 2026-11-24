@@ -70,11 +70,12 @@ impl ScreenHandlerFactory for StonecutterScreenFactory {
         &self,
         sync_id: u8,
         player_inventory: &Arc<PlayerInventory>,
-        _player: &dyn InventoryPlayer,
+        player: &dyn InventoryPlayer,
     ) -> Option<SharedScreenHandler> {
         let handler: SharedScreenHandler = Arc::new(Mutex::new(StonecutterScreenHandler::new(
             sync_id,
             player_inventory,
+            player.content_ids(),
         )));
         Some(handler)
     }

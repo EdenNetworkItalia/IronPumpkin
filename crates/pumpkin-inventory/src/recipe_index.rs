@@ -10,6 +10,7 @@ use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::DataComponentImpl;
+use pumpkin_data::dynamic::ContentIds;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::potion_brewing::BREWING_RECIPES;
@@ -86,6 +87,34 @@ pub struct StonecutterEntry {
     pub recipe_id: String,
     pub ingredient: OwnedRecipeIngredient,
     pub result: RecipeOutput,
+    /// The custom items of the ingredient.
+    custom_items: Vec<&'static Item>,
+}
+
+impl StonecutterEntry {
+    fn new(recipe_id: String, ingredient: OwnedRecipeIngredient, result: RecipeOutput) -> Self {
+        let custom_items = ingredient
+            .items()
+            .into_iter()
+            .filter(|item| item.id >= Item::COUNT)
+            .collect();
+        Self {
+            recipe_id,
+            ingredient,
+            result,
+            custom_items,
+        }
+    }
+
+    /// Whether a client in mode `ids` matches the ingredient as the server does. A client that
+    /// sees a custom item as its display item would show the recipe for the display item too,
+    /// and its button index would then select another recipe on the server.
+    #[must_use]
+    pub fn syncs_to(&self, ids: ContentIds) -> bool {
+        self.custom_items
+            .iter()
+            .all(|item| item.to_java_network_id(ids) >= Item::COUNT)
+    }
 }
 
 /// A vanilla `RecipePropertySet`: the items of the listed ingredients.
@@ -187,11 +216,11 @@ fn dynamic_entry(recipe: &DynamicRecipe) -> Entry {
                 result: RecipeOutput::owned(&r.result),
             })
         }
-        DynamicRecipe::Stonecutting(r) => Entry::Stonecutter(StonecutterEntry {
-            recipe_id: r.recipe_id.clone(),
-            ingredient: r.ingredient.clone(),
-            result: RecipeOutput::owned(&r.result),
-        }),
+        DynamicRecipe::Stonecutting(r) => Entry::Stonecutter(StonecutterEntry::new(
+            r.recipe_id.clone(),
+            r.ingredient.clone(),
+            RecipeOutput::owned(&r.result),
+        )),
         DynamicRecipe::SmithingTransform(r) => Entry::Smithing {
             template: r.template.clone(),
             base: r.base.clone(),
@@ -230,11 +259,11 @@ fn generated_entries() -> BTreeMap<(String, String), Entry> {
     for r in RECIPES_STONECUTTING {
         recipes.insert(
             sort_key(r.recipe_id),
-            Entry::Stonecutter(StonecutterEntry {
-                recipe_id: r.recipe_id.to_string(),
-                ingredient: owned_ingredient(&r.ingredient),
-                result: RecipeOutput::generated(&r.result),
-            }),
+            Entry::Stonecutter(StonecutterEntry::new(
+                r.recipe_id.to_string(),
+                owned_ingredient(&r.ingredient),
+                RecipeOutput::generated(&r.result),
+            )),
         );
     }
     for r in RECIPES_SMITHING_TRANSFORM {
@@ -365,19 +394,19 @@ impl RecipeIndex {
         &self.cooking
     }
 
-    /// The stonecutter recipes in vanilla order, the order of the client's recipe buttons.
-    #[must_use]
-    pub fn stonecutter_recipes(&self) -> &[StonecutterEntry] {
-        &self.stonecutter
+    /// The stonecutter recipes that a client in mode `ids` gets, in vanilla order.
+    pub fn stonecutter_recipes(&self, ids: ContentIds) -> impl Iterator<Item = &StonecutterEntry> {
+        self.stonecutter.iter().filter(move |r| r.syncs_to(ids))
     }
 
-    /// The stonecutter recipes that take `item`, as vanilla `SingleInputSet.selectByInput`.
+    /// The stonecutter recipes that take `item` for a client in mode `ids`, as vanilla
+    /// `SingleInputSet.selectByInput` on the list of that client: the order of its buttons.
     pub fn stonecutter_recipes_for<'a>(
         &'a self,
         item: &'a Item,
+        ids: ContentIds,
     ) -> impl Iterator<Item = &'a StonecutterEntry> + 'a {
-        self.stonecutter
-            .iter()
+        self.stonecutter_recipes(ids)
             .filter(move |r| r.ingredient.match_item(item))
     }
 
@@ -465,7 +494,12 @@ mod tests {
                 .property_set(SMITHING_ADDITION)
                 .is_some_and(|s| s.test(&Item::NETHERITE_INGOT))
         );
-        assert!(index.stonecutter_recipes_for(&Item::STONE).count() > 5);
+        assert!(
+            index
+                .stonecutter_recipes_for(&Item::STONE, ContentIds::Display)
+                .count()
+                > 5
+        );
     }
 
     #[test]
@@ -539,7 +573,7 @@ mod tests {
         });
         let index = RecipeIndex::build(&[recipe]);
         let ids: Vec<&str> = index
-            .stonecutter_recipes_for(&Item::STONE)
+            .stonecutter_recipes_for(&Item::STONE, ContentIds::Display)
             .map(|r| r.recipe_id.as_str())
             .collect();
         let at = ids
