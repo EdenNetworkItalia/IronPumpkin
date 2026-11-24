@@ -182,9 +182,13 @@ impl RecipeIngredientTypes {
                 let name = format!("minecraft:{}", item.registry_key);
                 name == *ingredient
             }
-            Self::Tagged(tag) => item
-                .is_tagged_with(tag)
-                .expect("Crafting recipe used invalid tag"),
+            Self::Tagged(tag) => crate::dynamic::data_pack_item_tag(tag).map_or_else(
+                || {
+                    item.is_tagged_with(tag)
+                        .expect("Crafting recipe used invalid tag")
+                },
+                |ids| ids.contains(&item.id),
+            ),
             Self::OneOf(ingredients) => {
                 let name = format!("minecraft:{}", item.registry_key);
                 ingredients.contains(&name.as_str())

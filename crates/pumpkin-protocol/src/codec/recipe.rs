@@ -20,10 +20,8 @@ impl OwnedRecipeIngredient {
         let name = namespaced_name(item.registry_key);
         match self {
             Self::Simple(id) => namespaced_name(id) == name,
-            Self::Tagged(tag) => {
-                item.has_tag_dynamic(tag)
-                    || data_pack_item_tag(tag).is_some_and(|ids| ids.contains(&item.id))
-            }
+            Self::Tagged(tag) => data_pack_item_tag(tag)
+                .map_or_else(|| item.has_tag_dynamic(tag), |ids| ids.contains(&item.id)),
             Self::OneOf(ids) => ids.iter().any(|id| namespaced_name(id) == name),
         }
     }
@@ -55,16 +53,16 @@ impl OwnedRecipeIngredient {
                 }
             }
             Self::Tagged(tag) => {
-                if let Some((generated, custom)) = tag_ids(RegistryKey::Item, tag) {
+                if let Some(ids) = data_pack_item_tag(tag) {
+                    for item in ids.iter().filter_map(|&id| Item::from_id(id)) {
+                        push(item);
+                    }
+                } else if let Some((generated, custom)) = tag_ids(RegistryKey::Item, tag) {
                     for item in generated
                         .iter()
                         .chain(custom)
                         .filter_map(|&id| Item::from_id(id))
                     {
-                        push(item);
-                    }
-                } else if let Some(ids) = data_pack_item_tag(tag) {
-                    for item in ids.iter().filter_map(|&id| Item::from_id(id)) {
                         push(item);
                     }
                 }

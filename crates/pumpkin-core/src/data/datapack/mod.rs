@@ -2190,11 +2190,23 @@ fn load_recipes_recursive(
     }
 }
 
-/// The item tags of the loaded packs that no generated or mod tag holds, as item ids. A `#tag`
-/// value adds the members of that tag. A value that names no item or tag is left out.
+/// The item tags that the loaded packs define or change, as item ids. A tag that a pack extends
+/// keeps its generated and mod members, and a tag that a pack replaces loses them. A `#tag` value
+/// adds the members of that tag. A value that names no item or tag is left out.
 fn data_pack_item_tags(
     tags: &HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>>,
 ) -> HashMap<String, Vec<u16>> {
+    use pumpkin_data::dynamic::tag_ids;
+    use pumpkin_data::tag::RegistryKey;
+
+    fn extend(out: &mut Vec<u16>, ids: impl IntoIterator<Item = u16>) {
+        for id in ids {
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+    }
+
     fn resolve(
         name: &str,
         items: &HashMap<String, tag_loader::DynamicTagEntry>,
@@ -2208,24 +2220,21 @@ fn data_pack_item_tags(
             return;
         }
         visiting.push(name.to_string());
+        if !entry.replace
+            && let Some((generated, custom)) = tag_ids(RegistryKey::Item, name)
+        {
+            extend(out, generated.iter().chain(custom).copied());
+        }
         for value in &entry.values {
             if let Some(tag) = value.strip_prefix('#') {
                 let tag = pumpkin_data::dynamic::namespaced_name(tag);
-                if let Some((generated, custom)) =
-                    pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &tag)
-                {
-                    for id in generated.iter().chain(custom) {
-                        if !out.contains(id) {
-                            out.push(*id);
-                        }
-                    }
-                } else {
+                if items.contains_key(&*tag) {
                     resolve(&tag, items, visiting, out);
+                } else if let Some((generated, custom)) = tag_ids(RegistryKey::Item, &tag) {
+                    extend(out, generated.iter().chain(custom).copied());
                 }
-            } else if let Some(item) = pumpkin_data::item::Item::from_registry_key(value)
-                && !out.contains(&item.id)
-            {
-                out.push(item.id);
+            } else if let Some(item) = pumpkin_data::item::Item::from_registry_key(value) {
+                extend(out, [item.id]);
             }
         }
         visiting.pop();
@@ -2236,9 +2245,6 @@ fn data_pack_item_tags(
     };
     items
         .keys()
-        .filter(|name| {
-            pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, name).is_none()
-        })
         .map(|name| {
             let mut ids = Vec::new();
             resolve(name, items, &mut Vec::new(), &mut ids);
@@ -2640,11 +2646,11 @@ mod tests {
             &["vanilla".to_owned(), "file/gems".to_owned()],
             &recipes,
         );
+        let loaded = recipes.get_dynamic_recipes_internal();
         let Some(pumpkin_protocol::codec::recipe::DynamicRecipe::Cooking(
             pumpkin_protocol::codec::recipe::OwnedCookingRecipeType::Smelting(gem),
-        )) = recipes
-            .get_dynamic_recipes_internal()
-            .into_iter()
+        )) = loaded
+            .iter()
             .find(|recipe| recipe.recipe_id() == Some("test:gem"))
         else {
             panic!("the recipe with the data pack tag must load");
@@ -2658,6 +2664,55 @@ mod tests {
                 .match_item(&pumpkin_data::item::Item::OAK_PLANKS)
         );
         assert!(!gem.ingredient.match_item(&pumpkin_data::item::Item::DIRT));
+    }
+
+    /// A world data pack that extends or replaces `minecraft:planks` changes what the vanilla
+    /// stick recipe takes.
+    #[test]
+    fn a_data_pack_tag_changes_what_a_vanilla_recipe_takes() {
+        use pumpkin_data::item::Item;
+        use pumpkin_data::item_stack::ItemStack;
+        use pumpkin_inventory::Inventory;
+        use pumpkin_inventory::crafting::crafting_inventory::CraftingInventory;
+        use pumpkin_inventory::crafting::crafting_screen_handler::match_crafting_recipe;
+
+        let crafts_a_stick = |item: &'static Item| {
+            let grid = CraftingInventory::new(2, 2);
+            grid.set_stack(0, ItemStack::new(1, item));
+            grid.set_stack(2, ItemStack::new(1, item));
+            match_crafting_recipe(&grid, None)
+                .is_some_and(|result| result.item_id == "minecraft:stick")
+        };
+        let load = |planks: &str| {
+            let world = tempfile::tempdir().expect("tempdir");
+            let tags = world
+                .path()
+                .join("datapacks/planks/data/minecraft/tags/item");
+            std::fs::create_dir_all(&tags).expect("create dir");
+            std::fs::write(tags.join("planks.json"), planks).expect("write");
+            DatapackManager::new().load_all(
+                world.path(),
+                &["vanilla".to_owned(), "file/planks".to_owned()],
+                &crate::server::recipe::RecipeManager::default(),
+            );
+        };
+
+        assert!(crafts_a_stick(&Item::OAK_PLANKS));
+        assert!(!crafts_a_stick(&Item::DIRT));
+
+        load(r#"{"values": ["minecraft:dirt"]}"#);
+        assert!(crafts_a_stick(&Item::DIRT), "the pack adds dirt to the tag");
+        assert!(
+            crafts_a_stick(&Item::OAK_PLANKS),
+            "the tag keeps its planks"
+        );
+
+        load(r#"{"replace": true, "values": ["minecraft:dirt"]}"#);
+        assert!(crafts_a_stick(&Item::DIRT));
+        assert!(
+            !crafts_a_stick(&Item::OAK_PLANKS),
+            "the pack replaces the planks of the tag"
+        );
     }
 
     #[test]
