@@ -765,18 +765,25 @@ impl World {
         };
 
         for block_entity in block_entities {
-            let mut nbt = NbtCompound::new();
-            block_entity.write_internal(&mut nbt);
-            if let Some(custom_data) = self
-                .custom_block_entity_data
-                .get(&block_entity.get_position())
-                && !custom_data.is_empty()
-            {
-                nbt.put_compound("PumpkinCustomData", custom_data.clone());
-            }
-            crate::plugin::attachments::write_block_entity(self, &block_entity, &mut nbt);
+            let nbt = self.block_entity_save_nbt(&block_entity);
             self.add_block_entity_nbt(block_entity.get_position(), &nbt);
         }
+    }
+
+    /// The saved form of `block_entity`, as the chunk writer stores it: vanilla
+    /// `saveWithFullMetadata`.
+    fn block_entity_save_nbt(&self, block_entity: &Arc<dyn BlockEntity>) -> NbtCompound {
+        let mut nbt = NbtCompound::new();
+        block_entity.write_internal(&mut nbt);
+        if let Some(custom_data) = self
+            .custom_block_entity_data
+            .get(&block_entity.get_position())
+            && !custom_data.is_empty()
+        {
+            nbt.put_compound("PumpkinCustomData", custom_data.clone());
+        }
+        crate::plugin::attachments::write_block_entity(self, block_entity, &mut nbt);
+        nbt
     }
 
     /// Broadcasts an entity status update / event to all players tracking the specified entity,
@@ -7387,8 +7394,6 @@ impl World {
         }
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
-        let entity_id = block_entity.resource_location().to_string();
 
         let state = self.get_block_state(&block_pos);
         if let Some(packet) = Self::block_entity_data_packet(&block_entity, state.id) {
@@ -7401,19 +7406,12 @@ impl World {
             self.broadcast_to_chunk_bedrock(chunk_pos, &CBlockActorData::new(block_pos, data));
         }
 
+        let saved = self.block_entity_save_nbt(&block_entity);
         self.block_entities
             .entry(chunk_pos)
             .or_default()
             .insert(block_pos, block_entity);
-
-        if let Some(nbt) = block_entity_nbt {
-            let mut full_nbt = nbt;
-            full_nbt.put_string("id", entity_id);
-            full_nbt.put_int("x", block_pos.0.x);
-            full_nbt.put_int("y", block_pos.0.y);
-            full_nbt.put_int("z", block_pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
+        self.add_block_entity_nbt(block_pos, &saved);
 
         self.level.read_chunk_sync(&chunk_pos, |chunk| {
             chunk.mark_dirty(true);
@@ -7523,21 +7521,12 @@ impl World {
     pub fn update_block_entity(&self, block_entity: &Arc<dyn BlockEntity>) {
         let block_pos = block_entity.get_position();
         let chunk_pos = block_pos.chunk_position();
-        let block_entity_nbt = block_entity.chunk_data_nbt();
 
         let state = self.get_block_state(&block_pos);
         if let Some(packet) = Self::block_entity_data_packet(block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
-        if let Some(nbt) = &block_entity_nbt {
-            let mut full_nbt = nbt.clone();
-            full_nbt.put_string("id", block_entity.resource_location().to_string());
-            let pos = block_entity.get_position();
-            full_nbt.put_int("x", pos.0.x);
-            full_nbt.put_int("y", pos.0.y);
-            full_nbt.put_int("z", pos.0.z);
-            self.add_block_entity_nbt(block_pos, &full_nbt);
-        }
+        self.add_block_entity_nbt(block_pos, &self.block_entity_save_nbt(block_entity));
 
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
@@ -9184,6 +9173,59 @@ mod tests {
         );
 
         world.level.shutdown().await;
+        Ok(())
+    }
+
+    fn chest_with_diamonds(pos: BlockPos) -> NbtCompound {
+        let mut item = NbtCompound::new();
+        item.put_string("id", "minecraft:diamond".to_string());
+        item.put_int("count", 64);
+        item.put_byte("Slot", 0);
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("id", "minecraft:chest".to_string());
+        nbt.put_int("x", pos.0.x);
+        nbt.put_int("y", pos.0.y);
+        nbt.put_int("z", pos.0.z);
+        nbt.put_list("Items", vec![pumpkin_nbt::tag::NbtTag::Compound(item)]);
+        nbt
+    }
+
+    fn saved_block_entity(world: &World, pos: BlockPos) -> Option<NbtCompound> {
+        world
+            .level
+            .read_chunk_sync(&pos.chunk_position(), |chunk| {
+                chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .get(&pos)
+                    .cloned()
+            })
+            .flatten()
+    }
+
+    #[tokio::test]
+    async fn a_placed_chest_is_saved_with_its_items() -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        let saved_on_add = saved_block_entity(&world, pos);
+        world.update_block_entity(&chest);
+        let saved_on_update = saved_block_entity(&world, pos);
+        world.level.shutdown().await;
+
+        for saved in [saved_on_add, saved_on_update] {
+            let saved = saved.expect("the chunk holds the saved chest");
+            assert_eq!(saved.get_string("id"), Some("minecraft:chest"));
+            assert_eq!(saved.get_list("Items").map(<[_]>::len), Some(1));
+        }
         Ok(())
     }
 }
