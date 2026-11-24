@@ -505,9 +505,7 @@ impl Server {
         info!("All worlds loaded successfully.");
 
         let enabled_packs = server.level_info.load().data_packs.enabled.clone();
-        server
-            .datapack_manager
-            .load_all(&world_path, &enabled_packs, &server.recipe_manager);
+        server.load_datapacks(&world_path, &enabled_packs);
         crate::plugin::data_maps::load(&server);
         crate::plugin::server_events::server_data_loaded(&server);
 
@@ -618,11 +616,22 @@ impl Server {
             .write_world_info(&level_data, &self.basic_config.get_world_path())
     }
 
+    /// Loads the data packs and fires the loot table events before the manager stores the tables.
+    fn load_datapacks(self: &Arc<Self>, world_path: &std::path::Path, enabled_packs: &[String]) {
+        self.datapack_manager.load_all_hooked(
+            world_path,
+            enabled_packs,
+            &self.recipe_manager,
+            crate::data::datapack::mod_packs::mod_data_packs(),
+            std::path::Path::new(crate::data::datapack::mod_packs::MOD_DATA_DIR),
+            |tables| crate::plugin::server_events::load_loot_tables(self, tables),
+        );
+    }
+
     pub fn reload_datapacks(&self, server: &Arc<Self>) {
         let enabled_packs = self.level_info.load().data_packs.enabled.clone();
         let world_path = self.basic_config.get_world_path();
-        self.datapack_manager
-            .load_all(&world_path, &enabled_packs, &self.recipe_manager);
+        server.load_datapacks(&world_path, &enabled_packs);
         crate::plugin::data_maps::load(server);
         crate::plugin::server_events::server_data_loaded(server);
         crate::plugin::server_events::datapack_sync(server, None);

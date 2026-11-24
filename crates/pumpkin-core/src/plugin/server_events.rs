@@ -13,6 +13,7 @@ use tracing::error;
 use uuid::Uuid;
 
 use crate::command::{CommandSource, dispatcher::Interception};
+use crate::data::datapack::LootTables;
 use crate::entity::player::Player;
 use crate::plugin::api::events::{
     player::{PermissionsChangedEvent, player_command_preprocess::PlayerCommandPreprocessEvent},
@@ -121,10 +122,10 @@ pub fn level_change_cancelled(
 
 /// Fires the events of a finished data pack load.
 ///
-/// The order is the order of `NeoForge`: the loot table events, the reload listeners, then the
-/// tags event. Call it after the data packs loaded and before the data maps load.
+/// The order is the order of `NeoForge`: the reload listeners, then the tags event. The loot
+/// table events fire before, while the manager loads: see [`load_loot_tables`]. Call it after the
+/// data packs and the data maps loaded.
 pub fn server_data_loaded(server: &Arc<Server>) {
-    load_loot_tables(server);
     run_reload_listeners(server);
     server
         .plugin_manager
@@ -134,36 +135,34 @@ pub fn server_data_loaded(server: &Arc<Server>) {
 /// Fires [`LootTableLoadEvent`] for each loot table and keeps the table that the handlers leave.
 ///
 /// The tables are the ones that the data packs loaded and the compiled vanilla tables that no
-/// pack replaces, in the order of their ids. A changed or cancelled table goes to the loaded
-/// tables, which the lookup prefers: a cancelled table becomes an empty table, so the compiled
-/// table of the same id does not come back.
-fn load_loot_tables(server: &Arc<Server>) {
+/// pack replaces, in the order of their ids. A changed or cancelled table goes into `loaded`,
+/// which the lookup prefers: a cancelled table becomes an empty table, so the compiled table of
+/// the same id does not come back. The manager calls this before it stores `loaded`, so a drop
+/// never sees a half-changed set of tables.
+pub fn load_loot_tables(server: &Arc<Server>, loaded: &mut LootTables) {
     if !server.plugin_manager.has_handlers::<LootTableLoadEvent>() {
         return;
     }
-    let mut tables = server.datapack_manager.loaded_loot_tables();
-    let vanilla = pumpkin_data::loot_table::all_loot_tables()
-        .filter(|(id, _)| {
-            tables
-                .binary_search_by(|(loaded, _)| loaded.as_str().cmp(id))
-                .is_err()
-        })
-        .map(|(id, table)| (id.to_owned(), Arc::new(DynamicLootTable::from(table))))
-        .collect::<Vec<_>>();
-    tables.extend(vanilla);
+    let mut tables: Vec<(String, Arc<DynamicLootTable>)> = loaded
+        .iter()
+        .map(|(id, table)| (id.clone(), table.clone()))
+        .collect();
+    tables.extend(
+        pumpkin_data::loot_table::all_loot_tables()
+            .filter(|(id, _)| !loaded.contains_key(*id))
+            .map(|(id, table)| (id.to_owned(), Arc::new(DynamicLootTable::from(table)))),
+    );
     tables.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-    let mut replacements = Vec::new();
     for (name, table) in tables {
         let mut event = LootTableLoadEvent::new(name.clone(), table.clone());
         server.plugin_manager.fire_blocking(server, &mut event);
         if event.cancelled {
-            replacements.push((name, Arc::new(DynamicLootTable::default())));
+            loaded.insert(name, Arc::new(DynamicLootTable::default()));
         } else if !Arc::ptr_eq(&event.table, &table) {
-            replacements.push((name, event.table));
+            loaded.insert(name, event.table);
         }
     }
-    server.datapack_manager.replace_loot_tables(replacements);
 }
 
 /// Fires [`AddServerReloadListenersEvent`] and runs the listeners that the mods added.

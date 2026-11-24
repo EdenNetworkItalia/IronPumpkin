@@ -49,6 +49,9 @@ pub struct KnownPackData {
     pub version: String,
 }
 
+/// The loot tables that the data packs loaded, by id.
+pub type LootTables = HashMap<String, Arc<DynamicLootTable>>;
+
 #[derive(Clone, Debug)]
 pub struct LoadedDatapack {
     pub id: String,
@@ -149,19 +152,19 @@ impl DatapackManager {
         enabled_packs: &[String],
         recipe_manager: &RecipeManager,
     ) {
-        self.load_all_with_mod_packs(
+        self.load_all_hooked(
             world_path,
             enabled_packs,
             recipe_manager,
             mod_packs::mod_data_packs(),
             Path::new(mod_packs::MOD_DATA_DIR),
+            |_| {},
         );
     }
 
     /// [`Self::load_all`] with the data packs of the native mods and the folder they are written
     /// to given by the caller. The packs of a mod load after the embedded data and before the
     /// world data packs, so a world data pack overrides a mod pack.
-    #[allow(clippy::too_many_lines)]
     pub fn load_all_with_mod_packs(
         &self,
         world_path: &Path,
@@ -169,6 +172,28 @@ impl DatapackManager {
         recipe_manager: &RecipeManager,
         mod_data_packs: &[mod_packs::ModDataPack],
         mod_data_root: &Path,
+    ) {
+        self.load_all_hooked(
+            world_path,
+            enabled_packs,
+            recipe_manager,
+            mod_data_packs,
+            mod_data_root,
+            |_| {},
+        );
+    }
+
+    /// [`Self::load_all_with_mod_packs`] where `loot_tables` can change the loaded loot tables
+    /// before the manager stores them, so the new tables replace the old ones in one step.
+    #[allow(clippy::too_many_lines)]
+    pub fn load_all_hooked(
+        &self,
+        world_path: &Path,
+        enabled_packs: &[String],
+        recipe_manager: &RecipeManager,
+        mod_data_packs: &[mod_packs::ModDataPack],
+        mod_data_root: &Path,
+        loot_tables: impl FnOnce(&mut LootTables),
     ) {
         let datapacks_dir = world_path.join("datapacks");
         structure_loader::clear_dynamic_worldgen_data();
@@ -286,6 +311,7 @@ impl DatapackManager {
             .damage_types
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = damage_type_registry;
+        loot_tables(&mut all_loot_tables);
         *self
             .loot_tables
             .write()
@@ -573,30 +599,6 @@ impl DatapackManager {
         let table = pumpkin_data::loot_table::get_loot_table(key)
             .or_else(|| pumpkin_data::loot_table::get_loot_table(&full_key))?;
         Some(LootTableHandle::new(LootTableRef::Static(table), full_key))
-    }
-
-    /// The loot tables that the data packs loaded, sorted by id. The loot tables of the vanilla
-    /// data are compiled in and not in the list.
-    #[must_use]
-    pub fn loaded_loot_tables(&self) -> Vec<(String, Arc<DynamicLootTable>)> {
-        let guard = self
-            .loot_tables
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut tables: Vec<_> = guard
-            .iter()
-            .map(|(id, table)| (id.clone(), table.clone()))
-            .collect();
-        tables.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        tables
-    }
-
-    /// Replaces the loaded loot tables with the tables of `replacements`, by id.
-    pub fn replace_loot_tables(&self, replacements: Vec<(String, Arc<DynamicLootTable>)>) {
-        self.loot_tables
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .extend(replacements);
     }
 
     /// The global loot modifiers of the last data load, in application order.

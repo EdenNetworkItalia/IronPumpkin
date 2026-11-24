@@ -426,6 +426,8 @@ fn loot_table_load_event_replaces_and_cancels() {
     let server = support::server();
     let seen = log();
     let seen_by_handler = seen.clone();
+    let stored = log();
+    let stored_by_handler = stored.clone();
     on::<LootTableLoadEvent, _>(move |event| {
         if !event.name.starts_with("events:") {
             return;
@@ -434,6 +436,15 @@ fn loot_table_load_event_replaces_and_cancels() {
         match event.name.as_str() {
             "events:cancelled" => event.cancelled = true,
             "events:replaced" => {
+                // The manager stores the new tables only after the last event.
+                push(
+                    &stored_by_handler,
+                    support::server()
+                        .datapack_manager
+                        .get_loot_table("events:replaced")
+                        .is_some()
+                        .to_string(),
+                );
                 let mut table = (*event.table).clone();
                 table.pools.clear();
                 event.table = Arc::new(table);
@@ -447,21 +458,20 @@ fn loot_table_load_event_replaces_and_cancels() {
         mod_id: "events".to_owned(),
         files: LOOT_FILES,
     };
-    server.datapack_manager.load_all_with_mod_packs(
+    server.datapack_manager.load_all_hooked(
         world.path(),
         &[],
         &RecipeManager::default(),
         &[pack],
         mod_root.path(),
+        |tables| server_events::load_loot_tables(server, tables),
     );
-    assert_eq!(pools(server, "events:kept"), 1);
-
-    server_events::server_data_loaded(server);
 
     assert_eq!(
         entries(&seen),
         ["events:cancelled", "events:kept", "events:replaced"]
     );
+    assert_eq!(entries(&stored), ["false"]);
     assert_eq!(pools(server, "events:kept"), 1);
     assert_eq!(pools(server, "events:cancelled"), 0);
     assert_eq!(pools(server, "events:replaced"), 0);
@@ -501,7 +511,7 @@ fn loot_table_load_event_changes_a_vanilla_table() {
         _ => {}
     });
 
-    server_events::server_data_loaded(server);
+    server.reload_datapacks(server);
 
     assert_eq!(entries(&seen), ["dirt", "gravel", "stone"]);
     assert_eq!(drops(server, "minecraft:blocks/dirt"), ["diamond"]);
