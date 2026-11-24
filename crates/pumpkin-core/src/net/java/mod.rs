@@ -858,7 +858,8 @@ impl JavaClient {
     /// call, so that the close does not drop the deferred packet. This call then returns before
     /// the connection closes.
     pub async fn kick_explicit(&self, reason: &TextComponent, send_packet: bool) {
-        if send_packet && let Some((call, player)) = self.deferring_guest_call(true) {
+        // Also without a packet: a close now would drop the sends that the guest call deferred.
+        if let Some((call, player)) = self.deferring_guest_call(true) {
             let reason = reason.clone();
             let runtime = tokio::runtime::Handle::current();
             call.defer(
@@ -869,8 +870,9 @@ impl JavaClient {
                     };
                     // The packet goes out in the order of the deferred sends. The wait for the
                     // flush runs on a task: a stalled peer does not hold the deferred queue.
-                    let flushed = java
-                        .serialize_disconnect(&reason)
+                    let flushed = send_packet
+                        .then(|| java.serialize_disconnect(&reason))
+                        .flatten()
                         .and_then(|data| java.queue_with_completion(data, OutgoingPacket::flushed));
                     runtime.spawn(async move {
                         if let Some(flushed) = flushed {

@@ -919,17 +919,21 @@ impl BedrockClient {
     }
 
     /// Defers a kick: the disconnect packet `data` goes out in the order of the deferred sends,
-    /// then a task flushes the session and closes the connection, so that a stalled peer does not
-    /// hold the deferred queue.
+    /// then a task waits until the writer takes it, flushes the session and closes the
+    /// connection, so that a stalled peer does not hold the deferred queue. The flush counts only
+    /// the bytes that the writer took, so the wait for the writer comes first.
     fn defer_kick(call: &Arc<dyn GuestCall>, client: Arc<Self>, data: Option<Bytes>) {
         let runtime = tokio::runtime::Handle::current();
         call.defer(
             "kick",
             Box::new(move || {
-                if let Some(data) = data {
-                    client.try_enqueue_packet_data_inner(data, true, false);
-                }
+                let written = data.and_then(|data| {
+                    client.queue_translated_with_completion(client.translate_outgoing(data, true))
+                });
                 runtime.spawn(async move {
+                    if let Some(written) = written {
+                        let _ = tokio::time::timeout(KICK_WRITE_TIMEOUT, written).await;
+                    }
                     let _ = client
                         .session
                         .flush_reliable(std::time::Duration::from_secs(1))
@@ -1173,39 +1177,43 @@ impl BedrockClient {
         }
     }
 
-    async fn send_and_wait_translated(&self, (packet_data, extras): (Option<Bytes>, Vec<Bytes>)) {
+    async fn send_and_wait_translated(&self, translated: (Option<Bytes>, Vec<Bytes>)) {
+        if let Some(written) = self.queue_translated_with_completion(translated) {
+            let _ = written.await;
+        }
+    }
+
+    /// Queues the translated packets. The receiver completes when the writer takes the last one.
+    /// `None` when nothing was queued.
+    fn queue_translated_with_completion(
+        &self,
+        (packet_data, extras): (Option<Bytes>, Vec<Bytes>),
+    ) -> Option<oneshot::Receiver<()>> {
         if self.is_closed() {
-            return;
+            return None;
         }
         let mut packets = Vec::with_capacity(usize::from(packet_data.is_some()) + extras.len());
         if let Some(packet_data) = packet_data {
             packets.push(packet_data);
         }
         packets.extend(extras);
-        let Some(last_packet) = packets.pop() else {
-            return;
-        };
+        let last_packet = packets.pop()?;
         for packet in packets {
-            let Some(packet_len) = self.reserve_bytes(packet.len()) else {
-                return;
-            };
+            let packet_len = self.reserve_bytes(packet.len())?;
             if !self.queue_outgoing(
                 OutgoingPacket::normal(packet, self.sub_client_id, self.id),
                 packet_len,
             ) {
-                return;
+                return None;
             }
         }
-        let Some(last_len) = self.reserve_bytes(last_packet.len()) else {
-            return;
-        };
+        let last_len = self.reserve_bytes(last_packet.len())?;
         let (tx, rx) = oneshot::channel();
-        if self.queue_outgoing(
+        self.queue_outgoing(
             OutgoingPacket::priority(last_packet, self.sub_client_id, self.id, tx),
             last_len,
-        ) {
-            let _ = rx.await;
-        }
+        )
+        .then_some(rx)
     }
 
     /// Sends the packet and waits until the writer takes it. In a guest call that defers the
@@ -1977,6 +1985,9 @@ impl BedrockClient {
         }
     }
 }
+
+/// How long a deferred kick waits until the writer takes its disconnect packet.
+const KICK_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The sent event that a send fires.
 #[derive(Debug, PartialEq, Eq)]
