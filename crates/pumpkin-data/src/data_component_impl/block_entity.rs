@@ -86,7 +86,20 @@ impl DataComponentImpl for EntityDataImpl {
     }
     /// `TypedEntityData.codec` encodes the tag with its `id` as `CustomData`.
     fn get_hash(&self) -> i32 {
-        hash_ops::nbt(&self.write_data()) as i32
+        let id = self
+            .get_entity_type()
+            .map(|entity| crate::dynamic::namespaced_name(entity.resource_name));
+        let tags = self.nbt.iter().flat_map(|nbt| nbt.child_tags.iter());
+        let mut entries: Vec<(u32, u32)> = tags
+            .filter(|(key, _)| id.is_none() || &***key != "id")
+            .map(|(key, value)| (hash_ops::string(key), hash_ops::nbt(value)))
+            .collect();
+        match id {
+            Some(id) => entries.push((hash_ops::string("id"), hash_ops::string(&id))),
+            None if entries.is_empty() => return hash_ops::empty() as i32,
+            None => {}
+        }
+        hash_ops::map(entries) as i32
     }
     default_impl!(EntityData);
 }
@@ -354,6 +367,27 @@ fn read_sign_messages(list: &[NbtTag]) -> [Cow<'static, str>; 4] {
     })
 }
 
+/// The hash of `SignText.CODEC`, which writes each line as a plain text.
+fn sign_text_hash(
+    messages: &[Cow<'static, str>; 4],
+    filtered_messages: Option<&[Cow<'static, str>; 4]>,
+    color: crate::dye_color::DyeColor,
+    has_glowing_text: bool,
+) -> u32 {
+    let lines = |lines: &[Cow<'static, str>; 4]| {
+        hash_ops::list(lines.iter().map(|line| hash_ops::string(line)))
+    };
+    let mut fields = hash_ops::MapHasher::new();
+    fields.put("messages", lines(messages));
+    if let Some(filtered) = filtered_messages.filter(|filtered| *filtered != messages) {
+        fields.put("filtered_messages", lines(filtered));
+    }
+    fields
+        .put("color", hash_ops::string(color.name()))
+        .put("has_glowing_text", hash_ops::boolean(has_glowing_text))
+        .finish()
+}
+
 fn write_sign_text(
     messages: &[Cow<'static, str>; 4],
     filtered_messages: Option<&[Cow<'static, str>; 4]>,
@@ -443,7 +477,12 @@ impl DataComponentImpl for SignTextFrontImpl {
     }
     /// `SignText.CODEC` always writes the color and the glow flag.
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&self.write_data()) as i32
+        sign_text_hash(
+            &self.messages,
+            self.filtered_messages.as_ref(),
+            self.color,
+            self.has_glowing_text,
+        ) as i32
     }
     default_impl!(SignTextFront);
 }
@@ -494,7 +533,12 @@ impl DataComponentImpl for SignTextBackImpl {
     }
     /// `SignText.CODEC` always writes the color and the glow flag.
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&self.write_data()) as i32
+        sign_text_hash(
+            &self.messages,
+            self.filtered_messages.as_ref(),
+            self.color,
+            self.has_glowing_text,
+        ) as i32
     }
     default_impl!(SignTextBack);
 }

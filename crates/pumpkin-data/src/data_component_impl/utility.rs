@@ -108,15 +108,23 @@ impl CompostableImpl {
     }
 }
 
-impl DataComponentImpl for CompostableImpl {
-    fn write_data(&self) -> NbtTag {
-        let layers = match self.chance {
+impl CompostableImpl {
+    fn layers(&self) -> Option<&'static str> {
+        Some(match self.chance {
             0.3 => "minecraft:compostable/low",
             0.5 => "minecraft:compostable/low_medium",
             0.65 => "minecraft:compostable/medium",
             0.85 => "minecraft:compostable/medium_high",
             1.0 => "minecraft:compostable/always_add_one",
-            _ => return NbtTag::End,
+            _ => return None,
+        })
+    }
+}
+
+impl DataComponentImpl for CompostableImpl {
+    fn write_data(&self) -> NbtTag {
+        let Some(layers) = self.layers() else {
+            return NbtTag::End;
         };
         let mut compound = NbtCompound::new();
         compound.put_string("layers", layers.to_string());
@@ -124,7 +132,11 @@ impl DataComponentImpl for CompostableImpl {
     }
 
     fn get_hash(&self) -> i32 {
-        hash_ops::codec_nbt(&self.write_data()) as i32
+        self.layers().map_or_else(hash_ops::empty, |layers| {
+            hash_ops::MapHasher::new()
+                .put("layers", hash_ops::string(layers))
+                .finish()
+        }) as i32
     }
 
     default_impl!(Compostable);

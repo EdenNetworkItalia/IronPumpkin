@@ -80,14 +80,21 @@ pub fn double(value: f64) -> u32 {
 /// Java hashes the UTF-16 length and code units of the string.
 #[must_use]
 pub fn string(value: &str) -> u32 {
-    let units: Vec<u16> = value.encode_utf16().collect();
-    let mut bytes = Vec::with_capacity(5 + units.len() * 2);
-    bytes.push(TAG_STRING);
-    bytes.extend_from_slice(&(units.len() as i32).to_le_bytes());
-    for unit in units {
-        bytes.extend_from_slice(&unit.to_le_bytes());
+    let length = value.encode_utf16().count() as i32;
+    let mut digest = Digest::start(TAG_STRING);
+    digest.bytes(&length.to_le_bytes());
+    let mut buffer = [0u8; 64];
+    let mut filled = 0;
+    for unit in value.encode_utf16() {
+        buffer[filled..filled + 2].copy_from_slice(&unit.to_le_bytes());
+        filled += 2;
+        if filled == buffer.len() {
+            digest.bytes(&buffer);
+            filled = 0;
+        }
     }
-    crc(&bytes)
+    digest.bytes(&buffer[..filled]);
+    digest.0
 }
 
 #[must_use]
@@ -97,57 +104,72 @@ pub fn boolean(value: bool) -> u32 {
 
 #[must_use]
 pub fn list(values: impl IntoIterator<Item = u32>) -> u32 {
-    let mut bytes = vec![TAG_LIST_START];
+    let mut digest = Digest::start(TAG_LIST_START);
     for value in values {
-        bytes.extend_from_slice(&value.to_le_bytes());
+        digest.bytes(&value.to_le_bytes());
     }
-    bytes.push(TAG_LIST_END);
-    crc(&bytes)
+    digest.end(TAG_LIST_END)
 }
 
 #[must_use]
 pub fn byte_array(values: &[i8]) -> u32 {
-    let mut bytes = Vec::with_capacity(values.len() + 2);
-    bytes.push(TAG_BYTE_ARRAY_START);
-    bytes.extend(values.iter().map(|&value| value as u8));
-    bytes.push(TAG_BYTE_ARRAY_END);
-    crc(&bytes)
+    let mut digest = Digest::start(TAG_BYTE_ARRAY_START);
+    for chunk in values.chunks(64) {
+        let mut buffer = [0u8; 64];
+        for (byte, value) in buffer.iter_mut().zip(chunk) {
+            *byte = *value as u8;
+        }
+        digest.bytes(&buffer[..chunk.len()]);
+    }
+    digest.end(TAG_BYTE_ARRAY_END)
 }
 
 #[must_use]
 pub fn int_array(values: &[i32]) -> u32 {
-    let mut bytes = Vec::with_capacity(values.len() * 4 + 2);
-    bytes.push(TAG_INT_ARRAY_START);
+    let mut digest = Digest::start(TAG_INT_ARRAY_START);
     for value in values {
-        bytes.extend_from_slice(&value.to_le_bytes());
+        digest.bytes(&value.to_le_bytes());
     }
-    bytes.push(TAG_INT_ARRAY_END);
-    crc(&bytes)
+    digest.end(TAG_INT_ARRAY_END)
 }
 
 #[must_use]
 pub fn long_array(values: &[i64]) -> u32 {
-    let mut bytes = Vec::with_capacity(values.len() * 8 + 2);
-    bytes.push(TAG_LONG_ARRAY_START);
+    let mut digest = Digest::start(TAG_LONG_ARRAY_START);
     for value in values {
-        bytes.extend_from_slice(&value.to_le_bytes());
+        digest.bytes(&value.to_le_bytes());
     }
-    bytes.push(TAG_LONG_ARRAY_END);
-    crc(&bytes)
+    digest.end(TAG_LONG_ARRAY_END)
 }
 
 /// Vanilla sorts the entries by the unsigned key hash, then by the unsigned value hash.
 #[must_use]
 pub fn map(mut entries: Vec<(u32, u32)>) -> u32 {
     entries.sort_unstable();
-    let mut bytes = Vec::with_capacity(entries.len() * 8 + 2);
-    bytes.push(TAG_MAP_START);
+    let mut digest = Digest::start(TAG_MAP_START);
     for (key, value) in entries {
-        bytes.extend_from_slice(&key.to_le_bytes());
-        bytes.extend_from_slice(&value.to_le_bytes());
+        digest.bytes(&key.to_le_bytes());
+        digest.bytes(&value.to_le_bytes());
     }
-    bytes.push(TAG_MAP_END);
-    crc(&bytes)
+    digest.end(TAG_MAP_END)
+}
+
+/// A CRC-32C over the bytes of one value, fed without a buffer.
+struct Digest(u32);
+
+impl Digest {
+    fn start(tag: u8) -> Self {
+        Self(crc(&[tag]))
+    }
+
+    fn bytes(&mut self, bytes: &[u8]) {
+        self.0 = crc32c::crc32c_append(self.0, bytes);
+    }
+
+    fn end(mut self, tag: u8) -> u32 {
+        self.bytes(&[tag]);
+        self.0
+    }
 }
 
 /// The fields of a record codec, hashed as a map with string keys.
