@@ -19,13 +19,18 @@ use pumpkin_core::block::entities::brewing_stand::BrewingStandBlockEntity;
 use pumpkin_core::block::entities::campfire::CampfireBlockEntity;
 use pumpkin_core::block::entities::furnace::FurnaceBlockEntity;
 use pumpkin_core::block::entities::furnace_like_block_entity::CookingBlockEntityBase;
+use pumpkin_core::plugin::block::brewing_start::BrewingStartEvent;
 use pumpkin_core::plugin::block::campfire_start::CampfireStartEvent;
-use pumpkin_core::plugin::{BoxFuture, EventHandler, EventPriority};
+use pumpkin_core::plugin::inventory::brewing_stand_fuel::BrewingStandFuelEvent;
+use pumpkin_core::plugin::inventory::furnace_burn::FurnaceBurnEvent;
+use pumpkin_core::plugin::{BoxFuture, EventHandler, EventPriority, Payload};
 use pumpkin_core::server::Server;
 use pumpkin_core::world::World;
 use pumpkin_data::Block;
+use pumpkin_data::data_component_impl::PotionContentsImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::potion::Potion;
 use pumpkin_data::recipes::{CookingRecipeKind, RecipeCategoryTypes};
 use pumpkin_inventory::Inventory;
 use pumpkin_nbt::compound::NbtCompound;
@@ -165,20 +170,77 @@ fn the_furnace_burn_waits_for_a_held_items_lock() {
     assert_eq!(furnace.get_stack(1).item_count, 2);
 }
 
-struct Blocking<F>(F, PhantomData<fn()>);
+/// A blocking handler that runs a closure on the event.
+struct Blocking<E, F>(F, PhantomData<fn() -> E>);
 
-impl<F> EventHandler<CampfireStartEvent> for Blocking<F>
+impl<E, F> EventHandler<E> for Blocking<E, F>
 where
-    F: Fn(&mut CampfireStartEvent) + Send + Sync,
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync,
 {
     fn handle_blocking<'a>(
         &'a self,
         _server: &'a Arc<Server>,
-        event: &'a mut CampfireStartEvent,
+        event: &'a mut E,
     ) -> BoxFuture<'a, ()> {
         (self.0)(event);
         Box::pin(async {})
     }
+}
+
+/// Registers a blocking handler for `E` for the rest of the process.
+fn on<E, F>(handler: F)
+where
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync + 'static,
+{
+    support::server().plugin_manager.register_with::<E, _>(
+        Arc::new(Blocking(handler, PhantomData)),
+        EventPriority::Normal,
+        true,
+        false,
+    );
+}
+
+/// The pusher thread that [`start_push`] starts.
+type Push = Mutex<Option<std::thread::JoinHandle<bool>>>;
+
+/// Starts a push of one `item` into `slot` of `inventory` on another thread, as
+/// [`during_push`] does, and returns once the push holds the items lock. An event handler calls
+/// it, so the push holds the lock at the next lock of the tick after the event.
+fn start_push<I: Inventory + 'static>(
+    inventory: &Arc<I>,
+    slot: usize,
+    item: &'static Item,
+    push: &Push,
+) {
+    let held = Arc::new(Barrier::new(2));
+    let inventory = inventory.clone();
+    let pusher_held = held.clone();
+    let pusher = std::thread::spawn(move || {
+        inventory.update_stack(slot, &mut |stack| {
+            pusher_held.wait();
+            std::thread::sleep(HOLD);
+            if stack.is_empty() {
+                *stack = ItemStack::new(1, item);
+            } else {
+                stack.increment(1);
+            }
+            true
+        })
+    });
+    held.wait();
+    *push.lock().unwrap() = Some(pusher);
+}
+
+/// Waits for the push that [`start_push`] started and checks that it landed.
+fn join_push(push: &Push) {
+    let pusher = push
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the event starts the push");
+    assert!(pusher.join().unwrap(), "the push lands");
 }
 
 /// A `CampfireStartEvent` handler reads the campfire. Its locks are free, and the cooking time
@@ -217,14 +279,7 @@ fn a_campfire_start_handler_can_read_the_campfire() {
             event.cooking_time = COOKING_TIME + 3;
         }
     };
-    support::server()
-        .plugin_manager
-        .register_with::<CampfireStartEvent, _>(
-            Arc::new(Blocking(handler, PhantomData)),
-            EventPriority::Normal,
-            true,
-            false,
-        );
+    on(handler);
 
     campfire.tick(&world);
     let nbt = read
@@ -260,4 +315,101 @@ fn a_hopper_push_does_not_cost_the_brewing_stand_a_tick() {
     stand.brew_time.store(5, Ordering::Relaxed);
     during_push(&stand, 1, &Item::GLASS_BOTTLE, || stand.tick(&world));
     assert_eq!(stand.brew_time.load(Ordering::Relaxed), 0);
+}
+
+/// The furnace uses its fuel while a push holds the items lock. A `FurnaceBurnEvent` handler
+/// starts the push, so the lock is held when the tick takes the fuel.
+#[test]
+fn the_fuel_use_waits_for_a_push_that_the_burn_event_starts() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(8, 100, 0);
+    place(&world, pos, &Block::FURNACE);
+    let furnace = Arc::new(FurnaceBlockEntity::new(pos));
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    let push: Arc<Push> = Arc::default();
+    on({
+        let furnace = furnace.clone();
+        let push = push.clone();
+        move |event: &mut FurnaceBurnEvent| {
+            if event.block_pos == pos {
+                start_push(&furnace, 1, &Item::COAL, &push);
+            }
+        }
+    });
+    furnace.tick(&world);
+    join_push(&push);
+    assert!(furnace.is_burning());
+    // One coal, one pushed coal, one coal used.
+    assert_eq!(furnace.get_stack(1).item_count, 1);
+}
+
+/// The brewing stand takes its blaze powder while a push holds the items lock. A
+/// `BrewingStandFuelEvent` handler starts the push, so the lock is held at the refuel.
+#[test]
+fn the_refuel_waits_for_a_push_that_the_fuel_event_starts() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(10, 100, 0);
+    place(&world, pos, &Block::BREWING_STAND);
+    let stand = Arc::new(BrewingStandBlockEntity::new(pos));
+    stand.set_stack(4, ItemStack::new(1, &Item::BLAZE_POWDER));
+    let push: Arc<Push> = Arc::default();
+    on({
+        let stand = stand.clone();
+        let push = push.clone();
+        move |event: &mut BrewingStandFuelEvent| {
+            if event.block_pos == pos {
+                start_push(&stand, 0, &Item::GLASS_BOTTLE, &push);
+            }
+        }
+    });
+    stand.tick(&world);
+    join_push(&push);
+    assert_eq!(stand.fuel.load(Ordering::Relaxed), 20);
+    assert!(stand.get_stack(4).is_empty());
+}
+
+fn water_bottle() -> ItemStack {
+    let mut bottle = ItemStack::new(1, &Item::POTION);
+    bottle.set_data_component(PotionContentsImpl {
+        potion_id: Some(i32::from(Potion::WATER.id)),
+        custom_color: None,
+        custom_effects: Vec::new(),
+        custom_name: None,
+    });
+    bottle
+}
+
+/// The brewing stand reads its bottles for the block state while a push holds the items lock.
+/// A `BrewingStartEvent` handler starts the push, so the lock is held at the read.
+#[test]
+fn the_bottle_state_waits_for_a_push_that_the_brewing_start_event_starts() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(12, 100, 0);
+    place(&world, pos, &Block::BREWING_STAND);
+    let stand = Arc::new(BrewingStandBlockEntity::new(pos));
+    stand.set_stack(0, water_bottle());
+    stand.set_stack(3, ItemStack::new(1, &Item::NETHER_WART));
+    stand.fuel.store(5, Ordering::Relaxed);
+    let push: Arc<Push> = Arc::default();
+    on({
+        let stand = stand.clone();
+        let push = push.clone();
+        move |event: &mut BrewingStartEvent| {
+            if event.block_pos == pos {
+                start_push(&stand, 4, &Item::BLAZE_POWDER, &push);
+            }
+        }
+    });
+    stand.tick(&world);
+    join_push(&push);
+    assert_eq!(stand.brew_time.load(Ordering::Relaxed), 400);
+    assert_eq!(
+        *stand.last_potion_count.lock().unwrap(),
+        Some([true, false, false])
+    );
 }
