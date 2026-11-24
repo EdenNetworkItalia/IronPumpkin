@@ -488,25 +488,57 @@ impl PropertySet {
     }
 }
 
-/// Whether vanilla keeps `ingredient`: the codecs reject an unknown item or tag and air, and
-/// `RecipeManager.finalizeRecipeLoading` ignores an ingredient without items.
-fn ingredient_is_placeable(ingredient: &OwnedRecipeIngredient) -> bool {
-    let known =
-        |id: &String| Item::from_registry_key(id).is_some_and(|item| item.id != Item::AIR.id);
-    match ingredient {
-        OwnedRecipeIngredient::Simple(id) => known(id),
-        OwnedRecipeIngredient::OneOf(ids) => !ids.is_empty() && ids.iter().all(known),
-        OwnedRecipeIngredient::Tagged(_) => !ingredient.items().is_empty(),
+/// Why vanilla does not load or keep a recipe.
+#[derive(Debug, PartialEq, Eq)]
+pub enum LoadError {
+    /// A codec rejects the recipe, with the vanilla message.
+    Parse(String),
+    /// `RecipeManager.finalizeRecipeLoading` ignores the recipe: an ingredient holds no item.
+    Unplaceable,
+}
+
+/// Vanilla `Item.CODEC` (`Item.java:118`, `Registry.java:43`).
+fn item_error(id: &str) -> Option<LoadError> {
+    match Item::from_registry_key(id) {
+        None => Some(LoadError::Parse(format!(
+            "Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: {id}"
+        ))),
+        Some(item) if item.id == Item::AIR.id => Some(LoadError::Parse(
+            "Item must not be minecraft:air".to_string(),
+        )),
+        Some(_) => None,
     }
 }
 
-/// The result item of `recipe` that the server does not know or that is air.
-///
-/// Vanilla `ItemStackTemplate.CODEC` reads the result with `Item.CODEC`, which rejects both
-/// (`Item.java:118`), so the recipe fails to parse.
-#[must_use]
-pub fn unknown_result(recipe: &DynamicRecipe) -> Option<&str> {
-    let id = match recipe {
+/// Why vanilla rejects `ingredient`: the codecs reject an unknown item or tag and air
+/// (`HolderSetCodec.java:76`), and `RecipeManager.finalizeRecipeLoading` ignores an ingredient
+/// without items.
+fn ingredient_error(ingredient: &OwnedRecipeIngredient) -> Option<LoadError> {
+    match ingredient {
+        OwnedRecipeIngredient::Simple(id) => item_error(id),
+        OwnedRecipeIngredient::OneOf(ids) if ids.is_empty() => Some(LoadError::Unplaceable),
+        OwnedRecipeIngredient::OneOf(ids) => ids.iter().find_map(|id| item_error(id)),
+        OwnedRecipeIngredient::Tagged(tag) => {
+            let known = pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, tag)
+                .is_some()
+                || pumpkin_data::dynamic::data_pack_item_tag(tag).is_some();
+            if !known {
+                Some(LoadError::Parse(format!(
+                    "Missing tag: '{}' in 'minecraft:item'",
+                    pumpkin_data::dynamic::namespaced_name(tag)
+                )))
+            } else if ingredient.items().is_empty() {
+                Some(LoadError::Unplaceable)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+/// The result item of `recipe`, if it has one.
+fn result_item(recipe: &DynamicRecipe) -> Option<&str> {
+    Some(match recipe {
         DynamicRecipe::Crafting(
             OwnedCraftingRecipe::Shaped { result, .. }
             | OwnedCraftingRecipe::Shapeless { result, .. },
@@ -516,41 +548,51 @@ pub fn unknown_result(recipe: &DynamicRecipe) -> Option<&str> {
         DynamicRecipe::SmithingTransform(r) => &r.result.item_id,
         DynamicRecipe::Brewing(r) => &r.output_item,
         DynamicRecipe::SmithingTrim(_) | DynamicRecipe::SpecialCrafting(_) => return None,
-    };
-    let known = Item::from_registry_key(id).is_some_and(|item| item.id != Item::AIR.id);
-    (!known).then_some(id.as_str())
+    })
 }
 
-/// Whether a client can place `recipe`: every ingredient holds an item. Vanilla does not load
-/// or sync a recipe with an ingredient that [`ingredient_is_placeable`] rejects.
+/// The ingredients of `recipe` that must hold an item.
+fn ingredients(recipe: &DynamicRecipe) -> Vec<&OwnedRecipeIngredient> {
+    match recipe {
+        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shaped { key, .. }) => {
+            key.iter().map(|(_, ingredient)| ingredient).collect()
+        }
+        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. }) => {
+            ingredients.iter().collect()
+        }
+        DynamicRecipe::Cooking(cooking) => vec![&owned_cooking(cooking).0.ingredient],
+        DynamicRecipe::Brewing(r) => vec![&r.input_item, &r.reagent],
+        DynamicRecipe::Stonecutting(r) => vec![&r.ingredient],
+        DynamicRecipe::SmithingTransform(r) => {
+            [Some(&r.base), r.template.as_ref(), r.addition.as_ref()]
+                .into_iter()
+                .flatten()
+                .collect()
+        }
+        DynamicRecipe::SmithingTrim(r) => vec![&r.template, &r.base, &r.addition],
+        DynamicRecipe::SpecialCrafting(_) => Vec::new(),
+    }
+}
+
+/// Why vanilla does not load or keep `recipe`, or `None` when it keeps it. A result item must
+/// exist (`ItemStackTemplate.CODEC`), and each ingredient must hold an item.
+#[must_use]
+pub fn load_error(recipe: &DynamicRecipe) -> Option<LoadError> {
+    if let Some(error) = result_item(recipe).and_then(item_error) {
+        return Some(error);
+    }
+    if let DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. }) = recipe
+        && ingredients.is_empty()
+    {
+        return Some(LoadError::Unplaceable);
+    }
+    ingredients(recipe).into_iter().find_map(ingredient_error)
+}
+
+/// Whether a client can place `recipe`, as [`load_error`] decides.
 #[must_use]
 pub fn is_placeable(recipe: &DynamicRecipe) -> bool {
-    match recipe {
-        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shaped { key, .. }) => key
-            .iter()
-            .all(|(_, ingredient)| ingredient_is_placeable(ingredient)),
-        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. }) => {
-            !ingredients.is_empty() && ingredients.iter().all(ingredient_is_placeable)
-        }
-        DynamicRecipe::Cooking(cooking) => {
-            ingredient_is_placeable(&owned_cooking(cooking).0.ingredient)
-        }
-        DynamicRecipe::Brewing(r) => {
-            ingredient_is_placeable(&r.input_item) && ingredient_is_placeable(&r.reagent)
-        }
-        DynamicRecipe::Stonecutting(r) => ingredient_is_placeable(&r.ingredient),
-        DynamicRecipe::SmithingTransform(r) => {
-            ingredient_is_placeable(&r.base)
-                && [&r.template, &r.addition]
-                    .into_iter()
-                    .flatten()
-                    .all(ingredient_is_placeable)
-        }
-        DynamicRecipe::SmithingTrim(r) => [&r.template, &r.base, &r.addition]
-            .into_iter()
-            .all(ingredient_is_placeable),
-        DynamicRecipe::SpecialCrafting(_) => true,
-    }
+    load_error(recipe).is_none()
 }
 
 static INDEX: LazyLock<RwLock<Arc<RecipeIndex>>> =

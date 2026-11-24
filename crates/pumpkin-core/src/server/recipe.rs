@@ -2,6 +2,7 @@ use std::sync::RwLock;
 
 use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::recipe_index;
+use pumpkin_inventory::recipe_index::LoadError;
 pub use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::codec::recipe::{PropertySetSync, StonecutterSync};
 use pumpkin_protocol::java::client::play::CUpdateRecipes;
@@ -9,26 +10,27 @@ use tracing::warn;
 
 use crate::net::java::JavaClient;
 
-/// Vanilla `RecipeManager.finalizeRecipeLoading` ignores a recipe that cannot be placed. This
-/// manager drops it, so no lookup and no client sees it. It also drops a recipe with an
-/// unknown result item; vanilla fails the whole data pack load on it
-/// (`RegistryDataLoader.java:277`).
-fn placeable(recipe: &DynamicRecipe) -> bool {
-    if let Some(item) = recipe_index::unknown_result(recipe) {
-        warn!(
-            "Failed to parse {}: Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: {item}",
-            recipe.recipe_id().unwrap_or("<unnamed>")
-        );
-        return false;
+/// The recipe that the manager keeps for `recipe`, or `None` for a recipe that a codec rejects
+/// or that vanilla `RecipeManager.finalizeRecipeLoading` ignores. It logs the vanilla message.
+fn loaded(recipe: DynamicRecipe) -> Option<DynamicRecipe> {
+    let Some(error) = recipe_index::load_error(&recipe) else {
+        return Some(recipe);
+    };
+    let id = recipe.recipe_id().unwrap_or("<unnamed>");
+    match error {
+        LoadError::Parse(message) => warn!("Failed to parse {id}: {message}"),
+        LoadError::Unplaceable => {
+            warn!("Recipe {id} can't be placed due to empty ingredients and will be ignored");
+        }
     }
-    let placeable = recipe_index::is_placeable(recipe);
-    if !placeable {
-        warn!(
-            "Recipe {} can't be placed due to empty ingredients and will be ignored",
-            recipe.recipe_id().unwrap_or("<unnamed>")
-        );
+    None
+}
+
+/// Adds `recipe` to `recipes` when it loads.
+fn insert(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
+    if let Some(recipe) = loaded(recipe) {
+        recipes.push(recipe);
     }
-    placeable
 }
 
 /// The data pack and plugin recipes. Each change rebuilds the [`recipe_index`].
@@ -51,15 +53,7 @@ impl RecipeManager {
     }
 
     pub fn add_recipe(&self, recipe: DynamicRecipe) {
-        if !placeable(&recipe) {
-            return;
-        }
-        let mut recipes = self
-            .dynamic_recipes
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.push(recipe);
-        recipe_index::install(&recipes);
+        self.add_recipes([recipe]);
     }
 
     pub fn add_recipes(&self, new_recipes: impl IntoIterator<Item = DynamicRecipe>) {
@@ -67,7 +61,9 @@ impl RecipeManager {
             .dynamic_recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.extend(new_recipes.into_iter().filter(placeable));
+        for recipe in new_recipes {
+            insert(&mut recipes, recipe);
+        }
         recipe_index::install(&recipes);
     }
 
@@ -76,7 +72,10 @@ impl RecipeManager {
             .dynamic_recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *recipes = new_recipes.into_iter().filter(placeable).collect();
+        recipes.clear();
+        for recipe in new_recipes {
+            insert(&mut recipes, recipe);
+        }
         recipe_index::install(&recipes);
     }
 
@@ -178,6 +177,52 @@ mod tests {
             recipe_index::current()
                 .stonecutter_recipes(pumpkin_data::dynamic::ContentIds::Real)
                 .all(|r| r.recipe_id != "test:dropped")
+        );
+    }
+
+    /// The vanilla messages: `Registry.java:43`, `Item.java:118`, `HolderSetCodec.java:76`.
+    #[test]
+    fn a_load_error_has_the_vanilla_message() {
+        let parse = |ingredient: &str| match recipe_index::load_error(&stonecutting(
+            "test:r", ingredient,
+        )) {
+            Some(LoadError::Parse(message)) => message,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            parse("test:missing"),
+            "Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: test:missing"
+        );
+        assert_eq!(parse("minecraft:air"), "Item must not be minecraft:air");
+        let missing_tag = DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+            recipe_id: "test:r".to_string(),
+            group: None,
+            ingredient: OwnedRecipeIngredient::Tagged("test:no_such_tag".to_string()),
+            result: OwnedRecipeResult {
+                item_id: "minecraft:stone".to_string(),
+                count: 1,
+                components: None,
+            },
+        });
+        assert_eq!(
+            recipe_index::load_error(&missing_tag),
+            Some(LoadError::Parse(
+                "Missing tag: 'test:no_such_tag' in 'minecraft:item'".to_string()
+            ))
+        );
+        let empty = DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+            recipe_id: "test:r".to_string(),
+            group: None,
+            ingredient: OwnedRecipeIngredient::OneOf(Vec::new()),
+            result: OwnedRecipeResult {
+                item_id: "minecraft:stone".to_string(),
+                count: 1,
+                components: None,
+            },
+        });
+        assert_eq!(
+            recipe_index::load_error(&empty),
+            Some(LoadError::Unplaceable)
         );
     }
 }
