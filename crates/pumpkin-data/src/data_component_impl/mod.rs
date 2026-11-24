@@ -131,28 +131,15 @@ macro_rules! default_impl {
 }
 
 pub fn get_str_hash(val: &str) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[12u8]);
-    digest.update(&(val.len() as u32).to_le_bytes());
-    let byte = val.as_bytes();
-    for i in byte {
-        digest.update(&[*i, 0u8]);
-    }
-    digest.finalize() as u32
+    hash_ops::string(val)
 }
 
 pub fn get_i32_hash(val: i32) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[8u8]);
-    digest.update(&val.to_le_bytes());
-    digest.finalize() as u32
+    hash_ops::int(val)
 }
 
 pub fn get_f32_hash(val: f32) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[7u8]);
-    digest.update(&val.to_bits().to_le_bytes());
-    digest.finalize() as u32
+    hash_ops::float(val)
 }
 
 pub fn get_idor_hash(val: &IdOr<basic::SoundEvent>) -> u32 {
@@ -696,6 +683,7 @@ pub mod book;
 pub mod combat;
 pub mod entity_variant;
 pub mod food;
+pub mod hash_ops;
 pub mod utility;
 
 // Re-export all component implementations

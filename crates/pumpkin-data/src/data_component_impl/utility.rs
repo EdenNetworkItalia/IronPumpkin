@@ -1,6 +1,8 @@
 use super::Digest;
 use crate::data_component_impl::combat::SwingAnimationImpl;
-use crate::data_component_impl::{DataComponentImpl, get_f32_hash, get_i32_hash, get_str_hash};
+use crate::data_component_impl::{
+    DataComponentImpl, get_f32_hash, get_i32_hash, get_str_hash, hash_ops,
+};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use std::borrow::Cow;
@@ -98,6 +100,10 @@ impl DataComponentImpl for CompostableImpl {
         let mut compound = NbtCompound::new();
         compound.put_string("layers", layers.to_string());
         NbtTag::Compound(compound)
+    }
+
+    fn get_hash(&self) -> i32 {
+        hash_ops::codec_nbt(&self.write_data()) as i32
     }
 
     default_impl!(Compostable);
@@ -252,6 +258,10 @@ impl WaxedImpl {
 impl DataComponentImpl for WaxedImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
+    }
+    /// `Unit.CODEC` encodes an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(Waxed);
 }
@@ -474,6 +484,10 @@ impl DataComponentImpl for MapDecorationsImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
     }
+    /// Pumpkin keeps no decorations, so the value is an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
+    }
     default_impl!(MapDecorations);
 }
 
@@ -551,8 +565,14 @@ impl DataComponentImpl for ChargedProjectilesImpl {
         }
         NbtTag::List(list)
     }
+    /// A list of `ItemStackTemplate.CODEC` values.
     fn get_hash(&self) -> i32 {
-        0
+        hash_ops::list(self.projectiles.iter().map(|projectile| {
+            crate::item_stack::ItemStack::read_item_stack(projectile).map_or_else(
+                || hash_ops::nbt_compound(projectile),
+                |stack| hash_ops::item_stack_template(&stack),
+            )
+        })) as i32
     }
     default_impl!(ChargedProjectiles);
 }
@@ -795,6 +815,10 @@ impl DataComponentImpl for BundleContentsImpl {
                 .collect(),
         )
     }
+    /// A list of `ItemStackTemplate.CODEC` values.
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.items.iter().map(hash_ops::item_stack_template)) as i32
+    }
     default_impl!(BundleContents);
 }
 
@@ -842,6 +866,23 @@ impl DataComponentImpl for LodestoneTrackerImpl {
         }
         compound.put_bool("tracked", self.tracked);
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        if let Some(target) = &self.target {
+            // `BlockPos.CODEC` encodes an int stream.
+            fields.put(
+                "target",
+                hash_ops::MapHasher::new()
+                    .put("dimension", hash_ops::id(&target.dimension))
+                    .put("pos", hash_ops::int_array(&[target.x, target.y, target.z]))
+                    .finish(),
+            );
+        }
+        if !self.tracked {
+            fields.put("tracked", hash_ops::boolean(false));
+        }
+        fields.finish() as i32
     }
     default_impl!(LodestoneTracker);
 }
@@ -1251,6 +1292,9 @@ impl DataComponentImpl for JukeboxPlayableImpl {
         };
         NbtTag::String(song.into())
     }
+    fn get_hash(&self) -> i32 {
+        hash_ops::id(self.song) as i32
+    }
     default_impl!(JukeboxPlayable);
 }
 
@@ -1295,6 +1339,9 @@ impl DataComponentImpl for RecipesImpl {
                 .map(|r| NbtTag::String(r.to_string().into()))
                 .collect(),
         )
+    }
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.recipes.iter().map(|recipe| hash_ops::id(recipe))) as i32
     }
     default_impl!(Recipes);
 }

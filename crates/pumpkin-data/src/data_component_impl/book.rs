@@ -1,4 +1,4 @@
-use crate::data_component_impl::DataComponentImpl;
+use crate::data_component_impl::{DataComponentImpl, hash_ops};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::TextComponent;
@@ -26,6 +26,11 @@ fn read_text(tag: &NbtTag) -> Option<String> {
 
 fn text_tag(value: &str) -> NbtTag {
     text_component_tag(&TextComponent::text(value.to_string()))
+}
+
+/// `Filterable.codec` encodes its full form, here without a filtered value.
+fn filterable_hash(raw: u32) -> u32 {
+    hash_ops::MapHasher::new().put("raw", raw).finish()
 }
 
 fn text_component_tag(component: &TextComponent) -> NbtTag {
@@ -59,6 +64,20 @@ impl DataComponentImpl for WritableBookContentImpl {
         let pages_tags: Vec<NbtTag> = self.pages.iter().map(|p| text_tag(p)).collect();
         compound.put("pages", NbtTag::List(pages_tags));
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        if !self.pages.is_empty() {
+            fields.put(
+                "pages",
+                hash_ops::list(
+                    self.pages
+                        .iter()
+                        .map(|page| filterable_hash(hash_ops::string(page))),
+                ),
+            );
+        }
+        fields.finish() as i32
     }
     default_impl!(WritableBookContent);
 }
@@ -117,6 +136,29 @@ impl DataComponentImpl for WrittenBookContentImpl {
         compound.put_bool("resolved", self.resolved);
         NbtTag::Compound(compound)
     }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        fields
+            .put("title", filterable_hash(hash_ops::string(&self.title)))
+            .put("author", hash_ops::string(&self.author));
+        if self.generation != 0 {
+            fields.put("generation", hash_ops::int(self.generation));
+        }
+        if !self.pages.is_empty() {
+            fields.put(
+                "pages",
+                hash_ops::list(
+                    self.pages
+                        .iter()
+                        .map(|page| filterable_hash(hash_ops::text(page))),
+                ),
+            );
+        }
+        if self.resolved {
+            fields.put("resolved", hash_ops::boolean(true));
+        }
+        fields.finish() as i32
+    }
     default_impl!(WrittenBookContent);
 }
 
@@ -148,6 +190,20 @@ impl DataComponentImpl for DebugStickStateImpl {
             compound.put_string(k.as_str(), v.clone());
         }
         NbtTag::Compound(compound)
+    }
+    /// A map from the block id to the name of the selected property.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(
+            self.properties
+                .iter()
+                .map(|(block, property)| {
+                    (
+                        hash_ops::string(&crate::dynamic::namespaced_name(block)),
+                        hash_ops::string(property),
+                    )
+                })
+                .collect(),
+        ) as i32
     }
     default_impl!(DebugStickState);
 }

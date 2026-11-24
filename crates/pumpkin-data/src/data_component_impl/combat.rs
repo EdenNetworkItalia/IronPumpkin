@@ -6,7 +6,7 @@ use crate::damage::DamageType;
 use crate::data_component_impl::basic::SoundEvent;
 use crate::data_component_impl::{
     DataComponentImpl, EquipmentSlot, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor,
-    get_idor_hash, get_idset_hash, get_str_hash, put_idor,
+    get_idor_hash, get_idset_hash, get_str_hash, hash_ops, put_idor,
 };
 use crate::dynamic::DynamicTaggable;
 use crate::entity_type::EntityType;
@@ -254,6 +254,40 @@ impl DataComponentImpl for AttributeModifiersImpl {
         }
         NbtTag::List(list)
     }
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.attribute_modifiers.iter().map(|m| {
+            let mut fields = hash_ops::MapHasher::new();
+            fields
+                .put("type", hash_ops::id(m.r#type.name))
+                .put("id", hash_ops::id(&m.id))
+                .put("amount", hash_ops::double(m.amount))
+                .put("operation", hash_ops::string(m.operation.to_name()));
+            if !matches!(m.slot, crate::AttributeModifierSlot::Any) {
+                fields.put("slot", hash_ops::string(slot_to_name(&m.slot)));
+            }
+            match &m.display {
+                ModifierDisplay::Default => {}
+                ModifierDisplay::Hidden => {
+                    fields.put(
+                        "display",
+                        hash_ops::MapHasher::new()
+                            .put("type", hash_ops::string("hidden"))
+                            .finish(),
+                    );
+                }
+                ModifierDisplay::Override(text) => {
+                    fields.put(
+                        "display",
+                        hash_ops::MapHasher::new()
+                            .put("type", hash_ops::string("override"))
+                            .put("value", hash_ops::text(text))
+                            .finish(),
+                    );
+                }
+            }
+            fields.finish()
+        })) as i32
+    }
     default_impl!(AttributeModifiers);
 }
 
@@ -357,6 +391,10 @@ impl DataComponentImpl for CanPlaceOnImpl {
     fn write_data(&self) -> NbtTag {
         self.predicate.clone()
     }
+    /// `AdventureModePredicate.CODEC` in the saved NBT form of the predicate.
+    fn get_hash(&self) -> i32 {
+        hash_ops::codec_nbt(&self.predicate) as i32
+    }
     default_impl!(CanPlaceOn);
 }
 
@@ -383,6 +421,10 @@ impl DataComponentImpl for CanBreakImpl {
     fn write_data(&self) -> NbtTag {
         self.predicate.clone()
     }
+    /// `AdventureModePredicate.CODEC` in the saved NBT form of the predicate.
+    fn get_hash(&self) -> i32 {
+        hash_ops::codec_nbt(&self.predicate) as i32
+    }
     default_impl!(CanBreak);
 }
 
@@ -403,6 +445,9 @@ impl DataComponentImpl for RepairCostImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Int(self.cost)
     }
+    fn get_hash(&self) -> i32 {
+        get_i32_hash(self.cost) as i32
+    }
     default_impl!(RepairCost);
 }
 
@@ -416,6 +461,10 @@ impl IntangibleProjectileImpl {
 impl DataComponentImpl for IntangibleProjectileImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
+    }
+    /// `Unit.CODEC` encodes an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(IntangibleProjectile);
 }
@@ -528,6 +577,37 @@ impl DataComponentImpl for ToolImpl {
             self.can_destroy_blocks_in_creative,
         );
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let rules = hash_ops::list(self.rules.iter().map(|rule| {
+            let mut fields = hash_ops::MapHasher::new();
+            fields.put("blocks", hash_ops::holder_set(&rule.blocks));
+            if let Some(speed) = rule.speed {
+                fields.put("speed", hash_ops::float(speed));
+            }
+            if let Some(correct_for_drops) = rule.correct_for_drops {
+                fields.put("correct_for_drops", hash_ops::boolean(correct_for_drops));
+            }
+            fields.finish()
+        }));
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put("rules", rules);
+        if self.default_mining_speed != 1.0 {
+            fields.put(
+                "default_mining_speed",
+                hash_ops::float(self.default_mining_speed),
+            );
+        }
+        if self.damage_per_block != 1 {
+            fields.put(
+                "damage_per_block",
+                hash_ops::int(self.damage_per_block as i32),
+            );
+        }
+        if !self.can_destroy_blocks_in_creative {
+            fields.put("can_destroy_blocks_in_creative", hash_ops::boolean(false));
+        }
+        fields.finish() as i32
     }
     default_impl!(Tool);
 }
@@ -662,6 +742,11 @@ impl DataComponentImpl for EnchantableImpl {
         let mut compound = NbtCompound::new();
         compound.put_int("value", self.value);
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        hash_ops::MapHasher::new()
+            .put("value", hash_ops::int(self.value))
+            .finish() as i32
     }
     default_impl!(Enchantable);
 }
@@ -810,6 +895,12 @@ impl DataComponentImpl for RepairableImpl {
         NbtTag::Compound(compound)
     }
 
+    fn get_hash(&self) -> i32 {
+        hash_ops::MapHasher::new()
+            .put("items", hash_ops::holder_set(&self.items))
+            .finish() as i32
+    }
+
     default_impl!(Repairable);
 }
 
@@ -823,6 +914,10 @@ impl GliderImpl {
 impl DataComponentImpl for GliderImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
+    }
+    /// `Unit.CODEC` encodes an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(Glider);
 }
@@ -1359,6 +1454,19 @@ impl SwingAnimationType {
     }
 }
 
+/// `SwingAnimation.CODEC` omits the fields that equal `SwingAnimation.DEFAULT`.
+fn swing_animation_hash(animation_type: SwingAnimationType, duration: i32) -> i32 {
+    let default = SwingAnimationImpl::DEFAULT;
+    let mut fields = hash_ops::MapHasher::new();
+    if animation_type != default.animation_type {
+        fields.put("type", hash_ops::string(animation_type.to_name()));
+    }
+    if duration != default.duration {
+        fields.put("duration", hash_ops::int(duration));
+    }
+    fields.finish() as i32
+}
+
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct SwingAnimationImpl {
     pub animation_type: SwingAnimationType,
@@ -1411,6 +1519,10 @@ impl DataComponentImpl for SwingAnimationImpl {
         NbtTag::Compound(compound)
     }
 
+    fn get_hash(&self) -> i32 {
+        swing_animation_hash(self.animation_type, self.duration)
+    }
+
     default_impl!(AttackAnimation);
 }
 
@@ -1447,6 +1559,10 @@ impl DataComponentImpl for InteractAnimationImpl {
         compound.put_string("type", self.animation_type.to_name().to_string());
         compound.put_int("duration", self.duration);
         NbtTag::Compound(compound)
+    }
+
+    fn get_hash(&self) -> i32 {
+        swing_animation_hash(self.animation_type, self.duration)
     }
 
     default_impl!(InteractAnimation);
@@ -1621,6 +1737,17 @@ impl DataComponentImpl for TrimImpl {
         compound.put("material", self.material.clone());
         compound.put("pattern", self.pattern.clone());
         NbtTag::Compound(compound)
+    }
+    /// A holder reference encodes as its id, an inline definition as its codec value.
+    fn get_hash(&self) -> i32 {
+        let holder = |tag: &NbtTag| match tag {
+            NbtTag::String(name) => hash_ops::id(name),
+            tag => hash_ops::codec_nbt(tag),
+        };
+        hash_ops::MapHasher::new()
+            .put("material", holder(&self.material))
+            .put("pattern", holder(&self.pattern))
+            .finish() as i32
     }
     default_impl!(Trim);
 }

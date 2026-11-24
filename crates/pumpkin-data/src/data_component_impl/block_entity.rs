@@ -1,5 +1,5 @@
 use super::Digest;
-use crate::data_component_impl::DataComponentImpl;
+use crate::data_component_impl::{DataComponentImpl, hash_ops};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 
@@ -19,6 +19,10 @@ impl BlockEntityDataImpl {
 impl DataComponentImpl for BlockEntityDataImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(self.nbt.clone())
+    }
+    /// `TypedEntityData.codec` encodes the tag with its `id` as `CustomData`.
+    fn get_hash(&self) -> i32 {
+        hash_ops::nbt_compound(&self.nbt) as i32
     }
     default_impl!(BlockEntityData);
 }
@@ -81,6 +85,10 @@ impl DataComponentImpl for EntityDataImpl {
             NbtTag::Compound(out)
         }
     }
+    /// `TypedEntityData.codec` encodes the tag with its `id` as `CustomData`.
+    fn get_hash(&self) -> i32 {
+        hash_ops::nbt(&self.write_data()) as i32
+    }
     default_impl!(EntityData);
 }
 
@@ -104,6 +112,11 @@ impl BucketEntityDataImpl {
 impl DataComponentImpl for BucketEntityDataImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(self.nbt.clone().unwrap_or_default())
+    }
+    fn get_hash(&self) -> i32 {
+        self.nbt
+            .as_ref()
+            .map_or_else(|| hash_ops::map(Vec::new()), hash_ops::nbt_compound) as i32
     }
     default_impl!(BucketEntityData);
 }
@@ -154,6 +167,21 @@ impl DataComponentImpl for ContainerImpl {
             list.push(NbtTag::Compound(entry));
         }
         NbtTag::List(list)
+    }
+    /// `ItemContainerContents.asSlots`: the non-empty slots in index order.
+    fn get_hash(&self) -> i32 {
+        let mut slots: Vec<_> = self
+            .items
+            .iter()
+            .filter(|(_, stack)| !stack.is_empty())
+            .collect();
+        slots.sort_by_key(|(slot, _)| *slot);
+        hash_ops::list(slots.into_iter().map(|(slot, stack)| {
+            hash_ops::MapHasher::new()
+                .put("slot", hash_ops::int(i32::from(*slot)))
+                .put("item", hash_ops::item_stack_template(stack))
+                .finish()
+        })) as i32
     }
     default_impl!(Container);
 }
@@ -239,6 +267,10 @@ impl DataComponentImpl for BeesImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::List(self.bees.clone())
     }
+    /// Each occupant has the `CustomData` form of its entity and two ints.
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.bees.iter().map(hash_ops::nbt)) as i32
+    }
     default_impl!(Bees);
 }
 
@@ -261,6 +293,17 @@ impl DataComponentImpl for ContainerLootImpl {
         compound.put_string("loot_table", self.loot_table.clone());
         compound.put_long("seed", self.seed);
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put(
+            "loot_table",
+            hash_ops::string(&crate::dynamic::namespaced_name(&self.loot_table)),
+        );
+        if self.seed != 0 {
+            fields.put("seed", hash_ops::long(self.seed));
+        }
+        fields.finish() as i32
     }
     default_impl!(ContainerLoot);
 }
@@ -291,6 +334,9 @@ impl DataComponentImpl for SulfurCubeContentImpl {
     fn write_data(&self) -> NbtTag {
         // Unsaveable item: empty compound, read back as no component.
         NbtTag::Compound(self.item.to_nbt().unwrap_or_default())
+    }
+    fn get_hash(&self) -> i32 {
+        hash_ops::item_stack_template(&self.item) as i32
     }
     default_impl!(SulfurCubeContent);
 }
@@ -396,6 +442,10 @@ impl DataComponentImpl for SignTextFrontImpl {
             self.has_glowing_text,
         )
     }
+    /// `SignText.CODEC` always writes the color and the glow flag.
+    fn get_hash(&self) -> i32 {
+        hash_ops::codec_nbt(&self.write_data()) as i32
+    }
     default_impl!(SignTextFront);
 }
 
@@ -442,6 +492,10 @@ impl DataComponentImpl for SignTextBackImpl {
             self.color,
             self.has_glowing_text,
         )
+    }
+    /// `SignText.CODEC` always writes the color and the glow flag.
+    fn get_hash(&self) -> i32 {
+        hash_ops::codec_nbt(&self.write_data()) as i32
     }
     default_impl!(SignTextBack);
 }

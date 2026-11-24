@@ -2,7 +2,7 @@ use super::Digest;
 use crate::data_component_impl::basic::SoundEvent;
 use crate::data_component_impl::{
     DataComponentImpl, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor, get_idor_hash,
-    get_idset_hash, get_str_hash, put_idor,
+    get_idset_hash, get_str_hash, hash_ops, put_idor,
 };
 use crate::effect::StatusEffect;
 use crate::item::Item;
@@ -40,6 +40,16 @@ impl DataComponentImpl for FoodImpl {
         compound.put_float("saturation", self.saturation);
         compound.put_bool("can_always_eat", self.can_always_eat);
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        fields
+            .put("nutrition", hash_ops::int(self.nutrition))
+            .put("saturation", hash_ops::float(self.saturation));
+        if self.can_always_eat {
+            fields.put("can_always_eat", hash_ops::boolean(true));
+        }
+        fields.finish() as i32
     }
     default_impl!(Food);
 }
@@ -504,6 +514,11 @@ impl DataComponentImpl for UseRemainderImpl {
             || NbtTag::Compound(NbtCompound::new()),
             ItemStack::write_item_stack_template,
         )
+    }
+    fn get_hash(&self) -> i32 {
+        self.remainder.as_ref().map_or(0, |remainder| {
+            hash_ops::item_stack_template(remainder) as i32
+        })
     }
     default_impl!(UseRemainder);
 }
