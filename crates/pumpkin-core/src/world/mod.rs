@@ -674,6 +674,36 @@ impl World {
         dx <= radius && dz <= radius
     }
 
+    /// Forces or unforces a chunk and holds or releases its chunk ticket. Returns whether the
+    /// set changed. The caller runs `update_active_chunks` after a batch of changes.
+    pub fn set_chunk_forced(&self, pos: Vector2<i32>, forced: bool) -> bool {
+        let changed = {
+            let mut forced_chunks = self
+                .forced_chunks
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if forced {
+                forced_chunks.insert(pos)
+            } else {
+                forced_chunks.remove(&pos)
+            }
+        };
+        if changed {
+            let mut loading = self
+                .level
+                .chunk_loading
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if forced {
+                loading.add_force_ticket(pos);
+            } else {
+                loading.remove_force_ticket(pos);
+            }
+            loading.send_change();
+        }
+        changed
+    }
+
     /// Holds a chunk ticket for each chunk that the save of the world lists as forced.
     pub fn load_forced_chunks(&self) {
         let forced: Vec<_> = self
