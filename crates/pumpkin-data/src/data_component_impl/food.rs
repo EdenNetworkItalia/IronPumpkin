@@ -113,21 +113,39 @@ impl StatusEffectInstance {
     }
 }
 
+/// Vanilla `ItemUseAnimation`: the discriminant is the network id, the name is the codec name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ConsumeAnimation {
-    None,
-    Eat,
-    Drink,
-    Block,
-    Bow,
-    Spear,
-    Crossbow,
-    Spyglass,
-    Horn,
-    Brush,
+    None = 0,
+    Eat = 1,
+    Drink = 2,
+    Block = 3,
+    Bow = 4,
+    Trident = 5,
+    Crossbow = 6,
+    Spyglass = 7,
+    TootHorn = 8,
+    Brush = 9,
+    Bundle = 10,
+    Spear = 11,
 }
 
 impl ConsumeAnimation {
+    const ALL: [Self; 12] = [
+        Self::None,
+        Self::Eat,
+        Self::Drink,
+        Self::Block,
+        Self::Bow,
+        Self::Trident,
+        Self::Crossbow,
+        Self::Spyglass,
+        Self::TootHorn,
+        Self::Brush,
+        Self::Bundle,
+        Self::Spear,
+    ];
+
     #[must_use]
     pub const fn to_str(&self) -> &'static str {
         match self {
@@ -136,48 +154,65 @@ impl ConsumeAnimation {
             ConsumeAnimation::Drink => "drink",
             ConsumeAnimation::Block => "block",
             ConsumeAnimation::Bow => "bow",
-            ConsumeAnimation::Spear => "spear",
+            ConsumeAnimation::Trident => "trident",
             ConsumeAnimation::Crossbow => "crossbow",
             ConsumeAnimation::Spyglass => "spyglass",
-            ConsumeAnimation::Horn => "horn",
+            ConsumeAnimation::TootHorn => "toot_horn",
             ConsumeAnimation::Brush => "brush",
+            ConsumeAnimation::Bundle => "bundle",
+            ConsumeAnimation::Spear => "spear",
         }
     }
 }
 impl TryFrom<i32> for ConsumeAnimation {
     type Error = ();
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::None),
-            1 => Ok(Self::Eat),
-            2 => Ok(Self::Drink),
-            3 => Ok(Self::Block),
-            4 => Ok(Self::Bow),
-            5 => Ok(Self::Spear),
-            6 => Ok(Self::Crossbow),
-            7 => Ok(Self::Spyglass),
-            8 => Ok(Self::Horn),
-            9 => Ok(Self::Brush),
-            _ => Err(()),
-        }
+        Self::ALL
+            .into_iter()
+            .find(|animation| *animation as i32 == value)
+            .ok_or(())
     }
 }
 impl FromStr for ConsumeAnimation {
     type Err = ();
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "none" => Ok(Self::None),
-            "eat" => Ok(Self::Eat),
-            "drink" => Ok(Self::Drink),
-            "block" => Ok(Self::Block),
-            "bow" => Ok(Self::Bow),
-            "spear" => Ok(Self::Spear),
-            "crossbow" => Ok(Self::Crossbow),
-            "spyglass" => Ok(Self::Spyglass),
-            "horn" => Ok(Self::Horn),
-            "brush" => Ok(Self::Brush),
-            _ => Err(()),
+        Self::ALL
+            .into_iter()
+            .find(|animation| animation.to_str() == s)
+            .ok_or(())
+    }
+}
+
+#[cfg(test)]
+mod consume_animation_tests {
+    use super::ConsumeAnimation;
+    use std::str::FromStr;
+
+    /// The ids and names of vanilla `ItemUseAnimation`.
+    #[test]
+    fn consume_animation_matches_item_use_animation() {
+        let vanilla = [
+            "none",
+            "eat",
+            "drink",
+            "block",
+            "bow",
+            "trident",
+            "crossbow",
+            "spyglass",
+            "toot_horn",
+            "brush",
+            "bundle",
+            "spear",
+        ];
+        for (id, name) in vanilla.into_iter().enumerate() {
+            let animation = ConsumeAnimation::try_from(id as i32).unwrap();
+            assert_eq!(animation.to_str(), name);
+            assert_eq!(animation as i32, id as i32);
+            assert_eq!(ConsumeAnimation::from_str(name), Ok(animation));
         }
+        assert!(ConsumeAnimation::try_from(12).is_err());
+        assert!(ConsumeAnimation::from_str("horn").is_err());
     }
 }
 
