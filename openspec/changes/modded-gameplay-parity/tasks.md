@@ -150,6 +150,7 @@ Rules for every task:
   - Give each `pumpkin-util` arm a type-erased value with a manual `PartialEq`, and the parser a decode hook from `pumpkin-core`.
   - Cover `trigger_type`, `loot_function_type`, `loot_pool_entry_type`, `loot_condition_type`, `data_component_predicate_type` and `entity_sub_predicate_type`.
   - Expose a trigger fire call to mods.
+  - Let the data pack loaders of #201 accept the mod types: the advancement loader checks a trigger against the vanilla names and `TRIGGER_TYPES`; the loot table, predicate, item modifier and slot source loaders check a `type` against the vanilla names and the decoder registry of the type.
   - Verify: requirement "Use sites call the decoded behaviour" of `neoforge-static-registries`.
 - [ ] 6.15 Mod game rules
   - Needs: 6.1.
