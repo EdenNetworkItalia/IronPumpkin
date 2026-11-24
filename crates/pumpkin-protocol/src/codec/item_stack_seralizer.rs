@@ -1207,4 +1207,67 @@ mod tests {
             Some(7)
         );
     }
+
+    /// `ItemContainerContents.STREAM_CODEC` is a list of optional templates, one per slot up to
+    /// the last filled one.
+    #[test]
+    fn container_writes_one_entry_per_slot() {
+        use crate::codec::data_component::serialize;
+        use pumpkin_data::data_component_impl::ContainerImpl;
+        let container = ContainerImpl {
+            items: vec![(2, ItemStack::new(3, &Item::DIAMOND))],
+        };
+        let mut bytes = Vec::new();
+        serialize(
+            DataComponent::Container,
+            &container,
+            &mut bytes,
+            pumpkin_data::dynamic::ContentIds::Display,
+        )
+        .unwrap();
+        let diamond = i32::from(Item::DIAMOND.id);
+        // Three slots: two empty, then the template with its item, count and empty patch.
+        let expected = [var_ints(&[3]), vec![0, 0, 1], var_ints(&[diamond, 3, 0, 0])].concat();
+        assert_eq!(bytes, expected);
+        let decoded = crate::codec::data_component::deserialize(
+            DataComponent::Container,
+            &mut bytes.as_slice(),
+        )
+        .unwrap();
+        let decoded = decoded.as_any().downcast_ref::<ContainerImpl>().unwrap();
+        assert_eq!(decoded.items.len(), 1);
+        assert_eq!(decoded.items[0].0, 2);
+    }
+
+    /// `ChargedProjectiles.STREAM_CODEC` is a list of `ItemStackTemplate.STREAM_CODEC` values.
+    #[test]
+    fn charged_projectiles_write_their_templates() {
+        use crate::codec::data_component::{deserialize, serialize};
+        use pumpkin_data::data_component_impl::ChargedProjectilesImpl;
+        let arrow = ItemStack::new(1, &Item::ARROW).write_item_stack_template();
+        let pumpkin_nbt::tag::NbtTag::Compound(arrow) = arrow else {
+            panic!("a template with one item saves as a compound or an id");
+        };
+        let projectiles = ChargedProjectilesImpl {
+            projectiles: vec![arrow],
+        };
+        let mut bytes = Vec::new();
+        serialize(
+            DataComponent::ChargedProjectiles,
+            &projectiles,
+            &mut bytes,
+            pumpkin_data::dynamic::ContentIds::Display,
+        )
+        .unwrap();
+        let expected = var_ints(&[1, i32::from(Item::ARROW.id), 1, 0, 0]);
+        assert_eq!(bytes, expected);
+        let decoded =
+            deserialize(DataComponent::ChargedProjectiles, &mut bytes.as_slice()).unwrap();
+        let decoded = decoded
+            .as_any()
+            .downcast_ref::<ChargedProjectilesImpl>()
+            .unwrap();
+        let stack = ItemStack::read_item_stack(&decoded.projectiles[0]).unwrap();
+        assert_eq!(stack.item, &Item::ARROW);
+    }
 }

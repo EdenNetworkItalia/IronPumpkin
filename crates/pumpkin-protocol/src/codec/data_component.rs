@@ -1266,7 +1266,9 @@ pub fn serialize(
         DataComponent::MapId => get::<MapIdImpl>(value).serialize(seq),
         DataComponent::MapDecorations => get::<MapDecorationsImpl>(value).serialize(seq),
         DataComponent::MapPostProcessing => get::<MapPostProcessingImpl>(value).serialize(seq),
-        DataComponent::ChargedProjectiles => get::<ChargedProjectilesImpl>(value).serialize(seq),
+        DataComponent::ChargedProjectiles => {
+            get::<ChargedProjectilesImpl>(value).serialize_for(seq, ids)
+        }
         DataComponent::BundleContents => get::<BundleContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionContents => get::<PotionContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionDurationScale => get::<PotionDurationScaleImpl>(value).serialize(seq),
@@ -2641,12 +2643,24 @@ impl DataComponentCodec<Self> for MapPostProcessingImpl {
 
 impl DataComponentCodec<Self> for ChargedProjectilesImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt::from(self.projectiles.len() as i32))?;
-        for _ in &self.projectiles {
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    /// `ChargedProjectiles.STREAM_CODEC`: a list of templates. A saved projectile that does not
+    /// load as a stack is left out, because the client rejects an empty template.
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        let stacks: Vec<_> = self
+            .projectiles
+            .iter()
+            .filter_map(pumpkin_data::item_stack::ItemStack::read_item_stack)
+            .filter(|stack| !stack.is_empty())
+            .collect();
+        seq.write_var_int(&VarInt(stacks.len() as i32))?;
+        for stack in &stacks {
+            serialize_item_stack_template(stack, seq, ids)?;
         }
         Ok(())
     }
@@ -2656,8 +2670,10 @@ impl DataComponentCodec<Self> for ChargedProjectilesImpl {
         let len = read_count(seq, MAX_PROJECTILES)?;
         let mut projectiles = Vec::with_capacity(len);
         for _ in 0..len {
-            let _ = deserialize_item_stack_template(seq)?;
-            projectiles.push(pumpkin_nbt::compound::NbtCompound::new());
+            let stack = deserialize_item_stack_template(seq)?;
+            if let NbtTag::Compound(projectile) = stack.write_item_stack_template() {
+                projectiles.push(projectile);
+            }
         }
         Ok(Self { projectiles })
     }
@@ -3295,10 +3311,29 @@ impl DataComponentCodec<Self> for ContainerImpl {
         seq: &mut impl NetworkWriteExt,
         ids: ContentIds,
     ) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt::from(self.items.len() as i32))?;
-        for (_slot, stack) in &self.items {
-            seq.write_bool(true)?;
-            serialize_item_stack_template(stack, seq, ids)?;
+        // `ItemContainerContents.STREAM_CODEC`: one optional template per slot, up to the last
+        // filled slot.
+        let filled = |slot: usize| {
+            self.items
+                .iter()
+                .find(|(index, stack)| usize::from(*index) == slot && !stack.is_empty())
+        };
+        let slots = self
+            .items
+            .iter()
+            .filter(|(_, stack)| !stack.is_empty())
+            .map(|(slot, _)| usize::from(*slot) + 1)
+            .max()
+            .unwrap_or(0);
+        seq.write_var_int(&VarInt(slots as i32))?;
+        for slot in 0..slots {
+            match filled(slot) {
+                Some((_, stack)) => {
+                    seq.write_bool(true)?;
+                    serialize_item_stack_template(stack, seq, ids)?;
+                }
+                None => seq.write_bool(false)?,
+            }
         }
         Ok(())
     }
