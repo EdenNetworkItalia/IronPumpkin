@@ -864,7 +864,7 @@ fn the_block_capability_wins_over_a_chest_minecart_for_a_hopper_and_a_dropper() 
     test.place(at, props.to_state_id(&Block::DROPPER));
     let dropper = Arc::new(DropperBlockEntity::new(at));
     dropper.set_stack(0, ItemStack::new(2, &Item::GOLD_INGOT));
-    test.world.add_block_entity(dropper.clone());
+    test.world.add_block_entity(dropper);
     let Some(behaviour) = test
         .world
         .block_registry
