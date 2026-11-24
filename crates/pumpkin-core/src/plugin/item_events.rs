@@ -108,7 +108,7 @@ pub fn listens_to_attribute_modifiers() -> bool {
     any_listening::<ItemAttributeModifierEvent>()
 }
 
-struct HandlerScope;
+/// Whether the event named `event_name` fires from the reads of an item stack.
 #[must_use]
 pub fn is_hooked_event(event_name: &str) -> bool {
     event_name == GetEnchantmentLevelEvent::get_name_static()
