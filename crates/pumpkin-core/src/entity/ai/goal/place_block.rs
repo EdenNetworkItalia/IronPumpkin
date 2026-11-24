@@ -10,6 +10,7 @@ use crate::world::World;
 use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::is_air;
 use pumpkin_data::game_event::GameEvent;
+use pumpkin_data::tag::{self, Taggable};
 use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
@@ -117,6 +118,7 @@ impl PlaceBlockGoal {
             || !below_state.is_solid()
             || !below_state.is_full_cube()
             || below_block == &Block::BEDROCK
+            || below_block.has_tag(&tag::Block::NEOFORGE_ENDERMAN_PLACE_ON_BLACKLIST)
         {
             return false;
         }

@@ -150,7 +150,7 @@ impl Behavior for HarvestFarmland {
                 );
             }
 
-            if state.is_air() && block_below == &Block::FARMLAND && villager.has_farm_seeds() {
+            if state.is_air() && is_villager_farmland(block_below) && villager.has_farm_seeds() {
                 let mut inventory = villager
                     .inventory
                     .lock()
@@ -257,9 +257,13 @@ fn max_age(block: &Block) -> Option<u8> {
         .max()
 }
 
+fn is_villager_farmland(block: &Block) -> bool {
+    block == &Block::FARMLAND || block.has_tag(&tag::Block::NEOFORGE_VILLAGER_FARMLANDS)
+}
+
 fn valid_pos(block_pos: BlockPos, world: &World) -> bool {
     let (block, state) = world.get_block_and_state(&block_pos);
     let block_below = world.get_block(&block_pos.down());
     (is_crop_block(block) && is_max_age(block, state.id))
-        || (state.is_air() && block_below == &Block::FARMLAND)
+        || (state.is_air() && is_villager_farmland(block_below))
 }
