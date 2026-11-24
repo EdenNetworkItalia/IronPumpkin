@@ -90,7 +90,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.56 (#198) The block ticking chunks around an entity ticking chunk get random and scheduled ticks with the vanilla level rules, and `/forceload query` replies as vanilla; verify: a crop next to a forced chunk, the edge of the simulation distance, the reply tests, the tick benches
 - [x] 2.57 (#199) Biome generation gives the same result under parallel load; verify: a stress loop of the biome hash tests with zero failures, the generation benches
 - [x] 2.58 (#200) The panda eating test passes every run: the cause of the missing sit goal is measured and fixed in the engine or the test; verify: 300 of 300 stress runs
-- [ ] 2.59 (#201) Data pack decode errors follow the rule the owner picks for the reloadable registries; verify: a test per registry with the vanilla error text
+- [x] 2.59 (#201) Data pack decode errors follow the rule the owner picks for the reloadable registries; verify: a test per registry with the vanilla error text
 - [x] 2.60 (#202) The headless client tests pass under parallel load; verify: 30 of 30 stress runs of the whole `ironpumpkin-test-mod` suite
 - [x] 2.61 (#203) The creeper flee test cannot fail by chance: the failing step of the avoid entity start check is measured and fixed in the engine or in the test; verify: 1000 of 1000 stress runs
 - [x] 2.62 (#204) A furnace keeps its cook when a hopper pushes into it during the parallel block entity tick, and `CampfireStartEvent` fires without a slot lock held; verify: a reproducer test for each, `pumpkin-core --lib`
@@ -101,6 +101,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.67 (#215) Sync v0.2 imports that reach native events use the v0.2 mechanism of #179, so a Wasm handler of the event does not hang the call; verify: a `wasm_dispatch` test per event group
 - [ ] 2.68 (#217) Players load chunks at the server view distance, and inhabited time and thunder run in the spawning chunks only, as vanilla; verify: a test per item, the chunk load benches, an upstream PR draft
 - [ ] 2.69 (#220) The vanilla game events that Pumpkin never emits fire at their vanilla sites (entity death, hit ground, lightning, container close, drink, bounce, mount and dismount, resonance); verify: a test per event, an upstream PR draft
+- [ ] 2.70 (#221) Scheduled ticks that a chunk loads from disk or gets from its generation step from the load on, as vanilla `LevelChunk.registerTickContainerInLevel`; verify: a save and reload test for a block tick and a fluid tick, a new chunk test, the `chunk_tick` bench, an upstream PR draft
 - [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
