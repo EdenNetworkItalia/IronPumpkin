@@ -64,10 +64,11 @@ impl OnDatapackSyncEvent {
 /// data packs at each load and reload. A handler replaces the table with `table`, or cancels the
 /// event. A cancelled table, and a table without pools and functions, load as an empty table.
 ///
-/// It fires for the tables that the data packs of the mods and of the world load. The loot
-/// tables of the vanilla data are compiled in and fire no event. A handler gets `table` as a
-/// shared pointer: `Arc::make_mut` changes a copy, and the server keeps the table of the handler
-/// only when it is another pointer.
+/// It fires for the tables that the data packs of the mods and of the world load, and for the
+/// compiled vanilla tables that no pack replaces, in the order of the ids. A vanilla table that
+/// a handler changes or cancels is stored as a loaded table, which the lookup prefers. A handler
+/// gets `table` as a shared pointer: `Arc::make_mut` changes a copy, and the server keeps the
+/// table of the handler only when it is another pointer.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct LootTableLoadEvent {

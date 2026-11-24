@@ -3275,7 +3275,7 @@ impl pumpkin::plugin::player::HostPlayerWithStore<PluginHostState> for HasSelf<P
 
         run_blocking(accessor, move || {
             let command_dispatcher = server.command_dispatcher.load();
-            player.set_permission_lvl(&server, level, &command_dispatcher);
+            player.change_permission_lvl(&server, level, &command_dispatcher);
         })
         .await
     }

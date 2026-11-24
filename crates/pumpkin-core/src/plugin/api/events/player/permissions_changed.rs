@@ -9,10 +9,12 @@ use crate::entity::player::Player;
 ///
 /// `NeoForge`: `net.neoforged.neoforge.event.entity.player.PermissionsChangedEvent`, fired by
 /// `PlayerList.op` and `PlayerList.deop` before the op list changes, only when the level
-/// changes. The old level is the level of the op list entry, not the level that the player has
-/// now. A cancel keeps the old level: the op list does not change. The op and deop commands and
-/// the op calls of the Wasm plugins fire it. The permission level that a plugin sets on a
-/// player does not touch the op list and does not fire it.
+/// changes. The op and deop commands, the op calls of the Wasm plugins and the operator methods
+/// of the server management protocol fire it, and so does `Player::change_permission_lvl`,
+/// which the permission level call of the Wasm plugins uses. A cancel keeps the old level. For
+/// the op list paths the old level is the level of the op list entry, not the level that the
+/// player has now. `Player::change_permission_lvl` changes the level of the player alone, so
+/// its old level is the level that the player has now.
 #[cancellable]
 #[derive(Event, Clone)]
 pub struct PermissionsChangedEvent {

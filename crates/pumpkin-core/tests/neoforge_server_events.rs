@@ -14,15 +14,24 @@ mod support;
 
 use std::{
     marker::PhantomData,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
 use pumpkin_core::{
     command::CommandSender,
-    data::datapack::mod_packs::{ModDataPack, PackFiles},
+    data::datapack::{
+        loot_table_loader::parse_loot_table,
+        mod_packs::{ModDataPack, PackFiles},
+    },
     entity::player::Player,
-    net::java::neoforge::NegotiatedState,
+    net::{
+        java::neoforge::NegotiatedState,
+        management::{handlers::dispatch, rpc::RpcRequest},
+    },
     plugin::{
         BoxFuture, EventHandler, EventPriority, ParentEventHandler, Payload,
         player::PermissionsChangedEvent,
@@ -33,6 +42,7 @@ use pumpkin_core::{
         server_events,
     },
     server::{Server, recipe::RecipeManager},
+    world::loot::{LootContextParameters, generate_loot_from_handle},
 };
 use pumpkin_data::game_rules::GameRule;
 use pumpkin_util::PermissionLvl;
@@ -447,6 +457,63 @@ fn loot_table_load_event_replaces_and_cancels() {
     assert_eq!(pools(server, "events:replaced"), 0);
 }
 
+const DIAMOND_TABLE: &str = r#"{"type":"minecraft:block","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"minecraft:diamond"}]}]}"#;
+
+/// The names of the items that a roll of the table `id` gives.
+fn drops(server: &Server, id: &str) -> Vec<String> {
+    let handle = server.datapack_manager.get_loot_table(id).unwrap();
+    generate_loot_from_handle(&handle, 1, &LootContextParameters::default())
+        .iter()
+        .map(|stack| stack.item.registry_key.to_owned())
+        .collect()
+}
+
+/// `LootTableLoadEvent` also fires for the vanilla tables, which are compiled in: a replaced
+/// vanilla table changes the drop, a cancelled one drops nothing, and a table that no handler
+/// touches stays the compiled table.
+#[test]
+fn loot_table_load_event_changes_a_vanilla_table() {
+    let _serial = support::serial();
+    let server = support::server();
+    assert_eq!(drops(server, "minecraft:blocks/dirt"), ["dirt"]);
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<LootTableLoadEvent, _>(move |event| match event.name.as_str() {
+        "minecraft:blocks/dirt" => {
+            push(&seen_by_handler, "dirt");
+            event.table = Arc::new(parse_loot_table(DIAMOND_TABLE).unwrap());
+        }
+        "minecraft:blocks/stone" => {
+            push(&seen_by_handler, "stone");
+            event.cancelled = true;
+        }
+        "minecraft:blocks/gravel" => push(&seen_by_handler, "gravel"),
+        _ => {}
+    });
+
+    server_events::server_data_loaded(server);
+
+    assert_eq!(entries(&seen), ["dirt", "gravel", "stone"]);
+    assert_eq!(drops(server, "minecraft:blocks/dirt"), ["diamond"]);
+    assert!(drops(server, "minecraft:blocks/stone").is_empty());
+    assert!(matches!(
+        server
+            .datapack_manager
+            .get_loot_table("minecraft:blocks/stone")
+            .unwrap()
+            .table,
+        pumpkin_core::world::loot::LootTableRef::Dynamic(_)
+    ));
+    assert!(matches!(
+        server
+            .datapack_manager
+            .get_loot_table("minecraft:blocks/gravel")
+            .unwrap()
+            .table,
+        pumpkin_core::world::loot::LootTableRef::Static(_)
+    ));
+}
+
 struct Listener(Log, &'static str);
 
 impl ReloadListener for Listener {
@@ -528,4 +595,122 @@ fn a_cycle_of_reload_listener_dependencies_fails_the_sort() {
     event.add_dependency("a:two", "a:one").unwrap();
 
     assert!(matches!(event.sorted(), Err(ReloadListenerError::Cycle)));
+}
+
+/// Calls a method of the server management protocol.
+fn rpc(method: &str, params: serde_json::Value) {
+    let request = RpcRequest {
+        jsonrpc: Some("2.0".to_owned()),
+        id: Some(serde_json::json!(1)),
+        method: Some(method.to_owned()),
+        params: Some(params),
+    };
+    let response = support::RUNTIME
+        .block_on(dispatch(request, support::server()))
+        .unwrap();
+    assert!(response.error.is_none(), "{:?}", response.error);
+}
+
+fn operator(player: &Player) -> serde_json::Value {
+    serde_json::json!({
+        "player": {"id": player.gameprofile.id, "name": player.gameprofile.name},
+        "permissionLevel": 4
+    })
+}
+
+fn is_op(server: &Server, player: &Player) -> bool {
+    op_level(server, player).is_some()
+}
+
+/// The operator methods of the server management protocol fire `PermissionsChangedEvent` before
+/// the op list changes, as `PlayerList.op` and `deop` do for them: a cancel keeps the op list
+/// entry as it is.
+#[test]
+fn the_management_operator_methods_fire_permissions_changed_event() {
+    let _serial = support::serial();
+    let server = support::server();
+    let refused = support::player("RpcRefused");
+    let allowed = support::player("RpcAllowed");
+    let keep_allowed = Arc::new(AtomicBool::new(false));
+    let keep = keep_allowed.clone();
+    let seen = log();
+    let seen_by_handler = seen.clone();
+    on::<PermissionsChangedEvent, _>(move |event| {
+        let name = event.player.gameprofile.name.clone();
+        if name == "RpcRefused" {
+            event.cancelled = true;
+        } else if name == "RpcAllowed" {
+            push(
+                &seen_by_handler,
+                format!("{:?} -> {:?}", event.old_level, event.new_level),
+            );
+            event.cancelled = event.new_level == PermissionLvl::Zero && keep.load(Ordering::SeqCst);
+        }
+    });
+
+    rpc(
+        "operators/add",
+        serde_json::json!({"add": [operator(&refused), operator(&allowed)]}),
+    );
+    assert!(!is_op(server, &refused));
+    assert!(is_op(server, &allowed));
+
+    rpc(
+        "operators/set",
+        serde_json::json!({"operators": [operator(&refused)]}),
+    );
+    assert!(!is_op(server, &refused));
+    assert!(!is_op(server, &allowed));
+
+    rpc(
+        "operators/add",
+        serde_json::json!({"add": [operator(&allowed)]}),
+    );
+    keep_allowed.store(true, Ordering::SeqCst);
+    rpc(
+        "operators/remove",
+        serde_json::json!({"remove": [{"id": allowed.gameprofile.id}]}),
+    );
+    assert!(is_op(server, &allowed), "a cancel keeps the entry");
+    rpc("operators/clear", serde_json::json!([]));
+    assert!(is_op(server, &allowed), "a cancel keeps the entry");
+    rpc("operators/set", serde_json::json!({"operators": []}));
+    assert!(is_op(server, &allowed), "a cancel keeps the entry");
+    keep_allowed.store(false, Ordering::SeqCst);
+    rpc("operators/clear", serde_json::json!([]));
+    assert!(!is_op(server, &allowed));
+
+    assert_eq!(
+        entries(&seen),
+        [
+            "Zero -> Four",
+            "Four -> Zero",
+            "Zero -> Four",
+            "Four -> Zero",
+            "Four -> Zero",
+            "Four -> Zero",
+            "Four -> Zero",
+        ]
+    );
+}
+
+/// `Player::change_permission_lvl`, which the permission level call of the plugins uses, fires
+/// the event with the level of the player as the old level. A cancel keeps the level.
+#[test]
+fn change_permission_lvl_fires_permissions_changed_event() {
+    let _serial = support::serial();
+    let server = support::server();
+    let player = support::player("LevelChange");
+    on::<PermissionsChangedEvent, _>(|event| {
+        if event.player.gameprofile.name == "LevelChange" {
+            event.cancelled = event.new_level == PermissionLvl::Four;
+        }
+    });
+    let dispatcher = server.command_dispatcher.load();
+
+    assert!(!player.change_permission_lvl(server, PermissionLvl::Four, &dispatcher));
+    assert_eq!(player.permission_lvl.load(), PermissionLvl::Zero);
+    assert!(player.change_permission_lvl(server, PermissionLvl::Two, &dispatcher));
+    assert_eq!(player.permission_lvl.load(), PermissionLvl::Two);
+    assert!(player.change_permission_lvl(server, PermissionLvl::Two, &dispatcher));
 }

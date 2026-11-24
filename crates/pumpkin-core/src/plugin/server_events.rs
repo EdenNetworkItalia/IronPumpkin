@@ -97,13 +97,24 @@ pub fn permission_change_cancelled(
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .get_entry(&id)
         .map_or(PermissionLvl::Zero, |entry| entry.level);
+    level_change_cancelled(server, &player, new_level, old_level)
+}
+
+/// Fires [`PermissionsChangedEvent`] for `player` from `old_level` to `new_level`, when the
+/// level changes. Returns `true` when a handler cancelled it.
+pub fn level_change_cancelled(
+    server: &Arc<Server>,
+    player: &Arc<Player>,
+    new_level: PermissionLvl,
+    old_level: PermissionLvl,
+) -> bool {
     if old_level == new_level {
         return false;
     }
     server
         .plugin_manager
         .fire_blocking_with(server, || {
-            PermissionsChangedEvent::new(player, new_level, old_level)
+            PermissionsChangedEvent::new(player.clone(), new_level, old_level)
         })
         .is_some_and(|event| event.cancelled)
 }
@@ -120,15 +131,30 @@ pub fn server_data_loaded(server: &Arc<Server>) {
         .fire_blocking_with(server, || TagsUpdatedEventServerDataLoad);
 }
 
-/// Fires [`LootTableLoadEvent`] for each loaded loot table and keeps the table that the handlers
-/// leave. A cancelled table, as a table that a handler changed, replaces the loaded one: the
-/// cancelled one with an empty table, so the compiled table of the same id does not come back.
+/// Fires [`LootTableLoadEvent`] for each loot table and keeps the table that the handlers leave.
+///
+/// The tables are the ones that the data packs loaded and the compiled vanilla tables that no
+/// pack replaces, in the order of their ids. A changed or cancelled table goes to the loaded
+/// tables, which the lookup prefers: a cancelled table becomes an empty table, so the compiled
+/// table of the same id does not come back.
 fn load_loot_tables(server: &Arc<Server>) {
     if !server.plugin_manager.has_handlers::<LootTableLoadEvent>() {
         return;
     }
+    let mut tables = server.datapack_manager.loaded_loot_tables();
+    let vanilla = pumpkin_data::loot_table::all_loot_tables()
+        .filter(|(id, _)| {
+            tables
+                .binary_search_by(|(loaded, _)| loaded.as_str().cmp(id))
+                .is_err()
+        })
+        .map(|(id, table)| (id.to_owned(), Arc::new(DynamicLootTable::from(table))))
+        .collect::<Vec<_>>();
+    tables.extend(vanilla);
+    tables.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
     let mut replacements = Vec::new();
-    for (name, table) in server.datapack_manager.loaded_loot_tables() {
+    for (name, table) in tables {
         let mut event = LootTableLoadEvent::new(name.clone(), table.clone());
         server.plugin_manager.fire_blocking(server, &mut event);
         if event.cancelled {

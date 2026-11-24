@@ -4384,6 +4384,26 @@ impl Player {
         }
     }
 
+    /// Sets the permission level of the player unless a handler of `PermissionsChangedEvent`
+    /// cancels the change, and returns whether it changed.
+    ///
+    /// Unlike [`Self::set_permission_lvl`], which applies a level that the op list already has,
+    /// this is the change of the level alone: the event has the level of the player now as the
+    /// old level, because the op list does not change.
+    pub fn change_permission_lvl(
+        self: &Arc<Self>,
+        server: &Arc<Server>,
+        lvl: PermissionLvl,
+        command_dispatcher: &CommandDispatcher,
+    ) -> bool {
+        let old = self.permission_lvl.load();
+        if crate::plugin::server_events::level_change_cancelled(server, self, lvl, old) {
+            return false;
+        }
+        self.set_permission_lvl(server, lvl, command_dispatcher);
+        true
+    }
+
     pub fn can_use_game_master_blocks(&self) -> bool {
         self.gamemode.load() == GameMode::Creative
             && self.permission_lvl.load() >= PermissionLvl::Two

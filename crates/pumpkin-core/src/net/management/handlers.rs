@@ -23,6 +23,7 @@ use crate::{
         banlist_serializer::{BannedIpEntry, BannedPlayerEntry},
     },
     net::{DisconnectReason, GameProfile},
+    plugin::server_events::permission_change_cancelled,
     server::Server,
 };
 
@@ -640,6 +641,10 @@ async fn execute_method(
         }
         "minecraft:operators/add" => {
             let add_ops: Vec<OperatorDto> = parse_param(params, "add")?;
+            let add_ops: Vec<OperatorDto> = add_ops
+                .into_iter()
+                .filter(|op| !op_change_cancelled(server, op))
+                .collect();
             {
                 let mut op_guard = server
                     .data
@@ -669,6 +674,26 @@ async fn execute_method(
         }
         "minecraft:operators/remove" => {
             let to_remove: Vec<PlayerDto> = parse_param(params, "remove")?;
+            let to_remove: Vec<PlayerDto> = to_remove
+                .into_iter()
+                .filter(|player| {
+                    let uuid = server
+                        .data
+                        .operator_config
+                        .read()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .ops
+                        .iter()
+                        .find(|o| {
+                            player.id.is_some_and(|id| o.uuid == id)
+                                || player.name.as_ref().is_some_and(|name| &o.name == name)
+                        })
+                        .map(|o| o.uuid);
+                    !uuid.is_some_and(|uuid| {
+                        permission_change_cancelled(server, uuid, PermissionLvl::Zero)
+                    })
+                })
+                .collect();
             {
                 let mut op_guard = server
                     .data
@@ -701,13 +726,23 @@ async fn execute_method(
         }
         "minecraft:operators/clear" => {
             check_no_params(params)?;
+            let current = get_operator_entries(server);
+            let blocked: Vec<Uuid> = current
+                .iter()
+                .filter(|op| permission_change_cancelled(server, op.uuid, PermissionLvl::Zero))
+                .map(|op| op.uuid)
+                .collect();
             {
                 let mut op_guard = server
                     .data
                     .operator_config
                     .write()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                for removed in op_guard.ops.drain(..) {
+                let (kept, removed): (Vec<Op>, Vec<Op>) = std::mem::take(&mut op_guard.ops)
+                    .into_iter()
+                    .partition(|op| blocked.contains(&op.uuid));
+                op_guard.ops = kept;
+                for removed in removed {
                     let dto = OperatorDto {
                         player: PlayerDto::new(Some(removed.uuid), Some(removed.name)),
                         permission_level: Some(removed.level as u8),
@@ -723,10 +758,30 @@ async fn execute_method(
                 }
                 op_guard.save();
             };
-            Ok(json!([]))
+            Ok(serde_json::to_value(get_operators(server)).unwrap_or(Value::Null))
         }
         "minecraft:operators/set" => {
             let new_ops: Vec<OperatorDto> = parse_param(params, "operators")?;
+            // An operator whose change a handler cancelled keeps its entry as it is.
+            let mut blocked: Vec<Uuid> = Vec::new();
+            for old in get_operator_entries(server) {
+                let in_new = new_ops
+                    .iter()
+                    .any(|n| n.player.id.is_some_and(|id| id == old.uuid));
+                if !in_new && permission_change_cancelled(server, old.uuid, PermissionLvl::Zero) {
+                    blocked.push(old.uuid);
+                }
+            }
+            let new_ops: Vec<OperatorDto> = new_ops
+                .into_iter()
+                .filter(|op| {
+                    let cancelled = op_change_cancelled(server, op);
+                    if cancelled && let Some(id) = op.player.id {
+                        blocked.push(id);
+                    }
+                    !cancelled
+                })
+                .collect();
             {
                 let mut op_guard = server
                     .data
@@ -735,9 +790,10 @@ async fn execute_method(
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
 
                 for old in &op_guard.ops {
-                    if !new_ops
-                        .iter()
-                        .any(|n| n.player.id.is_some_and(|id| id == old.uuid))
+                    if !blocked.contains(&old.uuid)
+                        && !new_ops
+                            .iter()
+                            .any(|n| n.player.id.is_some_and(|id| id == old.uuid))
                     {
                         let dto = OperatorDto {
                             player: PlayerDto::new(Some(old.uuid), Some(old.name.clone())),
@@ -773,6 +829,13 @@ async fn execute_method(
                     }
                 }
 
+                final_ops.extend(
+                    op_guard
+                        .ops
+                        .iter()
+                        .filter(|op| blocked.contains(&op.uuid))
+                        .cloned(),
+                );
                 op_guard.ops = final_ops;
                 op_guard.save();
             };
@@ -1346,6 +1409,29 @@ fn get_ip_bans(server: &Server) -> Vec<IpBanDto> {
             }),
         })
         .collect()
+}
+
+/// The operator entries, as the op list has them now.
+fn get_operator_entries(server: &Server) -> Vec<Op> {
+    server
+        .data
+        .operator_config
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .ops
+        .clone()
+}
+
+/// Fires `PermissionsChangedEvent` for the op of `op`, as `PlayerList.op` does for the
+/// operator methods of the server management protocol. Returns `true` when a handler cancelled
+/// it. Call it before the write lock of the op list.
+fn op_change_cancelled(server: &Arc<Server>, op: &OperatorDto) -> bool {
+    let level = op
+        .permission_level
+        .map_or(PermissionLvl::Four, u8_to_permission_lvl);
+    op.player
+        .id
+        .is_some_and(|id| permission_change_cancelled(server, id, level))
 }
 
 fn get_operators(server: &Server) -> Vec<OperatorDto> {
