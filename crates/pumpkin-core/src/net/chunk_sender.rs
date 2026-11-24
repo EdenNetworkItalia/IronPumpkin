@@ -19,6 +19,7 @@ use pumpkin_world::cylindrical_chunk_iterator::Cylindrical;
 use pumpkin_world::level::{Level, SyncChunk};
 
 use crate::net::ClientPlatform;
+use crate::world::World;
 
 const MIN_CHUNKS_PER_TICK: f32 = 0.01;
 const MAX_CHUNKS_PER_TICK: f32 = 64.0;
@@ -466,6 +467,7 @@ impl ChunkSender {
     }
 
     pub fn encode_batch(
+        world: &World,
         batch: &PreparedBatch,
         key: &EncodingKey,
         cache: &mut FxHashMap<Vector2<i32>, EncodedChunk>,
@@ -491,7 +493,7 @@ impl ChunkSender {
                 {
                     return None;
                 }
-                if CChunkData(chunk)
+                if CChunkData::new(world, chunk)
                     .write_packet_data(&mut chunk_buf, key)
                     .is_err()
                 {
@@ -517,6 +519,7 @@ impl ChunkSender {
 
     #[must_use]
     pub fn encode_batch_shared(
+        world: &World,
         batch: &PreparedBatch,
         cache: &dashmap::DashMap<Vector2<i32>, EncodedChunk>,
     ) -> Vec<EncodedChunk> {
@@ -539,7 +542,7 @@ impl ChunkSender {
                 {
                     return None;
                 }
-                if CChunkData(chunk)
+                if CChunkData::new(world, chunk)
                     .write_packet_data(&mut chunk_buf, &EncodingKey::from(CURRENT_MC_VERSION))
                     .is_err()
                 {

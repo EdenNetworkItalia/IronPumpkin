@@ -150,7 +150,7 @@ impl HostBlockEntity for PluginHostState {
 
     fn get_id(&mut self, res: Resource<BlockEntity>) -> wasmtime::Result<u32> {
         let entity = self.get(&res)?;
-        Ok(entity.get_id())
+        Ok(entity.get_id().map_or(0, u32::from))
     }
 
     fn is_dirty(&mut self, res: Resource<BlockEntity>) -> wasmtime::Result<bool> {

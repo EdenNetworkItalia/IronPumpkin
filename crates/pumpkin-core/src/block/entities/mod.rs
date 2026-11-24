@@ -111,16 +111,8 @@ pub trait BlockEntity: Any + Send + Sync {
         nbt.put_int("z", position.0.z);
         self.write_nbt(nbt);
     }
-    fn get_id(&self) -> u32 {
-        let name = self
-            .resource_location()
-            .split(':')
-            .next_back()
-            .unwrap_or("");
-        pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
-            .iter()
-            .position(|block_entity_name| *block_entity_name == name)
-            .unwrap_or(0) as u32
+    fn get_id(&self) -> Option<u16> {
+        block_entity_type_id(self.resource_location())
     }
 
     /// Obtain NBT data for sending to the client in `ChunkData`
@@ -503,6 +495,21 @@ pub fn block_entity_from_nbt(nbt: &NbtCompound) -> Option<Arc<dyn BlockEntity>> 
         )),
         _ => None,
     }
+}
+
+/// The network id of the block entity type `name`. The generated list answers only for the
+/// `minecraft` namespace; a name without a namespace is in it, as `Identifier.parse` reads it.
+#[must_use]
+pub fn block_entity_type_id(name: &str) -> Option<u16> {
+    let path = match name.split_once(':') {
+        Some(("minecraft", path)) => path,
+        Some(_) => return None,
+        None => name,
+    };
+    BLOCK_ENTITY_TYPES
+        .iter()
+        .position(|ty| *ty == path)
+        .and_then(|id| u16::try_from(id).ok())
 }
 
 #[must_use]

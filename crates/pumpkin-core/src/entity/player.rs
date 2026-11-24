@@ -3354,12 +3354,18 @@ impl Player {
                             pumpkin_data::packet::CURRENT_MC_VERSION,
                         ) {
                         crate::net::ChunkSender::encode_batch_shared(
+                            &world,
                             &batch,
                             &world.encoded_chunk_cache,
                         )
                     } else {
                         let mut per_player_cache = rustc_hash::FxHashMap::default();
-                        crate::net::ChunkSender::encode_batch(&batch, &key, &mut per_player_cache)
+                        crate::net::ChunkSender::encode_batch(
+                            &world,
+                            &batch,
+                            &key,
+                            &mut per_player_cache,
+                        )
                     };
                     let current_epoch = self.chunk_send_epoch.load(Ordering::Relaxed);
                     let sent = self.chunk_sender.try_lock().map_or_else(

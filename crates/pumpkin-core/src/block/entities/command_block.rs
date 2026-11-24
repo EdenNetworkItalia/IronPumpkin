@@ -109,12 +109,6 @@ impl BlockEntity for CommandBlockEntity {
         self.write_sync_nbt(nbt);
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        self.write_sync_nbt(&mut nbt);
-        Some(nbt)
-    }
-
     fn bedrock_block_actor_data(
         &self,
         state_id: pumpkin_data::BlockStateId,

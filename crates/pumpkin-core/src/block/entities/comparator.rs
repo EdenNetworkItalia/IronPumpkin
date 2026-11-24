@@ -50,15 +50,6 @@ impl BlockEntity for ComparatorBlockEntity {
         );
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        nbt.put_int(
-            OUTPUT_SIGNAL,
-            self.output_signal.load(Ordering::Relaxed) as i32,
-        );
-        Some(nbt)
-    }
-
     fn bedrock_block_actor_data(
         &self,
         _state_id: pumpkin_data::BlockStateId,

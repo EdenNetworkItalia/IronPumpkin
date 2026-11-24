@@ -281,17 +281,6 @@ impl BlockEntity for PistonBlockEntity {
         nbt.put_bool(SOURCE, self.source);
     }
 
-    fn chunk_data_nbt(&self) -> Option<NbtCompound> {
-        let mut nbt = NbtCompound::new();
-        // TODO: pushed_block_state
-        nbt.put_byte(FACING, self.facing.to_index() as i8);
-        nbt.put_float(LAST_PROGRESS, self.last_progress.load());
-        nbt.put_bool(EXTENDING, self.extending);
-        nbt.put_bool(SOURCE, self.source);
-        // TODO: duplicated code because of async :c
-        Some(nbt)
-    }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
