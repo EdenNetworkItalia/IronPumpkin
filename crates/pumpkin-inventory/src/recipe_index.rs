@@ -380,6 +380,22 @@ impl RecipeIndex {
             .find(|r| discriminant(&r.kind) == discriminant(kind) && r.ingredient.match_item(item))
     }
 
+    /// Vanilla `RecipeManager.getRecipeFor` with a recipe hint: the recipe with the id `hint` if
+    /// it is of `kind` and takes `item`, else [`Self::cooking_recipe`].
+    #[must_use]
+    pub fn cooking_recipe_with_hint(
+        &self,
+        item: &Item,
+        kind: &CookingRecipeKind,
+        hint: Option<&str>,
+    ) -> Option<&CookingEntry> {
+        hint.and_then(|hint| self.cooking.iter().find(|r| r.recipe_id == hint))
+            .filter(|r| {
+                discriminant(&r.kind) == discriminant(kind) && r.ingredient.match_item(item)
+            })
+            .or_else(|| self.cooking_recipe(item, kind))
+    }
+
     /// The experience of the cooking recipe with `recipe_id`.
     #[must_use]
     pub fn cooking_experience(&self, recipe_id: &str) -> Option<f32> {
@@ -609,6 +625,27 @@ mod tests {
             .cooking_recipe(&Item::RAW_IRON, &CookingRecipeKind::Smelting)
             .expect("a recipe smelts raw iron");
         assert_eq!(recipe.recipe_id, "z:a");
+    }
+
+    #[test]
+    fn a_hint_keeps_the_last_recipe_while_it_matches() {
+        let early = smelting("z:a", "minecraft:raw_iron", "minecraft:diamond");
+        let late = smelting("a:zzz", "minecraft:raw_iron", "minecraft:emerald");
+        let index = RecipeIndex::build(&[late, early]);
+        let kind = CookingRecipeKind::Smelting;
+        let hinted = |hint| {
+            index
+                .cooking_recipe_with_hint(&Item::RAW_IRON, &kind, hint)
+                .map(|r| r.recipe_id.as_str())
+        };
+        assert_eq!(hinted(None), Some("z:a"));
+        assert_eq!(hinted(Some("a:zzz")), Some("a:zzz"));
+        // A hint of another kind or input falls back to the first recipe.
+        assert_eq!(
+            hinted(Some("minecraft:iron_ingot_from_blasting_raw_iron")),
+            Some("z:a")
+        );
+        assert_eq!(hinted(Some("test:missing")), Some("z:a"));
     }
 
     #[test]

@@ -399,17 +399,46 @@ macro_rules! impl_inventory_for_cooking {
         }
 
         impl $struct_name {
+            /// Vanilla `quickCheck.getRecipeFor`: the last recipe if it still takes `item`, else
+            /// the first recipe in vanilla order. The found recipe becomes the last recipe.
+            fn find_recipe<'a>(
+                &self,
+                index: &'a pumpkin_inventory::recipe_index::RecipeIndex,
+                item: &pumpkin_data::item::Item,
+            ) -> Option<&'a pumpkin_inventory::recipe_index::CookingEntry> {
+                let mut last = self
+                    .last_recipe
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let recipe = index.cooking_recipe_with_hint(item, &$recipe_kind, last.as_deref());
+                if let Some(recipe) = recipe
+                    && last.as_deref() != Some(recipe.recipe_id.as_str())
+                {
+                    *last = Some(recipe.recipe_id.clone());
+                }
+                recipe
+            }
+
+            /// Vanilla `AbstractFurnaceBlockEntity.getTotalCookTime`: the cooking time of the
+            /// recipe for `input`, or 200 ticks without a recipe.
+            fn total_cook_time_for(&self, input: &ItemStack) -> u16 {
+                let index = pumpkin_inventory::recipe_index::current();
+                self.find_recipe(&index, input.item).map_or(200, |recipe| {
+                    u16::try_from(recipe.cooking_time.max(0)).unwrap_or(u16::MAX)
+                })
+            }
+
+            /// The reset of vanilla `AbstractFurnaceBlockEntity.setItem` when `input` replaces
+            /// the input item: a new total cooking time and no progress.
+            pub fn reset_cooking(&self, input: &ItemStack) {
+                self.set_cooking_total_time(self.total_cook_time_for(input));
+                self.set_cooking_time_spent(0);
+            }
+
             /// Vanilla `AbstractFurnaceBlockEntity.setItem`: a different input item restarts cooking.
             fn on_stack_set(&self, slot: usize, is_same_item: bool, stack: &ItemStack) {
                 if slot == 0 && !is_same_item {
-                    if let Some(recipe) = pumpkin_inventory::recipe_index::current()
-                        .cooking_recipe(stack.item, &$recipe_kind)
-                    {
-                        self.set_cooking_total_time(recipe.cooking_time as u16);
-                    } else {
-                        self.set_cooking_total_time(0);
-                    }
-                    self.set_cooking_time_spent(0);
+                    self.reset_cooking(stack);
                 }
             }
         }
@@ -440,7 +469,11 @@ macro_rules! impl_block_entity_for_cooking {
                 let is_top_items_empty = top_item.is_empty();
 
                 let recipe_index = pumpkin_inventory::recipe_index::current();
-                let furnace_recipe = recipe_index.cooking_recipe(top_item.item, &$recipe_kind);
+                let furnace_recipe = if is_top_items_empty {
+                    None
+                } else {
+                    self.find_recipe(&recipe_index, top_item.item)
+                };
 
                 let can_accept_output = self
                     .can_accept_recipe_output(furnace_recipe, self.get_max_count_per_stack());
@@ -528,11 +561,13 @@ macro_rules! impl_block_entity_for_cooking {
                         if !start_cancelled {
                             self.cooking_time_spent.fetch_add(1, Ordering::Relaxed);
 
-                            if self.get_cooking_time_spent() == self.get_cooking_total_time() {
+                            if self.get_cooking_time_spent() >= self.get_cooking_total_time() {
                                 self.set_cooking_time_spent(0);
                                 if let Some(cooking_recipe) = furnace_recipe {
-                                    let cooking_total_time = cooking_recipe.cooking_time;
-                                    self.set_cooking_total_time(cooking_total_time as u16);
+                                    let cooking_total_time = cooking_recipe.cooking_time.max(0);
+                                    self.set_cooking_total_time(
+                                        u16::try_from(cooking_total_time).unwrap_or(u16::MAX),
+                                    );
 
                                     let mut smelt_cancelled = false;
                                     if let Some(server) = world.server.upgrade() {
@@ -637,6 +672,7 @@ macro_rules! impl_block_entity_for_cooking {
                     lit_total_time,
                     lit_time_remaining,
                     recipes_used: std::sync::Mutex::new(recipes_used_map),
+                    last_recipe: std::sync::Mutex::new(None),
                     metadata: $crate::block::entities::ContainerMetadata::from_nbt(nbt),
                 };
                 pumpkin_inventory::sync_read_items_from_nbt(nbt, furnace.items.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner));

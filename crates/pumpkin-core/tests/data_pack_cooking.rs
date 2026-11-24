@@ -246,3 +246,43 @@ fn a_furnace_adds_the_result_count_and_stops_at_the_max_stack_size() {
     assert_eq!(furnace.get_stack(0).item_count, 1);
     assert_eq!(furnace.get_stack(2).item_count, 63);
 }
+
+#[test]
+fn an_input_without_a_recipe_waits_200_ticks_and_then_cooks_a_later_recipe() {
+    let _serial = support::serial();
+    support::server().recipe_manager.set_recipes(Vec::new());
+    let world = support::world();
+    let furnace = furnace_with(&world, 14);
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    assert_eq!(furnace.get_cooking_total_time(), 200);
+    install_recipes();
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    for _ in 0..199 {
+        furnace.tick(&world);
+    }
+    assert!(furnace.get_stack(2).is_empty());
+    furnace.tick(&world);
+    assert_eq!(furnace.get_stack(2).item.id, Item::DIAMOND.id);
+    assert_eq!(i32::from(furnace.get_cooking_total_time()), COOKING_TIME);
+}
+
+#[test]
+fn a_cooking_time_of_zero_cooks_every_tick() {
+    let _serial = support::serial();
+    let mut recipe = cooking("test:fast_dirt", "minecraft:dirt", "minecraft:diamond");
+    recipe.cooking_time = 0;
+    support::server()
+        .recipe_manager
+        .set_recipes(vec![DynamicRecipe::Cooking(
+            OwnedCookingRecipeType::Smelting(recipe),
+        )]);
+    let world = support::world();
+    let furnace = furnace_with(&world, 16);
+    furnace.set_stack(0, ItemStack::new(3, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    for _ in 0..3 {
+        furnace.tick(&world);
+    }
+    assert!(furnace.get_stack(0).is_empty());
+    assert_eq!(furnace.get_stack(2).item_count, 3);
+}
