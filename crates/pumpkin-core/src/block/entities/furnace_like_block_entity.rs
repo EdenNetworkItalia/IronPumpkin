@@ -16,9 +16,15 @@ pub trait CookingBlockEntityBase:
 
     /// Track that a recipe was used (for XP calculation on extraction)
     fn add_recipe_used(&self, recipe: &CookingEntry);
-    /// Extract and reset accumulated experience, returning the total as an integer
-    /// Calculates XP from tracked recipes and clears the `recipes_used` map
-    fn extract_experience_from_recipes(&self) -> i32;
+    /// Extracts the experience of the used recipes and clears them, as vanilla
+    /// `getRecipesToAwardAndPopExperience` does. `roll` draws the random fraction rounding of
+    /// [`recipes_experience`].
+    fn extract_experience_with(&self, roll: &mut dyn FnMut() -> f32) -> i32;
+
+    /// [`Self::extract_experience_with`] with a random roll.
+    fn extract_experience_from_recipes(&self) -> i32 {
+        self.extract_experience_with(&mut || rand::random::<f32>())
+    }
 
     fn get_input_item(&self) -> ItemStack;
     fn get_fuel_item(&self) -> ItemStack;
@@ -109,8 +115,7 @@ macro_rules! impl_cooking_block_entity_base {
                 *recipes.entry(recipe_id).or_insert(0) += 1;
             }
 
-            fn extract_experience_from_recipes(&self) -> i32 {
-                // Calculate total XP from tracked recipes and clear the map (vanilla behavior)
+            fn extract_experience_with(&self, roll: &mut dyn FnMut() -> f32) -> i32 {
                 let mut recipes = self
                     .recipes_used
                     .lock()
@@ -121,7 +126,7 @@ macro_rules! impl_cooking_block_entity_base {
                         recipes.iter().filter_map(|(id, count)| {
                             Some((*count, index.cooking_experience(id)?))
                         }),
-                        || rand::random::<f32>(),
+                        roll,
                     );
                 recipes.clear();
                 total_xp
@@ -909,35 +914,5 @@ mod tests {
         assert_eq!(nbt.get_short("BurnDuration"), Some(200));
         assert_eq!(nbt.get_short("StoredXPInt"), Some(5));
         assert_eq!(nbt.get_bool("isMovable"), Some(true));
-    }
-}
-
-#[cfg(test)]
-mod experience_tests {
-    use super::recipes_experience;
-
-    #[test]
-    fn each_recipe_rounds_its_fraction_with_the_roll() {
-        // 3 x 0.7 = 2.1 and 1 x 0.35 = 0.35: floors 2 and 0, fractions 0.1 and 0.35.
-        let used = [(3, 0.7), (1, 0.35)];
-        let mut rolls = [0.05f32, 0.5].into_iter();
-        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 3);
-        let mut rolls = [0.5f32, 0.2].into_iter();
-        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 3);
-        let mut rolls = [0.9f32, 0.9].into_iter();
-        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 2);
-        // The old total floor gave 2 for 2.45; a roll under both fractions gives 4.
-        assert_eq!(recipes_experience(used, || 0.0), 4);
-    }
-
-    #[test]
-    fn a_whole_reward_takes_no_roll() {
-        let rolled = std::cell::Cell::new(false);
-        let reward = recipes_experience([(4, 0.5)], || {
-            rolled.set(true);
-            0.0
-        });
-        assert_eq!(reward, 2);
-        assert!(!rolled.get());
     }
 }

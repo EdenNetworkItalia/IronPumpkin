@@ -21,7 +21,7 @@ use pumpkin_core::world::World;
 use pumpkin_data::Block;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::RecipeCategoryTypes;
+use pumpkin_data::recipes::{CookingRecipeKind, RecipeCategoryTypes};
 use pumpkin_inventory::Inventory;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
@@ -41,7 +41,7 @@ fn cooking(id: &str, ingredient: &str, result: &str) -> OwnedCookingRecipe {
         group: None,
         ingredient: OwnedRecipeIngredient::Simple(ingredient.to_string()),
         cooking_time: COOKING_TIME,
-        experience: 2.0,
+        experience: 0.7,
         result: OwnedRecipeResult {
             item_id: result.to_string(),
             count: 1,
@@ -127,7 +127,8 @@ fn a_furnace_cooks_a_data_pack_recipe() {
     let furnace = FurnaceBlockEntity::new(BlockPos::new(0, 100, 0));
     let output = cook(&world, &furnace, &Block::FURNACE, &Item::DIRT);
     assert_eq!(output.item.id, Item::DIAMOND.id);
-    assert_eq!(furnace.extract_experience_from_recipes(), 2);
+    // 0.7 experience: no whole point, and one more point when the roll is under 0.7.
+    assert_eq!(furnace.extract_experience_with(&mut || 0.5), 1);
 }
 
 #[test]
@@ -349,12 +350,80 @@ fn a_campfire_drops_the_raw_item_when_a_reload_removes_its_recipe() {
     assert!(dropped_stick, "the campfire drops the raw item");
 }
 
+/// Vanilla `AbstractFurnaceBlockEntity.createExperience` rounds the experience of each used
+/// recipe on its own (`AbstractFurnaceBlockEntity.java:432-450`).
+#[test]
+fn a_furnace_rounds_the_experience_of_each_recipe_with_the_roll() {
+    let _serial = support::serial();
+    install_recipes();
+    let furnace = FurnaceBlockEntity::new(BlockPos::new(40, 100, 0));
+    let index = pumpkin_inventory::recipe_index::current();
+    let dirt = index
+        .cooking_recipe(&Item::DIRT, &CookingRecipeKind::Smelting)
+        .unwrap();
+    let iron = index
+        .cooking_recipe(&Item::RAW_IRON, &CookingRecipeKind::Smelting)
+        .unwrap();
+    let use_recipes = || {
+        for _ in 0..3 {
+            furnace.add_recipe_used(dirt);
+        }
+        furnace.add_recipe_used(iron);
+    };
+    // 3 x 0.7 = 2.1 and 1 x 0.7: the floor of the total gives 2, each recipe can add 1.
+    use_recipes();
+    assert_eq!(furnace.extract_experience_with(&mut || 0.0), 4);
+    assert_eq!(furnace.extract_experience_with(&mut || 0.0), 0);
+    use_recipes();
+    assert_eq!(furnace.extract_experience_with(&mut || 0.99), 2);
+}
+
+fn smelt_dirt(id: &str, result: &str) -> DynamicRecipe {
+    DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking(
+        id,
+        "minecraft:dirt",
+        result,
+    )))
+}
+
 fn campfire_dirt(id: &str, result: &str) -> DynamicRecipe {
     DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(cooking(
         id,
         "minecraft:dirt",
         result,
     )))
+}
+
+/// Vanilla `quickCheck` keeps the last recipe while it takes the input. A reload that adds a
+/// recipe that comes first in vanilla order does not change the result.
+#[test]
+fn a_furnace_keeps_its_last_recipe_when_a_reload_adds_an_earlier_one() {
+    let _serial = support::serial();
+    let manager = &support::server().recipe_manager;
+    // `z:a` sorts before `a:zzz`: vanilla orders by the path first.
+    manager.set_recipes(vec![smelt_dirt("a:zzz", "minecraft:emerald")]);
+    let world = support::world();
+    let furnace = furnace_with(&world, 42);
+    furnace.set_stack(0, ItemStack::new(2, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    let cook_until = |count: u8| {
+        for _ in 0..20 {
+            if furnace.get_stack(2).item_count >= count {
+                break;
+            }
+            furnace.tick(&world);
+        }
+    };
+    cook_until(1);
+    assert_eq!(furnace.get_stack(2).item.id, Item::EMERALD.id);
+    manager.set_recipes(vec![
+        smelt_dirt("a:zzz", "minecraft:emerald"),
+        smelt_dirt("z:a", "minecraft:diamond"),
+    ]);
+    cook_until(2);
+    let output = furnace.get_stack(2);
+    assert_eq!(output.item.id, Item::EMERALD.id);
+    assert_eq!(output.item_count, 2);
 }
 
 /// The ids of the items that item entities hold around `pos`.
