@@ -134,6 +134,8 @@ pub struct PluginHostState {
     pub permissions: Vec<String>,
     pub name: Option<String>,
     pub marketplace_metadata: Option<crate::signature::PumpkinMetadata>,
+    /// The host work that a synchronous import defers until the guest call returns.
+    pub deferred: crate::deferred::DeferredQueue,
 }
 
 impl Default for PluginHostState {
@@ -160,6 +162,7 @@ impl PluginHostState {
             permissions: Vec::new(),
             name: None,
             marketplace_metadata: None,
+            deferred: crate::deferred::DeferredQueue::default(),
         }
     }
 

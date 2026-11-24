@@ -1,6 +1,6 @@
 use super::{AccessorExt, in_active_context, run_blocking};
 use crate::LockIgnorePoison;
-use crate::RequireServer;
+use crate::{DeferHost, RequireServer};
 
 use crate::forms::FormsHostStateExt;
 use pumpkin_protocol::bedrock::client::PackIdVersion;
@@ -1412,6 +1412,8 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         Ok(())
     }
 
+    // The sound calls of a player go through the queue of the store, like the sound calls of a
+    // world, so a stop of a sound reaches the client after the sound that it stops.
     fn play_sound(
         &mut self,
         player: Resource<Player>,
@@ -1420,19 +1422,23 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let sound_data = pumpkin_data::sound::Sound::slice()[sound as usize];
         let internal_category = super::world::from_wit_sound_category(category);
-        let pos = player.position();
-        player.play_sound(
-            sound_data as u16,
-            internal_category,
-            &pos,
-            volume,
-            pitch,
-            rand::random::<i64>(),
-        );
-        Ok(())
+        self.defer(
+            format!("player play-sound {}", sound_data.to_name()),
+            move || {
+                let pos = player.position();
+                player.play_sound(
+                    sound_data as u16,
+                    internal_category,
+                    &pos,
+                    volume,
+                    pitch,
+                    rand::random::<i64>(),
+                );
+            },
+        )
     }
 
     fn play_sound_at(
@@ -1444,18 +1450,22 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let sound_data = pumpkin_data::sound::Sound::slice()[sound as usize];
         let internal_category = super::world::from_wit_sound_category(category);
-        player.play_sound(
-            sound_data as u16,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-            rand::random::<i64>(),
-        );
-        Ok(())
+        self.defer(
+            format!("player play-sound-at {}", sound_data.to_name()),
+            move || {
+                player.play_sound(
+                    sound_data as u16,
+                    internal_category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                    rand::random::<i64>(),
+                );
+            },
+        )
     }
 
     fn stop_sound(
@@ -1464,15 +1474,16 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         sound: Option<pumpkin::plugin::sounds::Sound>,
         category: Option<pumpkin::plugin::sounds::SoundCategory>,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let sound_rl = sound.map(|s| {
             pumpkin_data::sound::Sound::slice()[s as usize]
                 .to_name()
                 .into()
         });
         let cat = category.map(super::world::from_wit_sound_category);
-        player.stop_sound(sound_rl, cat);
-        Ok(())
+        self.defer("player stop-sound", move || {
+            player.stop_sound(sound_rl, cat);
+        })
     }
 
     fn play_custom_sound(
@@ -1483,11 +1494,15 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let internal_category = super::world::from_wit_sound_category(category);
-        let pos = player.position();
-        player.play_custom_sound(&sound_name, internal_category, &pos, volume, pitch);
-        Ok(())
+        self.defer(
+            format!("player play-custom-sound {sound_name}"),
+            move || {
+                let pos = player.position();
+                player.play_custom_sound(&sound_name, internal_category, &pos, volume, pitch);
+            },
+        )
     }
 
     fn play_custom_sound_at(
@@ -1499,16 +1514,20 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let internal_category = super::world::from_wit_sound_category(category);
-        player.play_custom_sound(
-            &sound_name,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-        );
-        Ok(())
+        self.defer(
+            format!("player play-custom-sound-at {sound_name}"),
+            move || {
+                player.play_custom_sound(
+                    &sound_name,
+                    internal_category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                );
+            },
+        )
     }
 
     fn stop_custom_sound(
@@ -1517,19 +1536,21 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         sound_name: Option<String>,
         category: Option<pumpkin::plugin::sounds::SoundCategory>,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let sound_rl = sound_name
             .as_deref()
             .map(pumpkin_util::resource_location::ResourceLocation::from);
         let cat = category.map(super::world::from_wit_sound_category);
-        player.stop_sound(sound_rl, cat);
-        Ok(())
+        self.defer("player stop-custom-sound", move || {
+            player.stop_sound(sound_rl, cat);
+        })
     }
 
     fn stop_all_sounds(&mut self, player: Resource<Player>) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.stop_sound(None, None);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        self.defer("player stop-all-sounds", move || {
+            player.stop_sound(None, None);
+        })
     }
 
     fn spawn_particles(

@@ -285,6 +285,8 @@ struct Action {
 struct State {
     context: Option<Context>,
     actions: HashMap<(String, u32), Action>,
+    /// Whether a handler of the sound event plays one more sound.
+    replay: bool,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -402,6 +404,32 @@ async fn sound(words: &[&str]) -> Result<String, String> {
     Ok(String::new())
 }
 
+/// `order <player> <x> <y> <z>`: in one call, plays a stone sound and an anvil sound through the
+/// world, stops the stone sound for the player, and plays a pig sound to the player.
+async fn order(words: &[&str]) -> Result<String, String> {
+    let [name, x, y, z] = words else {
+        return Err("order <player> <x> <y> <z>".to_owned());
+    };
+    let coordinate = |text: &str| text.parse::<f64>().map_err(|_| format!("not a number: {text}"));
+    let position = (coordinate(x)?, coordinate(y)?, coordinate(z)?);
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    let player = server
+        .get_player_by_name(name)
+        .ok_or_else(|| format!("no player {name}"))?;
+    world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, position, 1.0, 1.0);
+    world.play_sound(Sound::BlockAnvilLand, SoundCategory::Players, position, 1.0, 1.0);
+    player.stop_sound(Some(Sound::BlockStoneBreak), None);
+    player.play_sound(Sound::EntityPigAmbient, SoundCategory::Players, 1.0, 1.0);
+    Ok(String::new())
+}
+
 struct Component;
 
 impl Guest for Component {
@@ -423,6 +451,16 @@ impl Guest for Component {
     async fn handle_event(event_id: u32, _server: ServerInstance, mut event: Event) -> Event {
         if let Err(error) = handle(event_id, &mut event) {
             STATE.with_borrow_mut(|state| state.log.push(format!("error {error}")));
+        }
+        // Only the first handler replays, so each sound causes one more sound.
+        if event_id == 0
+            && let Event::PlayLevelSoundEventAtPosition(data) = &event
+            && STATE.with_borrow(|state| state.replay)
+            && let Some(server) = STATE
+                .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+            && let Some(world) = server.get_all_worlds().into_iter().next()
+        {
+            world.play_sound(Sound::BlockStoneBreak, SoundCategory::Players, data.position, 1.0, 1.0);
         }
         event
     }
@@ -473,6 +511,11 @@ impl Guest for Component {
             ["spawn", rest @ ..] => spawn(rest).await?,
             ["perform", rest @ ..] => perform(rest).await?,
             ["sound", rest @ ..] => sound(rest).await?,
+            ["order", rest @ ..] => order(rest).await?,
+            ["replay", flag] => {
+                STATE.with_borrow_mut(|state| state.replay = *flag == "on");
+                String::new()
+            }
             _ => return Err(format!("unknown message: {message}")),
         };
         Ok(reply.into_bytes())

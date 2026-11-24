@@ -1,6 +1,6 @@
 use super::{AccessorExt, in_active_context, run_blocking};
+use crate::DeferHost;
 use crate::LockIgnorePoison;
-use crate::RequireServer;
 
 use pumpkin_data::block_properties::NoteblockInstrument as InternalNoteblockInstrument;
 use pumpkin_data::block_state::PistonBehavior;
@@ -987,8 +987,9 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
 
     // The sound call fires `PlayLevelSoundEvent`, which can reach a Wasm handler. This import is
     // synchronous, so the guest call that makes it holds the root permit, and a handler of the
-    // event could not run. The sound plays on a blocking task after the call returns. The WIT
-    // cannot become `async func`: a plugin that imports the synchronous function would not link.
+    // event could not run. The store queue plays the sound after the call, one sound after the
+    // other, in call order. A panic of the sound is logged with the sound name. The WIT cannot
+    // become `async func`: a plugin that imports the synchronous function would not link.
     fn play_sound(
         &mut self,
         world: Resource<World>,
@@ -999,19 +1000,20 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         pitch: f32,
     ) -> wasmtime::Result<()> {
         let world = self.get(&world)?.clone();
-        let runtime = self.require_server()?.runtime.clone();
         let sound_data = pumpkin_data::sound::Sound::slice()[sound as usize];
         let category = from_wit_sound_category(category);
-        runtime.spawn_blocking(move || {
-            world.play_sound_raw(
-                sound_data as u16,
-                category,
-                &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-                volume,
-                pitch,
-            );
-        });
-        Ok(())
+        self.defer(
+            format!("world play-sound {}", sound_data.to_name()),
+            move || {
+                world.play_sound_raw(
+                    sound_data as u16,
+                    category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                );
+            },
+        )
     }
 
     fn play_custom_sound(
@@ -1024,9 +1026,8 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         pitch: f32,
     ) -> wasmtime::Result<()> {
         let world = self.get(&world)?.clone();
-        let runtime = self.require_server()?.runtime.clone();
         let category = from_wit_sound_category(category);
-        runtime.spawn_blocking(move || {
+        self.defer(format!("world play-custom-sound {sound_name}"), move || {
             world.play_custom_sound(
                 &sound_name,
                 category,
@@ -1034,8 +1035,7 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
                 volume,
                 pitch,
             );
-        });
-        Ok(())
+        })
     }
 
     fn spawn_particle(
