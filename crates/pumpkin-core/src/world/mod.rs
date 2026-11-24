@@ -105,7 +105,6 @@ use pumpkin_data::{
     world::{RAW, WorldEvent},
 };
 use pumpkin_data::{BlockDirection, BlockState, HorizontalFacingExt, translation};
-use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::screen_handler::InventoryPlayer;
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
@@ -117,7 +116,7 @@ use pumpkin_protocol::java::client::play::{
     PlayerSpawnData,
 };
 use pumpkin_protocol::java::client::play::{
-    CPlayerSpawnPosition, CRecipeBookAdd, CRecipeBookSettings, CSystemChatMessage,
+    CPlayerSpawnPosition, CRecipeBookSettings, CSystemChatMessage,
 };
 use pumpkin_protocol::java::client::play::{CSetEntityMetadata, Metadata};
 use pumpkin_protocol::{
@@ -4288,8 +4287,12 @@ impl World {
             if let Ok(data) = java_client.serialize_packet(&settings_packet) {
                 java_client.send_packet_now(data).await;
             }
-            let dynamic_recipes = server.recipe_manager.get_dynamic_recipes();
-            let add_packet = CRecipeBookAdd::new(true, &dynamic_recipes);
+            let index = pumpkin_inventory::recipe_index::current();
+            let add_packet = pumpkin_protocol::codec::recipe_book::CRecipeBookEntries::all(
+                true,
+                index.book(),
+                index.dynamic_recipes(),
+            );
             if let Ok(data) = java_client.serialize_packet(&add_packet) {
                 java_client.send_packet_now(data).await;
             }

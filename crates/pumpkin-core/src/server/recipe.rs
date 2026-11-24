@@ -4,7 +4,6 @@ use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::recipe_index;
 use pumpkin_inventory::recipe_index::LoadError;
 pub use pumpkin_protocol::codec::recipe::DynamicRecipe;
-use pumpkin_protocol::codec::recipe::{PropertySetSync, StonecutterSync};
 use pumpkin_protocol::java::client::play::CUpdateRecipes;
 use tracing::warn;
 
@@ -126,25 +125,7 @@ impl RecipeProvider for RecipeManager {
 /// Sends vanilla `ClientboundUpdateRecipesPacket`, as `PlayerList` does at join and after a data
 /// pack reload: the recipe property sets and the stonecutter recipes of the [`recipe_index`].
 pub fn send_update_recipes(client: &JavaClient) {
-    let index = recipe_index::current();
-    let property_sets: Vec<PropertySetSync<'_>> = index
-        .property_sets()
-        .iter()
-        .map(|set| PropertySetSync {
-            key: set.key,
-            ingredients: &set.ingredients,
-        })
-        .collect();
-    let encoding = client.encoding_key();
-    let stonecutter: Vec<StonecutterSync<'_>> = index
-        .stonecutter_recipes(encoding.content_ids())
-        .map(|recipe| StonecutterSync {
-            ingredient: &recipe.ingredient,
-            result_item: &recipe.result.item_id,
-            result_count: recipe.result.count,
-        })
-        .collect();
-    match CUpdateRecipes::encode(&property_sets, &stonecutter, encoding) {
+    match recipe_index::current().update_recipes_body(client.encoding_key()) {
         Ok(body) => {
             client.try_send_packet(&CUpdateRecipes::new(&body));
         }

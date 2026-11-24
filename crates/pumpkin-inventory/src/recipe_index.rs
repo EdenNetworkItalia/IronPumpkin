@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::mem::discriminant;
-use std::sync::{Arc, LazyLock, PoisonError, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError, RwLock};
 
 use pumpkin_data::data_component::DataComponent;
 use pumpkin_data::data_component_impl::DataComponentImpl;
@@ -20,11 +20,14 @@ use pumpkin_data::recipes::{
     RecipeResultStruct,
 };
 use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_protocol::EncodingKey;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe,
-    OwnedRecipeIngredient, OwnedRecipeResult,
+    OwnedRecipeIngredient, OwnedRecipeResult, PropertySetSync, StonecutterSync,
 };
 use pumpkin_protocol::codec::recipe_book::RecipeBook;
+use pumpkin_protocol::java::client::play::CUpdateRecipes;
+use pumpkin_protocol::ser::WritingError;
 
 type Components = &'static [(DataComponent, &'static dyn DataComponentImpl)];
 
@@ -197,6 +200,12 @@ pub struct RecipeIndex {
     /// The data pack and plugin recipes the index was built from.
     dynamic: Vec<DynamicRecipe>,
     book: RecipeBook,
+    /// The indices of the stonecutter recipes that a `Display` and a `Real` client get.
+    display_stonecutter: Vec<usize>,
+    real_stonecutter: Vec<usize>,
+    /// The encoded `ClientboundUpdateRecipesPacket` body of each encoding, built at the first
+    /// join of a client with that encoding.
+    update_recipes: Mutex<Vec<(EncodingKey, Arc<[u8]>)>>,
 }
 
 /// The vanilla recipe registry sorts the recipe files by `Identifier.compareTo`: the path first,
@@ -348,6 +357,9 @@ impl RecipeIndex {
         let mut index = Self {
             dynamic: dynamic.to_vec(),
             book: RecipeBook::new(dynamic),
+            display_stonecutter: Vec::new(),
+            real_stonecutter: Vec::new(),
+            update_recipes: Mutex::new(Vec::new()),
             cooking: Vec::new(),
             stonecutter: Vec::new(),
             property_sets: [
@@ -406,6 +418,14 @@ impl RecipeIndex {
                 Entry::Other => {}
             }
         }
+        for (i, recipe) in index.stonecutter.iter().enumerate() {
+            if recipe.syncs_to(ContentIds::Display) {
+                index.display_stonecutter.push(i);
+            }
+            if recipe.syncs_to(ContentIds::Real) {
+                index.real_stonecutter.push(i);
+            }
+        }
         index
     }
 
@@ -419,6 +439,38 @@ impl RecipeIndex {
     #[must_use]
     pub const fn book(&self) -> &RecipeBook {
         &self.book
+    }
+
+    /// The body of vanilla `ClientboundUpdateRecipesPacket` for `encoding`: the property sets
+    /// and the stonecutter recipes. The index builds it once per encoding.
+    pub fn update_recipes_body(&self, encoding: EncodingKey) -> Result<Arc<[u8]>, WritingError> {
+        let mut cache = self
+            .update_recipes
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some((_, body)) = cache.iter().find(|(key, _)| *key == encoding) {
+            return Ok(body.clone());
+        }
+        let property_sets: Vec<PropertySetSync<'_>> = self
+            .property_sets
+            .iter()
+            .map(|set| PropertySetSync {
+                key: set.key,
+                ingredients: &set.ingredients,
+            })
+            .collect();
+        let stonecutter: Vec<StonecutterSync<'_>> = self
+            .stonecutter_recipes(encoding.content_ids())
+            .map(|recipe| StonecutterSync {
+                ingredient: &recipe.ingredient,
+                result_item: &recipe.result.item_id,
+                result_count: recipe.result.count,
+            })
+            .collect();
+        let body: Arc<[u8]> =
+            CUpdateRecipes::encode(&property_sets, &stonecutter, encoding)?.into();
+        cache.push((encoding, body.clone()));
+        Ok(body)
     }
 
     fn add_to_set(&mut self, key: &'static str, ingredient: OwnedRecipeIngredient) {
@@ -469,7 +521,11 @@ impl RecipeIndex {
 
     /// The stonecutter recipes that a client in mode `ids` gets, in vanilla order.
     pub fn stonecutter_recipes(&self, ids: ContentIds) -> impl Iterator<Item = &StonecutterEntry> {
-        self.stonecutter.iter().filter(move |r| r.syncs_to(ids))
+        let indices = match ids {
+            ContentIds::Display => &self.display_stonecutter,
+            ContentIds::Real => &self.real_stonecutter,
+        };
+        indices.iter().map(|&i| &self.stonecutter[i])
     }
 
     /// The stonecutter recipes that take `item` for a client in mode `ids`, as vanilla
