@@ -1835,3 +1835,175 @@ fn a_wasm_handler_that_plays_a_sound_for_each_sound_stops_at_the_depth_limit() {
     ipc(GUEST, "replay off");
     assert_eq!((fires, extra), (64, 0));
 }
+
+/// Runs the IPC message `message` of `dispatch-guest` on a thread of its own, and fails when the
+/// call does not return. A synchronous import that fires its event in the guest call hangs: the
+/// guest call holds the root permit that the Wasm handler of the event needs.
+fn ipc_returns(message: &str) -> String {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let thread_message = message.to_owned();
+    std::thread::spawn(move || {
+        tx.send(ipc(GUEST, &thread_message)).unwrap();
+    });
+    let reply = rx.recv_timeout(std::time::Duration::from_secs(60));
+    assert!(reply.is_ok(), "the guest call `{message}` hangs");
+    reply.unwrap()
+}
+
+/// Arms the handler of the events of the synchronous imports, then calls the import group
+/// `import` of `dispatch-guest`, and waits until W1 got at least `count` fires of `event`. The
+/// host runs the work of the imports after the guest call, so the fires arrive after the reply.
+fn import_fires(import: &str, event: &str, count: usize) -> Vec<String> {
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns(&format!("import {import}")), "");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut seen = Vec::new();
+    while seen.len() < count {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "W1 did not get {count} fires of {event}: {seen:?}"
+        );
+        seen.extend(guest_log(GUEST, event));
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    seen
+}
+
+/// `player.open-sign-editor` fires `PlayerOpenSignEvent` after the guest call.
+#[test]
+fn a_plugin_opens_a_sign_editor_while_a_wasm_handler_listens_to_the_sign_event() {
+    let _serial = setup();
+    let _player = support::player("SignImportPlayer");
+
+    let seen = import_fires("sign SignImportPlayer 8008 120 8", "PlayerOpenSignEvent", 1);
+
+    assert_eq!(seen, ["W1 - false"]);
+}
+
+/// `player.set-velocity` fires `PlayerVelocityEvent`, and `player.apply-knockback` fires
+/// `EntityKnockbackEvent`, after the guest call.
+#[test]
+fn a_plugin_pushes_a_player_while_wasm_handlers_listen_to_the_velocity_and_knockback_events() {
+    let _serial = setup();
+    let player = support::player("PushImportPlayer");
+
+    let seen = import_fires("velocity PushImportPlayer", "PlayerVelocityEvent", 1);
+    assert_eq!(seen, ["W1 0.5 false"]);
+    assert_eq!(
+        player.get_entity().velocity.load(),
+        Vector3::new(0.0, 0.5, 0.0)
+    );
+
+    let seen = import_fires("knockback PushImportPlayer", "EntityKnockbackEvent", 1);
+    assert_eq!(seen.len(), 1, "{seen:?}");
+}
+
+/// `player.set-server-links` fires `PlayerLinksSendEvent` after the guest call.
+#[test]
+fn a_plugin_sends_server_links_while_a_wasm_handler_listens_to_the_links_event() {
+    let _serial = setup();
+    let _player = support::player("LinksImportPlayer");
+
+    let seen = import_fires("links LinksImportPlayer", "PlayerLinksSendEvent", 1);
+
+    assert_eq!(seen, ["W1 - false"]);
+}
+
+/// The four statistic imports fire `StatAwardEvent` after the guest call, in call order: the set
+/// to 5 fires an award of 5, the increment by 2 an award of 2. The other order would fire 2, then
+/// 3.
+#[test]
+fn the_statistic_calls_of_one_guest_call_keep_their_order() {
+    let _serial = setup();
+    let player = support::player("StatisticImportPlayer");
+
+    let seen = import_fires(
+        "statistics StatisticImportPlayer",
+        "PlayerStatisticIncrementEvent",
+        4,
+    );
+
+    assert_eq!(
+        seen,
+        ["W1 5 false", "W1 2 false", "W1 5 false", "W1 2 false"]
+    );
+    assert_eq!(
+        player.get_stat(pumpkin_data::statistic::StatisticCategory::Mined, 1),
+        7
+    );
+}
+
+/// `world.set-game-rule` fires `GameRuleChangedEvent` after the guest call.
+#[test]
+fn a_plugin_sets_a_game_rule_while_a_wasm_handler_listens_to_the_game_rule_event() {
+    let _serial = setup();
+    let world = support::world();
+    let before = world.get_game_rule(&GameRule::SpawnPhantoms);
+    let value = !matches!(before, GameRuleValue::Bool(true));
+
+    let seen = import_fires(&format!("game-rule {value}"), "GameRuleChangedEvent", 1);
+
+    assert_eq!(seen, ["W1 - -"]);
+    assert!(matches!(
+        world.get_game_rule(&GameRule::SpawnPhantoms),
+        GameRuleValue::Bool(set) if set == value
+    ));
+}
+
+/// `jukebox-block-entity.stop-playing` fires the `VanillaGameEvent` of the stop after the guest
+/// call.
+#[test]
+fn a_plugin_stops_a_jukebox_while_a_wasm_handler_listens_to_the_game_event() {
+    let _serial = setup();
+    let pos = spot(501);
+    load(pos);
+    set(pos, &Block::JUKEBOX);
+    let jukebox = Arc::new(pumpkin_core::block::entities::jukebox::JukeboxBlockEntity::new(pos));
+    support::world().add_block_entity(jukebox.clone());
+    jukebox.start_playing(1000);
+
+    let seen = import_fires(
+        &format!("jukebox {} {} {}", pos.0.x, pos.0.y, pos.0.z),
+        "GenericGameEvent",
+        1,
+    );
+
+    assert!(seen.iter().all(|entry| entry == "W1 - false"), "{seen:?}");
+    assert!(!jukebox.is_playing());
+}
+
+/// `world.set-chunk-force-loaded` updates the active chunks after the guest call, and the update
+/// fires `ChunkEvent.Load` for the chunks that loaded since the last update.
+#[test]
+fn a_plugin_forces_a_chunk_while_a_wasm_handler_listens_to_the_chunk_load_event() {
+    let _serial = setup();
+    load(spot(502));
+
+    let seen = import_fires("force 600 600", "ChunkLoadEvent", 1);
+
+    assert!(seen.iter().all(|entry| entry == "W1 - false"), "{seen:?}");
+}
+
+/// `player.remove-effect`, `player.clear-effects` and `living-entity.reset-all-attributes` fire
+/// `EffectParticleModificationEvent` for the effects that stay, after the guest call.
+#[test]
+fn a_plugin_removes_effects_while_a_wasm_handler_listens_to_the_effect_particle_event() {
+    let _serial = setup();
+    let player = support::player("EffectImportPlayer");
+    let living = &player.living_entity;
+    living.add_effect(speed());
+    living.add_effect(Effect {
+        effect_type: &StatusEffect::SLOWNESS,
+        ..speed()
+    });
+
+    let seen = import_fires(
+        "effects EffectImportPlayer",
+        "EffectParticleModificationEvent",
+        1,
+    );
+
+    assert!(seen.iter().all(|entry| entry == "W1 - -"), "{seen:?}");
+    assert!(!living.has_effect(&StatusEffect::SPEED));
+    assert!(!living.has_effect(&StatusEffect::SLOWNESS));
+}

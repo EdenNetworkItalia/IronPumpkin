@@ -30,9 +30,14 @@ use bindings::pumpkin::plugin::{
         AsyncTestCallbackId, BlockPermutation, BlockPredicateCallbackId, EntityPredicateCallbackId,
         Test, TestCallbackId, VoidCallbackId,
     },
+    game_rules::{GameRule, GameRuleValue},
     neoforge_events::MobEffectEventApplicableResult,
+    player::{KnownServerLink, ServerLink, ServerLinkLabel},
     sounds::{Sound, SoundCategory},
+    statistics::{CustomStatistic, StatisticCategory},
+    status_effect::StatusEffectType,
 };
+use bindings::pumpkin::plugin::block_entity::BlockEntityType;
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
@@ -67,6 +72,20 @@ const EVENTS: [EventType; 30] = [
     EventType::MobEffectEventApplicable,
     EventType::EntityPotionEffectEvent,
     EventType::PlayLevelSoundEventAtPosition,
+];
+
+/// The events that synchronous imports fire, through the queue of the host. Only the first
+/// handler listens, and it logs only while the test arms it: other tests also fire these events.
+const IMPORT_EVENTS: [EventType; 9] = [
+    EventType::PlayerOpenSignEvent,
+    EventType::PlayerVelocityEvent,
+    EventType::EntityKnockbackEvent,
+    EventType::PlayerLinksSendEvent,
+    EventType::PlayerStatisticIncrementEvent,
+    EventType::GameRuleChangedEvent,
+    EventType::GenericGameEvent,
+    EventType::ChunkLoadEvent,
+    EventType::EffectParticleModificationEvent,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -269,6 +288,32 @@ fn view(event: &mut Event) -> Option<View<'_>> {
             Some(&mut data.sound),
             Some(&mut data.cancelled),
         ),
+        _ => return import_view(event),
+    })
+}
+
+/// The arms of [`view`] for [`IMPORT_EVENTS`].
+fn import_view(event: &mut Event) -> Option<View<'_>> {
+    Some(match event {
+        Event::PlayerOpenSignEvent(data) => ("PlayerOpenSignEvent", None, Some(&mut data.cancelled)),
+        Event::PlayerVelocityEvent(data) => {
+            ("PlayerVelocityEvent", Some(&mut data.velocity), Some(&mut data.cancelled))
+        }
+        Event::EntityKnockbackEvent(data) => {
+            ("EntityKnockbackEvent", Some(&mut data.knockback), Some(&mut data.cancelled))
+        }
+        Event::PlayerLinksSendEvent(data) => {
+            ("PlayerLinksSendEvent", None, Some(&mut data.cancelled))
+        }
+        Event::PlayerStatisticIncrementEvent(data) => (
+            "PlayerStatisticIncrementEvent",
+            Some(&mut data.amount),
+            Some(&mut data.cancelled),
+        ),
+        Event::GameRuleChangedEvent(_) => ("GameRuleChangedEvent", None, None),
+        Event::GenericGameEvent(data) => ("GenericGameEvent", None, Some(&mut data.cancelled)),
+        Event::ChunkLoadEvent(data) => ("ChunkLoadEvent", None, Some(&mut data.cancelled)),
+        Event::EffectParticleModificationEvent(_) => ("EffectParticleModificationEvent", None, None),
         _ => return None,
     })
 }
@@ -287,6 +332,8 @@ struct State {
     actions: HashMap<(String, u32), Action>,
     /// Whether a handler of the sound event plays one more sound.
     replay: bool,
+    /// Whether the handler of [`IMPORT_EVENTS`] logs.
+    armed: bool,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -297,6 +344,10 @@ thread_local! {
 
 /// Logs what handler `slot` sees, then runs its action.
 fn handle(slot: u32, event: &mut Event) -> Result<(), String> {
+    let armed = STATE.with_borrow(|state| state.armed);
+    if !armed && import_view(event).is_some() {
+        return Ok(());
+    }
     let Some((name, mut field, mut cancelled)) = view(event) else {
         return Ok(());
     };
@@ -430,6 +481,82 @@ async fn order(words: &[&str]) -> Result<String, String> {
     Ok(String::new())
 }
 
+/// `import <name> <args...>`: calls one group of synchronous imports in one guest call. Each
+/// import fires an event that a Wasm handler listens to, so the call hangs unless the host defers
+/// the work until the guest call ends.
+fn import(words: &[&str]) -> Result<String, String> {
+    let number = |text: &str| text.parse::<i32>().map_err(|_| format!("not a number: {text}"));
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    let player = |name: &str| {
+        server
+            .get_player_by_name(name)
+            .ok_or_else(|| format!("no player {name}"))
+    };
+    let links = || {
+        vec![ServerLink {
+            label: ServerLinkLabel::Known(KnownServerLink::Support),
+            url: "https://example.org".to_owned(),
+        }]
+    };
+    match words {
+        ["sign", name, x, y, z] => player(name)?.open_sign_editor(
+            BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            },
+            true,
+        ),
+        ["velocity", name] => player(name)?.set_velocity((0.0, 0.5, 0.0)),
+        ["knockback", name] => player(name)?.apply_knockback(0.4, 1.0, 0.0),
+        ["links", name] => player(name)?.set_server_links(links()),
+        // The set and the increment of each statistic fire in call order: 5, then 2.
+        ["statistics", name] => {
+            let player = player(name)?;
+            player.set_statistic(StatisticCategory::Mined, 1, 5);
+            player.increment_statistic(StatisticCategory::Mined, 1, 2);
+            player.set_custom_statistic(CustomStatistic::Jump, 5);
+            player.increment_custom_statistic(CustomStatistic::Jump, 2);
+        }
+        ["game-rule", value] => world.set_game_rule(
+            GameRule::SpawnPhantoms,
+            GameRuleValue::Bool(*value == "true"),
+        ),
+        ["jukebox", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            jukebox.stop_playing();
+        }
+        ["force", x, z] => world.set_chunk_force_loaded(number(x)?, number(z)?, true),
+        ["effects", name] => {
+            let player = player(name)?;
+            player.remove_effect(StatusEffectType::Speed);
+            player.clear_effects();
+            player
+                .as_entity()
+                .as_living()
+                .ok_or("not living")?
+                .reset_all_attributes();
+        }
+        _ => return Err(format!("not an import: {words:?}")),
+    }
+    Ok(String::new())
+}
+
 struct Component;
 
 impl Guest for Component {
@@ -439,6 +566,9 @@ impl Guest for Component {
         for event in EVENTS {
             context.register_event(0, event, EventPriority::High, true);
             context.register_event(1, event, EventPriority::Normal, true);
+        }
+        for event in IMPORT_EVENTS {
+            context.register_event(0, event, EventPriority::High, true);
         }
         STATE.with_borrow_mut(|state| state.context = Some(context));
         Ok(())
@@ -500,6 +630,7 @@ impl Guest for Component {
                     state.actions.clear();
                     state.fires.clear();
                     state.log.clear();
+                    state.armed = false;
                 });
                 String::new()
             }
@@ -512,6 +643,11 @@ impl Guest for Component {
             ["perform", rest @ ..] => perform(rest).await?,
             ["sound", rest @ ..] => sound(rest).await?,
             ["order", rest @ ..] => order(rest).await?,
+            ["import", rest @ ..] => import(rest)?,
+            ["arm"] => {
+                STATE.with_borrow_mut(|state| state.armed = true);
+                String::new()
+            }
             ["replay", flag] => {
                 STATE.with_borrow_mut(|state| state.replay = *flag == "on");
                 String::new()
