@@ -540,6 +540,45 @@ fn player_brewed_potion_event_fires_when_a_potion_is_taken() {
     assert!(inventory.get_stack(0).is_empty());
 }
 
+/// Vanilla `BrewingStandMenu.quickMoveStack` calls `slot.onTake`, so a shift-click of a potion
+/// fires `PlayerBrewedPotionEvent` too.
+#[test]
+fn player_brewed_potion_event_fires_for_a_shift_click() {
+    let _serial = support::serial();
+    let player = support::player("QuickBrewedPlayer");
+    let seen = log();
+    let record = seen.clone();
+    on::<PlayerBrewedPotionEvent, _>(move |event| {
+        if event.player.gameprofile.name == "QuickBrewedPlayer" {
+            push(&record, event.stack.item.registry_key);
+        }
+    });
+    let inventory = Arc::new(SimpleInventory::new(5));
+    inventory.set_stack(0, ItemStack::new(1, &Item::POTION));
+    let delegate: Arc<dyn PropertyDelegate> = Arc::new(NoProperties);
+    let handler = Arc::new(Mutex::new(BrewingScreenHandler::new(
+        1,
+        &player.inventory,
+        inventory.clone(),
+        &delegate,
+    )));
+    *player.current_screen_handler.lock().unwrap() = handler;
+
+    send(
+        &player,
+        1,
+        0,
+        SClickSlot::BUTTON_LEFT,
+        SlotActionType::QuickMove,
+    );
+
+    assert!(
+        inventory.get_stack(0).is_empty(),
+        "the potion moved to the inventory"
+    );
+    assert_eq!(entries(&seen), ["potion"]);
+}
+
 /// A brewing stand screen with no property to sync.
 struct NoProperties;
 
