@@ -1957,7 +1957,10 @@ fn value_to_inline_placed_feature(v: &Value) -> TokenStream {
 /// – `v` – a JSON string (named reference) or object (inline placed feature).
 ///
 /// # Returns
-/// `PlacedFeatureWrapper::Named` for a string value or `PlacedFeatureWrapper::Direct` for an inline object; defaults to `PlacedFeatureWrapper::Named(pumpkin_data::placed_feature::PlacedFeature::Acacia)` for other types.
+/// `PlacedFeatureWrapper::Named` for a string value or `PlacedFeatureWrapper::Direct` for an inline object.
+///
+/// # Panics
+/// For any other JSON type, so a malformed reference fails the codegen.
 fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -1970,9 +1973,7 @@ fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
             let pf = value_to_inline_placed_feature(v);
             quote! { PlacedFeatureWrapper::Direct(#pf) }
         }
-        _ => {
-            quote! { PlacedFeatureWrapper::Named(pumpkin_data::placed_feature::PlacedFeature::Acacia) }
-        }
+        other => panic!("placed feature reference is neither a name nor an object: {other}"),
     }
 }
 
@@ -1982,7 +1983,10 @@ fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
 /// – `v` – a JSON string (named reference) or object (inline configured feature).
 ///
 /// # Returns
-/// `Feature::Named` for a string value or `Feature::Inlined` for an object; defaults to `Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::NoOp)` for other types.
+/// `Feature::Named` for a string value or `Feature::Inlined` for an object.
+///
+/// # Panics
+/// For any other JSON type, so a malformed reference fails the codegen.
 fn value_to_feature_ref(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -1994,6 +1998,6 @@ fn value_to_feature_ref(v: &Value) -> TokenStream {
             let cf = value_to_configured_feature(v);
             quote! { Feature::Inlined(Box::new(#cf)) }
         }
-        _ => quote! { Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::NoOp) },
+        other => panic!("feature reference is neither a name nor an object: {other}"),
     }
 }

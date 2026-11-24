@@ -155,10 +155,10 @@ fn value_to_placed_feature(v: &Value) -> TokenStream {
 /// Converts a JSON `"feature"` value into a `Feature` token stream.
 ///
 /// # Arguments
-/// - `v` – Either a string (named reference) or object (inline configured feature).
+/// - `v` – A string (named reference).
 ///
 /// # Returns
-/// `Feature::Named(…)` for string values or `Feature::Inlined(…)` for object values.
+/// `Feature::Named(…)` for string values.
 fn value_to_feature(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -166,11 +166,8 @@ fn value_to_feature(v: &Value) -> TokenStream {
             let variant_name = format_ident!("{}", name.to_pascal_case());
             quote! { Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::#variant_name) }
         }
-        Value::Object(_) => {
-            let cf = value_to_inline_configured_feature(v);
-            quote! { Feature::Inlined(Box::new(#cf)) }
-        }
-        _ => panic!("Wrong feature value"),
+        // No vanilla placed feature inlines its configured feature. Fail instead of placing nothing.
+        _ => panic!("Unsupported feature value in a placed feature: {v}"),
     }
 }
 
@@ -891,7 +888,3 @@ fn value_to_option_i32(v: &Value) -> TokenStream {
     }
 }
 
-/// Stub for configured feature inline in placed feature
-fn value_to_inline_configured_feature(_v: &Value) -> TokenStream {
-    quote! { crate::generation::feature::configured_features::ConfiguredFeature::NoOp }
-}
