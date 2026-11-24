@@ -16,6 +16,7 @@ use pumpkin_protocol::ser::WritingError;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_util::version::JavaMinecraftVersion;
+use pumpkin_world::attachments::ATTACHMENTS_NBT_KEY;
 use pumpkin_world::chunk::ChunkData;
 use rustc_hash::FxHashSet;
 
@@ -57,12 +58,19 @@ impl<'a> CChunkData<'a> {
             .get(&Vector2::new(chunk.x, chunk.z))
             .map(|entities| entities.values().cloned().collect())
             .unwrap_or_default();
-        Self::with_live_block_entities(chunk, &live)
+        Self::with_live_block_entities(chunk, &live, |entity, state| {
+            world.block_entity_update_tag(entity, state)
+        })
     }
 
     /// The packet of `chunk`, with `live` in place of the saved data at their positions.
+    /// `update_tag` gives the update tag of a live block entity in a block state.
     #[must_use]
-    pub fn with_live_block_entities(chunk: &'a ChunkData, live: &[Arc<dyn BlockEntity>]) -> Self {
+    pub fn with_live_block_entities(
+        chunk: &'a ChunkData,
+        live: &[Arc<dyn BlockEntity>],
+        update_tag: impl Fn(&Arc<dyn BlockEntity>, BlockStateId) -> Option<NbtCompound>,
+    ) -> Self {
         let live_positions: FxHashSet<BlockPos> =
             live.iter().map(|entity| entity.get_position()).collect();
         let mut block_entities: Vec<ChunkBlockEntity> = live
@@ -71,8 +79,7 @@ impl<'a> CChunkData<'a> {
                 Some(ChunkBlockEntity {
                     position: entity.get_position(),
                     type_id: entity.get_id()?,
-                    tag: entity
-                        .update_tag(block_state_at(chunk, entity.get_position()))
+                    tag: update_tag(entity, block_state_at(chunk, entity.get_position()))
                         .unwrap_or_default(),
                 })
             })
@@ -91,8 +98,16 @@ impl<'a> CChunkData<'a> {
             .collect();
         block_entities.extend(pending.into_iter().map(|(position, type_id, saved)| {
             let tag = saved
-                .and_then(|nbt| block_entity_from_nbt(&nbt))
-                .and_then(|entity| entity.update_tag(block_state_at(chunk, position)))
+                .and_then(|nbt| {
+                    let entity = block_entity_from_nbt(&nbt)?;
+                    let mut tag = entity.update_tag(block_state_at(chunk, position))?;
+                    if update_tag_source(entity.resource_location()) == UpdateTagSource::SavedData
+                        && let Some(attachments) = nbt.get_compound(ATTACHMENTS_NBT_KEY)
+                    {
+                        tag.put_compound(ATTACHMENTS_NBT_KEY, attachments.clone());
+                    }
+                    Some(tag)
+                })
                 .unwrap_or_default();
             ChunkBlockEntity {
                 position,
@@ -175,6 +190,10 @@ mod tests {
         nbt
     }
 
+    fn own_update_tag(entity: &Arc<dyn BlockEntity>, state: BlockStateId) -> Option<NbtCompound> {
+        entity.update_tag(state)
+    }
+
     fn chunk_with(pending: Vec<NbtCompound>) -> ChunkData {
         let chunk = ChunkData::empty(0, 0);
         let mut map = chunk.pending_block_entities.lock().unwrap();
@@ -218,7 +237,7 @@ mod tests {
     fn saved_chest_items_stay_out_of_the_packet() {
         let pos = BlockPos::new(0, 64, 0);
         let chunk = chunk_with(vec![saved_chest(pos)]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let chest = entry(&packet, pos);
         assert_eq!(Some(chest.type_id), block_entity_type_id("minecraft:chest"));
         assert!(chest.tag.is_empty());
@@ -232,7 +251,7 @@ mod tests {
         let pos = BlockPos::new(1, 64, 0);
         let chunk = chunk_with(Vec::new());
         let chest: Arc<dyn BlockEntity> = block_entity_from_nbt(&saved_chest(pos)).unwrap();
-        let packet = CChunkData::with_live_block_entities(&chunk, &[chest]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[chest], own_update_tag);
         assert!(entry(&packet, pos).tag.is_empty());
         assert!(!contains(&encode(&packet), b"diamond"));
     }
@@ -241,7 +260,7 @@ mod tests {
     fn an_empty_update_tag_goes_out_as_no_tag() {
         let pos = BlockPos::new(3, -2, 5);
         let chunk = chunk_with(vec![saved_chest(pos)]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let buf = encode(&packet);
         let chest = block_entity_type_id("minecraft:chest").unwrap();
         // packed xz, y as i16, the type id (one VarInt byte), then TAG_End
@@ -253,7 +272,7 @@ mod tests {
     fn pending_sign_sends_its_text() {
         let pos = BlockPos::new(2, 70, 3);
         let chunk = chunk_with(vec![saved_sign(pos, "pending line")]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let sign = entry(&packet, pos);
         assert_eq!(Some(sign.type_id), block_entity_type_id("minecraft:sign"));
         assert!(contains(&tag_bytes(&sign.tag), b"pending line"));
@@ -264,7 +283,7 @@ mod tests {
         let pos = BlockPos::new(2, 70, 3);
         let chunk = chunk_with(vec![saved_sign(pos, "saved line")]);
         let live = block_entity_from_nbt(&saved_sign(pos, "live line")).unwrap();
-        let packet = CChunkData::with_live_block_entities(&chunk, &[live]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[live], own_update_tag);
         assert_eq!(packet.block_entities.len(), 1);
         let tag = tag_bytes(&entry(&packet, pos).tag);
         assert!(contains(&tag, b"live line"));
@@ -275,7 +294,7 @@ mod tests {
     fn pending_banner_sends_its_patterns() {
         let pos = BlockPos::new(4, 64, 4);
         let chunk = chunk_with(vec![saved_banner(pos)]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let banner = entry(&packet, pos);
         assert_eq!(
             Some(banner.type_id),
@@ -300,7 +319,7 @@ mod tests {
         nbt.put_bool("extending", true);
         nbt.put_bool("source", false);
         let chunk = chunk_with(vec![nbt]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let piston = entry(&packet, pos);
         assert_eq!(
             piston
@@ -316,18 +335,9 @@ mod tests {
 
         let live =
             block_entity_from_nbt(&chunk.pending_block_entities.lock().unwrap()[&pos]).unwrap();
-        assert!(
-            World::block_entity_data_packet(
-                &live,
-                pumpkin_data::Block::MOVING_PISTON.default_state.id
-            )
-            .is_none()
-        );
+        assert!(!live.sends_update_packet());
         let sign = block_entity_from_nbt(&saved_sign(pos, "line")).unwrap();
-        assert!(
-            World::block_entity_data_packet(&sign, pumpkin_data::Block::OAK_SIGN.default_state.id)
-                .is_some()
-        );
+        assert!(sign.sends_update_packet());
     }
 
     #[test]
@@ -376,7 +386,7 @@ mod tests {
         let mut sign = saved_sign(pos, "bare id line");
         sign.put_string("id", "sign".to_string());
         let chunk = chunk_with(vec![sign]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         let sign = entry(&packet, pos);
         assert_eq!(Some(sign.type_id), block_entity_type_id("minecraft:sign"));
         assert!(contains(&tag_bytes(&sign.tag), b"bare id line"));
@@ -407,12 +417,38 @@ mod tests {
     }
 
     #[test]
+    fn saved_attachments_go_out_only_with_a_saved_data_update_tag() {
+        let mut attachments = NbtCompound::new();
+        attachments.put_int("examplemod:charge", 7);
+        let sign_pos = BlockPos::new(1, 64, 1);
+        let mut sign = saved_sign(sign_pos, "line");
+        sign.put_compound(ATTACHMENTS_NBT_KEY, attachments.clone());
+        let campfire_pos = BlockPos::new(2, 64, 2);
+        let mut campfire = saved("minecraft:campfire", campfire_pos);
+        campfire.put_compound(ATTACHMENTS_NBT_KEY, attachments.clone());
+        let chunk = chunk_with(vec![sign, campfire]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
+        assert_eq!(
+            entry(&packet, sign_pos)
+                .tag
+                .get_compound(ATTACHMENTS_NBT_KEY),
+            Some(&attachments)
+        );
+        assert!(
+            entry(&packet, campfire_pos)
+                .tag
+                .get_compound(ATTACHMENTS_NBT_KEY)
+                .is_none()
+        );
+    }
+
+    #[test]
     fn unknown_block_entity_types_stay_out_of_the_packet() {
         let chunk = chunk_with(vec![
             saved("examplemod:chest", BlockPos::new(0, 64, 0)),
             saved("minecraft:no_such_type", BlockPos::new(1, 64, 0)),
         ]);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
         assert!(packet.block_entities.is_empty());
     }
 
@@ -429,7 +465,7 @@ mod tests {
     #[test]
     fn chunk_data_all_versions() {
         let chunk = ChunkData::empty(0, 0);
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
 
         let versions = [JavaMinecraftVersion::V_26_3];
 
@@ -467,7 +503,7 @@ mod tests {
             nbt,
         );
 
-        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[], own_update_tag);
 
         let versions = [JavaMinecraftVersion::V_26_3];
 

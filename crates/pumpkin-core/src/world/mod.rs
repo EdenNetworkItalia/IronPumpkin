@@ -1,4 +1,6 @@
-use crate::block::entities::{BlockEntity, block_entity_from_nbt};
+use crate::block::entities::{
+    BlockEntity, UpdateTagSource, block_entity_from_nbt, update_tag_source,
+};
 use crossbeam::channel::Receiver;
 use dashmap::DashMap;
 use pumpkin_data::chunk::Biome;
@@ -2096,7 +2098,7 @@ impl World {
                     &pumpkin_protocol::bedrock::client::CUpdateBlock::new(block_pos, be_block_id),
                 );
                 if let Some(packet) = self.get_block_entity(&block_pos).and_then(|block_entity| {
-                    Self::block_entity_data_packet(&block_entity, block_state_id)
+                    self.block_entity_data_packet(&block_entity, block_state_id)
                 }) {
                     self.broadcast_to_chunk(chunk_pos, &packet);
                 }
@@ -2160,7 +2162,7 @@ impl World {
                 for (block_pos, block_state_id) in &updates {
                     if let Some(packet) =
                         self.get_block_entity(block_pos).and_then(|block_entity| {
-                            Self::block_entity_data_packet(&block_entity, *block_state_id)
+                            self.block_entity_data_packet(&block_entity, *block_state_id)
                         })
                     {
                         self.broadcast_to_chunk(chunk_pos, &packet);
@@ -7419,7 +7421,7 @@ impl World {
         let chunk_pos = block_pos.chunk_position();
 
         let state = self.get_block_state(&block_pos);
-        if let Some(packet) = Self::block_entity_data_packet(&block_entity, state.id) {
+        if let Some(packet) = self.block_entity_data_packet(&block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
 
@@ -7442,10 +7444,27 @@ impl World {
         crate::plugin::capabilities::invalidate_block(self, &block_pos);
     }
 
+    /// The update tag of `block_entity` in the block state `state`. `NeoForge`
+    /// `BlockEntity.saveAdditional` adds the attachments to the types whose update tag is the
+    /// saved data.
+    #[must_use]
+    pub fn block_entity_update_tag(
+        &self,
+        block_entity: &Arc<dyn BlockEntity>,
+        state: BlockStateId,
+    ) -> Option<NbtCompound> {
+        let mut tag = block_entity.update_tag(state)?;
+        if update_tag_source(block_entity.resource_location()) == UpdateTagSource::SavedData {
+            crate::plugin::attachments::write_block_entity(self, block_entity, &mut tag);
+        }
+        Some(tag)
+    }
+
     /// The block entity data packet of `block_entity` in the block state `state`: vanilla
     /// `getUpdatePacket`.
     #[must_use]
     pub fn block_entity_data_packet(
+        &self,
         block_entity: &Arc<dyn BlockEntity>,
         state: BlockStateId,
     ) -> Option<CBlockEntityData> {
@@ -7453,7 +7472,7 @@ impl World {
             return None;
         }
         let type_id = block_entity.get_id()?;
-        let nbt = block_entity.update_tag(state)?;
+        let nbt = self.block_entity_update_tag(block_entity, state)?;
         let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
         Some(CBlockEntityData::new(
             block_entity.get_position(),
@@ -7549,7 +7568,7 @@ impl World {
         let chunk_pos = block_pos.chunk_position();
 
         let state = self.get_block_state(&block_pos);
-        if let Some(packet) = Self::block_entity_data_packet(block_entity, state.id) {
+        if let Some(packet) = self.block_entity_data_packet(block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
         self.add_block_entity_nbt(block_pos, &self.block_entity_save_nbt(block_entity));
