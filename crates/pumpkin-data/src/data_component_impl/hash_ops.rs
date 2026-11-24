@@ -179,6 +179,8 @@ enum Bytes {
     /// A codec value saved through `NbtOps`, which writes `Codec.BOOL` as a byte tag and a list
     /// of booleans as a byte array.
     Booleans,
+    /// A byte 0 or 1 is a boolean, any other byte stays a byte.
+    ZeroOneBooleans,
 }
 
 fn tag(value: &NbtTag, bytes: Bytes) -> u32 {
@@ -187,6 +189,8 @@ fn tag(value: &NbtTag, bytes: Bytes) -> u32 {
         NbtTag::Byte(value) => match bytes {
             Bytes::Nbt => byte(*value),
             Bytes::Booleans => boolean(*value != 0),
+            Bytes::ZeroOneBooleans if matches!(value, 0 | 1) => boolean(*value != 0),
+            Bytes::ZeroOneBooleans => byte(*value),
         },
         NbtTag::Short(value) => short(*value),
         NbtTag::Int(value) => int(*value),
@@ -194,7 +198,7 @@ fn tag(value: &NbtTag, bytes: Bytes) -> u32 {
         NbtTag::Float(value) => float(*value),
         NbtTag::Double(value) => double(*value),
         NbtTag::ByteArray(values) => match bytes {
-            Bytes::Nbt => byte_array(values),
+            Bytes::Nbt | Bytes::ZeroOneBooleans => byte_array(values),
             Bytes::Booleans => list(values.iter().map(|value| boolean(*value != 0))),
         },
         NbtTag::String(value) => string(value),
@@ -333,11 +337,13 @@ fn component_patch(stack: &ItemStack) -> Vec<(u32, u32)> {
     entries
 }
 
-/// The hash of a mod component value. Only its NBT form is known, so it is hashed like
-/// `CustomData`.
+/// The hash of a mod component value. Only its NBT form is known. A NeoForge client hashes the
+/// value with the codec of the mod, where a `Codec.BOOL` flag is a boolean, but the save stores
+/// it as a byte. Flags are more common than byte fields that hold only 0 or 1, so a byte 0 or 1
+/// hashes as a boolean.
 #[must_use]
 pub fn mod_component(value: &NbtTag) -> u32 {
-    nbt(value)
+    tag(value, Bytes::ZeroOneBooleans)
 }
 
 #[cfg(test)]
@@ -378,6 +384,25 @@ mod tests {
             crc32c::crc32c(&[18, 1, 0, 0, 0, 0, 0, 0, 0, 19])
         );
         assert_eq!(byte_array(&[1, 2]), crc32c::crc32c(&[14, 1, 2, 15]));
+    }
+
+    /// A NeoForge client hashes a `Codec.BOOL` flag of a mod component with the boolean tag.
+    #[test]
+    fn mod_component_bytes_zero_and_one_hash_as_booleans() {
+        assert_eq!(mod_component(&NbtTag::Byte(1)), crc32c::crc32c(&[13, 1]));
+        assert_eq!(mod_component(&NbtTag::Byte(0)), crc32c::crc32c(&[13, 0]));
+        assert_eq!(mod_component(&NbtTag::Byte(2)), crc32c::crc32c(&[6, 2]));
+        assert_eq!(
+            mod_component(&NbtTag::List(vec![NbtTag::Byte(1)])),
+            crc32c::crc32c(
+                &[
+                    [4].as_slice(),
+                    &crc32c::crc32c(&[13, 1]).to_le_bytes(),
+                    &[5]
+                ]
+                .concat()
+            )
+        );
     }
 
     #[test]
