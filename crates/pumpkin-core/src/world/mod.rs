@@ -7571,7 +7571,7 @@ impl World {
         if let Some(packet) = self.block_entity_data_packet(block_entity, state.id) {
             self.broadcast_to_chunk(chunk_pos, &packet);
         }
-        self.add_block_entity_nbt(block_pos, &self.block_entity_save_nbt(block_entity));
+        self.store_live_block_entity_nbt(block_entity, &self.block_entity_save_nbt(block_entity));
 
         if let Some(data) = bedrock_chest_block_actor(state.id, block_pos)
             .or_else(|| block_entity.bedrock_block_actor_data(state.id))
@@ -9296,6 +9296,28 @@ mod tests {
 
         assert!(revived.is_none());
         assert!(live.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn an_update_after_the_removal_does_not_bring_the_block_entity_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        world.remove_block_entity(&pos);
+        world.update_block_entity(&chest);
+        let revived = saved_block_entity(&world, pos);
+        world.level.shutdown().await;
+
+        assert!(revived.is_none());
         Ok(())
     }
 }
