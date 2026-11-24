@@ -23,6 +23,8 @@ thread_local! {
 #[must_use]
 pub struct FireDeferral {
     outermost: bool,
+    /// The queue belongs to the thread, so the deferral must stay on it.
+    _not_send: std::marker::PhantomData<*const ()>,
 }
 
 impl FireDeferral {
@@ -35,7 +37,10 @@ impl FireDeferral {
                 true
             }
         });
-        Self { outermost }
+        Self {
+            outermost,
+            _not_send: std::marker::PhantomData,
+        }
     }
 }
 

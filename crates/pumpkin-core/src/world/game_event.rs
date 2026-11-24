@@ -23,6 +23,18 @@ pub struct GameEventContext<'a> {
     /// The owner of `source_entity`, when the caller holds it. The cause of the event is then this
     /// entity, also after the world has removed it.
     owner: Option<&'a Arc<dyn EntityBase>>,
+    /// The facts of the source entity that a listener reads, when the caller captured them. A
+    /// queued fire captures them, because it cannot keep the borrowed source entity.
+    facts: Option<SourceFacts>,
+}
+
+/// What the vanilla listeners read of the entity that causes a game event
+/// (`VibrationSystem.Listener.isValidVibration`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SourceFacts {
+    pub spectator: bool,
+    pub stepping_carefully: bool,
+    pub dampens_vibrations: bool,
 }
 
 impl<'a> GameEventContext<'a> {
@@ -31,6 +43,7 @@ impl<'a> GameEventContext<'a> {
         source_entity: None,
         affected_state: None,
         owner: None,
+        facts: None,
     };
 
     /// `Context.of(entity)`.
@@ -40,6 +53,7 @@ impl<'a> GameEventContext<'a> {
             source_entity: entity,
             affected_state: None,
             owner: None,
+            facts: None,
         }
     }
 
@@ -50,6 +64,7 @@ impl<'a> GameEventContext<'a> {
             source_entity: None,
             affected_state: Some(state),
             owner: None,
+            facts: None,
         }
     }
 
@@ -60,6 +75,7 @@ impl<'a> GameEventContext<'a> {
             source_entity: entity,
             affected_state: Some(state),
             owner: None,
+            facts: None,
         }
     }
 
@@ -74,6 +90,7 @@ impl<'a> GameEventContext<'a> {
             source_entity: Some(owner.as_ref()),
             affected_state: None,
             owner: Some(owner),
+            facts: None,
         }
     }
 
@@ -90,6 +107,25 @@ impl<'a> GameEventContext<'a> {
     #[must_use]
     pub const fn with_state(mut self, state: Option<BlockStateId>) -> Self {
         self.affected_state = state;
+        self
+    }
+
+    /// The facts of the source entity, from the capture or from the entity itself.
+    #[must_use]
+    pub fn source_facts(&self) -> Option<SourceFacts> {
+        self.facts.or_else(|| {
+            self.source_entity.map(|entity| SourceFacts {
+                spectator: entity.is_spectator(),
+                stepping_carefully: entity.is_stepping_carefully(),
+                dampens_vibrations: entity.dampens_vibrations(),
+            })
+        })
+    }
+
+    /// The same context with captured source facts.
+    #[must_use]
+    pub const fn with_facts(mut self, facts: Option<SourceFacts>) -> Self {
+        self.facts = facts;
         self
     }
 

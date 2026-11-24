@@ -112,6 +112,17 @@ impl World {
         self.weak_self().and_then(|world| world.upgrade())
     }
 
+    /// This world for a queued fire. A world of the server must be in the server list: a world
+    /// without a server (a test world) fires nothing that a handler could see.
+    fn arc_self_for_fire(&self) -> Option<Arc<Self>> {
+        let world = self.arc_self();
+        debug_assert!(
+            world.is_some() || self.server.upgrade().is_none(),
+            "a world of the server cannot queue a fire when the server does not list it"
+        );
+        world
+    }
+
     /// Fires the event that `make` builds from this world, or returns `None` without a call to
     /// `make` when no plugin listens.
     pub fn plugin_event_in_world<E: crate::plugin::Payload + Send + Sync + 'static>(
@@ -150,7 +161,7 @@ impl World {
         seed: i64,
     ) -> usize {
         if super::fire_deferral::is_active()
-            && let Some(world) = self.arc_self()
+            && let Some(world) = self.arc_self_for_fire()
         {
             let except_id = except.map(|player| player.gameprofile.id);
             let position = *position;
@@ -256,7 +267,7 @@ impl World {
         let listed = self.get_entity_by_id(entity.entity_id);
         let (entity_id, position) = (entity.entity_id, entity.pos.load());
         if super::fire_deferral::is_active()
-            && let Some(world) = self.arc_self()
+            && let Some(world) = self.arc_self_for_fire()
         {
             let except_id = except.map(|player| player.gameprofile.id);
             if let Some(fire) = super::fire_deferral::defer(move || {

@@ -417,3 +417,98 @@ fn a_game_event_of_a_behavior_can_write_the_nbt_of_the_mob() {
 
     assert!(*written.lock().unwrap() >= 1, "the frog laid no spawn");
 }
+
+/// Two threads change the record of one jukebox, as a hopper above that inserts and a hopper
+/// below that takes. The effects of the changes (`has_record`, the song) apply in storage order,
+/// so the block ends with the state of the slot.
+#[test]
+fn threads_that_change_the_record_leave_the_block_with_the_state_of_the_slot() {
+    let _serial = support::serial();
+    let world = support::world();
+    let x = 32_800;
+    let pos = BlockPos::new(x, 100, 0);
+    place(&world, pos, &Block::JUKEBOX);
+    let jukebox = jukebox_at(&world, pos);
+    let has_record = |world: &Arc<World>| {
+        pumpkin_data::block_properties::JukeboxLikeProperties::from_state_id(
+            world.get_block_state_id(&pos),
+        )
+        .has_record
+    };
+
+    for round in 0..200 {
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let (inserting, taking) = (jukebox.clone(), jukebox.clone());
+        let (insert_barrier, take_barrier) = (barrier.clone(), barrier);
+        let insert = std::thread::spawn(move || {
+            insert_barrier.wait();
+            for _ in 0..20 {
+                inserting.set_stack(0, ItemStack::new(1, &Item::MUSIC_DISC_13));
+            }
+        });
+        let take = std::thread::spawn(move || {
+            take_barrier.wait();
+            for _ in 0..20 {
+                taking.remove_stack(0);
+            }
+        });
+        insert.join().unwrap();
+        take.join().unwrap();
+        assert_eq!(
+            has_record(&world),
+            !jukebox.get_stack(0).is_empty(),
+            "round {round}: the block and the slot disagree"
+        );
+        assert_eq!(
+            jukebox.is_playing(),
+            !jukebox.get_stack(0).is_empty(),
+            "round {round}: the song and the slot disagree"
+        );
+    }
+}
+
+/// A creative slot set of the selected hotbar slot sends the equipment change after the screen
+/// handler lock: the change reads the attribute modifiers, which fires
+/// `ItemAttributeModifierEvent`. A handler of the event takes the screen handler lock.
+#[test]
+fn the_hotbar_equipment_change_of_a_creative_slot_set_waits_for_the_screen_handler_lock() {
+    use pumpkin_core::{net::ClientPlatform, plugin::inventory::ItemAttributeModifierEvent};
+    use pumpkin_protocol::{
+        codec::item_stack_seralizer::ItemStackSerializer, java::server::play::SSetCreativeSlot,
+    };
+
+    let _serial = support::serial();
+    let player = support::player("CreativeHotbar");
+    player.gamemode.store(pumpkin_util::GameMode::Creative);
+    let read: Arc<Mutex<Vec<bool>>> = Arc::default();
+    let (record, reader) = (read.clone(), player.clone());
+    on::<ItemAttributeModifierEvent, _>(move |event| {
+        if event.item_stack.item.id == Item::NETHERITE_SWORD.id {
+            record
+                .lock()
+                .unwrap()
+                .push(reader.player_screen_handler.try_lock().is_ok());
+        }
+    });
+
+    let setting = player;
+    within_timeout(move || {
+        let ClientPlatform::Java(client) = setting.client.as_ref() else {
+            return;
+        };
+        // Slot 36 of the player screen is the first hotbar slot, the selected one.
+        client
+            .handle_set_creative_slot(
+                &setting,
+                SSetCreativeSlot::new(
+                    36,
+                    ItemStackSerializer::from(ItemStack::new(1, &Item::NETHERITE_SWORD)),
+                ),
+            )
+            .unwrap();
+    });
+
+    let read = read.lock().unwrap();
+    assert!(!read.is_empty(), "the event did not fire");
+    assert!(read.iter().all(|free| *free), "{read:?}");
+}

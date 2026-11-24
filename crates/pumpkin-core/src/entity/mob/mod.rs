@@ -759,6 +759,9 @@ impl MobEntity {
     }
 
     pub fn with_brain<R>(&self, mob: &dyn Mob, callback: impl FnOnce(&mut Brain) -> R) -> R {
+        // The brain code plays sounds and emits game events inside the brain lock, and a mod
+        // handler can reach the brain. Their fires wait for the end of the call.
+        let _fires = crate::world::fire_deferral::FireDeferral::start();
         let result = {
             let mut slot = self
                 .brain
@@ -801,9 +804,6 @@ impl MobEntity {
     pub fn tick_brain(&self, mob: &dyn Mob) {
         let world = self.living_entity.entity.world.load_full();
         let time = world.get_world_age();
-        // The behaviors play sounds and emit game events inside the brain lock, and a mod
-        // handler can reach the brain. Their fires wait for the end of the tick.
-        let _fires = crate::world::fire_deferral::FireDeferral::start();
         self.with_brain(mob, |brain| brain.tick(&world, mob, time));
         if self.brain_refresh_requested.swap(false, Ordering::AcqRel) {
             self.refresh_brain(mob);

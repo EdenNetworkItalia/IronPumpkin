@@ -8259,25 +8259,39 @@ impl World {
         context: &game_event::GameEventContext<'_>,
     ) {
         let event_key = event_key.as_ref();
-        if fire_deferral::is_active()
-            && let Some(world) = self.arc_self()
-        {
-            let cause = context.owner().cloned().or_else(|| {
-                context
-                    .source_entity
-                    .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id))
-            });
-            let (key, state) = (event_key.to_owned(), context.affected_state);
-            if let Some(fire) = fire_deferral::defer(move || {
-                let context = cause.as_ref().map_or(
-                    game_event::GameEventContext::NONE,
-                    game_event::GameEventContext::of_owner,
+        if fire_deferral::is_active() {
+            let world = self.arc_self();
+            debug_assert!(
+                world.is_some() || self.server.upgrade().is_none(),
+                "a world of the server cannot queue a fire when the server does not list it"
+            );
+            if let Some(world) = world {
+                let cause = context.owner().cloned().or_else(|| {
+                    context
+                        .source_entity
+                        .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id))
+                });
+                // The source entity is borrowed, so the queue keeps what the listeners read of it.
+                let (key, state, facts) = (
+                    event_key.to_owned(),
+                    context.affected_state,
+                    context.source_facts(),
                 );
-                world.emit_game_event_now(&key, position, &context.with_state(state));
-            }) {
-                fire();
+                if let Some(fire) = fire_deferral::defer(move || {
+                    let context = cause.as_ref().map_or(
+                        game_event::GameEventContext::NONE,
+                        game_event::GameEventContext::of_owner,
+                    );
+                    world.emit_game_event_now(
+                        &key,
+                        position,
+                        &context.with_state(state).with_facts(facts),
+                    );
+                }) {
+                    fire();
+                }
+                return;
             }
-            return;
         }
         self.emit_game_event_now(event_key, position, context);
     }

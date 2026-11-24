@@ -224,13 +224,13 @@ fn is_valid_vibration(event: GameEvent, context: &GameEventContext<'_>) -> bool 
     {
         return false;
     }
-    if let Some(source) = context.source_entity {
+    if let Some(source) = context.source_facts() {
         let ignored_while_sneaking = tag::GameEvent::MINECRAFT_IGNORE_VIBRATIONS_SNEAKING
             .0
             .contains(&event.name());
-        if source.is_spectator()
-            || (source.is_stepping_carefully() && ignored_while_sneaking)
-            || source.dampens_vibrations()
+        if source.spectator
+            || (source.stepping_carefully && ignored_while_sneaking)
+            || source.dampens_vibrations
         {
             return false;
         }
@@ -374,6 +374,30 @@ mod tests {
             vec![1, 172, 2, 62, 184, 81, 236, 12]
         );
         Ok(())
+    }
+
+    /// A queued fire cannot keep the borrowed source entity: it keeps the facts that the listeners
+    /// read, and the vibration check gives the same answer.
+    #[test]
+    fn captured_source_facts_decide_the_vibration_as_the_entity_does() {
+        use crate::world::game_event::SourceFacts;
+        let facts = |dampens_vibrations| SourceFacts {
+            spectator: false,
+            stepping_carefully: false,
+            dampens_vibrations,
+        };
+        let captured =
+            |dampens_vibrations| GameEventContext::NONE.with_facts(Some(facts(dampens_vibrations)));
+        assert!(is_valid_vibration(
+            GameEvent::NoteBlockPlay,
+            &captured(false)
+        ));
+        assert!(!is_valid_vibration(
+            GameEvent::NoteBlockPlay,
+            &captured(true)
+        ));
+        assert_eq!(captured(true).source_facts(), Some(facts(true)));
+        assert_eq!(GameEventContext::NONE.source_facts(), None);
     }
 
     /// Vanilla `VibrationSystem.Listener.isValidVibration`: a game event that affects a block
