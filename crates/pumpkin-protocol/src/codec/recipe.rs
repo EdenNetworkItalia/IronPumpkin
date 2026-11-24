@@ -15,16 +15,12 @@ pub enum OwnedRecipeIngredient {
 impl OwnedRecipeIngredient {
     #[must_use]
     pub fn match_item(&self, item: &Item) -> bool {
+        // An id without a namespace is in `minecraft`, as `Identifier.parse` reads it.
+        let name = namespaced_name(item.registry_key);
         match self {
-            Self::Simple(id) => {
-                let name = namespaced_name(item.registry_key);
-                name == *id
-            }
+            Self::Simple(id) => namespaced_name(id) == name,
             Self::Tagged(tag) => item.has_tag_dynamic(tag),
-            Self::OneOf(ids) => {
-                let name = namespaced_name(item.registry_key);
-                ids.iter().any(|id| *id == name)
-            }
+            Self::OneOf(ids) => ids.iter().any(|id| namespaced_name(id) == name),
         }
     }
 
@@ -212,4 +208,22 @@ pub struct StonecutterSync<'a> {
     pub ingredient: &'a OwnedRecipeIngredient,
     pub result_item: &'a str,
     pub result_count: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OwnedRecipeIngredient;
+    use pumpkin_data::item::Item;
+
+    #[test]
+    fn an_id_without_a_namespace_matches_the_vanilla_item() {
+        let simple = OwnedRecipeIngredient::Simple("stone".to_string());
+        assert!(simple.match_item(&Item::STONE));
+        assert!(!simple.match_item(&Item::DIRT));
+        let one_of = OwnedRecipeIngredient::OneOf(vec!["dirt".to_string()]);
+        assert!(one_of.match_item(&Item::DIRT));
+        assert!(
+            OwnedRecipeIngredient::Simple("minecraft:stone".to_string()).match_item(&Item::STONE)
+        );
+    }
 }
