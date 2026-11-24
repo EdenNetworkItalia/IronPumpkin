@@ -1309,6 +1309,16 @@ mod tests {
         stone_floor(&world);
         let panda = spawn_panda(&world, 0.5, 0.5);
         hold(&panda, &Item::BAMBOO);
+        // As in vanilla, a sit ends by chance on 1 in 300 and 1 in 1000 of the full goal ticks,
+        // and a stopped sit drops the item. About 3% of the runs would end before the checks.
+        panda
+            .mob_entity
+            .goals_selector
+            .remove_goal::<PandaSitGoal>(panda.as_ref());
+        panda
+            .mob_entity
+            .goals_selector
+            .add_goal(7, Box::new(PandaSitGoal::never_ending()));
         let steps = |from: i32, to: i32| {
             for tick in from..to {
                 set_tick(&panda, tick);

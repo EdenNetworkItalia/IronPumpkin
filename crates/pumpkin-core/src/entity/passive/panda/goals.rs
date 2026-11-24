@@ -248,9 +248,21 @@ pub fn hurt_by_target_goal() -> RevengeGoal {
 pub struct PandaSitGoal {
     /// Vanilla `cooldown`: the `tick_count` before which the panda does not sit again.
     cooldown: i32,
+    /// Lets a test run the real goal selector without the random end of the sit.
+    #[cfg(test)]
+    never_ends: bool,
 }
 
 impl PandaSitGoal {
+    /// A sit goal that never ends by chance, for tests that run the real goal selector.
+    #[cfg(test)]
+    pub(super) fn never_ending() -> Self {
+        Self {
+            never_ends: true,
+            ..Self::default()
+        }
+    }
+
     /// Vanilla `canContinueToUse` with `next_int(bound)` standing for `RandomSource.nextInt`.
     pub(super) fn keeps_sitting(panda: &PandaEntity, mut next_int: impl FnMut(i32) -> i32) -> bool {
         if panda.get_entity().is_in_water() {
@@ -280,6 +292,10 @@ impl Goal for PandaSitGoal {
     }
 
     fn should_continue(&mut self, mob: &dyn Mob) -> bool {
+        #[cfg(test)]
+        if self.never_ends {
+            return true;
+        }
         as_panda(mob).is_some_and(|panda| {
             let mut rng = panda.get_random();
             Self::keeps_sitting(panda, |bound| rng.random_range(0..bound))
