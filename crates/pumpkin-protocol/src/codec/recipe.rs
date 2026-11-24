@@ -178,6 +178,12 @@ pub enum DynamicRecipe {
     SmithingTransform(OwnedSmithingTransformRecipe),
     SmithingTrim(OwnedSmithingTrimRecipe),
     SpecialCrafting(OwnedSpecialCraftingRecipe),
+    /// A recipe that vanilla `RecipeManager.finalizeRecipeLoading` ignores. Vanilla keeps it in
+    /// the recipe map (`RecipeManager.java:63-90`), so its id still replaces a lower recipe
+    /// with that id, but no lookup, sync or recipe book holds it.
+    Ignored {
+        recipe_id: String,
+    },
 }
 
 impl DynamicRecipe {
@@ -199,6 +205,7 @@ impl DynamicRecipe {
             Self::SmithingTransform(r) => Some(&r.recipe_id),
             Self::SmithingTrim(r) => Some(&r.recipe_id),
             Self::SpecialCrafting(r) => Some(&r.recipe_id),
+            Self::Ignored { recipe_id } => Some(recipe_id),
         }
     }
 }

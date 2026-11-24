@@ -10,8 +10,10 @@ use tracing::warn;
 
 use crate::net::java::JavaClient;
 
-/// The recipe that the manager keeps for `recipe`, or `None` for a recipe that a codec rejects
-/// or that vanilla `RecipeManager.finalizeRecipeLoading` ignores. It logs the vanilla message.
+/// The recipe that the manager keeps for `recipe`. A recipe that a codec rejects or that
+/// vanilla `RecipeManager.finalizeRecipeLoading` ignores becomes a placeholder: vanilla keeps it
+/// in the recipe map, so its id still replaces a lower recipe with that id. A recipe without an
+/// id has nothing to replace and is dropped.
 fn loaded(recipe: DynamicRecipe) -> Option<DynamicRecipe> {
     let Some(error) = recipe_index::load_error(&recipe) else {
         return Some(recipe);
@@ -23,7 +25,9 @@ fn loaded(recipe: DynamicRecipe) -> Option<DynamicRecipe> {
             warn!("Recipe {id} can't be placed due to empty ingredients and will be ignored");
         }
     }
-    None
+    recipe.recipe_id().map(|recipe_id| DynamicRecipe::Ignored {
+        recipe_id: recipe_id.to_string(),
+    })
 }
 
 /// Adds `recipe` to `recipes` when it loads.
@@ -88,6 +92,7 @@ impl RecipeManager {
         recipe_index::install(&recipes);
     }
 
+    /// The loaded recipes, with the placeholders of the ignored recipes.
     pub fn get_dynamic_recipes_internal(&self) -> Vec<DynamicRecipe> {
         self.dynamic_recipes
             .read()
@@ -154,8 +159,16 @@ mod tests {
         })
     }
 
+    fn ids(manager: &RecipeManager) -> Vec<String> {
+        manager
+            .get_dynamic_recipes_internal()
+            .iter()
+            .filter_map(|r| r.recipe_id().map(ToString::to_string))
+            .collect()
+    }
+
     #[test]
-    fn the_manager_drops_a_recipe_that_cannot_be_placed() {
+    fn the_manager_keeps_a_placeholder_for_a_recipe_that_cannot_be_placed() {
         let manager = RecipeManager::new();
         manager.set_recipes(vec![
             stonecutting("test:kept", "minecraft:dirt"),
@@ -167,17 +180,43 @@ mod tests {
             r.result.item_id = "test:missing".to_string();
         }
         manager.add_recipe(unknown_result);
-        let ids: Vec<String> = manager
-            .get_dynamic_recipes_internal()
-            .iter()
-            .filter_map(|r| r.recipe_id().map(ToString::to_string))
-            .collect();
-        assert_eq!(ids, ["test:kept"]);
+        assert_eq!(
+            ids(&manager),
+            [
+                "test:kept",
+                "test:dropped",
+                "test:added",
+                "test:unknown_result"
+            ]
+        );
+        let recipes = manager.get_dynamic_recipes_internal();
+        assert!(
+            recipes[1..]
+                .iter()
+                .all(|r| matches!(r, DynamicRecipe::Ignored { .. }))
+        );
         assert!(
             recipe_index::current()
                 .stonecutter_recipes(pumpkin_data::dynamic::ContentIds::Real)
                 .all(|r| r.recipe_id != "test:dropped")
         );
+    }
+
+    /// Vanilla keeps an ignored recipe in the recipe map, so it still replaces the generated
+    /// recipe with its id.
+    #[test]
+    fn an_ignored_recipe_still_replaces_the_generated_recipe_with_its_id() {
+        let id = "minecraft:stone_slab_from_stone_stonecutting";
+        let generated = || {
+            recipe_index::current()
+                .stonecutter_recipes(pumpkin_data::dynamic::ContentIds::Real)
+                .any(|r| r.recipe_id == id)
+        };
+        let manager = RecipeManager::new();
+        manager.set_recipes(Vec::new());
+        assert!(generated(), "{id} is a generated recipe");
+        manager.set_recipes(vec![stonecutting(id, "test:missing")]);
+        assert!(!generated());
     }
 
     /// The vanilla messages: `Registry.java:43`, `Item.java:118`, `HolderSetCodec.java:76`.

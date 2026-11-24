@@ -272,7 +272,9 @@ fn dynamic_entry(recipe: &DynamicRecipe) -> Entry {
             input: r.input_item.clone(),
             reagent: r.reagent.clone(),
         },
-        DynamicRecipe::Crafting(_) | DynamicRecipe::SpecialCrafting(_) => Entry::Other,
+        DynamicRecipe::Crafting(_)
+        | DynamicRecipe::SpecialCrafting(_)
+        | DynamicRecipe::Ignored { .. } => Entry::Other,
     }
 }
 
@@ -547,7 +549,9 @@ fn result_item(recipe: &DynamicRecipe) -> Option<&str> {
         DynamicRecipe::Stonecutting(r) => &r.result.item_id,
         DynamicRecipe::SmithingTransform(r) => &r.result.item_id,
         DynamicRecipe::Brewing(r) => &r.output_item,
-        DynamicRecipe::SmithingTrim(_) | DynamicRecipe::SpecialCrafting(_) => return None,
+        DynamicRecipe::SmithingTrim(_)
+        | DynamicRecipe::SpecialCrafting(_)
+        | DynamicRecipe::Ignored { .. } => return None,
     })
 }
 
@@ -570,7 +574,7 @@ fn ingredients(recipe: &DynamicRecipe) -> Vec<&OwnedRecipeIngredient> {
                 .collect()
         }
         DynamicRecipe::SmithingTrim(r) => vec![&r.template, &r.base, &r.addition],
-        DynamicRecipe::SpecialCrafting(_) => Vec::new(),
+        DynamicRecipe::SpecialCrafting(_) | DynamicRecipe::Ignored { .. } => Vec::new(),
     }
 }
 

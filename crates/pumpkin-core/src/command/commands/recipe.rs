@@ -49,8 +49,11 @@ impl SuggestionProvider for RecipeSuggestionProvider {
     ) -> SuggestionProviderResult {
         if let Some(server) = &context.source.server {
             let recipes = server.recipe_manager.get_dynamic_recipes_internal();
-            for recipe in recipes {
-                let id = get_recipe_id(&recipe);
+            for recipe in recipes
+                .iter()
+                .filter(|recipe| !matches!(recipe, DynamicRecipe::Ignored { .. }))
+            {
+                let id = get_recipe_id(recipe);
                 builder = builder.suggest(id);
             }
         }

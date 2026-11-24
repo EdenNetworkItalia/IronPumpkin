@@ -65,7 +65,8 @@ pub fn crafting_data(recipe_manager: &crate::server::RecipeManager) -> Vec<Bedro
             DynamicRecipe::Brewing(_)
             | DynamicRecipe::SmithingTransform(_)
             | DynamicRecipe::SmithingTrim(_)
-            | DynamicRecipe::SpecialCrafting(_) => {}
+            | DynamicRecipe::SpecialCrafting(_)
+            | DynamicRecipe::Ignored { .. } => {}
         }
     }
     recipes
