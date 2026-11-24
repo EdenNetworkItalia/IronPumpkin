@@ -9,6 +9,7 @@
 //! sound, so it can tell "sent nothing" from "not yet sent".
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "a test fails on the first missing value"
 )]
 
@@ -303,13 +304,12 @@ fn a_handler_changes_the_sound_and_cancels_at_an_entity() {
         }
     });
     let world = support::world();
-    let entity: Arc<dyn EntityBase> = player;
     let stone: SoundHolder = IdOr::Id(Sound::BlockStoneBreak as u16);
 
     for _ in 0..4 {
         world.play_seeded_sound_at_entity(
             None,
-            &entity,
+            player.get_entity(),
             stone.clone(),
             SoundCategory::Players,
             1.5,
@@ -467,9 +467,9 @@ fn one_event_per_fire_site_vanilla_game_event() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let record = seen.clone();
     on::<GenericGameEvent, _>(move |event| {
-        if event.position.x == x {
+        if event.position().x == x {
             assert!(event.cause.is_none());
-            record.lock().unwrap().push(event.event_key.clone());
+            record.lock().unwrap().push(event.event_key().to_owned());
         }
     });
     let world = support::world();
@@ -495,7 +495,7 @@ fn a_vanilla_game_event_carries_its_cause() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let record = seen.clone();
     on::<GenericGameEvent, _>(move |event| {
-        if event.position.x == x {
+        if event.position().x == x {
             record.lock().unwrap().push(
                 event
                     .cause
@@ -554,7 +554,7 @@ fn a_cancel_stops_the_vanilla_game_event_listeners() {
     let cancel = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let cancelled = cancel.clone();
     on::<GenericGameEvent, _>(move |event| {
-        if event.position.x == x {
+        if event.position().x == x {
             event.cancelled = cancelled.load(Ordering::Relaxed);
         }
     });
@@ -566,4 +566,146 @@ fn a_cancel_stops_the_vanilla_game_event_listeners() {
     cancel.store(false, Ordering::Relaxed);
     world.emit_game_event("jukebox_play", Vector3::new(x, 121.0, 0.5));
     assert!(allay_dances(&allay));
+}
+
+/// The death sound of the ender dragon is a global level event, as `EnderDragon.tickDeath`
+/// sends it: a player far from the dragon gets it, with the global flag.
+#[test]
+fn the_dragon_death_sound_is_a_global_level_event() {
+    use pumpkin_core::entity::boss::ender_dragon::{
+        EnderDragonEntity,
+        phase::{DyingPhase, Phase},
+    };
+    use pumpkin_protocol::java::client::play::CWorldEvent;
+
+    let _serial = support::serial();
+    let (_player, mut peer) = listener("DragonFar", 21_000.0);
+    let world = support::world();
+    let dragon = pumpkin_core::entity::r#type::from_type(
+        &EntityType::ENDER_DRAGON,
+        Vector3::new(0.0, 100.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    let dragon = dragon
+        .cast_any()
+        .downcast_ref::<EnderDragonEntity>()
+        .unwrap();
+
+    DyingPhase.begin(dragon);
+    DyingPhase.tick(dragon);
+
+    let found = support::RUNTIME.block_on(async {
+        loop {
+            let packet = tokio::time::timeout(Duration::from_secs(10), peer.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            if packet.id == CWorldEvent::to_id(CURRENT_MC_VERSION) {
+                let mut body = &packet.payload[..];
+                let event = body.get_i32_be().unwrap();
+                body.get_i64_be().unwrap();
+                body.get_i32_be().unwrap();
+                return (event, body.get_bool().unwrap());
+            }
+        }
+    });
+    assert_eq!(found, (1028, true));
+}
+
+/// The use of a goat horn plays an entity sound with the player as `except`, and emits a game event
+/// with the player as its cause. A handler of both events reads the inventory of the player and
+/// plays a sound and emits a game event from inside the use. The call does not deadlock, and the
+/// horn sound reaches the other player but not the player of the horn.
+#[test]
+fn a_handler_can_play_a_sound_and_emit_a_game_event_from_inside_an_item_use() {
+    use pumpkin_core::{item::ItemBehaviour, item::items::goat_horn::GoatHornItem};
+    use pumpkin_data::{data_component_impl::InstrumentImpl, item::Item, item_stack::ItemStack};
+
+    let _serial = support::serial();
+    let x = 22_000.0;
+    let (player, mut own_peer) = listener("HornPlayer", x);
+    let (_other, mut other_peer) = listener("HornListener", x + 10.0);
+    let mut horn = ItemStack::new(1, &Item::GOAT_HORN);
+    horn.set_data_component(InstrumentImpl {
+        instrument: "minecraft:ponder_goat_horn".into(),
+    });
+    player
+        .inventory
+        .set_stack_in_hand(pumpkin_util::Hand::Right, horn);
+    let entity_id = player.living_entity.entity.entity_id;
+    let reads = Arc::new(AtomicUsize::new(0));
+    let (sound_reads, game_reads) = (reads.clone(), reads.clone());
+    let world = support::world();
+    let nested = world.clone();
+    on::<PlayLevelSoundEventAtEntity, _>(move |event| {
+        if event.entity.get_entity().entity_id == entity_id {
+            // The handler runs inside the use: it reads the inventory and plays a sound.
+            assert!(
+                !event
+                    .entity
+                    .get_player()
+                    .unwrap()
+                    .inventory()
+                    .held_item()
+                    .is_empty()
+            );
+            nested.play_sound_raw(
+                Sound::BlockStoneBreak as u16,
+                SoundCategory::Blocks,
+                &Vector3::new(x + 5.0, 100.0, 0.5),
+                1.0,
+                1.0,
+            );
+            sound_reads.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+    let nested = world;
+    on::<GenericGameEvent, _>(move |event| {
+        if event.event_key() == "instrument_play" && event.position().x == x {
+            assert_eq!(
+                event
+                    .cause
+                    .as_ref()
+                    .map(|cause| cause.get_entity().entity_id),
+                Some(entity_id)
+            );
+            nested.emit_game_event("block_change", Vector3::new(x, 100.0, 0.5));
+            game_reads.fetch_add(1, Ordering::Relaxed);
+        }
+    });
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let using = player;
+    std::thread::spawn(move || {
+        GoatHornItem.normal_use_with_hand(
+            &Item::GOAT_HORN,
+            &using,
+            0.0,
+            0.0,
+            pumpkin_util::Hand::Right,
+        );
+        tx.send(()).unwrap();
+    });
+    rx.recv_timeout(Duration::from_secs(60))
+        .expect("the use of the horn hangs");
+    marker(&Vector3::new(x + 5.0, 100.0, 0.5));
+
+    assert_eq!(reads.load(Ordering::Relaxed), 2);
+    let own: Vec<_> = heard_until(&mut own_peer, Sound::BlockAnvilLand)
+        .into_iter()
+        .map(|heard| heard.sound)
+        .collect();
+    let other: Vec<_> = heard_until(&mut other_peer, Sound::BlockAnvilLand)
+        .into_iter()
+        .map(|heard| heard.sound)
+        .collect();
+    assert_eq!(own, ["block.stone.break"]);
+    assert_eq!(other.len(), 2);
+    assert!(
+        other.contains(
+            &Sound::NAMES[pumpkin_data::instrument::Instrument::PonderGoatHorn.sound() as usize]
+                .to_owned()
+        )
+    );
 }
