@@ -33,11 +33,14 @@ use bindings::pumpkin::plugin::{
     },
     game_rules::{GameRule, GameRuleValue},
     neoforge_events::MobEffectEventApplicableResult,
-    player::{KnownServerLink, ServerLink, ServerLinkLabel},
+    player::{
+        BanPlayerOptions, JavaKickOptions, KnownServerLink, ServerLink, ServerLinkLabel,
+        SocketTeardownPolicy,
+    },
     sounds::{Sound, SoundCategory},
     statistics::{CustomStatistic, StatisticCategory},
     status_effect::StatusEffectType,
-    world::EquipmentSlot,
+    world::{BlockDirection, EquipmentSlot, MobData, ShulkerData},
 };
 use bindings::pumpkin::plugin::{block_entity::BlockEntityType, text::TextComponent};
 
@@ -358,6 +361,9 @@ struct State {
     /// `(id, extra)`: the handler of `PacketSentEvent` cancels the packets with the id `id` and
     /// adds a packet with the id `extra` after each.
     packet_rule: Option<(i32, i32)>,
+    /// Whether the handler of `PacketSentEvent` answers a packet with the text `reply-me` with a
+    /// title.
+    packet_reply: bool,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -368,9 +374,15 @@ thread_local! {
 
 /// Logs what handler `slot` sees, then runs its action.
 fn handle(slot: u32, event: &mut Event) -> Result<(bool, bool), String> {
-    let (armed, packet_rule) = STATE.with_borrow(|state| (state.armed, state.packet_rule));
+    let (armed, packet_rule, packet_reply) =
+        STATE.with_borrow(|state| (state.armed, state.packet_rule, state.packet_reply));
     if !armed && import_view(event).is_some() {
         return Ok((false, false));
+    }
+    if let (true, Event::PacketSentEvent(data)) = (packet_reply, &*event)
+        && data.raw_payload.windows(8).any(|window| window == b"reply-me")
+    {
+        data.player.show_title(TextComponent::text("replied"));
     }
     if let (Some((id, extra)), Event::PacketSentEvent(data)) = (packet_rule, &mut *event)
         && data.packet_id == id
@@ -548,6 +560,65 @@ async fn equip(words: &[&str]) -> Result<String, String> {
     Ok(pig.get_id().to_string())
 }
 
+/// `ordered <case> <name>`: synchronous and asynchronous imports that send packets to player
+/// `name` in one guest call. The packets must reach the client in call order.
+async fn ordered(words: &[&str]) -> Result<String, String> {
+    let [case, name, ..] = words else {
+        return Err("ordered <case> <name>".to_owned());
+    };
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let player = server
+        .get_player_by_name(name)
+        .ok_or_else(|| format!("no player {name}"))?;
+    let say = |text: &str| player.send_system_message(TextComponent::text(text), false);
+    match *case {
+        // A message, then a ban that kicks the player: the message arrives before the kick.
+        "ban" => {
+            say("ordered-banned");
+            player
+                .ban(BanPlayerOptions {
+                    reason: Some(TextComponent::text("ordered-ban-reason")),
+                    source: None,
+                    expires_at_utc: None,
+                    duration_seconds: None,
+                    kick_if_online: true,
+                    log_to_console: false,
+                })
+                .await;
+        }
+        // A synchronous message, an asynchronous broadcast, a synchronous message.
+        "broadcast" => {
+            say("ordered-one");
+            server.broadcast("ordered-two".to_owned()).await;
+            say("ordered-three");
+        }
+        // A kick of the player, then a game rule change `value`: the change does not wait for
+        // the flush of the disconnect packet.
+        "kick" => {
+            let value = words.get(2) == Some(&"true");
+            let java = player.as_java().ok_or("not a java player")?;
+            java.kick(JavaKickOptions {
+                reason: TextComponent::text("ordered-kick"),
+                log_to_console: false,
+                teardown_policy: SocketTeardownPolicy::Graceful,
+            })
+            .await;
+            let world = server
+                .get_all_worlds()
+                .into_iter()
+                .next()
+                .ok_or("no world")?;
+            world.set_game_rule(GameRule::SpawnPhantoms, GameRuleValue::Bool(value));
+        }
+        // A message that the handler of `PacketSentEvent` answers with a title, after `packet-reply`.
+        "reply" => say("reply-me"),
+        _ => return Err(format!("not an ordered case: {case}")),
+    }
+    Ok(String::new())
+}
+
 /// `import <name> <args...>`: calls one group of synchronous imports in one guest call. Each
 /// import fires an event that a Wasm handler listens to, so the call hangs unless the host defers
 /// the work until the guest call ends.
@@ -625,6 +696,45 @@ fn import(words: &[&str]) -> Result<String, String> {
             };
             let removed = jukebox.get_container().remove_stack(0);
             return Ok(if removed.is_some() { "some" } else { "none" }.to_owned());
+        }
+        // A peek of a shulker from 0 plays the open sound.
+        ["mob-data", id] => {
+            let mob = world
+                .get_entity_by_id(number(id)?)
+                .ok_or("no entity")?
+                .as_mob()
+                .ok_or("not a mob")?;
+            return Ok(mob
+                .set_mob_data(MobData::Shulker(ShulkerData {
+                    attached_face: BlockDirection::Down,
+                    peek_amount: 100,
+                    color: None,
+                }))
+                .to_string());
+        }
+        ["remove", id] => world
+            .get_entity_by_id(number(id)?)
+            .ok_or("no entity")?
+            .remove(),
+        ["clear", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            jukebox.get_container().clear();
+        }
+        ["mining", name, x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            return Ok(player(name)?.get_mining_speed(pos).to_string());
         }
         ["clear-equipment", id] => world
             .get_entity_by_id(number(id)?)
@@ -765,6 +875,7 @@ impl Guest for Component {
                     state.log.clear();
                     state.armed = false;
                     state.packet_rule = None;
+                    state.packet_reply = false;
                 });
                 String::new()
             }
@@ -793,6 +904,11 @@ impl Guest for Component {
                 String::new()
             }
             ["equip", rest @ ..] => equip(rest).await?,
+            ["ordered", rest @ ..] => ordered(rest).await?,
+            ["packet-reply"] => {
+                STATE.with_borrow_mut(|state| state.packet_reply = true);
+                String::new()
+            }
             _ => return Err(format!("unknown message: {message}")),
         };
         Ok(reply.into_bytes())

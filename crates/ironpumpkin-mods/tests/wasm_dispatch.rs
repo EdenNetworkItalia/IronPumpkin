@@ -2378,3 +2378,246 @@ fn a_raw_packet_between_two_deferred_sends_keeps_its_place() {
     });
     assert_eq!(seen, [chat, raw, chat]);
 }
+
+/// The marker `words` in the packets that arrive at `peer`, in arrival order, until `count`
+/// arrived or the connection closes.
+fn marks(peer: tokio::net::TcpStream, words: &[&str], count: usize) -> Vec<String> {
+    let mut peer = pumpkin_protocol::java::packet_decoder::TCPNetworkDecoder::new(
+        tokio::io::BufReader::new(peer),
+    );
+    support::RUNTIME.block_on(async {
+        let mut seen = Vec::new();
+        while seen.len() < count {
+            let packet =
+                tokio::time::timeout(std::time::Duration::from_secs(60), peer.get_raw_packet())
+                    .await
+                    .unwrap();
+            let Ok(packet) = packet else {
+                break;
+            };
+            for word in words {
+                if packet
+                    .payload
+                    .windows(word.len())
+                    .any(|window| window == word.as_bytes())
+                {
+                    seen.push((*word).to_owned());
+                }
+            }
+        }
+        seen
+    })
+}
+
+/// Waits until W1 got a fire of `event`.
+fn w1_fires(event: &str) -> Vec<String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        let seen: Vec<String> = guest_log(GUEST, event)
+            .into_iter()
+            .filter(|entry| entry.starts_with("W1"))
+            .collect();
+        if !seen.is_empty() {
+            return seen;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "W1 did not get {event}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+/// A message, then `player.ban`, in one guest call: the ban runs its kick through `run_blocking`,
+/// and the client gets the message before the disconnect packet. A kick that does not wait for
+/// the deferred message closes the connection first, and the message is lost.
+#[test]
+fn a_message_before_a_ban_reaches_the_client_before_the_kick() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "BanOrderPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns("ordered ban BanOrderPlayer"), "");
+
+    assert_eq!(
+        marks(peer, &["ordered-banned", "ordered-ban-reason"], 2),
+        ["ordered-banned", "ordered-ban-reason"]
+    );
+}
+
+/// A synchronous message, an asynchronous broadcast (`run_blocking`) and a synchronous message
+/// of one guest call reach the client in call order.
+#[test]
+fn sync_and_async_sends_of_one_guest_call_keep_their_order() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "BroadcastOrderPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns("ordered broadcast BroadcastOrderPlayer"), "");
+
+    assert_eq!(
+        marks(peer, &["ordered-one", "ordered-two", "ordered-three"], 3),
+        ["ordered-one", "ordered-two", "ordered-three"]
+    );
+}
+
+/// A deferred kick of a peer that reads nothing does not hold the deferred queue: the game rule
+/// change after it applies at once, not after the flush timeout of the disconnect packet.
+#[test]
+fn a_deferred_kick_of_a_stalled_peer_does_not_hold_the_deferred_queue() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "StalledKickPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+    // The peer reads nothing: these packets fill the socket, and the disconnect packet waits
+    // behind them.
+    let java = player.client.java().unwrap();
+    let payload = vec![0; 1 << 20];
+    for _ in 0..24 {
+        assert!(java.try_enqueue_raw_packet_direct(0x7d, &payload));
+    }
+    let world = support::world();
+    let value = !matches!(
+        world.get_game_rule(&GameRule::SpawnPhantoms),
+        GameRuleValue::Bool(true)
+    );
+
+    ipc(GUEST, "arm");
+    assert_eq!(
+        ipc_returns(&format!("ordered kick StalledKickPlayer {value}")),
+        ""
+    );
+
+    let start = std::time::Instant::now();
+    while !matches!(
+        world.get_game_rule(&GameRule::SpawnPhantoms),
+        GameRuleValue::Bool(set) if set == value
+    ) {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(3),
+            "the game rule change waited for the kick"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    drop(peer);
+}
+
+/// A Wasm handler of `PacketSentEvent` that sends a packet: its send defers in its own guest
+/// call, and the client gets the message and then the title of the handler.
+#[test]
+fn a_wasm_handler_of_the_packet_sent_event_sends_a_packet() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "PacketReplyPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+
+    ipc(GUEST, "arm");
+    ipc(GUEST, "packet-reply");
+    assert_eq!(ipc_returns("ordered reply PacketReplyPlayer"), "");
+
+    assert_eq!(
+        marks(peer, &["reply-me", "replied"], 2),
+        ["reply-me", "replied"]
+    );
+}
+
+/// `mob.set-mob-data` of a shulker returns while a Wasm handler listens to the sound events:
+/// the peek from 0 plays the open sound after the guest call.
+#[test]
+fn a_plugin_sets_the_peek_of_a_shulker_while_a_wasm_handler_listens_to_the_sound_event() {
+    let _serial = setup();
+    let shulker = spawn(&EntityType::SHULKER, 1706.5);
+    guest_log(GUEST, "PlayLevelSoundEventAtPosition");
+
+    let reply = ipc_returns(&format!(
+        "import mob-data {}",
+        shulker.get_entity().entity_id
+    ));
+
+    assert_eq!(reply, "true");
+    assert!(!w1_fires("PlayLevelSoundEventAtPosition").is_empty());
+}
+
+/// `entity.remove` returns while a Wasm handler listens to `EntityLeaveLevelEvent`: the entity
+/// leaves after the guest call.
+#[test]
+fn a_plugin_removes_an_entity_while_a_wasm_handler_listens_to_the_leave_event() {
+    let _serial = setup();
+    let pig = spawn(&EntityType::PIG, 1708.5);
+    let id = pig.get_entity().entity_id;
+    guest_log(GUEST, "EntityLeaveLevelEvent");
+
+    assert_eq!(ipc_returns(&format!("import remove {id}")), "");
+
+    assert!(!w1_fires("EntityLeaveLevelEvent").is_empty());
+    let start = std::time::Instant::now();
+    while support::world().get_entity_by_id(id).is_some() {
+        assert!(start.elapsed() < std::time::Duration::from_secs(60));
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+/// `container-block-entity.clear` of a playing jukebox returns while a Wasm handler listens to
+/// the game event of the stop.
+#[test]
+fn a_plugin_clears_a_playing_jukebox_while_a_wasm_handler_listens_to_the_game_event() {
+    let _serial = setup();
+    let pos = spot(505);
+    load(pos);
+    set(pos, &Block::JUKEBOX);
+    let jukebox = Arc::new(pumpkin_core::block::entities::jukebox::JukeboxBlockEntity::new(pos));
+    support::world().add_block_entity(jukebox.clone());
+    jukebox.set_record(ItemStack::new(1, &Item::MUSIC_DISC_CAT));
+    jukebox.start_playing(1000);
+
+    let seen = import_fires(
+        &format!("clear {} {} {}", pos.0.x, pos.0.y, pos.0.z),
+        "GenericGameEvent",
+        1,
+    );
+
+    assert!(seen.iter().all(|entry| entry == "W1 - false"), "{seen:?}");
+    assert!(!jukebox.is_playing());
+}
+
+/// `player.get-mining-speed` returns inside a guest call while a Wasm handler listens to
+/// `GetEnchantmentLevelEvent`, and a native handler still changes the result: Efficiency 5 on
+/// the held pickaxe makes the player mine faster.
+#[test]
+fn a_plugin_reads_the_mining_speed_while_a_wasm_handler_listens_to_the_enchantment_level() {
+    let _serial = setup();
+    let player = support::player("MiningImportPlayer");
+    player.inventory().set_stack_in_hand(
+        pumpkin_util::Hand::Right,
+        ItemStack::new(1, &Item::GOLDEN_PICKAXE),
+    );
+    let pos = spot(506);
+    load(pos);
+    set(pos, &Block::STONE);
+    let command = format!(
+        "import mining MiningImportPlayer {} {} {}",
+        pos.0.x, pos.0.y, pos.0.z
+    );
+    let plain: f32 = ipc_returns(&command).parse().unwrap();
+    on_native::<pumpkin_core::plugin::enchantment::GetEnchantmentLevelEvent, _>(|event| {
+        if event.stack.item.registry_key == "golden_pickaxe" {
+            event.set_level(&pumpkin_data::Enchantment::EFFICIENCY, 5);
+        }
+    });
+
+    let enchanted: f32 = ipc_returns(&command).parse().unwrap();
+
+    assert!(enchanted > plain, "{enchanted} <= {plain}");
+}
