@@ -352,13 +352,11 @@ impl WasmPluginEventHandler {
                     let dispatched_case = std::mem::discriminant(&wasm_event);
                     // The guest owns the input resources once lowered
                     // Only a successful return transfers the returned event's resources back to the host
-                    let hook_scope = if item_hook_event {
+                    let hook_scope = item_hook_event.then(|| {
                         let counter =
                             guest.with(|mut store| store.data_mut().item_hook_handlers.clone());
-                        Some(ItemHookScope::enter(counter))
-                    } else {
-                        None
-                    };
+                        ItemHookScope::enter(counter)
+                    });
                     let returned = guest
                         .call(function, (handler_id, server_res, wasm_event))
                         .await;
