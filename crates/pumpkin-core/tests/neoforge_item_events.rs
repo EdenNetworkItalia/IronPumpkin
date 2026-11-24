@@ -7,6 +7,7 @@
 //! its test owns by an item that no other test uses, or by the player name.
 #![expect(
     clippy::unwrap_used,
+    clippy::expect_used,
     reason = "a test fails on the first missing value"
 )]
 
@@ -20,6 +21,7 @@ use std::{
 
 use pumpkin_core::{
     data::datapack::loot_table_loader::parse_loot_table,
+    enchantment::EnchantmentHelper,
     entity::{EntityBase, player::Player, r#type::from_type},
     plugin::{
         BoxFuture, EventHandler, EventPriority, Payload,
@@ -35,7 +37,7 @@ use pumpkin_data::{
     AttributeModifierSlot, Block, Enchantment,
     attributes::Attributes,
     damage::DamageType,
-    data_component_impl::{EnchantmentsImpl, Modifier, ModifierDisplay, Operation},
+    data_component_impl::{EnchantmentsImpl, EquipmentSlot, Modifier, ModifierDisplay, Operation},
     entity::EntityType,
     item::Item,
     item_stack::ItemStack,
@@ -724,4 +726,73 @@ fn enchanted_entity_loot_event_fires_for_the_equipment_drops() {
     );
 
     assert_eq!(entries(&seen), ["minecraft:looting 2"]);
+}
+
+/// A handler of `GetEnchantmentLevelEvent` reads the equipment of the entity that the lookup is
+/// about. The lookups of the enchantment helper and of the damage protection read the stacks
+/// with no equipment lock held, so the handler does not deadlock.
+#[test]
+fn a_handler_reads_the_equipment_during_an_enchantment_lookup() {
+    let _serial = support::serial();
+    let world = support::world();
+    let zombie: Arc<dyn EntityBase> = from_type(
+        &EntityType::ZOMBIE,
+        Vector3::new(60.5, 120.0, 60.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    world.spawn_entity(zombie.clone());
+    let boots = ItemStack::new(1, &Item::GOLDEN_BOOTS);
+    zombie
+        .get_living_entity()
+        .unwrap()
+        .entity_equipment
+        .lock()
+        .unwrap()
+        .put(&EquipmentSlot::FEET, boots);
+    let seen = log();
+    let (record, entity) = (seen.clone(), zombie.clone());
+    on::<GetEnchantmentLevelEvent, _>(move |event| {
+        if event.stack.item.id == Item::GOLDEN_BOOTS.id {
+            let equipment = entity
+                .get_living_entity()
+                .unwrap()
+                .entity_equipment
+                .lock()
+                .unwrap();
+            push(
+                &record,
+                format!(
+                    "feet {}",
+                    equipment.get(&EquipmentSlot::FEET).item.registry_key
+                ),
+            );
+        }
+    });
+
+    let (done, finished) = std::sync::mpsc::channel();
+    let target = zombie.clone();
+    std::thread::spawn(move || {
+        let level =
+            EnchantmentHelper::get_enchantment_level(&Enchantment::FROST_WALKER, target.as_ref());
+        target.get_living_entity().unwrap().damage_with_context(
+            target.as_ref(),
+            1.0,
+            DamageType::GENERIC,
+            None,
+            None,
+            None,
+        );
+        let _ = done.send(level);
+    });
+
+    let level = finished
+        .recv_timeout(support::SLOW_RUNNER)
+        .expect("the lookups did not finish: a handler deadlocked on the equipment lock");
+    assert_eq!(level, 0);
+    let seen = entries(&seen);
+    assert!(
+        seen.len() >= 2 && seen.iter().all(|entry| entry == "feet golden_boots"),
+        "{seen:?}"
+    );
 }

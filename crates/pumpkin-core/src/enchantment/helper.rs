@@ -50,11 +50,17 @@ impl EnchantmentHelper {
         };
         caller.get_player().map_or_else(
             || {
-                living
+                // `level` fires `GetEnchantmentLevelEvent`: read the stacks with no lock held.
+                let stacks: Vec<_> = living
                     .entity_equipment
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .equipment
+                    .iter()
+                    .filter(|(_, stack)| !stack.is_empty())
+                    .map(|(slot, stack)| (slot.clone(), stack.clone()))
+                    .collect();
+                stacks
                     .iter()
                     .map(|(slot, stack)| level(slot, stack))
                     .max()

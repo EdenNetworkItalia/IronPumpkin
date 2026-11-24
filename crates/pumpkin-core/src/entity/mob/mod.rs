@@ -1875,7 +1875,9 @@ pub trait Mob: EntityBase + Send + Sync {
         let mob_entity = self.get_mob_entity();
         let living = &mob_entity.living_entity;
         let creative = player.gamemode.load() == pumpkin_util::GameMode::Creative;
-        let sheared = {
+        // `prevents_armor_change` fires `GetEnchantmentLevelEvent`: copy the candidates first and
+        // check them with no equipment lock held.
+        let candidates: Vec<_> = {
             let equipment = living
                 .entity_equipment
                 .lock()
@@ -1891,17 +1893,20 @@ pub trait Mob: EntityBase + Send + Sync {
                 EquipmentSlot::SADDLE,
             ]
             .into_iter()
-            .find_map(|slot| {
+            .filter_map(|slot| {
                 let stack = equipment.equipment.get(&slot)?;
                 let shearing_sound = stack
                     .get_data_component::<EquippableImpl>()
                     .filter(|equippable| equippable.can_be_sheared)?
                     .shearing_sound
                     .clone();
-                (creative || !prevents_armor_change(stack))
-                    .then(|| (slot, stack.clone(), shearing_sound))
+                Some((slot, stack.clone(), shearing_sound))
             })
+            .collect()
         };
+        let sheared = candidates
+            .into_iter()
+            .find(|(_, stack, _)| creative || !prevents_armor_change(stack));
         let (slot, stack, shearing_sound) = sheared?;
 
         let entity = &living.entity;

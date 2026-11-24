@@ -3541,15 +3541,22 @@ impl LivingEntity {
                     }
                 }
             } else if durability_damage > 0 {
-                let mut equipment_guard = self
+                // The unbreaking read of `damage_item` fires `GetEnchantmentLevelEvent`, so no
+                // equipment lock is held while the stack takes the damage.
+                let mut shield = self
                     .entity_equipment
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(stack) = equipment_guard.equipment.get_mut(&slot) {
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .equipment
+                    .get(&slot)
+                    .cloned();
+                if let Some(stack) = shield.as_mut() {
                     let break_sound = stack
                         .get_data_component::<pumpkin_data::data_component_impl::BreakSoundImpl>()
                         .map(|bs| bs.sound.clone());
-                    if stack.damage_item(durability_damage) == DamageResult::Broken {
+                    let result = stack.damage_item(durability_damage);
+                    let broken = result == DamageResult::Broken;
+                    if broken {
                         if let Some(ref sound) = break_sound {
                             world.play_sound_event(sound, SoundCategory::Neutral, &player_pos);
                         }
@@ -3559,10 +3566,15 @@ impl LivingEntity {
                             ActorEventID::None,
                         );
                         *stack = ItemStack::EMPTY.clone();
-                        let broken_stack = stack.clone();
-                        drop(equipment_guard);
-
-                        self.send_equipment_changes(&[(slot, broken_stack)]);
+                    }
+                    if result != DamageResult::Untouched {
+                        self.entity_equipment
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .put(&slot, stack.clone());
+                    }
+                    if broken {
+                        self.send_equipment_changes(&[(slot, stack.clone())]);
                         self.clear_active_hand();
                     }
                 }
@@ -4149,24 +4161,28 @@ impl LivingEntity {
         }
 
         let mut epf = 0.0f32;
-        {
+        // `get_all_enchantments` fires `GetEnchantmentLevelEvent`: read it with no lock held.
+        let armor: Vec<ItemStack> = {
             let equipment_lock = self
                 .entity_equipment
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for slot in [
+            [
                 EquipmentSlot::HEAD,
                 EquipmentSlot::CHEST,
                 EquipmentSlot::LEGS,
                 EquipmentSlot::FEET,
-            ] {
-                if let Some(stack) = equipment_lock.equipment.get(&slot)
-                    && !stack.is_empty()
-                    && let Some(enchantments) = stack.get_all_enchantments()
-                {
-                    for (enchantment, level) in enchantments.enchantment.iter() {
-                        enchantment.modify_damage_protection_against(*level, damage_type, &mut epf);
-                    }
+            ]
+            .iter()
+            .filter_map(|slot| equipment_lock.equipment.get(slot))
+            .filter(|stack| !stack.is_empty())
+            .cloned()
+            .collect()
+        };
+        for stack in &armor {
+            if let Some(enchantments) = stack.get_all_enchantments() {
+                for (enchantment, level) in enchantments.enchantment.iter() {
+                    enchantment.modify_damage_protection_against(*level, damage_type, &mut epf);
                 }
             }
         }
