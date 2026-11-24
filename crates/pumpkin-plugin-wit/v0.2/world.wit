@@ -600,6 +600,9 @@ interface %world {
         remove-attribute-modifier: func(attr: attribute, id: string);
         get-attribute-modifiers: func(attr: attribute) -> list<attribute-modifier>;
         reset-attribute: func(attr: attribute);
+        /// The reset applies after the guest call returns, so that a handler of
+        /// `effect-particle-modification-event` can run. A read in the same guest call sees the old
+        /// value.
         reset-all-attributes: func();
 
         // Equipment
@@ -611,6 +614,8 @@ interface %world {
         /// Gives a status effect to this living entity.
         add-effect: async func(effect: status-effect-instance);
         /// Removes a status effect from this living entity. Returns true if an effect was removed.
+        /// Inside a guest call, `effect-particle-modification-event` reaches the native handlers
+        /// only: a Wasm handler does not get it.
         remove-effect: func(effect: status-effect-type) -> bool;
         /// Checks if this living entity currently has the specified status effect.
         has-effect: func(effect: status-effect-type) -> bool;
@@ -727,6 +732,8 @@ interface %world {
         is-force-loaded: func() -> bool;
 
         /// Sets whether this chunk is marked as force-loaded.
+        /// The chunk loads after the guest call returns, so that a handler of `chunk-load-event`
+        /// can run.
         set-force-loaded: func(forced: bool);
 
         /// Returns all entities (including players) currently inside this chunk.
@@ -929,6 +936,8 @@ interface %world {
         is-chunk-force-loaded: func(x: s32, z: s32) -> bool;
 
         /// Sets whether the chunk at the specified chunk coordinates is force-loaded.
+        /// The chunk loads after the guest call returns, so that a handler of `chunk-load-event`
+        /// can run.
         set-chunk-force-loaded: func(x: s32, z: s32, forced: bool);
 
         /// Returns the coordinates `(x, z)` of all force-loaded chunks in this world.
@@ -1158,6 +1167,8 @@ interface %world {
         /// Gets the value of a game rule in this world.
         get-game-rule: func(rule: game-rule) -> game-rule-value;
         /// Sets the value of a game rule in this world.
+        /// The change applies after the guest call returns, so that a handler of
+        /// `game-rule-changed-event` can run. A read in the same guest call sees the old value.
         set-game-rule: func(rule: game-rule, value: game-rule-value);
     }
 

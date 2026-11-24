@@ -1,105 +1,105 @@
 import	disposition
-HostBedrockPlayer.set_ability	open: PacketSentEvent
-HostBedrockScoreboard.add_objective	open: PacketSentEvent
-HostBedrockScoreboard.add_score	open: PacketSentEvent
-HostBedrockScoreboard.clear_display_slot	open: PacketSentEvent
-HostBedrockScoreboard.remove_objective	open: PacketSentEvent
-HostBedrockScoreboard.remove_score	open: PacketSentEvent
-HostBedrockScoreboard.reset_entity_scores	open: PacketSentEvent
-HostBedrockScoreboard.set_display_slot	open: PacketSentEvent
-HostBedrockScoreboard.update_objective	open: PacketSentEvent
-HostBedrockScoreboard.update_score	open: PacketSentEvent
+HostBedrockPlayer.set_ability	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.add_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.add_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.clear_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.remove_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.remove_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.reset_entity_scores	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.set_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.update_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockScoreboard.update_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
 HostContext.register_command	false positive: the permission check runs in the requirement closure, at command dispatch
-HostEntity.set_custom_name	open: PacketSentEvent
-HostEntity.set_custom_name_visible	open: PacketSentEvent
-HostEntity.set_freeze_ticks	open: PacketSentEvent
-HostEntity.set_remaining_air	open: PacketSentEvent
-HostInteractionEntity.set_height	open: PacketSentEvent
-HostInteractionEntity.set_width	open: PacketSentEvent
-HostJavaPlayer.send_entity_status	open: PacketSentEvent
-HostJavaPlayer.send_game_event	open: PacketSentEvent
-HostJukeboxBlockEntity.start_playing	open: PacketSentEvent
-HostLivingEntity.add_attribute_modifier	open: PacketSentEvent
-HostLivingEntity.clear_equipment	open: PacketSentEvent
-HostLivingEntity.remove_attribute_modifier	open: PacketSentEvent
-HostLivingEntity.remove_effect	open: returns whether the effect was removed
-HostLivingEntity.reset_attribute	open: PacketSentEvent
-HostLivingEntity.send_system_message	open: PacketSentEvent
-HostLivingEntity.set_attribute_base	open: PacketSentEvent
-HostLivingEntity.set_max_health	open: PacketSentEvent
-HostMapBlockEntity.stream_frame	open: PacketSentEvent
-HostMapBlockEntity.update	open: PacketSentEvent
-HostMob.set_freeze_ticks	open: PacketSentEvent
-HostMob.set_mob_data	open: PacketSentEvent
-HostPlayer.add_custom_chat_completions	open: PacketSentEvent
-HostPlayer.can_harvest_block	open: the return value depends on the event
-HostPlayer.get_mining_speed	open: PacketSentEvent
-HostPlayer.get_tab_list_name	open: the return value depends on the event
-HostPlayer.look_at	open: PacketSentEvent
-HostPlayer.open_book	open: PacketSentEvent
-HostPlayer.remove_custom_chat_completions	open: PacketSentEvent
-HostPlayer.reset_block_change	open: PacketSentEvent
-HostPlayer.reset_camera	open: PacketSentEvent
-HostPlayer.reset_player_time	open: PacketSentEvent
-HostPlayer.revoke_advancement	open: PacketSentEvent
-HostPlayer.revoke_advancement_criterion	open: PacketSentEvent
-HostPlayer.send_block_change	open: PacketSentEvent
-HostPlayer.send_block_damage	open: PacketSentEvent
-HostPlayer.send_hurt_animation	open: PacketSentEvent
-HostPlayer.send_stats	open: PacketSentEvent
-HostPlayer.send_system_message	open: PacketSentEvent
-HostPlayer.send_title_animation	open: PacketSentEvent
-HostPlayer.set_abilities	open: PacketSentEvent
-HostPlayer.set_absorption	open: PacketSentEvent
-HostPlayer.set_allow_flight	open: PacketSentEvent
-HostPlayer.set_camera	open: PacketSentEvent
-HostPlayer.set_camera_entity_id	open: PacketSentEvent
-HostPlayer.set_compass_target	open: PacketSentEvent
-HostPlayer.set_custom_chat_completions	open: PacketSentEvent
-HostPlayer.set_display_name	open: PacketSentEvent
-HostPlayer.set_exhaustion	open: PacketSentEvent
-HostPlayer.set_fly_speed	open: PacketSentEvent
-HostPlayer.set_flying	open: PacketSentEvent
-HostPlayer.set_freeze_ticks	open: PacketSentEvent
-HostPlayer.set_health	open: PacketSentEvent
-HostPlayer.set_item_cooldown	open: PacketSentEvent
-HostPlayer.set_max_health	open: PacketSentEvent
-HostPlayer.set_player_time	open: PacketSentEvent
-HostPlayer.set_saturation	open: PacketSentEvent
-HostPlayer.set_selected_advancement_tab	open: PacketSentEvent
-HostPlayer.set_tab_list_header_footer	open: PacketSentEvent
-HostPlayer.set_tab_list_latency	open: PacketSentEvent
-HostPlayer.set_tab_list_listed	open: PacketSentEvent
-HostPlayer.set_tab_list_name	open: PacketSentEvent
-HostPlayer.set_tab_list_order	open: PacketSentEvent
-HostPlayer.set_tab_list_ping	open: PacketSentEvent
-HostPlayer.set_walk_speed	open: PacketSentEvent
-HostPlayer.show_actionbar	open: PacketSentEvent
-HostPlayer.show_subtitle	open: PacketSentEvent
-HostPlayer.show_title	open: PacketSentEvent
-HostPlayer.spawn_particles	open: PacketSentEvent
-HostPlayer.start_cooldown	open: PacketSentEvent
-HostScoreboard.add_objective	open: PacketSentEvent
-HostScoreboard.add_score	open: PacketSentEvent
-HostScoreboard.clear_display_slot	open: PacketSentEvent
-HostScoreboard.remove_objective	open: PacketSentEvent
-HostScoreboard.remove_score	open: PacketSentEvent
-HostScoreboard.reset_entity_scores	open: PacketSentEvent
-HostScoreboard.set_display_slot	open: PacketSentEvent
-HostScoreboard.update_objective	open: PacketSentEvent
-HostScoreboard.update_score	open: PacketSentEvent
-HostServer.broadcast_tab_list_header_footer	open: PacketSentEvent
-HostServer.delete_message_by_id	open: PacketSentEvent
-HostServer.delete_message_by_signature	open: PacketSentEvent
-HostServer.set_server_links	open: PacketSentEvent
-HostWorld.broadcast_system_message	open: PacketSentEvent
-HostWorld.set_time_of_day	open: PacketSentEvent
-HostWorld.spawn_particle	open: PacketSentEvent
-HostWorldBorder.set_center	open: PacketSentEvent
-HostWorldBorder.set_damage_buffer	open: PacketSentEvent
-HostWorldBorder.set_diameter	open: PacketSentEvent
-HostWorldBorder.set_size	open: PacketSentEvent
-HostWorldBorder.set_size_transition	open: PacketSentEvent
-HostWorldBorder.set_warning_delay	open: PacketSentEvent
-HostWorldBorder.set_warning_distance	open: PacketSentEvent
-HostWorldBorder.set_warning_time	open: PacketSentEvent
+HostEntity.set_custom_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostEntity.set_custom_name_visible	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostEntity.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostEntity.set_remaining_air	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostInteractionEntity.set_height	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostInteractionEntity.set_width	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostJavaPlayer.send_entity_status	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostJavaPlayer.send_game_event	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostJukeboxBlockEntity.start_playing	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.add_attribute_modifier	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.clear_equipment	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.remove_attribute_modifier	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.remove_effect	ok: native handlers only inside a guest call
+HostLivingEntity.reset_attribute	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.send_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.set_attribute_base	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.set_max_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostMapBlockEntity.stream_frame	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostMapBlockEntity.update	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostMob.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostMob.set_mob_data	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.add_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.can_harvest_block	ok: native handlers only inside a guest call
+HostPlayer.get_mining_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.get_tab_list_name	ok: native handlers only inside a guest call
+HostPlayer.look_at	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.open_book	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.remove_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.reset_block_change	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.reset_camera	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.reset_player_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.revoke_advancement	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.revoke_advancement_criterion	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_block_change	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_block_damage	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_hurt_animation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_stats	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.send_title_animation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_abilities	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_absorption	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_allow_flight	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_camera	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_camera_entity_id	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_compass_target	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_display_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_exhaustion	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_fly_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_flying	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_item_cooldown	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_max_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_player_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_saturation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_selected_advancement_tab	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_header_footer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_latency	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_listed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_order	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_tab_list_ping	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.set_walk_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.show_actionbar	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.show_subtitle	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.show_title	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.spawn_particles	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.start_cooldown	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.add_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.add_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.clear_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.remove_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.remove_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.reset_entity_scores	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.set_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.update_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostScoreboard.update_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostServer.broadcast_tab_list_header_footer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostServer.delete_message_by_id	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostServer.delete_message_by_signature	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostServer.set_server_links	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorld.broadcast_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorld.set_time_of_day	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorld.spawn_particle	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_center	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_damage_buffer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_diameter	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_size	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_size_transition	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_warning_delay	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_warning_distance	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostWorldBorder.set_warning_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open

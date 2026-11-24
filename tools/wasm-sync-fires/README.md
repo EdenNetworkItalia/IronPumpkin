@@ -6,7 +6,11 @@ call holds the root permit of the Wasm plugin stores. If a Wasm plugin handles t
 handler waits for that permit and the call hangs. An import that returns nothing defers the work
 with `DeferHost::defer` (`crates/pumpkin-wasm-host-v0_2/src/lib.rs`). The deferred queue
 (`crates/pumpkin-wasm-host-common/src/deferred.rs`) runs the work after the guest call, in call
-order. The scan does not follow the code inside a `defer` call.
+order. The scan does not follow the code inside a `defer` call. An import that returns a value
+from an event runs its work in `guest_call::native_handlers_only`
+(`crates/pumpkin-core/src/plugin/guest_call.rs`), so that its fires skip the Wasm handlers. The
+Java send path defers the send of a packet inside a guest call when a Wasm plugin handles
+`PacketSentEvent`. The scan cannot see these runtime checks, so `sync_fires.tsv` records them.
 
 `sync_fires.tsv` records each import that the scan finds and its disposition. The check fails when
 the scan finds an import that the list does not have, or when the list has an import that the scan
