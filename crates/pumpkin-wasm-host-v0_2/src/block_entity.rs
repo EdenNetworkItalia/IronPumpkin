@@ -312,7 +312,10 @@ impl HostContainerBlockEntity for PluginHostState {
         slot: u32,
     ) -> wasmtime::Result<Option<Resource<WitHostItemStack>>> {
         let inventory = self.get(&res)?.inventory.clone();
-        let removed = inventory.remove_stack(slot as usize);
+        // A jukebox fires the game event of the stop here.
+        let removed = pumpkin_core::plugin::guest_call::native_handlers_only(|| {
+            inventory.remove_stack(slot as usize)
+        });
         if removed.is_empty() {
             Ok(None)
         } else {

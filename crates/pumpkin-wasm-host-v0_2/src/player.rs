@@ -1342,7 +1342,8 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         player: Resource<Player>,
     ) -> wasmtime::Result<Option<Resource<pumpkin::plugin::text::TextComponent>>> {
         let player = self.get(&player)?;
-        let tab_list_name = player.get_tab_list_name();
+        let tab_list_name =
+            pumpkin_core::plugin::guest_call::native_handlers_only(|| player.get_tab_list_name());
         tab_list_name.map_or_else(
             || Ok(None),
             |name| {
@@ -2925,7 +2926,9 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         let player = self.get(&player)?;
         let internal_pos = pumpkin_util::math::position::BlockPos::new(pos.x, pos.y, pos.z);
         let (block, state) = player.world().get_block_and_state(&internal_pos);
-        Ok(player.can_harvest(state, block, &internal_pos))
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || player.can_harvest(state, block, &internal_pos),
+        ))
     }
 
     fn get_mining_speed(

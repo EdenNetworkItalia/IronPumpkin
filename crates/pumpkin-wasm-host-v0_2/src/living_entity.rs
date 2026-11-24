@@ -473,9 +473,13 @@ impl HostLivingEntity for PluginHostState {
         else {
             return Ok(false);
         };
-        Ok(entity
-            .get_living_entity()
-            .is_some_and(|living| living.remove_effect(status_effect)))
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || {
+                entity
+                    .get_living_entity()
+                    .is_some_and(|living| living.remove_effect(status_effect))
+            },
+        ))
     }
 
     fn has_effect(
