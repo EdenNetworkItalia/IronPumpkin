@@ -116,32 +116,33 @@ impl BlockEntity for CampfireBlockEntity {
             // drops the raw item, for example after a reload removed its recipe.
             let recipe = self.find_recipe(&recipes, stack.item);
 
-            let total = {
-                let mut total = self.cooking_total_times[slot]
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if *total <= 0
-                    && let Some(recipe) = recipe
-                {
-                    let mut cooking_time = recipe.cooking_time;
-                    if let Some(server) = world.server.upgrade() {
-                        let mut event = crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
+            let mut total = *self.cooking_total_times[slot]
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if total <= 0
+                && let Some(recipe) = recipe
+            {
+                total = recipe.cooking_time;
+                // Fired with no campfire lock held: a handler can read the campfire.
+                if let Some(server) = world.server.upgrade() {
+                    let mut event =
+                        crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
                             self.position,
                             world.clone(),
                             stack.clone(),
                             slot as u8,
-                            cooking_time,
+                            total,
                         );
-                        server.plugin_manager.fire_blocking(&server, &mut event);
-                        if event.cancelled {
-                            continue;
-                        }
-                        cooking_time = event.cooking_time;
+                    server.plugin_manager.fire_blocking(&server, &mut event);
+                    if event.cancelled {
+                        continue;
                     }
-                    *total = cooking_time;
+                    total = event.cooking_time;
                 }
-                *total
-            };
+                *self.cooking_total_times[slot]
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = total;
+            }
 
             let finished = {
                 let mut progress = self.cooking_times[slot]

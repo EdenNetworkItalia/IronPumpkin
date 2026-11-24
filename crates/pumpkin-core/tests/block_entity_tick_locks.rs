@@ -3,23 +3,30 @@
 //! another (`Level.tickBlockEntities`): a tick never sees a held lock and never loses progress.
 #![expect(
     clippy::unwrap_used,
-    reason = "a test fails on the first poisoned lock"
+    clippy::expect_used,
+    reason = "a test fails on the first poisoned lock or missing value"
 )]
 
 mod support;
 
-use std::sync::{Arc, Barrier};
+use std::marker::PhantomData;
+use std::sync::{Arc, Barrier, Mutex};
 use std::time::{Duration, Instant};
 
 use pumpkin_core::block::entities::BlockEntity;
+use pumpkin_core::block::entities::campfire::CampfireBlockEntity;
 use pumpkin_core::block::entities::furnace::FurnaceBlockEntity;
 use pumpkin_core::block::entities::furnace_like_block_entity::CookingBlockEntityBase;
+use pumpkin_core::plugin::block::campfire_start::CampfireStartEvent;
+use pumpkin_core::plugin::{BoxFuture, EventHandler, EventPriority};
+use pumpkin_core::server::Server;
 use pumpkin_core::world::World;
 use pumpkin_data::Block;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::{CookingRecipeKind, RecipeCategoryTypes};
 use pumpkin_inventory::Inventory;
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
     OwnedRecipeResult,
@@ -53,11 +60,12 @@ fn cooking(ingredient: &str) -> OwnedCookingRecipe {
 }
 
 fn install_recipes() {
-    support::server()
-        .recipe_manager
-        .set_recipes(vec![DynamicRecipe::Cooking(
-            OwnedCookingRecipeType::Smelting(cooking("minecraft:dirt")),
-        )]);
+    support::server().recipe_manager.set_recipes(vec![
+        DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking("minecraft:dirt"))),
+        DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(cooking(
+            "minecraft:stick",
+        ))),
+    ]);
 }
 
 /// Loads the chunk of `pos` for the rest of the process and places `block` there.
@@ -153,4 +161,83 @@ fn the_furnace_burn_waits_for_a_held_items_lock() {
     assert_eq!(furnace.get_stack(2).item.id, Item::DIAMOND.id);
     assert!(furnace.get_stack(0).is_empty());
     assert_eq!(furnace.get_stack(1).item_count, 2);
+}
+
+struct Blocking<F>(F, PhantomData<fn()>);
+
+impl<F> EventHandler<CampfireStartEvent> for Blocking<F>
+where
+    F: Fn(&mut CampfireStartEvent) + Send + Sync,
+{
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut CampfireStartEvent,
+    ) -> BoxFuture<'a, ()> {
+        (self.0)(event);
+        Box::pin(async {})
+    }
+}
+
+/// A `CampfireStartEvent` handler reads the campfire. Its locks are free, and the cooking time
+/// that the handler sets is the total time of the slot.
+#[test]
+fn a_campfire_start_handler_can_read_the_campfire() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(4, 100, 0);
+    place(&world, pos, &Block::CAMPFIRE);
+    let campfire = Arc::new(CampfireBlockEntity::new(pos));
+    *campfire.items[0].lock().unwrap() = ItemStack::new(1, &Item::STICK);
+
+    let read: Arc<Mutex<Option<Option<NbtCompound>>>> = Arc::default();
+    let handler = {
+        let campfire = campfire.clone();
+        let read = read.clone();
+        move |event: &mut CampfireStartEvent| {
+            if event.block_pos != pos {
+                return;
+            }
+            // `try_lock`: a handler that waits on a held lock hangs the test.
+            let free = campfire.items.iter().all(|slot| slot.try_lock().is_ok())
+                && campfire.cooking_times.iter().all(|t| t.try_lock().is_ok())
+                && campfire
+                    .cooking_total_times
+                    .iter()
+                    .all(|t| t.try_lock().is_ok());
+            let nbt = free.then(|| {
+                let mut nbt = NbtCompound::new();
+                campfire.write_nbt(&mut nbt);
+                nbt
+            });
+            *read.lock().unwrap() = Some(nbt);
+            event.cooking_time = COOKING_TIME + 3;
+        }
+    };
+    support::server()
+        .plugin_manager
+        .register_with::<CampfireStartEvent, _>(
+            Arc::new(Blocking(handler, PhantomData)),
+            EventPriority::Normal,
+            true,
+            false,
+        );
+
+    campfire.tick(&world);
+    let nbt = read
+        .lock()
+        .unwrap()
+        .take()
+        .expect("the start event fires")
+        .expect("the campfire locks are free while the handler runs");
+    assert_eq!(
+        nbt.get_int_array("CookingTotalTimes").map(<[i32]>::len),
+        Some(CampfireBlockEntity::SLOT_COUNT)
+    );
+    assert_eq!(
+        *campfire.cooking_total_times[0].lock().unwrap(),
+        COOKING_TIME + 3
+    );
+    assert_eq!(*campfire.cooking_times[0].lock().unwrap(), 1);
 }
