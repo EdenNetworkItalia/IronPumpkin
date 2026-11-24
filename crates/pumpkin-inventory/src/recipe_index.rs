@@ -472,6 +472,27 @@ fn ingredient_is_placeable(ingredient: &OwnedRecipeIngredient) -> bool {
     }
 }
 
+/// The result item of `recipe` that the server does not know or that is air.
+///
+/// Vanilla `ItemStackTemplate.CODEC` reads the result with `Item.CODEC`, which rejects both
+/// (`Item.java:118`), so the recipe fails to parse.
+#[must_use]
+pub fn unknown_result(recipe: &DynamicRecipe) -> Option<&str> {
+    let id = match recipe {
+        DynamicRecipe::Crafting(
+            OwnedCraftingRecipe::Shaped { result, .. }
+            | OwnedCraftingRecipe::Shapeless { result, .. },
+        ) => &result.item_id,
+        DynamicRecipe::Cooking(cooking) => &owned_cooking(cooking).0.result.item_id,
+        DynamicRecipe::Stonecutting(r) => &r.result.item_id,
+        DynamicRecipe::SmithingTransform(r) => &r.result.item_id,
+        DynamicRecipe::Brewing(r) => &r.output_item,
+        DynamicRecipe::SmithingTrim(_) | DynamicRecipe::SpecialCrafting(_) => return None,
+    };
+    let known = Item::from_registry_key(id).is_some_and(|item| item.id != Item::AIR.id);
+    (!known).then_some(id.as_str())
+}
+
 /// Whether a client can place `recipe`: every ingredient holds an item. Vanilla does not load
 /// or sync a recipe with an ingredient that [`ingredient_is_placeable`] rejects.
 #[must_use]

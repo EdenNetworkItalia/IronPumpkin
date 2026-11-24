@@ -10,8 +10,17 @@ use tracing::warn;
 use crate::net::java::JavaClient;
 
 /// Vanilla `RecipeManager.finalizeRecipeLoading` ignores a recipe that cannot be placed. This
-/// manager drops it, so no lookup and no client sees it.
+/// manager drops it, so no lookup and no client sees it. It also drops a recipe with an
+/// unknown result item; vanilla fails the whole data pack load on it
+/// (`RegistryDataLoader.java:277`).
 fn placeable(recipe: &DynamicRecipe) -> bool {
+    if let Some(item) = recipe_index::unknown_result(recipe) {
+        warn!(
+            "Failed to parse {}: Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: {item}",
+            recipe.recipe_id().unwrap_or("<unnamed>")
+        );
+        return false;
+    }
     let placeable = recipe_index::is_placeable(recipe);
     if !placeable {
         warn!(
@@ -154,6 +163,11 @@ mod tests {
             stonecutting("test:dropped", "test:missing"),
         ]);
         manager.add_recipe(stonecutting("test:added", "minecraft:air"));
+        let mut unknown_result = stonecutting("test:unknown_result", "minecraft:dirt");
+        if let DynamicRecipe::Stonecutting(r) = &mut unknown_result {
+            r.result.item_id = "test:missing".to_string();
+        }
+        manager.add_recipe(unknown_result);
         let ids: Vec<String> = manager
             .get_dynamic_recipes_internal()
             .iter()
