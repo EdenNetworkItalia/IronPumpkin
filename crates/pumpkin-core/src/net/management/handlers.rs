@@ -662,11 +662,7 @@ async fn execute_method(
                     op_guard.ops.push(Op::new(uuid, name, level, bypass));
                     server.management_hub.broadcast_player_oped(op);
 
-                    for player in server.get_all_players() {
-                        if player.gameprofile.id == uuid {
-                            player.permission_lvl.store(level);
-                        }
-                    }
+                    apply_permission_lvl(server, uuid, level);
                 }
                 op_guard.save();
             };
@@ -713,11 +709,7 @@ async fn execute_method(
                         };
                         server.management_hub.broadcast_player_deoped(&dto);
 
-                        for player in server.get_all_players() {
-                            if player.gameprofile.id == removed.uuid {
-                                player.permission_lvl.store(PermissionLvl::Zero);
-                            }
-                        }
+                        apply_permission_lvl(server, removed.uuid, PermissionLvl::Zero);
                     }
                 }
                 op_guard.save();
@@ -750,11 +742,7 @@ async fn execute_method(
                     };
                     server.management_hub.broadcast_player_deoped(&dto);
 
-                    for player in server.get_all_players() {
-                        if player.gameprofile.id == removed.uuid {
-                            player.permission_lvl.store(PermissionLvl::Zero);
-                        }
-                    }
+                    apply_permission_lvl(server, removed.uuid, PermissionLvl::Zero);
                 }
                 op_guard.save();
             };
@@ -801,11 +789,7 @@ async fn execute_method(
                             bypasses_player_limit: Some(old.bypasses_player_limit),
                         };
                         server.management_hub.broadcast_player_deoped(&dto);
-                        for player in server.get_all_players() {
-                            if player.gameprofile.id == old.uuid {
-                                player.permission_lvl.store(PermissionLvl::Zero);
-                            }
-                        }
+                        apply_permission_lvl(server, old.uuid, PermissionLvl::Zero);
                     }
                 }
 
@@ -822,11 +806,7 @@ async fn execute_method(
                     if !op_guard.ops.iter().any(|o| o.uuid == uuid) {
                         server.management_hub.broadcast_player_oped(op);
                     }
-                    for player in server.get_all_players() {
-                        if player.gameprofile.id == uuid {
-                            player.permission_lvl.store(level);
-                        }
-                    }
+                    apply_permission_lvl(server, uuid, level);
                 }
 
                 final_ops.extend(
@@ -1409,6 +1389,17 @@ fn get_ip_bans(server: &Server) -> Vec<IpBanDto> {
             }),
         })
         .collect()
+}
+
+/// Gives the online player `id` the level `level` and sends the permission packet and the
+/// command tree, as `PlayerList.sendPlayerPermissionLevel` does after an op or a deop.
+fn apply_permission_lvl(server: &Arc<Server>, id: Uuid, level: PermissionLvl) {
+    let dispatcher = server.command_dispatcher.load();
+    for player in server.get_all_players() {
+        if player.gameprofile.id == id {
+            player.set_permission_lvl(server, level, &dispatcher);
+        }
+    }
 }
 
 /// The operator entries, as the op list has them now.

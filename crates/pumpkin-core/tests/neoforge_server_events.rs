@@ -760,3 +760,46 @@ fn the_data_maps_load_before_the_tags_and_the_datapack_sync_events() {
 
     assert_eq!(*ORDER.lock().unwrap(), ["data maps", "tags", "sync"]);
 }
+
+/// Reads what the peer got within a short time.
+fn read_available(peer: &mut tokio::net::TcpStream) -> Vec<u8> {
+    use tokio::io::AsyncReadExt;
+    support::RUNTIME.block_on(async {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 4096];
+        while let Ok(Ok(read)) =
+            tokio::time::timeout(Duration::from_millis(500), peer.read(&mut buffer)).await
+        {
+            if read == 0 {
+                break;
+            }
+            bytes.extend_from_slice(&buffer[..read]);
+        }
+        bytes
+    })
+}
+
+/// An op through the management protocol sends the entity status of the new permission level to
+/// the player, as `PlayerList.sendPlayerPermissionLevel` does, and a deop sends level 0.
+#[test]
+fn a_management_op_sends_the_permission_packet() {
+    let _serial = support::serial();
+    let (player, mut peer) = support::player_with_peer("RpcPacket", NegotiatedState::default());
+    let status = |level: i8| {
+        let mut bytes = player.entity_id().to_be_bytes().to_vec();
+        bytes.push(u8::try_from(24 + level).unwrap());
+        bytes
+    };
+    let contains = |haystack: &[u8], needle: &[u8]| {
+        haystack.windows(needle.len()).any(|window| window == needle)
+    };
+
+    rpc("operators/add", serde_json::json!({"add": [operator(&player)]}));
+    assert!(contains(&read_available(&mut peer), &status(4)));
+
+    rpc(
+        "operators/remove",
+        serde_json::json!({"remove": [{"id": player.gameprofile.id}]}),
+    );
+    assert!(contains(&read_available(&mut peer), &status(0)));
+}
