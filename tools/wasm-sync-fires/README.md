@@ -9,8 +9,9 @@ with `DeferHost::defer` (`crates/pumpkin-wasm-host-v0_2/src/lib.rs`). The deferr
 order. The scan does not follow the code inside a `defer` call. An import that returns a value
 from an event runs its work in `guest_call::native_handlers_only`
 (`crates/pumpkin-core/src/plugin/guest_call.rs`), so that its fires skip the Wasm handlers. The
-Java send path defers the send of a packet inside a guest call when a Wasm plugin handles
-`PacketSentEvent`. The scan cannot see these runtime checks, so `sync_fires.tsv` records them.
+Java and Bedrock send paths defer the send of a packet, a raw packet and a kick inside a guest
+call when a Wasm plugin handles the sent event of the send. The scan cannot see these runtime
+checks, so `sync_fires.tsv` records them.
 
 `sync_fires.tsv` records each import that the scan finds and its disposition. The check fails when
 the scan finds an import that the list does not have, or when the list has an import that the scan

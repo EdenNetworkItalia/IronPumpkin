@@ -1,105 +1,104 @@
 import	disposition
-HostBedrockPlayer.set_ability	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.add_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.add_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.clear_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.remove_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.remove_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.reset_entity_scores	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.set_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.update_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostBedrockScoreboard.update_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostBedrockPlayer.set_ability	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.add_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.add_score	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.clear_display_slot	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.remove_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.remove_score	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.reset_entity_scores	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.set_display_slot	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.update_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostBedrockScoreboard.update_score	ok: the java and bedrock send paths defer the send inside a guest call
 HostContext.register_command	false positive: the permission check runs in the requirement closure, at command dispatch
-HostEntity.set_custom_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostEntity.set_custom_name_visible	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostEntity.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostEntity.set_remaining_air	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostInteractionEntity.set_height	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostInteractionEntity.set_width	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostJavaPlayer.send_entity_status	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostJavaPlayer.send_game_event	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostJukeboxBlockEntity.start_playing	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.add_attribute_modifier	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.clear_equipment	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.remove_attribute_modifier	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostEntity.set_custom_name	ok: the java and bedrock send paths defer the send inside a guest call
+HostEntity.set_custom_name_visible	ok: the java and bedrock send paths defer the send inside a guest call
+HostEntity.set_freeze_ticks	ok: the java and bedrock send paths defer the send inside a guest call
+HostEntity.set_remaining_air	ok: the java and bedrock send paths defer the send inside a guest call
+HostInteractionEntity.set_height	ok: the java and bedrock send paths defer the send inside a guest call
+HostInteractionEntity.set_width	ok: the java and bedrock send paths defer the send inside a guest call
+HostJavaPlayer.send_entity_status	ok: the java and bedrock send paths defer the send inside a guest call
+HostJavaPlayer.send_game_event	ok: the java and bedrock send paths defer the send inside a guest call
+HostJukeboxBlockEntity.start_playing	ok: the java and bedrock send paths defer the send inside a guest call
+HostLivingEntity.add_attribute_modifier	ok: the java and bedrock send paths defer the send inside a guest call
+HostLivingEntity.remove_attribute_modifier	ok: the java and bedrock send paths defer the send inside a guest call
 HostLivingEntity.remove_effect	ok: native handlers only inside a guest call
-HostLivingEntity.reset_attribute	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.send_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.set_attribute_base	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostLivingEntity.set_max_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostMapBlockEntity.stream_frame	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostMapBlockEntity.update	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostMob.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostMob.set_mob_data	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.add_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostLivingEntity.reset_attribute	ok: the java and bedrock send paths defer the send inside a guest call
+HostLivingEntity.send_system_message	ok: the java and bedrock send paths defer the send inside a guest call
+HostLivingEntity.set_attribute_base	ok: the java and bedrock send paths defer the send inside a guest call
+HostLivingEntity.set_max_health	ok: the java and bedrock send paths defer the send inside a guest call
+HostMapBlockEntity.stream_frame	ok: the java and bedrock send paths defer the send inside a guest call
+HostMapBlockEntity.update	ok: the java and bedrock send paths defer the send inside a guest call
+HostMob.set_freeze_ticks	ok: the java and bedrock send paths defer the send inside a guest call
+HostMob.set_mob_data	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.add_custom_chat_completions	ok: the java and bedrock send paths defer the send inside a guest call
 HostPlayer.can_harvest_block	ok: native handlers only inside a guest call
-HostPlayer.get_mining_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.get_mining_speed	ok: the java and bedrock send paths defer the send inside a guest call
 HostPlayer.get_tab_list_name	ok: native handlers only inside a guest call
-HostPlayer.look_at	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.open_book	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.remove_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.reset_block_change	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.reset_camera	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.reset_player_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.revoke_advancement	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.revoke_advancement_criterion	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_block_change	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_block_damage	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_hurt_animation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_stats	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.send_title_animation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_abilities	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_absorption	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_allow_flight	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_camera	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_camera_entity_id	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_compass_target	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_custom_chat_completions	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_display_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_exhaustion	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_fly_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_flying	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_freeze_ticks	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_item_cooldown	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_max_health	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_player_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_saturation	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_selected_advancement_tab	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_header_footer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_latency	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_listed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_name	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_order	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_tab_list_ping	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.set_walk_speed	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.show_actionbar	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.show_subtitle	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.show_title	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.spawn_particles	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostPlayer.start_cooldown	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.add_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.add_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.clear_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.remove_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.remove_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.reset_entity_scores	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.set_display_slot	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.update_objective	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostScoreboard.update_score	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostServer.broadcast_tab_list_header_footer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostServer.delete_message_by_id	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostServer.delete_message_by_signature	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostServer.set_server_links	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorld.broadcast_system_message	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorld.set_time_of_day	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorld.spawn_particle	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_center	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_damage_buffer	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_diameter	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_size	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_size_transition	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_warning_delay	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_warning_distance	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
-HostWorldBorder.set_warning_time	java: the send path defers PacketSentEvent inside a guest call; bedrock: open
+HostPlayer.look_at	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.open_book	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.remove_custom_chat_completions	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.reset_block_change	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.reset_camera	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.reset_player_time	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.revoke_advancement	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.revoke_advancement_criterion	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_block_change	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_block_damage	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_hurt_animation	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_stats	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_system_message	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.send_title_animation	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_abilities	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_absorption	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_allow_flight	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_camera	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_camera_entity_id	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_compass_target	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_custom_chat_completions	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_display_name	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_exhaustion	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_fly_speed	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_flying	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_freeze_ticks	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_health	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_item_cooldown	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_max_health	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_player_time	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_saturation	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_selected_advancement_tab	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_header_footer	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_latency	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_listed	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_name	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_order	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_tab_list_ping	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.set_walk_speed	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.show_actionbar	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.show_subtitle	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.show_title	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.spawn_particles	ok: the java and bedrock send paths defer the send inside a guest call
+HostPlayer.start_cooldown	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.add_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.add_score	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.clear_display_slot	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.remove_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.remove_score	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.reset_entity_scores	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.set_display_slot	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.update_objective	ok: the java and bedrock send paths defer the send inside a guest call
+HostScoreboard.update_score	ok: the java and bedrock send paths defer the send inside a guest call
+HostServer.broadcast_tab_list_header_footer	ok: the java and bedrock send paths defer the send inside a guest call
+HostServer.delete_message_by_id	ok: the java and bedrock send paths defer the send inside a guest call
+HostServer.delete_message_by_signature	ok: the java and bedrock send paths defer the send inside a guest call
+HostServer.set_server_links	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorld.broadcast_system_message	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorld.set_time_of_day	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorld.spawn_particle	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_center	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_damage_buffer	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_diameter	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_size	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_size_transition	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_warning_delay	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_warning_distance	ok: the java and bedrock send paths defer the send inside a guest call
+HostWorldBorder.set_warning_time	ok: the java and bedrock send paths defer the send inside a guest call

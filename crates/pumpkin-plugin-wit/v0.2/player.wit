@@ -1484,6 +1484,8 @@ interface player {
         send-packet: async func(packet: java-packet);
 
         /// Sends an already-encoded clientbound packet directly to the player without re-observing it.
+        /// While a Wasm plugin handles `packet-sent-event`, the packet goes out after the guest call
+        /// returns, in call order with the other packets of the guest call.
         send-raw-packet: func(packet-id: s32, payload: list<u8>);
 
         /// Sends a custom payload packet (plugin message) to the player.
@@ -1511,6 +1513,9 @@ interface player {
         clear-resource-packs: async func();
 
         /// Kicks the Java player with the specified options.
+        /// While a Wasm plugin handles `packet-sent-event`, the disconnect packet and the close run
+        /// after the guest call returns. This call then returns before the write of the packet and
+        /// before the connection closes.
         kick: async func(options: java-kick-options);
 
         /// Sends a clientbound GameEvent packet to the Java player.
@@ -1555,6 +1560,8 @@ interface player {
         send-packet: async func(packet: bedrock-packet);
 
         /// Sends an already-encoded clientbound Bedrock game packet directly to the player.
+        /// While a Wasm plugin handles `packet-sent-event`, the packet goes out after the guest call
+        /// returns, in call order with the other packets of the guest call.
         send-raw-packet: func(packet-id: u16, payload: list<u8>);
 
         /// Opens a Bedrock custom form for the player.

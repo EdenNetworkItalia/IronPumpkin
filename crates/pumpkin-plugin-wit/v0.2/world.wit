@@ -608,6 +608,9 @@ interface %world {
         // Equipment
         get-equipment: func(slot: equipment-slot) -> option<item-stack>;
         set-equipment: async func(slot: equipment-slot, stack: option<item-stack>);
+        /// The clear applies after the guest call returns, so that a handler of
+        /// `item-attribute-modifier-event` can run. A read in the same guest call sees the old
+        /// value.
         clear-equipment: func();
 
         // Status Effects
