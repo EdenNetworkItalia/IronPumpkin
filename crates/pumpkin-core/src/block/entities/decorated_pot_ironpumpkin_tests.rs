@@ -93,3 +93,21 @@ fn an_empty_side_is_a_brick_on_bedrock() {
         ]
     );
 }
+
+#[test]
+fn update_tag_keeps_the_loot_table() {
+    // 26.3 `DecoratedPotBlockEntity.getUpdateTag` is `saveCustomOnly`, which keeps `LootTable`.
+    let mut nbt = NbtCompound::new();
+    nbt.put_string(
+        "LootTable",
+        "minecraft:chests/trial_chambers/corridor".to_string(),
+    );
+    nbt.put_long("LootTableSeed", 7);
+    let pot = DecoratedPotBlockEntity::from_nbt(&nbt, BlockPos::new(0, 0, 0));
+    let tag = pot.chunk_data_nbt().unwrap();
+    assert_eq!(
+        tag.get_string("LootTable"),
+        Some("minecraft:chests/trial_chambers/corridor")
+    );
+    assert_eq!(tag.get_long("LootTableSeed"), Some(7));
+}

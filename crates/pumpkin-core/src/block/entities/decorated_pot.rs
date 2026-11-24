@@ -91,22 +91,7 @@ impl BlockEntity for DecoratedPotBlockEntity {
 
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
-        if let Ok(decorations) = self.decorations.try_lock()
-            && !decorations.is_empty()
-        {
-            nbt.put("sherds", decorations.write_data());
-        }
-        let has_loot = self
-            .loot_table
-            .try_lock()
-            .map_or(true, |guard| guard.is_some());
-        if !has_loot
-            && let Ok(item) = self.item.try_lock()
-            && let Some(ref it) = *item
-            && let Some(it_nbt) = it.to_nbt()
-        {
-            nbt.put_compound("item", it_nbt);
-        }
+        self.write_nbt(&mut nbt);
         Some(nbt)
     }
 

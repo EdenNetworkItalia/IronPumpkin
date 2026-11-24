@@ -194,9 +194,10 @@ impl BlockEntity for CampfireBlockEntity {
         }
     }
 
+    /// Vanilla `CampfireBlockEntity.getUpdateTag`: the items only.
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
-        self.write_cooking_nbt(&mut nbt);
+        self.write_items_nbt(&mut nbt);
         Some(nbt)
     }
 
@@ -263,17 +264,7 @@ impl CampfireBlockEntity {
     }
 
     fn write_cooking_nbt(&self, nbt: &mut NbtCompound) {
-        let mut items = Vec::new();
-        for (slot, item) in self.items.iter().enumerate() {
-            let stack = item
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(mut item_nbt) = stack.to_nbt() {
-                item_nbt.put_byte("Slot", slot as i8);
-                items.push(NbtTag::Compound(item_nbt));
-            }
-        }
-        nbt.put_list("Items", items);
+        self.write_items_nbt(nbt);
 
         let cooking_times = self
             .cooking_times
@@ -296,6 +287,20 @@ impl CampfireBlockEntity {
             })
             .collect();
         nbt.put("CookingTotalTimes", NbtTag::IntArray(cooking_total_times));
+    }
+
+    fn write_items_nbt(&self, nbt: &mut NbtCompound) {
+        let mut items = Vec::new();
+        for (slot, item) in self.items.iter().enumerate() {
+            let stack = item
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(mut item_nbt) = stack.to_nbt() {
+                item_nbt.put_byte("Slot", slot as i8);
+                items.push(NbtTag::Compound(item_nbt));
+            }
+        }
+        nbt.put_list("Items", items);
     }
 
     fn cool_down(&self) -> bool {
@@ -386,5 +391,19 @@ mod tests {
         assert_eq!(item3.get_string("Name"), Some("minecraft:porkchop"));
         assert_eq!(item3.get_byte("Count"), Some(1));
         assert_eq!(item3.get_byte("Slot"), Some(2));
+    }
+
+    #[test]
+    fn update_tag_holds_only_the_items() {
+        let campfire = CampfireBlockEntity::new(BlockPos::new(0, 64, 0));
+        *campfire.items[1].lock().unwrap() = ItemStack::new(1, &Item::BEEF);
+        let tag = campfire.chunk_data_nbt().unwrap();
+        assert_eq!(tag.get_list("Items").map(<[_]>::len), Some(1));
+        assert!(tag.get("CookingTimes").is_none());
+        assert!(tag.get("CookingTotalTimes").is_none());
+
+        let mut saved = NbtCompound::new();
+        campfire.write_nbt(&mut saved);
+        assert!(saved.get("CookingTimes").is_some());
     }
 }
