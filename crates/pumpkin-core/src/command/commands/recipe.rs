@@ -38,12 +38,12 @@ fn get_recipe_id(recipe: &DynamicRecipe) -> String {
 }
 
 /// The display ids of the recipe book entries that `recipe` names: every entry for `*`, else
-/// the data pack and plugin recipes with that id. Each id is the id of the whole book.
+/// the generated, data pack or plugin recipe with that id. Each id is the id of the whole book.
 fn book_ids(index: &RecipeIndex, recipe: &str) -> Vec<i32> {
     if recipe == "*" {
         return index.book().display_ids().collect();
     }
-    index
+    let dynamic = index
         .dynamic_recipes()
         .iter()
         .enumerate()
@@ -51,7 +51,9 @@ fn book_ids(index: &RecipeIndex, recipe: &str) -> Vec<i32> {
             let id = get_recipe_id(r);
             id == recipe || id.strip_prefix("minecraft:").unwrap_or(&id) == recipe
         })
-        .filter_map(|(i, _)| index.book().dynamic_display_id(i))
+        .filter_map(|(i, _)| index.book().dynamic_display_id(i));
+    dynamic
+        .chain(index.book().generated_display_id(recipe))
         .collect()
 }
 
@@ -247,4 +249,58 @@ pub fn register(dispatcher: &mut CommandDispatcher, registry: &PermissionRegistr
         );
 
     dispatcher.register(builder);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin_data::recipes::RecipeCategoryTypes;
+    use pumpkin_protocol::codec::recipe::{
+        OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient, OwnedRecipeResult,
+    };
+
+    fn smelting(id: &str) -> DynamicRecipe {
+        DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+            recipe_id: id.to_string(),
+            category: RecipeCategoryTypes::Misc,
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            cooking_time: 50,
+            experience: 0.0,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 1,
+                components: None,
+            },
+        }))
+    }
+
+    /// `/recipe give` and `/recipe take` name a vanilla recipe by its id.
+    #[test]
+    fn a_generated_recipe_has_a_book_entry_by_its_id() {
+        let index = RecipeIndex::build(&[smelting("test:diamond")]);
+        for id in [
+            "minecraft:stick",
+            "minecraft:iron_ingot_from_smelting_raw_iron",
+            "test:diamond",
+        ] {
+            assert_eq!(book_ids(&index, id).len(), 1, "{id}");
+        }
+        assert!(book_ids(&index, "minecraft:no_such_recipe").is_empty());
+        assert_eq!(
+            book_ids(&index, "*").len(),
+            index.book().display_ids().count()
+        );
+    }
+
+    /// A data pack recipe with the id of a vanilla recipe takes its book entry, so one id is one
+    /// entry.
+    #[test]
+    fn a_replaced_generated_recipe_has_one_book_entry() {
+        let id = "minecraft:iron_ingot_from_smelting_raw_iron";
+        let plain = RecipeIndex::build(&[]);
+        let replaced = RecipeIndex::build(&[smelting(id)]);
+        assert_eq!(book_ids(&replaced, id).len(), 1);
+        assert_eq!(book_ids(&replaced, id), book_ids(&plain, id));
+    }
 }

@@ -262,6 +262,23 @@ impl RecipeBook {
             .flatten()
     }
 
+    /// The display id of the generated recipe `recipe_id`. A dynamic recipe with that id has
+    /// replaced it and holds the display id, so it is not found here.
+    #[must_use]
+    pub fn generated_display_id(&self, recipe_id: &str) -> Option<i32> {
+        let position = self.slots.iter().position(|slot| {
+            let id = match slot {
+                Some(BookSlot::Crafting(index)) => RECIPES_CRAFTING_IDS[*index],
+                Some(BookSlot::Cooking(index)) => {
+                    generated_cooking(&RECIPES_COOKING[*index]).recipe_id
+                }
+                Some(BookSlot::Dynamic(_)) | None => return false,
+            };
+            id == recipe_id
+        })?;
+        i32::try_from(position).ok()
+    }
+
     /// The display ids that hold a recipe.
     pub fn display_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.slots
