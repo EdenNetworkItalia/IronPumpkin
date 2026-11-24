@@ -936,3 +936,26 @@ fn a_crafter_dispenses_into_the_item_capability_of_a_block() {
         "an item dropped into the world"
     );
 }
+
+/// `MinecartHopper.tick` calls `HopperBlockEntity.suckInItems`, which pulls from the item
+/// capability of the block above the cart.
+#[test]
+fn a_hopper_minecart_pulls_from_the_item_capability_of_a_block() {
+    use pumpkin_core::entity::{Entity, vehicle::minecart::MinecartEntity};
+    use pumpkin_util::math::vector3::Vector3;
+
+    let test = TestWorld::new();
+    let source = pos(5, 66, 9);
+    test.place(source, Block::DRIED_KELP_BLOCK.default_state.id);
+    let handler = plain_block(source, Some(ItemStack::new(4, &Item::EMERALD)));
+    let _guard = test.runtime.enter();
+    // `BlockPos.containing(x, y + 1.5, z)` is the block above the cart.
+    let entity = Entity::new(
+        test.world.clone(),
+        Vector3::new(5.5, 64.5, 9.5),
+        &EntityType::HOPPER_MINECART,
+    );
+    let minecart = MinecartEntity::new(entity);
+    minecart.tick_hopper();
+    assert_eq!(handler.get_amount_as_long(0), 3);
+}

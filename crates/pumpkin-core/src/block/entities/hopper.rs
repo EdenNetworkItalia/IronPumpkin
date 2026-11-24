@@ -493,7 +493,7 @@ impl HopperBlockEntity {
             return false;
         }
         if let Some(ContainerOrHandler::Handler(handler)) = &source {
-            return self.extract_from_handler(handler.as_ref());
+            return Self::extract_from_handler(handler.as_ref(), self);
         }
         if !state.is_full_cube() || block.has_tag(&tag::Block::MINECRAFT_DOES_NOT_BLOCK_HOPPERS) {
             let entities = world.get_entities_at_box(&SUCK_AABB.at_pos(self.position));

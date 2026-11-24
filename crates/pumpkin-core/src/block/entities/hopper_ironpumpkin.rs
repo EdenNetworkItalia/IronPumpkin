@@ -116,8 +116,8 @@ impl HopperBlockEntity {
     }
 
     /// `VanillaInventoryCodeHooks.extractHook`: pulls one item from the item capability
-    /// `source` of the block above.
-    pub(super) fn extract_from_handler(&self, source: &dyn ItemTarget) -> bool {
-        source.extract_one(&mut |item| Self::add_one_item(self, self, item))
+    /// `source` of the block above into `into`, a hopper or a hopper minecart.
+    pub(crate) fn extract_from_handler(source: &dyn ItemTarget, into: &dyn Inventory) -> bool {
+        source.extract_one(&mut |item| Self::add_one_item(into, into, item))
     }
 }

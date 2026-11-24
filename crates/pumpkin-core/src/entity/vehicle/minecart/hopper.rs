@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{ContainerOrHandler, HopperBlockEntity};
 use crate::entity::{Entity, player::Player};
-use pumpkin_data::translation;
+use pumpkin_data::{BlockDirection, translation};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_util::math::boundingbox::BoundingBox;
 use pumpkin_util::math::position::BlockPos;
@@ -45,30 +45,41 @@ impl HopperMinecart {
         let inventory = &self.inventory;
         let cart_box = entity.bounding_box.load().expand(0.25, 0.0, 0.25);
 
-        if let Some(source) = HopperBlockEntity::get_container_at_coords(
+        let source_state = world.get_block_and_state(&source_pos);
+        match HopperBlockEntity::container_or_handler_at(
             &world,
             &source_pos,
+            BlockDirection::Down,
+            source_state,
             pos.x,
             pos.y + 1.5,
             pos.z,
         ) {
-            match HopperBlockEntity::try_take_from_source(inventory.as_ref(), source.as_ref()) {
-                Ok(true) => return,
-                Ok(false) => {}
-                Err(leftover) => {
-                    // A concurrent insert filled the slot, drop the item, never void it.
-                    let drop_pos = source_pos.to_centered_f64();
-                    world.scatter_stack(drop_pos.x, drop_pos.y, drop_pos.z, leftover);
+            Some(ContainerOrHandler::Container(source)) => {
+                match HopperBlockEntity::try_take_from_source(inventory.as_ref(), source.as_ref()) {
+                    Ok(true) => return,
+                    Ok(false) => {}
+                    Err(leftover) => {
+                        // A concurrent insert filled the slot, drop the item, never void it.
+                        let drop_pos = source_pos.to_centered_f64();
+                        world.scatter_stack(drop_pos.x, drop_pos.y, drop_pos.z, leftover);
+                    }
                 }
             }
-        } else {
-            // `Hopper.SUCK_AABB` around the cart; never blocked, the cart isn't grid aligned.
-            let suction_box = BoundingBox::new(
-                Vector3::new(pos.x - 0.5, pos.y + 0.6875, pos.z - 0.5),
-                Vector3::new(pos.x + 0.5, pos.y + 2.0, pos.z + 0.5),
-            );
-            if Self::pick_up_item_internal(&world, inventory, &suction_box) {
-                return;
+            Some(ContainerOrHandler::Handler(source)) => {
+                if HopperBlockEntity::extract_from_handler(source.as_ref(), inventory.as_ref()) {
+                    return;
+                }
+            }
+            None => {
+                // `Hopper.SUCK_AABB` around the cart; never blocked, the cart isn't grid aligned.
+                let suction_box = BoundingBox::new(
+                    Vector3::new(pos.x - 0.5, pos.y + 0.6875, pos.z - 0.5),
+                    Vector3::new(pos.x + 0.5, pos.y + 2.0, pos.z + 0.5),
+                );
+                if Self::pick_up_item_internal(&world, inventory, &suction_box) {
+                    return;
+                }
             }
         }
         // Vanilla `MinecartHopper.suckInItems` falls back to its own box either way.
