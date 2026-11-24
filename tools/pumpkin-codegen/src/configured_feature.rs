@@ -422,7 +422,8 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             let variant = match type_str {
                 "minecraft:flower" => quote! { ConfiguredFeature::Flower },
                 "minecraft:no_bonemeal_flower" => quote! { ConfiguredFeature::NoBonemealFlower },
-                _ => quote! { ConfiguredFeature::RandomPatch },
+                "minecraft:random_patch" => quote! { ConfiguredFeature::RandomPatch },
+                other => unreachable!("random patch arm reached with {other}"),
             };
             quote! {
                 #variant(RandomPatchFeature {
