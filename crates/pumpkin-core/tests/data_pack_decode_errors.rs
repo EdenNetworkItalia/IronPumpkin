@@ -82,6 +82,7 @@ fn one_skipped<'a>(log: &'a str, id: &str, cause: &str) -> &'a str {
 
 const GOOD_RECIPE: &str = r#"{
     "type": "minecraft:smelting",
+    "cookingtime": 200,
     "ingredient": "minecraft:dirt",
     "result": { "id": "minecraft:diamond" }
 }"#;
@@ -150,6 +151,48 @@ fn a_recipe_with_an_unknown_type_or_a_json_error_is_skipped() {
     has("test:broken", "EOF while parsing");
 }
 
+/// The ingredient codec of vanilla 26.3 takes an id, a tag string or a list of ids. A legacy
+/// `{"item": ..}` object, at the top level or in a list, fails the recipe. The line has the
+/// generic text of a recipe field that does not decode, not a vanilla cause.
+#[test]
+fn a_recipe_with_a_legacy_item_object_ingredient_is_skipped() {
+    let world = world(&[
+        ("test/recipe/good.json", GOOD_RECIPE),
+        (
+            "test/recipe/legacy_top.json",
+            r#"{
+                "type": "minecraft:smelting",
+                "cookingtime": 200,
+                "ingredient": { "item": "minecraft:dirt" },
+                "result": { "id": "minecraft:diamond" }
+            }"#,
+        ),
+        (
+            "test/recipe/legacy_list.json",
+            r#"{
+                "type": "minecraft:smelting",
+                "cookingtime": 200,
+                "ingredient": ["minecraft:stick", { "item": "minecraft:dirt" }],
+                "result": { "id": "minecraft:diamond" }
+            }"#,
+        ),
+    ]);
+    let recipes = RecipeManager::default();
+    let log = load(&DatapackManager::new(), &recipes, world.path());
+    assert_eq!(recipe_ids(&recipes), ["test:good"]);
+    let lines = skipped(&log);
+    assert_eq!(lines.len(), 2, "{log}");
+    for id in ["test:legacy_top", "test:legacy_list"] {
+        let cause = "The minecraft:smelting recipe has a field that does not decode";
+        assert!(
+            lines.iter().any(|line| line.contains(&format!(
+                "Failed to parse {id} from pack {PACK}: {cause} (skipped minecraft:recipe entry)"
+            ))),
+            "{log}"
+        );
+    }
+}
+
 /// The recipe manager reports a recipe that decodes but names an item that does not exist, with
 /// the vanilla message. The loader keeps the other recipes.
 #[test]
@@ -160,6 +203,7 @@ fn a_recipe_with_an_unknown_result_item_is_skipped() {
             "test/recipe/missing_item.json",
             r#"{
                 "type": "minecraft:smelting",
+                "cookingtime": 200,
                 "ingredient": "minecraft:dirt",
                 "result": { "id": "test:missing" }
             }"#,
