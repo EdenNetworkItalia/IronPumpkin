@@ -9,7 +9,7 @@ use pumpkin_data::{
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::{
     math::{int_provider::IntProvider, vector3::Vector3},
-    random::{RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
+    random::{RandomGenerator, RandomImpl, hash_block_pos, legacy_rand::LegacyRand},
 };
 use serde::Deserialize;
 use std::{
@@ -372,14 +372,18 @@ pub fn check_block_has_tag(block_id: BlockId, tag: &str) -> bool {
 }
 
 /// Execution context passed during structure template processing.
-#[derive(Clone, Debug, Default)]
-pub struct ProcessorContext {
+#[derive(Default)]
+pub struct ProcessorContext<'a> {
     pub structure_start: Vector3<i32>,
     pub capped_limits: Vec<i32>,
     pub capped_counts: Vec<i32>,
+    /// The random of vanilla `StructurePlaceSettings.setRandom`. When it is set, the processors
+    /// that call `StructurePlaceSettings.getRandom` (`block_rot` and `block_age`) draw from it
+    /// instead of from the random of the block position.
+    pub settings_random: Option<&'a mut RandomGenerator>,
 }
 
-impl ProcessorContext {
+impl ProcessorContext<'_> {
     #[must_use]
     pub fn new(
         structure_start: Vector3<i32>,
@@ -393,6 +397,7 @@ impl ProcessorContext {
             structure_start,
             capped_limits,
             capped_counts,
+            settings_random: None,
         }
     }
 }
@@ -437,14 +442,14 @@ impl StructureProcessor {
     }
 
     #[must_use]
-    #[expect(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn process_with_context(
         &self,
         placer: &impl BlockPlacer,
         world_pos: Vector3<i32>,
         state: &'static BlockState,
         nbt: &mut Option<NbtCompound>,
-        context: &mut ProcessorContext,
+        context: &mut ProcessorContext<'_>,
         capped_idx: &mut usize,
         rng: &mut impl RandomImpl,
     ) -> Option<&'static BlockState> {
@@ -477,9 +482,18 @@ impl StructureProcessor {
                 {
                     return Some(state);
                 }
-                (rng.next_f32() <= *integrity).then_some(state)
+                let roll = context
+                    .settings_random
+                    .as_deref_mut()
+                    .map_or_else(|| rng.next_f32(), RandomImpl::next_f32);
+                (roll <= *integrity).then_some(state)
             }
-            Self::BlockAge { mossiness } => Some(process_block_age(state, *mossiness, rng)),
+            Self::BlockAge { mossiness } => {
+                Some(context.settings_random.as_deref_mut().map_or_else(
+                    || process_block_age(state, *mossiness, rng),
+                    |random| process_block_age(state, *mossiness, random),
+                ))
+            }
             Self::BlockIgnore(ignored_blocks) => {
                 if ignored_blocks.iter().any(|ignored| ignored.matches(state)) {
                     None

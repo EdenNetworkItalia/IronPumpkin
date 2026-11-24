@@ -19,7 +19,8 @@ use pumpkin_util::{
 use crate::generation::{
     proto_chunk::GenerationCache,
     structure::template::{
-        BlockPlacer, StructureProcessor, get_template, load_processor_list, place_template,
+        BlockPlacer, StructureProcessor, StructureTemplate, get_template, load_processor_list,
+        place_template_palette_with_random,
     },
 };
 
@@ -52,15 +53,7 @@ impl TemplateFeature {
         origin: BlockPos,
     ) -> bool {
         // Vanilla `WeightedList.getRandomOrThrow`, then `Util.getRandom` for the rotation.
-        let total_weight: i32 = self.templates.iter().map(|entry| entry.weight).sum();
-        if total_weight <= 0 {
-            return false;
-        }
-        let mut selection = random.next_bounded_i32(total_weight);
-        let Some(entry) = self.templates.iter().find(|entry| {
-            selection -= entry.weight;
-            selection < 0
-        }) else {
+        let Some(entry) = pick_entry(self.templates, random) else {
             return false;
         };
         if entry.rotations.is_empty() {
@@ -75,20 +68,6 @@ impl TemplateFeature {
         else {
             return false;
         };
-        if template.palettes.is_empty() {
-            return false;
-        }
-        // Vanilla `StructurePlaceSettings.getRandomPalette` takes the feature random, also for a
-        // single palette. `place_template` places the first palette.
-        random.next_bounded_i32(template.palettes.len() as i32);
-        if (template.blocks.is_empty() && template.entities.is_empty())
-            || template.size.x < 1
-            || template.size.y < 1
-            || template.size.z < 1
-        {
-            return false;
-        }
-
         let processors: Arc<[StructureProcessor]> = match self.processors {
             TemplateProcessors::None => Arc::from([]),
             TemplateProcessors::Named(name) => load_processor_list(name),
@@ -96,26 +75,68 @@ impl TemplateFeature {
                 list.iter().map(StructureProcessor::from_static).collect()
             }
         };
-
-        let corner = template_corner(template.size, origin.0, rotation);
-        let mut placer = CachePlacer {
-            chunk,
-            placed: Vec::new(),
-        };
-        place_template(
-            &mut placer,
-            &template,
-            corner,
-            (0, 0),
-            rotation,
-            false,
-            true,
-            &processors,
-            None,
-        );
-        update_shapes(placer.chunk, &placer.placed);
-        true
+        place(chunk, &template, rotation, &processors, random, origin)
     }
+}
+
+/// Vanilla `WeightedList.getRandom`: an entry with weight 0 is never picked. Vanilla
+/// `getRandomOrThrow` throws when the total weight is 0; this places nothing.
+fn pick_entry<'a>(
+    templates: &'a [TemplateEntry],
+    random: &mut RandomGenerator,
+) -> Option<&'a TemplateEntry> {
+    let total_weight: i32 = templates.iter().map(|entry| entry.weight).sum();
+    if total_weight <= 0 {
+        return None;
+    }
+    let mut selection = random.next_bounded_i32(total_weight);
+    templates.iter().find(|entry| {
+        selection -= entry.weight;
+        selection < 0
+    })
+}
+
+/// The rest of vanilla `TemplateFeature.place` and `StructureTemplate.placeInWorld`, after the
+/// template and the rotation are chosen.
+fn place<T: GenerationCache>(
+    chunk: &mut T,
+    template: &StructureTemplate,
+    rotation: Rotation,
+    processors: &[StructureProcessor],
+    random: &mut RandomGenerator,
+    origin: BlockPos,
+) -> bool {
+    if template.palettes.is_empty() {
+        return false;
+    }
+    // Vanilla `StructurePlaceSettings.getRandomPalette` takes the feature random, also for a
+    // single palette.
+    let palette_index = random.next_bounded_i32(template.palettes.len() as i32) as usize;
+    if (template.palettes[palette_index].blocks().is_empty() && template.entities.is_empty())
+        || template.size.x < 1
+        || template.size.y < 1
+        || template.size.z < 1
+    {
+        return false;
+    }
+
+    let corner = template_corner(template.size, origin.0, rotation);
+    let mut placer = CachePlacer {
+        chunk,
+        placed: Vec::new(),
+    };
+    place_template_palette_with_random(
+        &mut placer,
+        template,
+        palette_index,
+        corner,
+        rotation,
+        processors,
+        random,
+    );
+    update_shapes(placer.chunk, &placer.placed);
+
+    true
 }
 
 /// Returns the world position of the minimum corner of the rotated template.
@@ -454,5 +475,190 @@ mod tests {
                 }
             }
         }
+    }
+
+    use crate::generation::feature::placed_features::tests::empty_chunk;
+    use pumpkin_nbt::tag::NbtTag;
+    use pumpkin_util::random::xoroshiro128::Xoroshiro;
+
+    const ORIGIN: BlockPos = BlockPos(Vector3::new(8, 64, 8));
+
+    fn int_list(values: [i32; 3]) -> NbtTag {
+        NbtTag::List(values.into_iter().map(NbtTag::Int).collect())
+    }
+
+    fn block_entry(name: &str) -> NbtTag {
+        let mut entry = NbtCompound::new();
+        entry.put_string("Name", name.to_string());
+        NbtTag::Compound(entry)
+    }
+
+    /// A template of the given size with one block of state 0 at each position of `blocks`, one
+    /// palette per entry of `palettes`, and one entity per entry of `entities` (position and
+    /// entity NBT).
+    fn template(
+        size: [i32; 3],
+        palettes: &[&str],
+        blocks: &[[i32; 3]],
+        entities: &[([f64; 3], NbtCompound)],
+    ) -> StructureTemplate {
+        let mut nbt = NbtCompound::new();
+        nbt.put("size", int_list(size));
+        nbt.put(
+            "palettes",
+            NbtTag::List(
+                palettes
+                    .iter()
+                    .map(|name| NbtTag::List(vec![block_entry(name)]))
+                    .collect(),
+            ),
+        );
+        nbt.put(
+            "blocks",
+            NbtTag::List(
+                blocks
+                    .iter()
+                    .map(|pos| {
+                        let mut block = NbtCompound::new();
+                        block.put("pos", int_list(*pos));
+                        block.put_int("state", 0);
+                        NbtTag::Compound(block)
+                    })
+                    .collect(),
+            ),
+        );
+        nbt.put(
+            "entities",
+            NbtTag::List(
+                entities
+                    .iter()
+                    .map(|(pos, entity_nbt)| {
+                        let mut entity = NbtCompound::new();
+                        entity.put(
+                            "pos",
+                            NbtTag::List(pos.iter().copied().map(NbtTag::Double).collect()),
+                        );
+                        entity.put("blockPos", int_list(pos.map(|v| v.floor() as i32)));
+                        entity.put("nbt", NbtTag::Compound(entity_nbt.clone()));
+                        NbtTag::Compound(entity)
+                    })
+                    .collect(),
+            ),
+        );
+        StructureTemplate::from_nbt_compound(&nbt).unwrap()
+    }
+
+    fn xoroshiro(seed: u64) -> RandomGenerator {
+        RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed))
+    }
+
+    #[test]
+    fn places_the_drawn_palette() {
+        // Vanilla `StructurePlaceSettings.getRandomPalette`: `nextInt(palettes)` of the feature
+        // random picks the palette.
+        let template = template(
+            [1, 1, 1],
+            &["minecraft:stone", "minecraft:dirt"],
+            &[[0, 0, 0]],
+            &[],
+        );
+        let mut seen = [false; 2];
+        for seed in 0..16 {
+            let mut expected_random = xoroshiro(seed);
+            let palette_index = expected_random.next_bounded_i32(2) as usize;
+            seen[palette_index] = true;
+
+            let mut chunk = empty_chunk();
+            let mut random = xoroshiro(seed);
+            assert!(place(
+                &mut chunk,
+                &template,
+                Rotation::None,
+                &[],
+                &mut random,
+                ORIGIN
+            ));
+            let placed = GenerationCache::get_block_state(&chunk, &ORIGIN.0).to_block_id();
+            let expected = [BlockId::STONE, BlockId::DIRT][palette_index];
+            assert_eq!(placed, expected, "seed {seed}");
+            assert_eq!(
+                random.next_i32(),
+                expected_random.next_i32(),
+                "seed {seed}: random"
+            );
+        }
+        assert_eq!(seen, [true, true]);
+    }
+
+    #[test]
+    fn block_rot_draws_from_the_feature_random() {
+        // Vanilla `TemplateFeature.place` calls `setRandom(random)`, so `BlockRotProcessor` takes
+        // `nextFloat()` of the feature random for each block, in template block order, after the
+        // palette draw.
+        let blocks: Vec<[i32; 3]> = (0..4)
+            .flat_map(|x| (0..4).map(move |z| [x, 0, z]))
+            .collect();
+        let template = template([4, 1, 4], &["minecraft:stone"], &blocks, &[]);
+        let processors = [StructureProcessor::BlockRot {
+            integrity: 0.5,
+            rottable_blocks: None,
+        }];
+        let corner = template_corner(template.size, ORIGIN.0, Rotation::None);
+        for seed in 0..4 {
+            let mut expected_random = xoroshiro(seed);
+            expected_random.next_bounded_i32(1);
+            let expected: Vec<(Vector3<i32>, bool)> = template.palettes[0]
+                .blocks()
+                .iter()
+                .map(|block| (corner.add(&block.pos), expected_random.next_f32() <= 0.5))
+                .collect();
+            assert!(expected.iter().any(|(_, kept)| *kept));
+            assert!(expected.iter().any(|(_, kept)| !*kept));
+
+            let mut chunk = empty_chunk();
+            let mut random = xoroshiro(seed);
+            assert!(place(
+                &mut chunk,
+                &template,
+                Rotation::None,
+                &processors,
+                &mut random,
+                ORIGIN
+            ));
+            for (pos, kept) in expected {
+                let placed = GenerationCache::get_block_state(&chunk, &pos).to_block_id();
+                let expected = if kept { BlockId::STONE } else { BlockId::AIR };
+                assert_eq!(placed, expected, "seed {seed} {pos:?}");
+            }
+            assert_eq!(
+                random.next_i32(),
+                expected_random.next_i32(),
+                "seed {seed}: random"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_weight_template_is_never_picked() {
+        const ROTATIONS: &[Rotation] = &[Rotation::None];
+        let templates = [
+            TemplateEntry {
+                id: "never",
+                rotations: ROTATIONS,
+                weight: 0,
+            },
+            TemplateEntry {
+                id: "always",
+                rotations: ROTATIONS,
+                weight: 3,
+            },
+        ];
+        for seed in 0..32 {
+            assert_eq!(
+                pick_entry(&templates, &mut xoroshiro(seed)).unwrap().id,
+                "always"
+            );
+        }
+        assert!(pick_entry(&templates[..1], &mut xoroshiro(0)).is_none());
     }
 }
