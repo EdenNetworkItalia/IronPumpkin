@@ -97,6 +97,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.63 (#206) Game events carry the vanilla cause at every emit site, and no sound or game event fire site holds a lock while handlers run (follows #179); verify: a test per group of emit sites, the lock list of every fire site
 - [ ] 2.64 (#207) Recipe follow-ups of #191: plugin recipes survive a reload, the recipe commands take vanilla ids, data pack tags change recipe matching, the legacy ingredient object fails as vanilla, the fuel speed multiplier; verify: a reproducer test per item
 - [ ] 2.65 (#208) Feature placement follows vanilla: the full shape update pass, scheduled ticks from features, template waterlogging and fluid levels (follows #196); verify: a test per item against the vanilla algorithm, the generation benches
+- [ ] 2.66 (#214) The slot tracker checks a client hash in the connection mode of its player only (follows #151); verify: a `Real` client hash without a mod component triggers a resync
 - [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
