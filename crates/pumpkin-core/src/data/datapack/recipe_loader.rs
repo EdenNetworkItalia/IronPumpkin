@@ -642,6 +642,35 @@ mod tests {
         assert_eq!(components.get_int("minecraft:max_stack_size"), Some(7));
     }
 
+    /// JSON numbers have no NBT type. Vanilla codecs read any number, so a decimal saturation
+    /// and a whole food nutrition both load, and one component does not drop the others.
+    #[test]
+    fn json_numbers_decode_as_the_component_types_expect() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "ingredient": "minecraft:dirt",
+            "result": {
+                "id": "minecraft:diamond",
+                "components": {
+                    "minecraft:food": { "nutrition": 4, "saturation": 1.5 },
+                    "minecraft:max_stack_size": 7.0
+                }
+            }
+        }"#;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "food", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        let stack = pumpkin_inventory::recipe_index::RecipeOutput::owned(&cooking.result).assemble();
+        assert_eq!(stack.get_max_stack_size(), 7);
+        let food = stack
+            .get_data_component::<pumpkin_data::data_component_impl::FoodImpl>()
+            .expect("the result has the food component");
+        assert_eq!(food.nutrition, 4);
+        assert!((food.saturation - 1.5).abs() < f32::EPSILON);
+    }
+
     #[test]
     fn tag_string_ingredient_is_a_tag() {
         let json = r##"{
