@@ -4,6 +4,7 @@ mod lifecycle;
 mod policy;
 mod spawn;
 
+pub use chain::{DEFERRED_DEPTH_SOURCE, root_deferred_depth};
 pub use executor::{
     LegacyGuestScope, LegacyStore, StoreDataMut, StoreExecutor, StoreFuture, StoreHandle, StoreMode,
 };
