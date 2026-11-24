@@ -17,8 +17,8 @@ In IronPumpkin, the two events are Pumpkin events with the same names. A mod reg
 | **Errors** | An exception | `Err(NetworkError)`: `Duplicate`, `RegistrationClosed`, `InvalidChannel`, `ReservedNamespace` or `BlankVersion`. A failed call registers nothing. |
 | **Handler** | `IPayloadHandler<T>` | A closure `Fn(&[u8], &mut PayloadContext<'_>)` |
 | **Handler thread** | `MAIN` is the server thread, `NETWORK` the Netty thread | `Main` is the world tick of the player, `Network` the connection task. A configuration payload has no world tick and runs on the connection task. |
-| **Context** | `IPayloadContext`: `player`, `reply`, `disconnect`, `flow`, `protocol`, `finishCurrentTask` | `PayloadContext`: `player` (`None` in configuration), `reply`, `disconnect`, `flow`, `protocol`, `finish_current_task`. The server applies a reply and a disconnect after the handler returns. |
-| **Send** | `PacketDistributor.sendToPlayer`, `sendToAllPlayers`, `sendToPlayersInDimension` | `network::send_to_player`, `send_to_all_players`, `send_to_players_in_dimension` |
+| **Context** | `IPayloadContext`: `player`, `reply`, `disconnect`, `flow`, `protocol`, `finishCurrentTask`, `enqueueWork` | `PayloadContext`: `player` (`None` in configuration), `reply`, `disconnect`, `flow`, `protocol`, `finish_current_task`, `enqueue_work`. The server applies a reply and a disconnect after the handler returns. |
+| **Send** | `PacketDistributor.sendToPlayer`, `sendToAllPlayers`, `sendToPlayersInDimension`, `sendToPlayersNear`, `sendToPlayersTrackingEntity`, `sendToPlayersTrackingEntityAndSelf`, `sendToPlayersTrackingChunk` | `network::send_to_player`, `send_to_all_players`, `send_to_players_in_dimension`, `send_to_players_near`, `send_to_players_tracking_entity`, `send_to_players_tracking_entity_and_self`, `send_to_players_tracking_chunk` |
 | **Not negotiated** | `checkPacket` throws for a client without the channel | `send_to_player` and `reply` return `Err(NetworkError::ChannelNotNegotiated)`. A broadcast skips such a client and returns how many players got the payload. |
 | **Configuration tasks** | `RegisterConfigurationTasksEvent#register(ICustomConfigurationTask)` | The same event, once per connection: `register(Arc<dyn CustomConfigurationTask>)`. `run` sends with `TaskContext::send`. |
 
@@ -155,6 +155,11 @@ The mapping from the Java code to the Rust code:
 | `PacketDistributor.sendToPlayer(player, payload)` | `network::send_to_player(&player, "ns:path", &bytes)?` |
 | `PacketDistributor.sendToAllPlayers(payload)` | `network::send_to_all_players(&server, "ns:path", &bytes)` |
 | `PacketDistributor.sendToPlayersInDimension(level, payload)` | `network::send_to_players_in_dimension(&world, "ns:path", &bytes)` |
+| `PacketDistributor.sendToPlayersNear(level, excluded, x, y, z, radius, payload)` | `network::send_to_players_near(&world, excluded, &position, radius, "ns:path", &bytes)` |
+| `PacketDistributor.sendToPlayersTrackingEntity(entity, payload)` | `network::send_to_players_tracking_entity(entity, "ns:path", &bytes)` |
+| `PacketDistributor.sendToPlayersTrackingEntityAndSelf(entity, payload)` | `network::send_to_players_tracking_entity_and_self(entity, "ns:path", &bytes)` |
+| `PacketDistributor.sendToPlayersTrackingChunk(level, chunkPos, payload)` | `network::send_to_players_tracking_chunk(&world, chunk_pos, "ns:path", &bytes)` |
+| `context.enqueueWork(task)` | `context.enqueue_work(task)`, which returns a `PayloadWork` |
 
 ---
 
@@ -174,7 +179,60 @@ A payload reaches the handler of its channel once, with its bytes:
 - A payload on a required channel that the client did not negotiate disconnects the client with `multiplayer.disconnect.incompatible`, as NeoForge does. An optional channel can be read without the negotiation.
 - A payload on a client-bound channel is dropped.
 
-A handler on `HandlerThread::Main` runs in the world tick of the player, where the server handles the other play packets of the player. A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick. In the configuration phase, every handler runs on the connection task. The plugin events do not fire for a payload on a registered mod channel, whatever the handler thread.
+A handler on `HandlerThread::Main` runs in the world tick of the player, where the server handles the other play packets of the player. A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick, and hands work to the tick with `enqueue_work`. In the configuration phase, every handler runs on the connection task. The plugin events do not fire for a payload on a registered mod channel, whatever the handler thread.
+
+## Sending to a group of players
+
+Each group helper returns how many players got the payload. It skips a player whose client did not negotiate the channel. It collects the players first and sends after that, so a send holds no lock of the world or of the tracker.
+
+| Helper | Who gets the payload |
+| :--- | :--- |
+| `send_to_players_near` | The players of the world closer than `radius` to the position, except the excluded player. A player at exactly `radius` does not get it. |
+| `send_to_players_tracking_entity` | The players who see the entity. The entity itself does not get it. An entity that the world does not track has no viewers. |
+| `send_to_players_tracking_entity_and_self` | The players who see the entity, and the entity when it is a player. An entity that the world does not track gets nothing. |
+| `send_to_players_tracking_chunk` | The players who have the chunk in their view and for whom the server sent it. |
+
+```rust
+use ironpumpkin_mods::{
+    entity::EntityBase,
+    network::send_to_players_near,
+    world::World,
+};
+
+const LEVEL_CHANGED: &str = "examplemod:level_changed";
+
+/// Tells the players within 32 blocks of `entity` about its new level. The entity is one of them
+/// when it is a player.
+fn announce(world: &World, entity: &dyn EntityBase, level: u8) {
+    let position = entity.get_entity().pos.load();
+    send_to_players_near(world, None, &position, 32.0, LEVEL_CHANGED, &[level]);
+}
+```
+
+## Handing work to the world tick
+
+A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick. It calls `PayloadContext::enqueue_work` to run a closure on the world tick of the player. The tick runs the closure in order with the other packets of that player, and the returned `PayloadWork` gives the result. Read it with `try_get` after the tick, or `await` it.
+
+- The result is `None` when the closure panics and when the player leaves before the tick. The server logs a panic and keeps running, as NeoForge does.
+- The path follows the thread that the channel registered. A handler on `HandlerThread::Main` already runs on the tick, so the closure runs at once. In the configuration phase NeoForge schedules the closure on the server thread. IronPumpkin runs it at once on the connection task, because no world tick exists.
+- A closure counts as a packet in the cap of 64 inbound packets per player and tick. Vanilla has no cap; the cap protects the server.
+- A closure that holds the `Arc<Player>` is dropped when the player leaves, so it does not keep the player alive.
+
+```rust
+use ironpumpkin_mods::network::PayloadContext;
+
+fn on_set_level(data: &[u8], context: &mut PayloadContext<'_>) {
+    let Some(&level) = data.first() else {
+        return;
+    };
+    if let Some(player) = context.player().cloned() {
+        // Runs on the world tick, where the handler may use the world.
+        let _work = context.enqueue_work(move || {
+            let _ = (&player, level);
+        });
+    }
+}
+```
 
 ## Configuration tasks
 

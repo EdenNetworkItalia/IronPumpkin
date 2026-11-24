@@ -9,7 +9,10 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    future::Future,
+    pin::Pin,
     sync::{Arc, Mutex, PoisonError},
+    task::{Context, Poll},
 };
 
 use pumpkin_macros::Event;
@@ -436,9 +439,48 @@ impl NegotiatedChannels<'_> {
 pub struct PayloadContext<'a> {
     channel: &'a str,
     protocol: ConnectionProtocol,
+    thread: HandlerThread,
     player: Option<&'a Arc<Player>>,
     channels: NegotiatedChannels<'a>,
     actions: PayloadActions,
+}
+
+/// Runs `task` and gives its result to `sender`. A panic is logged, as `NetworkRegistry.guard`
+/// logs the exception of a synchronized task, and the result stays empty.
+fn send_result<T>(
+    channel: &str,
+    task: impl FnOnce() -> T,
+    sender: tokio::sync::oneshot::Sender<T>,
+) {
+    if let Ok(result) = crate::plugin::guarded_call::guarded_call(task) {
+        // The receiver is gone when the handler dropped the work, which wants no result.
+        let _ = sender.send(result);
+    } else {
+        tracing::error!("Failed to process a synchronized task of the payload {channel}");
+    }
+}
+
+/// The result of [`PayloadContext::enqueue_work`].
+///
+/// A mod awaits it in an async task, or reads it with [`PayloadWork::try_get`] after the tick ran
+/// the task. It yields `None` when the task panicked or never ran.
+///
+/// `NeoForge`: the `CompletableFuture` that `IPayloadContext#enqueueWork` returns.
+pub struct PayloadWork<T>(tokio::sync::oneshot::Receiver<T>);
+
+impl<T> PayloadWork<T> {
+    /// The result, when the task already ran and its result is not taken yet.
+    pub fn try_get(&mut self) -> Option<T> {
+        self.0.try_recv().ok()
+    }
+}
+
+impl<T> Future for PayloadWork<T> {
+    type Output = Option<T>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+        Pin::new(&mut self.0).poll(cx).map(Result::ok)
+    }
 }
 
 /// The replies, the disconnect and the finished configuration tasks of one handler call.
@@ -453,12 +495,14 @@ impl<'a> PayloadContext<'a> {
     pub(crate) fn new(
         channel: &'a str,
         protocol: ConnectionProtocol,
+        thread: HandlerThread,
         player: Option<&'a Arc<Player>>,
         channels: NegotiatedChannels<'a>,
     ) -> Self {
         Self {
             channel,
             protocol,
+            thread,
             player,
             channels,
             actions: PayloadActions::default(),
@@ -519,6 +563,38 @@ impl<'a> PayloadContext<'a> {
         self.channels.check_send(self.protocol, channel)?;
         self.actions.replies.push((channel.to_owned(), data.into()));
         Ok(())
+    }
+
+    /// Runs `task` on the world tick of the sender and gives its result.
+    ///
+    /// The path follows the handler thread that the channel registered, not the thread that
+    /// calls this method. A handler on [`HandlerThread::Network`] in the play phase hands `task` to
+    /// the tick of the world of the player. The tick runs it in order with the other packets of
+    /// that player, as `NeoForge` queues it in the packet queue of the connection. A handler on
+    /// [`HandlerThread::Main`] already runs on the tick, so `task` runs at once, as in `NeoForge`.
+    /// In the configuration phase `NeoForge` schedules `task` on the server thread. The player is
+    /// not in a world yet, so `task` also runs at once, on the connection task.
+    ///
+    /// The tick runs at most 64 inbound packets and tasks of a player: a task counts as a packet.
+    /// The result of the returned [`PayloadWork`] is `None` when `task` panics, which is logged
+    /// and does not stop the server, and when the player leaves before the tick runs the task.
+    ///
+    /// `NeoForge`: `IPayloadContext#enqueueWork`.
+    pub fn enqueue_work<T: Send + 'static>(
+        &self,
+        task: impl FnOnce() -> T + Send + 'static,
+    ) -> PayloadWork<T> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        match self.player {
+            Some(player) if self.thread == HandlerThread::Network => {
+                let channel = self.channel.to_owned();
+                player.schedule_synced_task(Box::new(move || {
+                    send_result(&channel, task, sender);
+                }));
+            }
+            _ => send_result(self.channel, task, sender),
+        }
+        PayloadWork(receiver)
     }
 
     /// Disconnects the client with `reason`.

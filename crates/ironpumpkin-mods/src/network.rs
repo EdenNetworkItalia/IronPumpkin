@@ -18,8 +18,15 @@
 //! `PlayerCustomPayloadEvent`), and no mod handler.
 //!
 //! [`send_to_player`] fails with [`NetworkError::ChannelNotNegotiated`] for a client that cannot
-//! receive the channel. [`send_to_all_players`] and [`send_to_players_in_dimension`] skip such
-//! clients.
+//! receive the channel. [`send_to_all_players`], [`send_to_players_in_dimension`],
+//! [`send_to_players_near`], [`send_to_players_tracking_entity`],
+//! [`send_to_players_tracking_entity_and_self`] and [`send_to_players_tracking_chunk`] skip such
+//! clients and return how many players got the payload.
+//!
+//! A handler on [`HandlerThread::Network`] hands work to the world tick of the sender with
+//! [`PayloadContext::enqueue_work`]. The tick runs the work in order with the other packets of
+//! the player. A handler on [`HandlerThread::Main`] already runs on the tick, so its work runs at
+//! once.
 //!
 //! A configuration task ([`CustomConfigurationTask`]) is registered per connection in a handler
 //! of [`RegisterConfigurationTasksEvent`]. The tasks run in registration order after the tasks of
@@ -88,9 +95,11 @@
 
 pub use pumpkin_core::plugin::api::events::network::{
     ConnectionProtocol, ConnectionType, CustomConfigurationTask, HandlerThread, NegotiatedChannels,
-    NetworkError, PacketFlow, PayloadContext, PayloadHandler, PayloadRegistrar,
+    NetworkError, PacketFlow, PayloadContext, PayloadHandler, PayloadRegistrar, PayloadWork,
     RegisterConfigurationTasksEvent, RegisterPayloadHandlersEvent, RegistrarResult, TaskContext,
 };
 pub use pumpkin_core::plugin::network_events::{
     negotiated_channels, send_to_all_players, send_to_player, send_to_players_in_dimension,
+    send_to_players_near, send_to_players_tracking_chunk, send_to_players_tracking_entity,
+    send_to_players_tracking_entity_and_self,
 };

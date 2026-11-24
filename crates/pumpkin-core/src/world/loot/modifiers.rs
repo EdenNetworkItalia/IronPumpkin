@@ -15,7 +15,6 @@
 use std::{
     collections::HashMap,
     fmt,
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc, LazyLock, PoisonError, RwLock,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -28,6 +27,8 @@ use pumpkin_util::loot_table::parser::parse_condition_with_predicates;
 use pumpkin_util::random::xoroshiro128::Xoroshiro;
 use serde_json::Value;
 use tracing::error;
+
+use crate::plugin::guarded_call::guarded_call;
 
 use super::{
     DynamicLootCondition, Item, LootContextParameters, LootTableHandle, check_dynamic_condition,
@@ -230,8 +231,8 @@ fn decode(
             ModifierCondition::parse(condition, predicates, 0).ok_or("unknown or invalid condition")
         })
         .transpose()?;
-    let modifier = catch_unwind(AssertUnwindSafe(|| decoder(json)))
-        .map_err(|_| "the decoder panicked".to_owned())??;
+    let modifier =
+        guarded_call(|| decoder(json)).map_err(|_| "the decoder panicked".to_owned())??;
     Ok((priority, condition, modifier))
 }
 
@@ -292,17 +293,15 @@ impl LootModifiers {
                 .is_none_or(|condition| context.test(condition))
             {
                 let before = generated_loot.clone();
-                generated_loot = catch_unwind(AssertUnwindSafe(|| {
-                    loaded.modifier.apply(generated_loot, context)
-                }))
-                .unwrap_or_else(|_| {
-                    error!(
-                        "Error applying global loot modifier {} for loot table {}!",
-                        loaded.id,
-                        context.queried_loot_table_id()
-                    );
-                    before
-                });
+                generated_loot = guarded_call(|| loaded.modifier.apply(generated_loot, context))
+                    .unwrap_or_else(|_| {
+                        error!(
+                            "Error applying global loot modifier {} for loot table {}!",
+                            loaded.id,
+                            context.queried_loot_table_id()
+                        );
+                        before
+                    });
             }
         }
         generated_loot

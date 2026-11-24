@@ -346,13 +346,13 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Attachments | 26 | 23 | 0 | 0 | 3 |
 | Data maps | 24 | 24 | 0 | 0 | 0 |
 | Config | 37 | 30 | 0 | 1 | 6 |
-| Networking | 88 | 53 | 10 | 0 | 25 |
+| Networking | 88 | 58 | 5 | 0 | 25 |
 | Lifecycle and metadata | 82 | 42 | 0 | 10 | 30 |
 | Loot and conditions | 25 | 5 | 18 | 0 | 2 |
 | Extension interfaces | 59 | 0 | 43 | 1 | 15 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 12 | 34 | 0 | 41 |
-| Total | 1094 | 466 | 260 | 210 | 158 |
+| Total | 1094 | 471 | 255 | 210 | 158 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -1288,7 +1288,7 @@ Config events (`ModConfigEvent.Loading`, `Reloading`, `Unloading`) are in the `f
 | `IPayloadContext#player` | method, 1 overload | both | supported | `ironpumpkin_mods::network::PayloadContext::player` | `None` in the configuration phase, where NeoForge throws; test `a_play_payload_reaches_the_handler_of_its_channel_once` |
 | `IPayloadContext#reply` | method, 1 overload | both | supported | `ironpumpkin_mods::network::PayloadContext::reply` | fails with `NetworkError::ChannelNotNegotiated` where `checkPacket` throws; test `a_reply_reaches_the_client_of_the_sender` |
 | `IPayloadContext#disconnect` | method, 1 overload | both | supported | `ironpumpkin_mods::network::PayloadContext::disconnect` | applied after the handler returns; test `a_handler_disconnects_the_sender` |
-| `IPayloadContext#enqueueWork` | method, 2 overloads | both | planned | run on the tick thread through the scheduler (`scheduler.wit`) | no `enqueue_work` yet: a handler on `HandlerThread::Network` cannot hand work to the world tick; register the channel on `HandlerThread::Main`, which runs on the world tick |
+| `IPayloadContext#enqueueWork` | method, 2 overloads | both | supported | `ironpumpkin_mods::network::PayloadContext::enqueue_work`, which returns a `PayloadWork` | a handler on `HandlerThread::Network` hands the closure to the world tick of the player, which runs it in order with the packets of that player; a `Main` handler runs it at once, as NeoForge does; in the configuration phase NeoForge schedules it on the server thread and IronPumpkin runs it at once on the connection task, because no world tick exists; the path follows the handler thread of the channel; a task counts as a packet in the cap of 64 per tick; a closure that panics is logged, does not stop the server and gives `None`; a player who leaves drops its queued tasks and the work gives `None`; tests `a_network_handler_hands_work_to_the_tick_in_order_with_the_packets`, `a_main_handler_runs_its_work_at_once` |
 | `IPayloadContext#flow` | method, 1 overload | both | supported | `ironpumpkin_mods::network::PayloadContext::flow` | always `PacketFlow::Serverbound` on the server; tests `a_play_payload_reaches_the_handler_of_its_channel_once`, `a_finish_request_while_no_mod_task_waits_disconnects_the_client` |
 | `IPayloadContext#protocol` | method, 1 overload | both | supported | `ironpumpkin_mods::network::PayloadContext::protocol` | tests `a_play_payload_reaches_the_handler_of_its_channel_once`, `a_finish_request_while_no_mod_task_waits_disconnects_the_client` |
 | `IPayloadContext#handle` | method, 2 overloads | both | not supported | - | re-injects a vanilla packet into the listener; Pumpkin has no re-injection path |
@@ -1296,11 +1296,11 @@ Config events (`ModConfigEvent.Loading`, `Reloading`, `Unloading`) are in the `f
 | `IPayloadContext#channelHandlerContext` | method, 1 overload | both | not supported | - | Netty internals |
 | `PacketDistributor#sendToPlayer` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_player` | fails with `NetworkError::ChannelNotNegotiated` for a client without the channel; test `send_to_player_fails_for_a_vanilla_client_and_broadcasts_skip_it` |
 | `PacketDistributor#sendToPlayersInDimension` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_players_in_dimension` | skips a client without the channel and returns the count; test `send_to_player_fails_for_a_vanilla_client_and_broadcasts_skip_it` |
-| `PacketDistributor#sendToPlayersNear` | method, 1 overload | both | planned | loop over players in range | no helper yet; a mod loops over the players of the `World` with `network::send_to_player` |
+| `PacketDistributor#sendToPlayersNear` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_players_near` (`World::for_each_player_near`) | the players of the world strictly closer than the radius, except the excluded one, as `PlayerList.broadcast`; skips a client without the channel and returns the count; test `send_to_players_near_skips_the_excluded_the_far_and_the_vanilla` |
 | `PacketDistributor#sendToAllPlayers` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_all_players` | skips a client without the channel and returns the count; test `send_to_player_fails_for_a_vanilla_client_and_broadcasts_skip_it` |
-| `PacketDistributor#sendToPlayersTrackingEntity` | method, 1 overload | both | planned | entity tracker (`world/entity_tracker.rs`) | no helper yet: the entity tracker has no list of the players that track an entity for mods |
-| `PacketDistributor#sendToPlayersTrackingEntityAndSelf` | method, 1 overload | both | planned | entity tracker (`world/entity_tracker.rs`) | no helper yet: the entity tracker has no list of the players that track an entity for mods |
-| `PacketDistributor#sendToPlayersTrackingChunk` | method, 1 overload | both | planned | chunk watchers in `World` | no helper yet: the chunk watchers of `World` are not exposed to mods |
+| `PacketDistributor#sendToPlayersTrackingEntity` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_players_tracking_entity` (`TrackedEntity::java_viewers` of the entity tracker) | the viewers of the entity, not the entity; an untracked entity has none; skips a client without the channel and returns the count; test `send_to_players_tracking_entity_reaches_the_viewers_only` |
+| `PacketDistributor#sendToPlayersTrackingEntityAndSelf` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_players_tracking_entity_and_self` | the viewers and the entity when it is a player; an untracked entity gets nothing, as in `ChunkMap`; test `send_to_players_tracking_entity_and_self_adds_the_entity_when_it_is_a_player` |
+| `PacketDistributor#sendToPlayersTrackingChunk` | method, 1 overload | both | supported | `ironpumpkin_mods::network::send_to_players_tracking_chunk` (`World::for_each_player_tracking_chunk`) | the players with the chunk in their view that the server sent, as `ChunkMap.getPlayers(pos, false)`; test `send_to_players_tracking_chunk_needs_the_chunk_in_view_and_held` |
 
 #### Payloads (`network/payload`, 25 channel ids)
 
