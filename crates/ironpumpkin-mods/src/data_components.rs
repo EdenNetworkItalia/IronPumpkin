@@ -15,6 +15,9 @@
 //! [`get_json`], [`set_json`] and [`remove`] read and write the value of a type by name, in the
 //! JSON form of its codec.
 //!
+//! A type whose Java half has its own `StreamCodec` (`networkSynchronized`) gets the same bytes
+//! from [`DataComponentTypeBuilder::stream_codec`].
+//!
 //! ```
 //! use ironpumpkin_mods::{
 //!     ModInit, NativeMod,
@@ -53,15 +56,16 @@
 use std::{
     collections::BTreeMap,
     fmt,
+    io::{self, Read},
     marker::PhantomData,
-    sync::{Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError},
 };
 
 use pumpkin_codecs::{DataResult, Decode, Encode, json_ops::JsonOps};
 use pumpkin_core::plugin::api::events::registries::RegisterEvent;
 use pumpkin_data::{
     dynamic::{ContentKind, RegistryError},
-    dynamic_registries::{self, DataComponentTypeDefinition},
+    dynamic_registries::{self, DataComponentTypeDefinition, RawStreamCodec},
     item_stack::ItemStack,
 };
 use pumpkin_nbt::{nbt_ops::NbtOps, tag::NbtTag};
@@ -85,6 +89,7 @@ impl<T: Encode + Decode + 'static> DataComponentTypeBuilder<T> {
                 name: name.into(),
                 persistent: true,
                 validate: validate::<T>,
+                raw: None,
             },
             _value: PhantomData,
         }
@@ -95,6 +100,33 @@ impl<T: Encode + Decode + 'static> DataComponentTypeBuilder<T> {
     #[must_use]
     pub const fn persistent(mut self, persistent: bool) -> Self {
         self.definition.persistent = persistent;
+        self
+    }
+
+    /// Gives the type the stream codec of its Java half, for a type that `NeoForge` builds with
+    /// `networkSynchronized(streamCodec)`. A client that has the mod reads these bytes, so they
+    /// must be the bytes of that `StreamCodec`. Without this call the network carries the NBT form
+    /// of the codec, which fits the default `ByteBufCodecs.fromCodecWithRegistries`.
+    ///
+    /// `encode` writes the value. `decode` reads one value from `read` and stops at its end: the
+    /// bytes have no length prefix in a stack. Item stacks keep the codec form of the value, so
+    /// `get`, `set` and the saves do not change.
+    #[must_use]
+    pub fn stream_codec(
+        mut self,
+        encode: fn(&T) -> Vec<u8>,
+        decode: fn(&mut dyn Read) -> io::Result<T>,
+    ) -> Self {
+        // The stream codec is a pair of plain functions, so the closures hold them by value.
+        self.definition.raw = Some(RawStreamCodec {
+            encode: Arc::new(move |nbt| {
+                data_result(T::parse(nbt.clone(), &NbtOps)).map(|value| encode(&value))
+            }),
+            decode: Arc::new(move |read| {
+                let value = decode(read).map_err(|error| error.to_string())?;
+                data_result(value.encode_start(&NbtOps))
+            }),
+        });
         self
     }
 

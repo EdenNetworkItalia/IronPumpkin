@@ -65,12 +65,14 @@ fn frozen() {
             name: "test:charge".to_owned(),
             persistent: true,
             validate: |_| true,
+            raw: None,
         })
         .expect("register data component type");
         dynamic_registries::register_data_component_type(DataComponentTypeDefinition {
             name: "test:cache".to_owned(),
             persistent: false,
             validate: |_| true,
+            raw: None,
         })
         .expect("register data component type");
         dynamic::freeze().expect("freeze registry");

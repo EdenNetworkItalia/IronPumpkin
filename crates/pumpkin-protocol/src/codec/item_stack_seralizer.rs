@@ -43,9 +43,12 @@ fn custom_components(stack: &ItemStack, ids: ContentIds) -> &[(u16, NbtTag)] {
     }
 }
 
-/// The NBT form of a mod component value on the network, as `ByteBufCodecs.fromCodecWithRegistries`
-/// writes it.
-fn custom_component_bytes(value: &NbtTag) -> Result<Vec<u8>, WritingError> {
+/// A mod component value on the network: the bytes of the raw stream codec of its type, or the NBT
+/// form that `ByteBufCodecs.fromCodecWithRegistries` writes.
+fn custom_component_bytes(id: u16, value: &NbtTag) -> Result<Vec<u8>, WritingError> {
+    if let Some(raw) = dynamic_registries::data_component_type(id).and_then(|e| e.raw.as_ref()) {
+        return (raw.encode)(value).map_err(WritingError::Message);
+    }
     let mut bytes = Vec::new();
     value
         .clone()
@@ -64,7 +67,7 @@ fn write_custom_components(
 ) -> Result<(), WritingError> {
     for (id, value) in custom_components(stack, ids) {
         write.put_var_int(&VarInt(i32::from(*id)))?;
-        let bytes = custom_component_bytes(value)?;
+        let bytes = custom_component_bytes(*id, value)?;
         if length_prefixed {
             write.put_var_int(&VarInt::from(bytes.len() as i32))?;
         }
@@ -81,14 +84,44 @@ fn custom_component_type(id: i32) -> Option<&'static DataComponentTypeEntry> {
         .and_then(dynamic_registries::data_component_type)
 }
 
-fn decode_custom_component(component_data: &[u8]) -> Result<NbtTag, ReadingError> {
+fn decode_custom_component(
+    entry: &DataComponentTypeEntry,
+    component_data: &[u8],
+) -> Result<NbtTag, ReadingError> {
     let mut cursor = Cursor::new(component_data);
+    if let Some(raw) = &entry.raw {
+        let value = (raw.decode)(&mut cursor).map_err(ReadingError::Message)?;
+        if cursor.position() != component_data.len() as u64 {
+            return Err(ReadingError::Message(
+                "Mod component value has trailing bytes".into(),
+            ));
+        }
+        return Ok(value);
+    }
     let mut nbt_reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
     NbtTag::deserialize(&mut nbt_reader)
         .map_err(|err| ReadingError::Message(format!("Failed to decode mod component NBT: {err}")))
 }
 
-fn read_custom_component(read: &mut impl NetworkReadExt) -> Result<NbtTag, ReadingError> {
+/// Reads the exact bytes that a raw stream codec asks for.
+struct NetworkReader<'a, R>(&'a mut R);
+
+impl<R: NetworkReadExt> std::io::Read for NetworkReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0
+            .read_bytes_to_buf(buf)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, e.to_string()))?;
+        Ok(buf.len())
+    }
+}
+
+fn read_custom_component(
+    entry: &DataComponentTypeEntry,
+    read: &mut impl NetworkReadExt,
+) -> Result<NbtTag, ReadingError> {
+    if let Some(raw) = &entry.raw {
+        return (raw.decode)(&mut NetworkReader(read)).map_err(ReadingError::Message);
+    }
     read.get_nbt_with_version(&JavaMinecraftVersion::V_26_3)?
         .ok_or_else(|| ReadingError::Message("Missing mod component value".into()))
 }
@@ -317,7 +350,7 @@ fn read_length_prefixed_component(
         read.read_bytes_to_buf(&mut component_data)?;
         return Ok(PatchEntry::Custom(
             entry.id,
-            decode_custom_component(&component_data)?,
+            decode_custom_component(entry, &component_data)?,
         ));
     }
     let id = component_id(id_val)?;
@@ -372,7 +405,7 @@ impl ItemStackSerializer<'_> {
         for _ in 0..num_to_add {
             let id_val = read.get_var_int()?.0;
             if let Some(entry) = custom_component_type(id_val) {
-                custom.push((entry.id, read_custom_component(read)?));
+                custom.push((entry.id, read_custom_component(entry, read)?));
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
@@ -538,7 +571,7 @@ impl ItemStackSerializer<'_> {
         for _ in 0..num_to_add {
             let id_val = read.get_var_int()?.0;
             if let Some(entry) = custom_component_type(id_val) {
-                custom.push((entry.id, read_custom_component(read)?));
+                custom.push((entry.id, read_custom_component(entry, read)?));
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
