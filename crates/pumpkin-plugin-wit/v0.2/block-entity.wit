@@ -32,9 +32,10 @@ interface block-entity {
         /// the `generic-game-event` of `jukebox_stop_play`. Inside a guest call, every event fired
         /// during this call reaches native handlers only: a Wasm handler does not get it.
         remove-stack: func(slot: u32) -> option<item-stack>;
-        /// Removes every stack. The clear applies after the guest call returns: for a jukebox, a
-        /// handler of the `generic-game-event` of `jukebox_stop_play` can then run. A read in the
-        /// same guest call sees the old value.
+        /// Removes every stack. For a jukebox, the clear applies after the guest call returns, in
+        /// call order with `start-playing` and `stop-playing`, so that a handler of the
+        /// `generic-game-event` of `jukebox_stop_play` can run. A read in the same guest call may
+        /// see the old or the new value: work that reaches no Wasm handler runs at once.
         clear: func();
     }
 
@@ -89,9 +90,12 @@ interface block-entity {
         get-container: func() -> container-block-entity;
         is-playing: func() -> bool;
         /// The jukebox stops after the guest call returns, so that a handler of the
-        /// `generic-game-event` of `jukebox_stop_play` can run. A read in the same guest call sees
-        /// the old value.
+        /// `generic-game-event` of `jukebox_stop_play` can run. A read in the same guest call may
+        /// see the old or the new value: work that reaches no Wasm handler runs at once.
         stop-playing: func();
+        /// Starts the record. The start applies after the guest call returns, in call order with
+        /// `stop-playing` and a jukebox `clear`. A read in the same guest call may see the old or
+        /// the new value: work that reaches no Wasm handler runs at once.
         start-playing: func(length-in-ticks: u64);
     }
 

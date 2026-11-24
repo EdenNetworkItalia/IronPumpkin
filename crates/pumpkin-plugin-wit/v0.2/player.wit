@@ -994,13 +994,14 @@ interface player {
 
         // Velocity & Physics
 
-        /// Sets the player's velocity / motion vector.
-        /// The velocity applies after the guest call returns, so that a handler of
-        /// `player-velocity-event` can run. A read in the same guest call sees the old value.
+        /// Sets the player's velocity / motion vector. The velocity applies after the guest call
+        /// returns, so that a handler of `player-velocity-event` can run. A read in the same guest
+        /// call may see the old or the new value: work that reaches no Wasm handler runs at once.
         set-velocity: func(velocity: position);
-        /// Applies directional knockback impulse to the player.
-        /// The knockback applies after the guest call returns, so that a handler of
-        /// `entity-knockback-event` can run. A read in the same guest call sees the old value.
+        /// Applies directional knockback impulse to the player. The knockback applies after the
+        /// guest call returns, so that a handler of `entity-knockback-event` can run. A read in the
+        /// same guest call may see the old or the new value: work that reaches no Wasm handler runs
+        /// at once.
         apply-knockback: func(strength: f64, x: f64, z: f64);
 
         /// Returns whether the player is currently sneaking.
@@ -1075,15 +1076,15 @@ interface player {
 
         /// Gives a status effect to the player.
         add-effect: async func(effect: status-effect-instance);
-        /// Removes a status effect from the player.
-        /// The removal applies after the guest call returns, so that a handler of
-        /// `effect-particle-modification-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Removes a status effect from the player. The removal applies after the guest call
+        /// returns, so that a handler of `effect-particle-modification-event` can run. A read in
+        /// the same guest call may see the old or the new value: work that reaches no Wasm handler
+        /// runs at once.
         remove-effect: func(effect: status-effect-type);
-        /// Clears all active status effects from the player.
-        /// The removal applies after the guest call returns, so that a handler of
-        /// `effect-particle-modification-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Clears all active status effects from the player. The removal applies after the guest
+        /// call returns, so that a handler of `effect-particle-modification-event` can run. A read
+        /// in the same guest call may see the old or the new value: work that reaches no Wasm
+        /// handler runs at once.
         clear-effects: func();
         /// Checks if a status effect is currently applied to the player.
         has-effect: func(effect: status-effect-type) -> bool;
@@ -1120,28 +1121,28 @@ interface player {
 
         /// Gets the value of a statistic for this player in the given category and ID.
         get-statistic: func(category: statistic-category, stat-id: s32) -> s32;
-        /// Sets the value of a statistic for this player in the given category and ID.
-        /// The change applies after the guest call returns, so that a handler of
-        /// `player-statistic-increment-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Sets the value of a statistic for this player in the given category and ID. The change
+        /// applies after the guest call returns, so that a handler of
+        /// `player-statistic-increment-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         set-statistic: func(category: statistic-category, stat-id: s32, value: s32);
-        /// Increments the value of a statistic for this player in the given category and ID.
-        /// The change applies after the guest call returns, so that a handler of
-        /// `player-statistic-increment-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Increments the value of a statistic for this player in the given category and ID. The
+        /// change applies after the guest call returns, so that a handler of
+        /// `player-statistic-increment-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         increment-statistic: func(category: statistic-category, stat-id: s32, amount: s32);
 
         /// Gets the value of a custom statistic for this player.
         get-custom-statistic: func(stat: custom-statistic) -> s32;
-        /// Sets the value of a custom statistic for this player.
-        /// The change applies after the guest call returns, so that a handler of
-        /// `player-statistic-increment-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Sets the value of a custom statistic for this player. The change applies after the guest
+        /// call returns, so that a handler of `player-statistic-increment-event` can run. A read in
+        /// the same guest call may see the old or the new value: work that reaches no Wasm handler
+        /// runs at once.
         set-custom-statistic: func(stat: custom-statistic, value: s32);
-        /// Increments the value of a custom statistic for this player.
-        /// The change applies after the guest call returns, so that a handler of
-        /// `player-statistic-increment-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// Increments the value of a custom statistic for this player. The change applies after the
+        /// guest call returns, so that a handler of `player-statistic-increment-event` can run. A
+        /// read in the same guest call may see the old or the new value: work that reaches no Wasm
+        /// handler runs at once.
         increment-custom-statistic: func(stat: custom-statistic, amount: s32);
 
         /// Sends the player's updated statistics packet to the client.

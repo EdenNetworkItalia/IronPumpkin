@@ -515,9 +515,9 @@ interface %world {
         /// Returns whether this entity carries the specified scoreboard tag.
         has-scoreboard-tag: func(tag: string) -> bool;
 
-        /// Removes this entity from its world. The removal applies after the guest call returns, so
-        /// that a handler of `entity-leave-level-event` can run. A read in the same guest call sees
-        /// the old value.
+        /// Removes this entity from its world. The removal can apply after the guest call returns,
+        /// so that a handler of `entity-leave-level-event` can run. A read in the same guest call
+        /// may see the old or the new value: work that reaches no Wasm handler runs at once.
         remove: func();
 
         /// Performs a raycast from the entity's eye position in its looking direction.
@@ -604,16 +604,16 @@ interface %world {
         get-attribute-modifiers: func(attr: attribute) -> list<attribute-modifier>;
         reset-attribute: func(attr: attribute);
         /// The reset applies after the guest call returns, so that a handler of
-        /// `effect-particle-modification-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// `effect-particle-modification-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         reset-all-attributes: func();
 
         // Equipment
         get-equipment: func(slot: equipment-slot) -> option<item-stack>;
         set-equipment: async func(slot: equipment-slot, stack: option<item-stack>);
         /// The clear applies after the guest call returns, so that a handler of
-        /// `item-attribute-modifier-event` can run. A read in the same guest call sees the old
-        /// value.
+        /// `item-attribute-modifier-event` can run. A read in the same guest call may see the old
+        /// or the new value: work that reaches no Wasm handler runs at once.
         clear-equipment: func();
 
         // Status Effects
@@ -684,9 +684,10 @@ interface %world {
         get-mob-data: func() -> mob-data;
 
         /// Sets the specialized mob-specific data for this mob. Returns false if the provided data
-        /// variant is incompatible with this mob. For a shulker, the change applies after the guest
-        /// call returns, so that a handler of `play-level-sound-event-at-position` for the peek
-        /// sound can run. A read in the same guest call sees the old value.
+        /// variant is incompatible with this mob. For a shulker, the change can apply after the
+        /// guest call returns, so that a handler of `play-level-sound-event-at-position` for the
+        /// peek sound can run. A read in the same guest call may see the old or the new value: work
+        /// that reaches no Wasm handler runs at once.
         set-mob-data: func(data: mob-data) -> bool;
 
         /// Sets the number of freeze ticks on this entity (0 to 140).
@@ -1174,9 +1175,10 @@ interface %world {
 
         /// Gets the value of a game rule in this world.
         get-game-rule: func(rule: game-rule) -> game-rule-value;
-        /// Sets the value of a game rule in this world.
-        /// The change applies after the guest call returns, so that a handler of
-        /// `game-rule-changed-event` can run. A read in the same guest call sees the old value.
+        /// Sets the value of a game rule in this world. The change applies after the guest call
+        /// returns, so that a handler of `game-rule-changed-event` can run. A read in the same
+        /// guest call may see the old or the new value: work that reaches no Wasm handler runs at
+        /// once.
         set-game-rule: func(rule: game-rule, value: game-rule-value);
     }
 
