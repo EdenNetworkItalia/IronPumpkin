@@ -143,9 +143,15 @@ fn load_datapack_registry_ids(dir: &std::path::Path) -> BTreeMap<String, u16> {
     id_map
 }
 
+/// The tags of the data pack at `data_dir` by category: each tag with its `#` references resolved
+/// to members, and each tag as the pack writes it, with the references left in.
+#[expect(clippy::type_complexity, reason = "two maps of the same shape")]
 fn load_datapack_tags(
     data_dir: &std::path::Path,
-) -> BTreeMap<String, BTreeMap<String, Vec<String>>> {
+) -> (
+    BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    BTreeMap<String, BTreeMap<String, Vec<String>>>,
+) {
     let mut raw_categories: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
 
     fn walk_namespace_tags(
@@ -284,7 +290,34 @@ fn load_datapack_tags(
         resolved_categories.insert(cat.clone(), cat_resolved);
     }
 
-    resolved_categories
+    (resolved_categories, raw_categories)
+}
+
+/// The item tags as the pack writes them: the direct item ids and the `#` references of each
+/// tag. The runtime rebuilds the tags that a world data pack changes from these.
+fn raw_item_tag_definitions(
+    raw: Option<&BTreeMap<String, Vec<String>>>,
+    item_id_map: &BTreeMap<String, u16>,
+) -> Vec<TokenStream> {
+    let Some(raw) = raw else {
+        return Vec::new();
+    };
+    raw.iter()
+        .map(|(name, values)| {
+            let ids = values
+                .iter()
+                .filter(|v| !v.starts_with('#'))
+                .filter_map(|v| item_id_map.get(v).copied());
+            let references = values.iter().filter_map(|v| v.strip_prefix('#')).map(|v| {
+                if v.contains(':') {
+                    v.to_string()
+                } else {
+                    format!("minecraft:{v}")
+                }
+            });
+            quote! { (#name, &[#(#ids),*] as &[u16], &[#(#references),*] as &[&str]) }
+        })
+        .collect()
 }
 
 /// Generates the `TokenStream` for the `Tag` type, `RegistryKey` enum, tag
@@ -360,6 +393,7 @@ pub(crate) fn build() -> TokenStream {
         poi_id_map.insert(format!("minecraft:{name}"), u16::from(definition.id()));
     }
 
+    let mut item_tag_definitions = Vec::new();
     let mut datapack_id_maps: BTreeMap<String, BTreeMap<String, u16>> = BTreeMap::new();
     let mut all_registry_keys = HashSet::new();
 
@@ -372,8 +406,11 @@ pub(crate) fn build() -> TokenStream {
         let datapack_data_dir = std::path::Path::new("../../assets/datapack/data");
         let datapack_base = datapack_data_dir.join("minecraft");
 
-        let tags = load_datapack_tags(&datapack_data_dir);
+        let (tags, raw_tags) = load_datapack_tags(&datapack_data_dir);
         let is_latest = ver_folder == "26_3";
+        if is_latest {
+            item_tag_definitions = raw_item_tag_definitions(raw_tags.get("item"), &item_id_map);
+        }
 
         let mut ver_cat_match_arms = Vec::new();
         let fn_name = format_ident!("get_tags_{}", ver_ident_str);
@@ -493,6 +530,12 @@ pub(crate) fn build() -> TokenStream {
         pub type Tag = (&'static [&'static str], &'static [u16]);
 
         #registry_key_enum
+
+        /// The generated item tags as the data pack writes them: the tag name, its direct item
+        /// ids and the names of the tags that it references with `#`, sorted by name.
+        pub static ITEM_TAG_DEFINITIONS: &[(&str, &[u16], &[&str])] = &[
+            #(#item_tag_definitions),*
+        ];
 
         #(#latest_tag_modules)*
 

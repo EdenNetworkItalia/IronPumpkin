@@ -51,16 +51,16 @@ pub fn crafting_data(recipe_manager: &crate::server::RecipeManager) -> Vec<Bedro
 
     let mut recipes = Vec::new();
     let mut network_id = pumpkin_data::bedrock_recipe::NEXT_RECIPE_NETWORK_ID;
-    for recipe in dynamic {
+    for recipe in dynamic.iter() {
         match recipe {
             DynamicRecipe::Crafting(crafting) => {
-                append_dynamic_crafting_recipe(&mut recipes, &crafting, &mut network_id);
+                append_dynamic_crafting_recipe(&mut recipes, crafting, &mut network_id);
             }
             DynamicRecipe::Stonecutting(stonecutting) => {
-                append_dynamic_stonecutter_recipe(&mut recipes, &stonecutting, &mut network_id);
+                append_dynamic_stonecutter_recipe(&mut recipes, stonecutting, &mut network_id);
             }
             DynamicRecipe::Cooking(cooking) => {
-                append_dynamic_cooking_recipe(&mut recipes, &cooking, &mut network_id);
+                append_dynamic_cooking_recipe(&mut recipes, cooking, &mut network_id);
             }
             DynamicRecipe::Brewing(_)
             | DynamicRecipe::SmithingTransform(_)

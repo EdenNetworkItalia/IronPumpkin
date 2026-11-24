@@ -142,7 +142,7 @@ impl BrewingStandBlockEntity {
             // 2. Check dynamic brewing recipes from loaded datapacks
             if let Some(server) = world.server.upgrade() {
                 let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                for dyn_recipe in &dynamic_recipes {
+                for dyn_recipe in dynamic_recipes.iter() {
                     if let DynamicRecipe::Brewing(r) = dyn_recipe
                         && r.input_item.match_item(slot.get_item())
                         && r.reagent.match_item(ingredient.get_item())
@@ -229,7 +229,7 @@ impl BrewingStandBlockEntity {
                 // 2. Try dynamic brewing recipes from loaded datapacks
                 if let Some(server) = world.server.upgrade() {
                     let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                    for dyn_recipe in &dynamic_recipes {
+                    for dyn_recipe in dynamic_recipes.iter() {
                         if let DynamicRecipe::Brewing(r) = dyn_recipe
                             && r.input_item.match_item(slot.get_item())
                             && r.reagent.match_item(ingredient.get_item())

@@ -136,6 +136,2732 @@ impl RegistryKey {
         }
     }
 }
+#[doc = r" The generated item tags as the data pack writes them: the tag name, its direct item"]
+#[doc = r" ids and the names of the tags that it references with `#`, sorted by name."]
+pub static ITEM_TAG_DEFINITIONS: &[(&str, &[u16], &[&str])] = &[
+    (
+        "c:animal_foods",
+        &[] as &[u16],
+        &[
+            "minecraft:armadillo_food",
+            "minecraft:axolotl_food",
+            "minecraft:bee_food",
+            "minecraft:camel_food",
+            "minecraft:cat_food",
+            "minecraft:chicken_food",
+            "minecraft:cow_food",
+            "minecraft:fox_food",
+            "minecraft:frog_food",
+            "minecraft:goat_food",
+            "minecraft:hoglin_food",
+            "minecraft:horse_food",
+            "minecraft:llama_food",
+            "minecraft:ocelot_food",
+            "minecraft:panda_food",
+            "minecraft:parrot_food",
+            "minecraft:pig_food",
+            "minecraft:piglin_food",
+            "minecraft:rabbit_food",
+            "minecraft:sheep_food",
+            "minecraft:sniffer_food",
+            "minecraft:strider_food",
+            "minecraft:turtle_food",
+            "minecraft:wolf_food",
+        ] as &[&str],
+    ),
+    (
+        "c:armors",
+        &[] as &[u16],
+        &[
+            "c:armors/humanoid",
+            "c:armors/horse",
+            "c:armors/nautilus",
+            "c:armors/wolf",
+        ] as &[&str],
+    ),
+    (
+        "c:armors/horse",
+        &[1411u16, 1406u16, 1407u16, 1408u16, 1409u16, 1410u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:armors/humanoid",
+        &[] as &[u16],
+        &[
+            "minecraft:head_armor",
+            "minecraft:chest_armor",
+            "minecraft:leg_armor",
+            "minecraft:foot_armor",
+        ] as &[&str],
+    ),
+    (
+        "c:armors/nautilus",
+        &[1489u16, 1485u16, 1486u16, 1487u16, 1488u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:armors/wolf", &[1004u16] as &[u16], &[] as &[&str]),
+    ("c:barrels", &[] as &[u16], &["c:barrels/wooden"] as &[&str]),
+    ("c:barrels/wooden", &[1506u16] as &[u16], &[] as &[&str]),
+    (
+        "c:bars",
+        &[] as &[u16],
+        &["c:bars/iron", "c:bars/copper"] as &[&str],
+    ),
+    (
+        "c:bars/copper",
+        &[
+            465u16, 466u16, 467u16, 468u16, 469u16, 470u16, 471u16, 472u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:bars/iron", &[464u16] as &[u16], &[] as &[&str]),
+    ("c:bones", &[1216u16] as &[u16], &[] as &[&str]),
+    ("c:bookshelves", &[390u16] as &[u16], &[] as &[&str]),
+    (
+        "c:bricks",
+        &[] as &[u16],
+        &["c:bricks/normal", "c:bricks/nether", "c:bricks/resin"] as &[&str],
+    ),
+    ("c:bricks/nether", &[1396u16] as &[u16], &[] as &[&str]),
+    ("c:bricks/normal", &[1142u16] as &[u16], &[] as &[&str]),
+    ("c:bricks/resin", &[1397u16] as &[u16], &[] as &[&str]),
+    (
+        "c:buckets",
+        &[] as &[u16],
+        &[
+            "c:buckets/empty",
+            "c:buckets/water",
+            "c:buckets/lava",
+            "c:buckets/milk",
+            "c:buckets/powder_snow",
+            "c:buckets/entity_water",
+            "c:buckets/entity_dry",
+        ] as &[&str],
+    ),
+    ("c:buckets/empty", &[1128u16] as &[u16], &[] as &[&str]),
+    ("c:buckets/entity_dry", &[1140u16] as &[u16], &[] as &[&str]),
+    (
+        "c:buckets/entity_water",
+        &[1139u16, 1137u16, 1135u16, 1141u16, 1138u16, 1136u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:buckets/lava", &[1130u16] as &[u16], &[] as &[&str]),
+    ("c:buckets/milk", &[1134u16] as &[u16], &[] as &[&str]),
+    (
+        "c:buckets/powder_snow",
+        &[1131u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:buckets/water", &[1129u16] as &[u16], &[] as &[&str]),
+    ("c:budding_blocks", &[118u16] as &[u16], &[] as &[&str]),
+    (
+        "c:buds",
+        &[1567u16, 1568u16, 1569u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:chains",
+        &[
+            473u16, 474u16, 475u16, 476u16, 477u16, 478u16, 479u16, 480u16, 481u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:chests",
+        &[] as &[u16],
+        &[
+            "c:chests/wooden",
+            "c:chests/trapped",
+            "c:chests/ender",
+            "minecraft:copper_chests",
+        ] as &[&str],
+    ),
+    ("c:chests/ender", &[513u16] as &[u16], &[] as &[&str]),
+    ("c:chests/trapped", &[852u16] as &[u16], &[] as &[&str]),
+    (
+        "c:chests/wooden",
+        &[404u16, 852u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:clumps", &[] as &[u16], &["c:clumps/resin"] as &[&str]),
+    ("c:clumps/resin", &[486u16] as &[u16], &[] as &[&str]),
+    ("c:clusters", &[1570u16] as &[u16], &[] as &[&str]),
+    (
+        "c:cobblestones",
+        &[] as &[u16],
+        &[
+            "c:cobblestones/normal",
+            "c:cobblestones/mossy",
+            "c:cobblestones/infested",
+            "c:cobblestones/deepslate",
+        ] as &[&str],
+    ),
+    (
+        "c:cobblestones/deepslate",
+        &[9u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:cobblestones/infested",
+        &[443u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:cobblestones/mossy", &[393u16] as &[u16], &[] as &[&str]),
+    ("c:cobblestones/normal", &[62u16] as &[u16], &[] as &[&str]),
+    (
+        "c:concrete_powders",
+        &[
+            737u16, 738u16, 739u16, 740u16, 741u16, 742u16, 743u16, 744u16, 745u16, 746u16, 747u16,
+            748u16, 749u16, 750u16, 751u16, 752u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:concretes",
+        &[
+            689u16, 690u16, 691u16, 692u16, 693u16, 694u16, 695u16, 696u16, 697u16, 698u16, 699u16,
+            700u16, 701u16, 702u16, 703u16, 704u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:crops",
+        &[] as &[u16],
+        &[
+            "c:crops/beetroot",
+            "c:crops/cactus",
+            "c:crops/carrot",
+            "c:crops/cocoa_bean",
+            "c:crops/melon",
+            "c:crops/nether_wart",
+            "c:crops/potato",
+            "c:crops/pumpkin",
+            "c:crops/sugar_cane",
+            "c:crops/wheat",
+        ] as &[&str],
+    ),
+    ("c:crops/beetroot", &[1438u16] as &[u16], &[] as &[&str]),
+    ("c:crops/cactus", &[413u16] as &[u16], &[] as &[&str]),
+    ("c:crops/carrot", &[1378u16] as &[u16], &[] as &[&str]),
+    ("c:crops/cocoa_bean", &[1198u16] as &[u16], &[] as &[&str]),
+    ("c:crops/melon", &[483u16] as &[u16], &[] as &[&str]),
+    ("c:crops/nether_wart", &[1269u16] as &[u16], &[] as &[&str]),
+    ("c:crops/potato", &[1379u16] as &[u16], &[] as &[&str]),
+    ("c:crops/pumpkin", &[430u16] as &[u16], &[] as &[&str]),
+    ("c:crops/sugar_cane", &[327u16] as &[u16], &[] as &[&str]),
+    ("c:crops/wheat", &[1066u16] as &[u16], &[] as &[&str]),
+    (
+        "c:drink_containing/bottle",
+        &[1271u16, 1533u16, 1657u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:drink_containing/bucket",
+        &[1134u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:drinks",
+        &[] as &[u16],
+        &[
+            "c:drinks/water",
+            "c:drinks/watery",
+            "c:drinks/milk",
+            "c:drinks/honey",
+            "c:drinks/magic",
+            "c:drinks/ominous",
+            "c:drinks/juice",
+        ] as &[&str],
+    ),
+    ("c:drinks/honey", &[1533u16] as &[u16], &[] as &[&str]),
+    ("c:drinks/juice", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:drinks/magic",
+        &[1271u16] as &[u16],
+        &["c:drinks/ominous"] as &[&str],
+    ),
+    ("c:drinks/milk", &[1134u16] as &[u16], &[] as &[&str]),
+    ("c:drinks/ominous", &[1657u16] as &[u16], &[] as &[&str]),
+    ("c:drinks/water", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:drinks/watery",
+        &[1271u16] as &[u16],
+        &["c:drinks/water"] as &[&str],
+    ),
+    (
+        "c:dusts",
+        &[] as &[u16],
+        &["c:dusts/glowstone", "c:dusts/redstone"] as &[&str],
+    ),
+    ("c:dusts/glowstone", &[1189u16] as &[u16], &[] as &[&str]),
+    ("c:dusts/redstone", &[824u16] as &[u16], &[] as &[&str]),
+    (
+        "c:dyeable",
+        &[] as &[u16],
+        &["c:dyeable/simple", "c:dyeable/dynamic"] as &[&str],
+    ),
+    (
+        "c:dyeable/dynamic",
+        &[
+            1068u16, 1069u16, 1070u16, 1071u16, 1411u16, 1004u16, 1394u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyeable/simple",
+        &[] as &[u16],
+        &["c:dyeable/simple/undyed", "c:dyeable/simple/redyeable"] as &[&str],
+    ),
+    (
+        "c:dyeable/simple/redyeable",
+        &[
+            1154u16, 1155u16, 1156u16, 1157u16, 1158u16, 1159u16, 1160u16, 1161u16, 1162u16,
+            1163u16, 1164u16, 1165u16, 1166u16, 1167u16, 1168u16, 1169u16, 657u16, 658u16, 659u16,
+            660u16, 661u16, 662u16, 663u16, 664u16, 665u16, 666u16, 667u16, 668u16, 669u16, 670u16,
+            671u16, 672u16,
+        ] as &[u16],
+        &[
+            "minecraft:beds",
+            "minecraft:cushions",
+            "minecraft:harnesses",
+            "minecraft:wool",
+            "minecraft:wool_carpets",
+            "minecraft:wool_slabs",
+            "minecraft:wool_stairs",
+        ] as &[&str],
+    ),
+    (
+        "c:dyeable/simple/undyed",
+        &[1153u16, 1550u16, 231u16, 482u16, 656u16, 596u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed",
+        &[] as &[u16],
+        &[
+            "c:dyed/white",
+            "c:dyed/orange",
+            "c:dyed/magenta",
+            "c:dyed/light_blue",
+            "c:dyed/yellow",
+            "c:dyed/lime",
+            "c:dyed/pink",
+            "c:dyed/gray",
+            "c:dyed/light_gray",
+            "c:dyed/cyan",
+            "c:dyed/purple",
+            "c:dyed/blue",
+            "c:dyed/brown",
+            "c:dyed/green",
+            "c:dyed/red",
+            "c:dyed/black",
+        ] as &[&str],
+    ),
+    (
+        "c:dyed/black",
+        &[
+            1432u16, 1234u16, 1566u16, 595u16, 704u16, 752u16, 688u16, 672u16, 620u16, 636u16,
+            576u16, 265u16, 297u16, 281u16, 1169u16, 1185u16, 965u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/blue",
+        &[
+            1428u16, 1230u16, 1562u16, 591u16, 700u16, 748u16, 684u16, 668u16, 616u16, 632u16,
+            572u16, 261u16, 293u16, 277u16, 1165u16, 1181u16, 961u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/brown",
+        &[
+            1429u16, 1231u16, 1563u16, 592u16, 701u16, 749u16, 685u16, 669u16, 617u16, 633u16,
+            573u16, 262u16, 294u16, 278u16, 1166u16, 1182u16, 962u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/cyan",
+        &[
+            1426u16, 1228u16, 1560u16, 589u16, 698u16, 746u16, 682u16, 666u16, 614u16, 630u16,
+            570u16, 259u16, 291u16, 275u16, 1163u16, 1179u16, 959u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/gray",
+        &[
+            1424u16, 1226u16, 1558u16, 587u16, 696u16, 744u16, 680u16, 664u16, 612u16, 628u16,
+            568u16, 257u16, 289u16, 273u16, 1161u16, 1177u16, 957u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/green",
+        &[
+            1430u16, 1232u16, 1564u16, 593u16, 702u16, 750u16, 686u16, 670u16, 618u16, 634u16,
+            574u16, 263u16, 295u16, 279u16, 1167u16, 1183u16, 963u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/light_blue",
+        &[
+            1420u16, 1222u16, 1554u16, 583u16, 692u16, 740u16, 676u16, 660u16, 608u16, 624u16,
+            564u16, 253u16, 285u16, 269u16, 1157u16, 1173u16, 953u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/light_gray",
+        &[
+            1425u16, 1227u16, 1559u16, 588u16, 697u16, 745u16, 681u16, 665u16, 613u16, 629u16,
+            569u16, 258u16, 290u16, 274u16, 1162u16, 1178u16, 958u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/lime",
+        &[
+            1422u16, 1224u16, 1556u16, 585u16, 694u16, 742u16, 678u16, 662u16, 610u16, 626u16,
+            566u16, 255u16, 287u16, 271u16, 1159u16, 1175u16, 955u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/magenta",
+        &[
+            1419u16, 1221u16, 1553u16, 582u16, 691u16, 739u16, 675u16, 659u16, 607u16, 623u16,
+            563u16, 252u16, 284u16, 268u16, 1156u16, 1172u16, 952u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/orange",
+        &[
+            1418u16, 1220u16, 1552u16, 581u16, 690u16, 738u16, 674u16, 658u16, 606u16, 622u16,
+            562u16, 251u16, 283u16, 267u16, 1155u16, 1171u16, 951u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/pink",
+        &[
+            1423u16, 1225u16, 1557u16, 586u16, 695u16, 743u16, 679u16, 663u16, 611u16, 627u16,
+            567u16, 256u16, 288u16, 272u16, 1160u16, 1176u16, 956u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/purple",
+        &[
+            1427u16, 1229u16, 1561u16, 590u16, 699u16, 747u16, 683u16, 667u16, 615u16, 631u16,
+            571u16, 260u16, 292u16, 276u16, 1164u16, 1180u16, 960u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/red",
+        &[
+            1431u16, 1233u16, 1565u16, 594u16, 703u16, 751u16, 687u16, 671u16, 619u16, 635u16,
+            575u16, 264u16, 296u16, 280u16, 1168u16, 1184u16, 964u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/white",
+        &[
+            1417u16, 1219u16, 1551u16, 580u16, 689u16, 737u16, 673u16, 657u16, 605u16, 621u16,
+            561u16, 250u16, 282u16, 266u16, 1154u16, 1170u16, 950u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyed/yellow",
+        &[
+            1421u16, 1223u16, 1555u16, 584u16, 693u16, 741u16, 677u16, 661u16, 609u16, 625u16,
+            565u16, 254u16, 286u16, 270u16, 1158u16, 1174u16, 954u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:dyes",
+        &[] as &[u16],
+        &[
+            "c:dyes/white",
+            "c:dyes/orange",
+            "c:dyes/magenta",
+            "c:dyes/light_blue",
+            "c:dyes/yellow",
+            "c:dyes/lime",
+            "c:dyes/pink",
+            "c:dyes/gray",
+            "c:dyes/light_gray",
+            "c:dyes/cyan",
+            "c:dyes/purple",
+            "c:dyes/blue",
+            "c:dyes/brown",
+            "c:dyes/green",
+            "c:dyes/red",
+            "c:dyes/black",
+        ] as &[&str],
+    ),
+    ("c:dyes/black", &[1214u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/blue", &[1210u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/brown", &[1211u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/cyan", &[1208u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/gray", &[1206u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/green", &[1212u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/light_blue", &[1202u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/light_gray", &[1207u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/lime", &[1204u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/magenta", &[1201u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/orange", &[1200u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/pink", &[1205u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/purple", &[1209u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/red", &[1213u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/white", &[1199u16] as &[u16], &[] as &[&str]),
+    ("c:dyes/yellow", &[1203u16] as &[u16], &[] as &[&str]),
+    (
+        "c:eggs",
+        &[1148u16, 1150u16, 1149u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:enchantables",
+        &[] as &[u16],
+        &[
+            "minecraft:enchantable/armor",
+            "minecraft:enchantable/equippable",
+            "minecraft:enchantable/sharp_weapon",
+            "minecraft:enchantable/weapon",
+            "minecraft:enchantable/sweeping",
+            "minecraft:enchantable/mining",
+            "minecraft:enchantable/mining_loot",
+            "minecraft:enchantable/fishing",
+            "minecraft:enchantable/trident",
+            "minecraft:enchantable/bow",
+            "minecraft:enchantable/crossbow",
+            "minecraft:enchantable/mace",
+            "minecraft:enchantable/fire_aspect",
+            "minecraft:enchantable/durability",
+            "minecraft:enchantable/vanishing",
+            "minecraft:enchantable/lunge",
+            "minecraft:enchantable/melee_weapon",
+        ] as &[&str],
+    ),
+    ("c:end_stones", &[509u16] as &[u16], &[] as &[&str]),
+    ("c:ender_pearls", &[1265u16] as &[u16], &[] as &[&str]),
+    ("c:feathers", &[1063u16] as &[u16], &[] as &[&str]),
+    (
+        "c:fence_gates",
+        &[] as &[u16],
+        &["c:fence_gates/wooden"] as &[&str],
+    ),
+    (
+        "c:fence_gates/wooden",
+        &[
+            932u16, 933u16, 934u16, 935u16, 936u16, 938u16, 943u16, 944u16, 940u16, 942u16, 937u16,
+            939u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:fences",
+        &[] as &[u16],
+        &["c:fences/wooden", "c:fences/nether_brick"] as &[&str],
+    ),
+    ("c:fences/nether_brick", &[501u16] as &[u16], &[] as &[&str]),
+    (
+        "c:fences/wooden",
+        &[
+            417u16, 418u16, 419u16, 420u16, 421u16, 423u16, 428u16, 429u16, 425u16, 427u16, 422u16,
+            424u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:fertilizers", &[1215u16] as &[u16], &[] as &[&str]),
+    (
+        "c:flowers",
+        &[
+            220u16, 228u16, 243u16, 85u16, 329u16, 330u16, 398u16, 316u16, 414u16,
+        ] as &[u16],
+        &["c:flowers/small", "c:flowers/tall"] as &[&str],
+    ),
+    (
+        "c:flowers/small",
+        &[
+            298u16, 302u16, 303u16, 304u16, 305u16, 306u16, 307u16, 308u16, 309u16, 310u16, 311u16,
+            312u16, 313u16, 314u16, 300u16, 301u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:flowers/tall",
+        &[599u16, 600u16, 602u16, 601u16, 315u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods",
+        &[1380u16, 1392u16, 1533u16, 1657u16, 1257u16] as &[u16],
+        &[
+            "c:foods/fruit",
+            "c:foods/vegetable",
+            "c:foods/berry",
+            "c:foods/bread",
+            "c:foods/cookie",
+            "c:foods/dough",
+            "c:foods/raw_meat",
+            "c:foods/raw_fish",
+            "c:foods/cooked_meat",
+            "c:foods/cooked_fish",
+            "c:foods/soup",
+            "c:foods/candy",
+            "c:foods/pie",
+            "c:foods/golden",
+            "c:foods/edible_when_placed",
+            "c:foods/food_poisoning",
+        ] as &[&str],
+    ),
+    (
+        "c:foods/berry",
+        &[1525u16, 1526u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:foods/bread", &[1067u16] as &[u16], &[] as &[&str]),
+    ("c:foods/candy", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:foods/cooked_fish",
+        &[1194u16, 1195u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/cooked_meat",
+        &[1261u16, 1098u16, 1263u16, 1401u16, 1416u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:foods/cookie", &[1236u16] as &[u16], &[] as &[&str]),
+    ("c:foods/dough", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:foods/edible_when_placed",
+        &[1218u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/food_poisoning",
+        &[1381u16, 1193u16, 1272u16, 1262u16, 1264u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/fruit",
+        &[1007u16, 1100u16, 1101u16, 1434u16, 1256u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/golden",
+        &[1100u16, 1101u16, 1383u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:foods/pie", &[1392u16] as &[u16], &[] as &[&str]),
+    (
+        "c:foods/raw_fish",
+        &[1190u16, 1191u16, 1192u16, 1193u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/raw_meat",
+        &[1260u16, 1097u16, 1262u16, 1400u16, 1415u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/soup",
+        &[1440u16, 1061u16, 1402u16, 1492u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:foods/vegetable",
+        &[1378u16, 1383u16, 1379u16, 1438u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:froglights",
+        &[1573u16, 1575u16, 1574u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:gems",
+        &[] as &[u16],
+        &[
+            "c:gems/amethyst",
+            "c:gems/diamond",
+            "c:gems/emerald",
+            "c:gems/lapis",
+            "c:gems/prismarine",
+            "c:gems/quartz",
+        ] as &[&str],
+    ),
+    ("c:gems/amethyst", &[1016u16] as &[u16], &[] as &[&str]),
+    ("c:gems/diamond", &[1012u16] as &[u16], &[] as &[&str]),
+    ("c:gems/emerald", &[1013u16] as &[u16], &[] as &[&str]),
+    ("c:gems/lapis", &[1014u16] as &[u16], &[] as &[&str]),
+    ("c:gems/prismarine", &[1399u16] as &[u16], &[] as &[&str]),
+    ("c:gems/quartz", &[1015u16] as &[u16], &[] as &[&str]),
+    (
+        "c:glass_blocks",
+        &[] as &[u16],
+        &[
+            "c:glass_blocks/colorless",
+            "c:glass_blocks/cheap",
+            "c:glass_blocks/tinted",
+        ] as &[&str],
+    ),
+    (
+        "c:glass_blocks/cheap",
+        &[
+            231u16, 605u16, 606u16, 607u16, 608u16, 609u16, 610u16, 611u16, 612u16, 613u16, 614u16,
+            615u16, 616u16, 617u16, 618u16, 619u16, 620u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:glass_blocks/colorless",
+        &[231u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:glass_blocks/tinted", &[232u16] as &[u16], &[] as &[&str]),
+    (
+        "c:glass_panes",
+        &[
+            621u16, 622u16, 623u16, 624u16, 625u16, 626u16, 627u16, 628u16, 629u16, 630u16, 631u16,
+            632u16, 633u16, 634u16, 635u16, 636u16,
+        ] as &[u16],
+        &["c:glass_panes/colorless"] as &[&str],
+    ),
+    (
+        "c:glass_panes/colorless",
+        &[482u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:glazed_terracottas",
+        &[
+            673u16, 674u16, 675u16, 676u16, 677u16, 678u16, 679u16, 680u16, 681u16, 682u16, 683u16,
+            684u16, 685u16, 686u16, 687u16, 688u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:gravels", &[92u16] as &[u16], &[] as &[&str]),
+    ("c:gunpowders", &[1064u16] as &[u16], &[] as &[&str]),
+    (
+        "c:hidden_from_recipe_viewers",
+        &[] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ingots",
+        &[] as &[u16],
+        &[
+            "c:ingots/copper",
+            "c:ingots/iron",
+            "c:ingots/gold",
+            "c:ingots/netherite",
+        ] as &[&str],
+    ),
+    ("c:ingots/copper", &[1020u16] as &[u16], &[] as &[&str]),
+    ("c:ingots/gold", &[1022u16] as &[u16], &[] as &[&str]),
+    ("c:ingots/iron", &[1018u16] as &[u16], &[] as &[&str]),
+    ("c:ingots/netherite", &[1023u16] as &[u16], &[] as &[&str]),
+    ("c:leathers", &[1133u16] as &[u16], &[] as &[&str]),
+    (
+        "c:mushrooms",
+        &[] as &[u16],
+        &["minecraft:mushrooms"] as &[&str],
+    ),
+    (
+        "c:music_discs",
+        &[
+            1460u16, 1461u16, 1462u16, 1464u16, 1467u16, 1469u16, 1470u16, 1471u16, 1472u16,
+            1473u16, 1474u16, 1475u16, 1476u16, 1478u16, 1479u16, 1477u16, 1465u16, 1466u16,
+            1480u16, 1481u16, 1468u16, 1463u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:natural_logs",
+        &[] as &[u16],
+        &["c:natural_logs/overworld", "c:natural_logs/nether"] as &[&str],
+    ),
+    (
+        "c:natural_logs/nether",
+        &[175u16, 176u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:natural_logs/overworld",
+        &[
+            167u16, 177u16, 165u16, 168u16, 170u16, 166u16, 171u16, 163u16, 169u16, 164u16, 172u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:natural_woods",
+        &[
+            207u16, 205u16, 208u16, 210u16, 206u16, 211u16, 203u16, 209u16, 204u16, 212u16, 213u16,
+            214u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:nether_stars", &[1391u16] as &[u16], &[] as &[&str]),
+    ("c:netherracks", &[433u16] as &[u16], &[] as &[&str]),
+    (
+        "c:nuggets",
+        &[] as &[u16],
+        &["c:nuggets/copper", "c:nuggets/iron", "c:nuggets/gold"] as &[&str],
+    ),
+    ("c:nuggets/copper", &[1457u16] as &[u16], &[] as &[&str]),
+    ("c:nuggets/gold", &[1268u16] as &[u16], &[] as &[&str]),
+    ("c:nuggets/iron", &[1456u16] as &[u16], &[] as &[&str]),
+    (
+        "c:obsidians",
+        &[] as &[u16],
+        &["c:obsidians/normal", "c:obsidians/crying"] as &[&str],
+    ),
+    ("c:obsidians/crying", &[1536u16] as &[u16], &[] as &[&str]),
+    ("c:obsidians/normal", &[394u16] as &[u16], &[] as &[&str]),
+    (
+        "c:ore_bearing_ground/deepslate",
+        &[8u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ore_bearing_ground/netherrack",
+        &[433u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ore_bearing_ground/stone",
+        &[1u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ore_rates/dense",
+        &[97u16, 98u16, 106u16, 102u16, 105u16, 101u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ore_rates/singular",
+        &[
+            111u16, 93u16, 94u16, 108u16, 104u16, 100u16, 96u16, 107u16, 103u16, 99u16, 95u16,
+            110u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:ore_rates/sparse", &[109u16] as &[u16], &[] as &[&str]),
+    (
+        "c:ores",
+        &[] as &[u16],
+        &[
+            "c:ores/coal",
+            "c:ores/copper",
+            "c:ores/diamond",
+            "c:ores/emerald",
+            "c:ores/gold",
+            "c:ores/iron",
+            "c:ores/lapis",
+            "c:ores/netherite_scrap",
+            "c:ores/redstone",
+            "c:ores/quartz",
+            "minecraft:ores",
+        ] as &[&str],
+    ),
+    (
+        "c:ores/coal",
+        &[] as &[u16],
+        &["minecraft:coal_ores"] as &[&str],
+    ),
+    (
+        "c:ores/copper",
+        &[] as &[u16],
+        &["minecraft:copper_ores"] as &[&str],
+    ),
+    (
+        "c:ores/diamond",
+        &[] as &[u16],
+        &["minecraft:diamond_ores"] as &[&str],
+    ),
+    (
+        "c:ores/emerald",
+        &[] as &[u16],
+        &["minecraft:emerald_ores"] as &[&str],
+    ),
+    (
+        "c:ores/gold",
+        &[] as &[u16],
+        &["minecraft:gold_ores"] as &[&str],
+    ),
+    (
+        "c:ores/iron",
+        &[] as &[u16],
+        &["minecraft:iron_ores"] as &[&str],
+    ),
+    (
+        "c:ores/lapis",
+        &[] as &[u16],
+        &["minecraft:lapis_ores"] as &[&str],
+    ),
+    (
+        "c:ores/netherite_scrap",
+        &[111u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:ores/quartz", &[110u16] as &[u16], &[] as &[&str]),
+    (
+        "c:ores/redstone",
+        &[] as &[u16],
+        &["minecraft:redstone_ores"] as &[&str],
+    ),
+    (
+        "c:ores_in_ground/deepslate",
+        &[94u16, 98u16, 108u16, 104u16, 100u16, 96u16, 106u16, 102u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ores_in_ground/netherrack",
+        &[109u16, 110u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:ores_in_ground/stone",
+        &[93u16, 97u16, 107u16, 103u16, 99u16, 95u16, 105u16, 101u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:player_workstations/crafting_tables",
+        &[405u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:player_workstations/furnaces",
+        &[407u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:potions", &[] as &[u16], &["c:potions/bottle"] as &[&str]),
+    (
+        "c:potions/bottle",
+        &[1271u16, 1442u16, 1445u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:pumpkins",
+        &[] as &[u16],
+        &[
+            "c:pumpkins/normal",
+            "c:pumpkins/carved",
+            "c:pumpkins/jack_o_lanterns",
+        ] as &[&str],
+    ),
+    ("c:pumpkins/carved", &[431u16] as &[u16], &[] as &[&str]),
+    (
+        "c:pumpkins/jack_o_lanterns",
+        &[432u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:pumpkins/normal", &[430u16] as &[u16], &[] as &[&str]),
+    (
+        "c:raw_materials",
+        &[] as &[u16],
+        &[
+            "c:raw_materials/copper",
+            "c:raw_materials/gold",
+            "c:raw_materials/iron",
+        ] as &[&str],
+    ),
+    (
+        "c:raw_materials/copper",
+        &[1019u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:raw_materials/gold", &[1021u16] as &[u16], &[] as &[&str]),
+    ("c:raw_materials/iron", &[1017u16] as &[u16], &[] as &[&str]),
+    (
+        "c:rods",
+        &[] as &[u16],
+        &["c:rods/wooden", "c:rods/blaze", "c:rods/breeze"] as &[&str],
+    ),
+    ("c:rods/blaze", &[1266u16] as &[u16], &[] as &[&str]),
+    ("c:rods/breeze", &[1373u16] as &[u16], &[] as &[&str]),
+    ("c:rods/wooden", &[1060u16] as &[u16], &[] as &[&str]),
+    ("c:ropes", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:sands",
+        &[] as &[u16],
+        &["c:sands/colorless", "c:sands/red"] as &[&str],
+    ),
+    ("c:sands/colorless", &[88u16] as &[u16], &[] as &[&str]),
+    ("c:sands/red", &[91u16] as &[u16], &[] as &[&str]),
+    (
+        "c:sandstone/blocks",
+        &[] as &[u16],
+        &["c:sandstone/uncolored_blocks", "c:sandstone/red_blocks"] as &[&str],
+    ),
+    (
+        "c:sandstone/red_blocks",
+        &[644u16, 646u16, 373u16, 645u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:sandstone/red_slabs",
+        &[366u16, 367u16, 807u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:sandstone/red_stairs",
+        &[647u16, 789u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:sandstone/slabs",
+        &[] as &[u16],
+        &["c:sandstone/uncolored_slabs", "c:sandstone/red_slabs"] as &[&str],
+    ),
+    (
+        "c:sandstone/stairs",
+        &[] as &[u16],
+        &["c:sandstone/uncolored_stairs", "c:sandstone/red_stairs"] as &[&str],
+    ),
+    (
+        "c:sandstone/uncolored_blocks",
+        &[234u16, 236u16, 374u16, 235u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:sandstone/uncolored_slabs",
+        &[357u16, 358u16, 812u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:sandstone/uncolored_stairs",
+        &[512u16, 795u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:seeds",
+        &[] as &[u16],
+        &[
+            "c:seeds/beetroot",
+            "c:seeds/melon",
+            "c:seeds/pumpkin",
+            "c:seeds/torchflower",
+            "c:seeds/pitcher_plant",
+            "c:seeds/wheat",
+        ] as &[&str],
+    ),
+    ("c:seeds/beetroot", &[1439u16] as &[u16], &[] as &[&str]),
+    ("c:seeds/melon", &[1259u16] as &[u16], &[] as &[&str]),
+    (
+        "c:seeds/pitcher_plant",
+        &[1437u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:seeds/pumpkin", &[1258u16] as &[u16], &[] as &[&str]),
+    ("c:seeds/torchflower", &[1436u16] as &[u16], &[] as &[&str]),
+    ("c:seeds/wheat", &[1065u16] as &[u16], &[] as &[&str]),
+    (
+        "c:shulker_boxes",
+        &[
+            656u16, 657u16, 658u16, 659u16, 660u16, 661u16, 662u16, 663u16, 664u16, 665u16, 666u16,
+            667u16, 668u16, 669u16, 670u16, 671u16, 672u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:slime_balls", &[1147u16] as &[u16], &[] as &[&str]),
+    (
+        "c:stones",
+        &[1u16, 6u16, 4u16, 2u16, 12u16, 8u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks",
+        &[] as &[u16],
+        &[
+            "c:storage_blocks/bone_meal",
+            "c:storage_blocks/coal",
+            "c:storage_blocks/copper",
+            "c:storage_blocks/diamond",
+            "c:storage_blocks/dried_kelp",
+            "c:storage_blocks/emerald",
+            "c:storage_blocks/gold",
+            "c:storage_blocks/iron",
+            "c:storage_blocks/lapis",
+            "c:storage_blocks/netherite",
+            "c:storage_blocks/raw_copper",
+            "c:storage_blocks/raw_gold",
+            "c:storage_blocks/raw_iron",
+            "c:storage_blocks/redstone",
+            "c:storage_blocks/resin",
+            "c:storage_blocks/slime",
+            "c:storage_blocks/wheat",
+        ] as &[&str],
+    ),
+    (
+        "c:storage_blocks/bone_meal",
+        &[654u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:storage_blocks/coal", &[112u16] as &[u16], &[] as &[&str]),
+    (
+        "c:storage_blocks/copper",
+        &[120u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/diamond",
+        &[129u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/dried_kelp",
+        &[1144u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/emerald",
+        &[514u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:storage_blocks/gold", &[128u16] as &[u16], &[] as &[&str]),
+    ("c:storage_blocks/iron", &[119u16] as &[u16], &[] as &[&str]),
+    (
+        "c:storage_blocks/lapis",
+        &[233u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/netherite",
+        &[130u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/raw_copper",
+        &[114u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/raw_gold",
+        &[115u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/raw_iron",
+        &[113u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/redstone",
+        &[826u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/resin",
+        &[487u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/slime",
+        &[831u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:storage_blocks/wheat",
+        &[579u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:strings", &[1062u16] as &[u16], &[] as &[&str]),
+    (
+        "c:stripped_logs",
+        &[
+            182u16, 202u16, 180u16, 183u16, 184u16, 181u16, 186u16, 178u16, 185u16, 179u16, 187u16,
+            188u16, 189u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:stripped_woods",
+        &[
+            194u16, 192u16, 195u16, 196u16, 193u16, 198u16, 190u16, 197u16, 191u16, 199u16, 200u16,
+            201u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:tools",
+        &[] as &[u16],
+        &[
+            "minecraft:axes",
+            "minecraft:hoes",
+            "minecraft:pickaxes",
+            "minecraft:shovels",
+            "minecraft:spears",
+            "minecraft:swords",
+            "c:tools/bow",
+            "c:tools/brush",
+            "c:tools/crossbow",
+            "c:tools/fishing_rod",
+            "c:tools/igniter",
+            "c:tools/shear",
+            "c:tools/shield",
+            "c:tools/trident",
+            "c:tools/mace",
+            "c:tools/wrench",
+            "c:tools/mining_tool",
+            "c:tools/melee_weapon",
+            "c:tools/ranged_weapon",
+        ] as &[&str],
+    ),
+    ("c:tools/bow", &[1008u16] as &[u16], &[] as &[&str]),
+    ("c:tools/brush", &[1578u16] as &[u16], &[] as &[&str]),
+    ("c:tools/crossbow", &[1491u16] as &[u16], &[] as &[&str]),
+    ("c:tools/fishing_rod", &[1186u16] as &[u16], &[] as &[&str]),
+    ("c:tools/igniter", &[1005u16] as &[u16], &[] as &[&str]),
+    ("c:tools/mace", &[1374u16] as &[u16], &[] as &[&str]),
+    (
+        "c:tools/melee_weapon",
+        &[
+            1374u16, 1483u16, 1025u16, 1035u16, 1030u16, 1040u16, 1045u16, 1050u16, 1055u16,
+            1028u16, 1038u16, 1033u16, 1043u16, 1048u16, 1053u16, 1058u16, 1447u16, 1448u16,
+            1449u16, 1450u16, 1451u16, 1452u16, 1453u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:tools/mining_tool",
+        &[
+            1027u16, 1037u16, 1032u16, 1042u16, 1047u16, 1052u16, 1057u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "c:tools/ranged_weapon",
+        &[1008u16, 1491u16, 1483u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("c:tools/shear", &[1255u16] as &[u16], &[] as &[&str]),
+    ("c:tools/shield", &[1446u16] as &[u16], &[] as &[&str]),
+    ("c:tools/trident", &[1483u16] as &[u16], &[] as &[&str]),
+    ("c:tools/wrench", &[] as &[u16], &[] as &[&str]),
+    (
+        "c:villager_job_sites",
+        &[
+            1506u16, 1508u16, 1276u16, 1509u16, 1277u16, 1505u16, 1510u16, 1511u16, 837u16,
+            1493u16, 1512u16, 1507u16, 1513u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:acacia_logs",
+        &[167u16, 207u16, 182u16, 194u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:anvil",
+        &[553u16, 554u16, 555u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:armadillo_food",
+        &[1272u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:arrows",
+        &[1009u16, 1444u16, 1443u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:axes",
+        &[
+            1053u16, 1038u16, 1043u16, 1058u16, 1028u16, 1048u16, 1033u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:axolotl_food",
+        &[1138u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:bamboo_blocks",
+        &[177u16, 202u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:banners",
+        &[
+            1417u16, 1418u16, 1419u16, 1420u16, 1421u16, 1422u16, 1423u16, 1424u16, 1425u16,
+            1426u16, 1427u16, 1428u16, 1429u16, 1430u16, 1431u16, 1432u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:bars",
+        &[
+            464u16, 465u16, 466u16, 467u16, 468u16, 469u16, 470u16, 471u16, 472u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:beacon_payment_items",
+        &[1023u16, 1013u16, 1012u16, 1022u16, 1018u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:beds",
+        &[
+            1219u16, 1220u16, 1221u16, 1222u16, 1223u16, 1224u16, 1225u16, 1226u16, 1227u16,
+            1228u16, 1229u16, 1230u16, 1231u16, 1232u16, 1233u16, 1234u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:bee_food",
+        &[
+            298u16, 300u16, 302u16, 303u16, 304u16, 305u16, 306u16, 307u16, 308u16, 309u16, 310u16,
+            311u16, 312u16, 313u16, 314u16, 599u16, 600u16, 602u16, 601u16, 315u16, 228u16, 243u16,
+            85u16, 220u16, 329u16, 330u16, 398u16, 316u16, 414u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:birch_logs",
+        &[165u16, 205u16, 180u16, 192u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:boats",
+        &[
+            975u16, 977u16, 979u16, 981u16, 983u16, 987u16, 989u16, 991u16, 995u16, 985u16, 993u16,
+        ] as &[u16],
+        &["minecraft:chest_boats"] as &[&str],
+    ),
+    (
+        "minecraft:book_cloning_target",
+        &[1371u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:bookshelf_books",
+        &[1146u16, 1372u16, 1395u16, 1371u16, 1458u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:breaks_decorated_pots",
+        &[1483u16, 1374u16] as &[u16],
+        &[
+            "minecraft:swords",
+            "minecraft:axes",
+            "minecraft:pickaxes",
+            "minecraft:shovels",
+            "minecraft:hoes",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:brewing_potion_inputs",
+        &[1271u16, 1442u16, 1445u16, 1270u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:bundles",
+        &[
+            1153u16, 1154u16, 1155u16, 1156u16, 1157u16, 1158u16, 1159u16, 1160u16, 1161u16,
+            1162u16, 1163u16, 1164u16, 1165u16, 1166u16, 1167u16, 1168u16, 1169u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:buttons",
+        &[] as &[u16],
+        &["minecraft:wooden_buttons", "minecraft:stone_buttons"] as &[&str],
+    ),
+    ("minecraft:camel_food", &[413u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:camel_husk_food",
+        &[1403u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:candles",
+        &[
+            1550u16, 1551u16, 1552u16, 1553u16, 1554u16, 1555u16, 1556u16, 1557u16, 1558u16,
+            1559u16, 1560u16, 1561u16, 1562u16, 1563u16, 1564u16, 1565u16, 1566u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:cat_collar_dyes",
+        &[] as &[u16],
+        &["minecraft:dyes"] as &[&str],
+    ),
+    (
+        "minecraft:cat_food",
+        &[1190u16, 1191u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:cauldron_can_remove_dye",
+        &[1068u16, 1069u16, 1070u16, 1071u16, 1411u16, 1004u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:chains",
+        &[
+            473u16, 474u16, 475u16, 476u16, 477u16, 478u16, 479u16, 480u16, 481u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:cherry_logs",
+        &[168u16, 208u16, 183u16, 195u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:chest_armor",
+        &[
+            1069u16, 1073u16, 1077u16, 1089u16, 1081u16, 1085u16, 1093u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:chest_boats",
+        &[
+            976u16, 978u16, 980u16, 982u16, 984u16, 988u16, 990u16, 992u16, 996u16, 986u16, 994u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:chicken_food",
+        &[1065u16, 1259u16, 1258u16, 1439u16, 1436u16, 1437u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:clonable_maps",
+        &[
+            1238u16, 1239u16, 1240u16, 1241u16, 1242u16, 1243u16, 1244u16, 1245u16, 1246u16,
+            1247u16, 1248u16, 1249u16, 1250u16, 1251u16, 1252u16, 1253u16, 1254u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:cluster_max_harvestables",
+        &[
+            1052u16, 1042u16, 1047u16, 1057u16, 1037u16, 1027u16, 1032u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:coal_ores",
+        &[93u16, 94u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:coals",
+        &[1010u16, 1011u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:compasses",
+        &[1151u16, 1152u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:completes_find_tree_tutorial",
+        &[] as &[u16],
+        &[
+            "minecraft:logs",
+            "minecraft:leaves",
+            "minecraft:wart_blocks",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:concrete",
+        &[
+            689u16, 690u16, 691u16, 692u16, 693u16, 694u16, 695u16, 696u16, 697u16, 698u16, 699u16,
+            700u16, 701u16, 702u16, 703u16, 704u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:concrete_powders",
+        &[
+            737u16, 738u16, 739u16, 740u16, 741u16, 742u16, 743u16, 744u16, 745u16, 746u16, 747u16,
+            748u16, 749u16, 750u16, 751u16, 752u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:concrete_slabs",
+        &[
+            721u16, 722u16, 723u16, 724u16, 725u16, 726u16, 727u16, 728u16, 729u16, 730u16, 731u16,
+            732u16, 733u16, 734u16, 735u16, 736u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:concrete_stairs",
+        &[
+            705u16, 706u16, 707u16, 708u16, 709u16, 710u16, 711u16, 712u16, 713u16, 714u16, 715u16,
+            716u16, 717u16, 718u16, 719u16, 720u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:copper",
+        &[
+            120u16, 121u16, 122u16, 123u16, 124u16, 125u16, 126u16, 127u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:copper_chests",
+        &[
+            1637u16, 1638u16, 1639u16, 1640u16, 1641u16, 1642u16, 1643u16, 1644u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:copper_golem_statues",
+        &[
+            1645u16, 1646u16, 1647u16, 1648u16, 1649u16, 1650u16, 1651u16, 1652u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:copper_ores",
+        &[97u16, 98u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:copper_tool_materials",
+        &[1020u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:cow_food", &[1066u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:creeper_drop_music_discs",
+        &[
+            1460u16, 1461u16, 1462u16, 1464u16, 1467u16, 1469u16, 1470u16, 1471u16, 1472u16,
+            1473u16, 1474u16, 1475u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:creeper_igniters",
+        &[1005u16, 1369u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:crimson_stems",
+        &[175u16, 188u16, 213u16, 200u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:cushions",
+        &[
+            1170u16, 1171u16, 1172u16, 1173u16, 1174u16, 1175u16, 1176u16, 1177u16, 1178u16,
+            1179u16, 1180u16, 1181u16, 1182u16, 1183u16, 1184u16, 1185u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:dampens_vibrations",
+        &[] as &[u16],
+        &[
+            "minecraft:wool",
+            "minecraft:wool_carpets",
+            "minecraft:wool_slabs",
+            "minecraft:wool_stairs",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:dark_oak_logs",
+        &[170u16, 210u16, 184u16, 196u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:decorated_pot_ingredients",
+        &[1142u16] as &[u16],
+        &["minecraft:decorated_pot_sherds"] as &[&str],
+    ),
+    (
+        "minecraft:decorated_pot_sherds",
+        &[
+            1598u16, 1599u16, 1600u16, 1601u16, 1602u16, 1603u16, 1604u16, 1605u16, 1607u16,
+            1609u16, 1610u16, 1611u16, 1612u16, 1613u16, 1614u16, 1615u16, 1617u16, 1618u16,
+            1619u16, 1620u16, 1606u16, 1608u16, 1616u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:diamond_ores",
+        &[107u16, 108u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:diamond_tool_materials",
+        &[1012u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:dirt",
+        &[55u16, 56u16, 58u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:doors",
+        &[
+            902u16, 903u16, 904u16, 905u16, 906u16, 907u16, 908u16, 909u16, 888u16,
+        ] as &[u16],
+        &["minecraft:wooden_doors"] as &[&str],
+    ),
+    (
+        "minecraft:douses_campfires",
+        &[] as &[u16],
+        &["minecraft:shovels"] as &[&str],
+    ),
+    (
+        "minecraft:drowned_preferred_weapons",
+        &[1483u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:duplicates_allays",
+        &[1016u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:dyes",
+        &[
+            1199u16, 1200u16, 1201u16, 1202u16, 1203u16, 1204u16, 1205u16, 1206u16, 1207u16,
+            1208u16, 1209u16, 1210u16, 1211u16, 1212u16, 1213u16, 1214u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:eggs",
+        &[1148u16, 1149u16, 1150u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:emerald_ores",
+        &[103u16, 104u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/armor",
+        &[] as &[u16],
+        &[
+            "minecraft:enchantable/foot_armor",
+            "minecraft:enchantable/leg_armor",
+            "minecraft:enchantable/chest_armor",
+            "minecraft:enchantable/head_armor",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/bow",
+        &[1008u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/chest_armor",
+        &[] as &[u16],
+        &["minecraft:chest_armor"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/crossbow",
+        &[1491u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/durability",
+        &[
+            974u16, 1446u16, 1008u16, 1491u16, 1483u16, 1005u16, 1255u16, 1578u16, 1186u16, 971u16,
+            972u16, 1374u16,
+        ] as &[u16],
+        &[
+            "minecraft:foot_armor",
+            "minecraft:leg_armor",
+            "minecraft:chest_armor",
+            "minecraft:head_armor",
+            "minecraft:swords",
+            "minecraft:axes",
+            "minecraft:pickaxes",
+            "minecraft:shovels",
+            "minecraft:hoes",
+            "minecraft:spears",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/equippable",
+        &[974u16, 431u16] as &[u16],
+        &[
+            "minecraft:foot_armor",
+            "minecraft:leg_armor",
+            "minecraft:chest_armor",
+            "minecraft:head_armor",
+            "minecraft:skulls",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/fire_aspect",
+        &[1374u16] as &[u16],
+        &["minecraft:enchantable/melee_weapon"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/fishing",
+        &[1186u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/foot_armor",
+        &[] as &[u16],
+        &["minecraft:foot_armor"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/head_armor",
+        &[] as &[u16],
+        &["minecraft:head_armor"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/leg_armor",
+        &[] as &[u16],
+        &["minecraft:leg_armor"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/lunge",
+        &[] as &[u16],
+        &["minecraft:spears"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/mace",
+        &[1374u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/melee_weapon",
+        &[] as &[u16],
+        &["minecraft:swords", "minecraft:spears"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/mining",
+        &[1255u16] as &[u16],
+        &[
+            "minecraft:axes",
+            "minecraft:pickaxes",
+            "minecraft:shovels",
+            "minecraft:hoes",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/mining_loot",
+        &[] as &[u16],
+        &[
+            "minecraft:axes",
+            "minecraft:pickaxes",
+            "minecraft:shovels",
+            "minecraft:hoes",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/sharp_weapon",
+        &[] as &[u16],
+        &["minecraft:enchantable/melee_weapon", "minecraft:axes"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/sweeping",
+        &[] as &[u16],
+        &["minecraft:swords"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/trident",
+        &[1483u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/vanishing",
+        &[1151u16, 431u16] as &[u16],
+        &["minecraft:enchantable/durability", "minecraft:skulls"] as &[&str],
+    ),
+    (
+        "minecraft:enchantable/weapon",
+        &[1374u16] as &[u16],
+        &["minecraft:enchantable/sharp_weapon"] as &[&str],
+    ),
+    (
+        "minecraft:extendable_maps",
+        &[1238u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:fence_gates",
+        &[
+            936u16, 934u16, 938u16, 939u16, 935u16, 932u16, 933u16, 943u16, 944u16, 940u16, 942u16,
+            937u16, 941u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:fences",
+        &[501u16] as &[u16],
+        &["minecraft:wooden_fences"] as &[&str],
+    ),
+    (
+        "minecraft:fishes",
+        &[1190u16, 1194u16, 1191u16, 1195u16, 1193u16, 1192u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:flowers",
+        &[
+            599u16, 600u16, 602u16, 601u16, 315u16, 228u16, 243u16, 85u16, 220u16, 329u16, 330u16,
+            398u16, 316u16, 414u16,
+        ] as &[u16],
+        &["minecraft:small_flowers"] as &[&str],
+    ),
+    (
+        "minecraft:foot_armor",
+        &[
+            1071u16, 1075u16, 1079u16, 1091u16, 1083u16, 1087u16, 1095u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:fox_food",
+        &[1525u16, 1526u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:freeze_immune_wearables",
+        &[1071u16, 1070u16, 1069u16, 1068u16, 1411u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:frog_food", &[1147u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:furnace_fuel_bottom_takeable",
+        &[1129u16, 1128u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:furnace_minecart_fuel",
+        &[1010u16, 1011u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:gaze_disguise_equipment",
+        &[431u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:glazed_terracotta",
+        &[
+            673u16, 674u16, 675u16, 676u16, 677u16, 678u16, 679u16, 680u16, 681u16, 682u16, 683u16,
+            684u16, 685u16, 686u16, 687u16, 688u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:goat_food", &[1066u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:gold_ores",
+        &[99u16, 109u16, 100u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:gold_tool_materials",
+        &[1022u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:grass_blocks",
+        &[54u16, 57u16, 496u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:hanging_signs",
+        &[
+            1115u16, 1116u16, 1117u16, 1119u16, 1120u16, 1118u16, 1121u16, 1122u16, 1126u16,
+            1127u16, 1123u16, 1124u16, 1125u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:happy_ghast_food",
+        &[1132u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:happy_ghast_tempt_items",
+        &[] as &[u16],
+        &["minecraft:happy_ghast_food", "minecraft:harnesses"] as &[&str],
+    ),
+    (
+        "minecraft:harnesses",
+        &[
+            950u16, 951u16, 952u16, 953u16, 954u16, 955u16, 956u16, 957u16, 958u16, 959u16, 960u16,
+            961u16, 962u16, 963u16, 964u16, 965u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:head_armor",
+        &[
+            1068u16, 1072u16, 1076u16, 1088u16, 1080u16, 1084u16, 1092u16, 1001u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:hoes",
+        &[
+            1054u16, 1039u16, 1044u16, 1059u16, 1029u16, 1049u16, 1034u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:hoglin_food", &[320u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:horse_food",
+        &[
+            1066u16, 1217u16, 579u16, 1007u16, 1378u16, 1383u16, 1100u16, 1101u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:horse_tempt_items",
+        &[1383u16, 1100u16, 1101u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:ignored_by_piglin_babies",
+        &[1133u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:iron_ores",
+        &[95u16, 96u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:iron_tool_materials",
+        &[1018u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:jungle_logs",
+        &[166u16, 206u16, 181u16, 193u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:lanterns",
+        &[
+            1515u16, 1516u16, 1517u16, 1518u16, 1519u16, 1520u16, 1521u16, 1522u16, 1523u16,
+            1524u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:lapis_ores",
+        &[105u16, 106u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:leaves",
+        &[
+            218u16, 215u16, 216u16, 222u16, 221u16, 219u16, 217u16, 227u16, 228u16, 223u16, 220u16,
+            224u16, 225u16, 226u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:lectern_books",
+        &[1372u16, 1371u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:leg_armor",
+        &[
+            1070u16, 1074u16, 1078u16, 1090u16, 1082u16, 1086u16, 1094u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:lightning_rods",
+        &[
+            840u16, 841u16, 842u16, 843u16, 844u16, 845u16, 846u16, 847u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:llama_food",
+        &[1066u16, 579u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:llama_tempt_items",
+        &[579u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:logs",
+        &[] as &[u16],
+        &[
+            "minecraft:logs_that_burn",
+            "minecraft:crimson_stems",
+            "minecraft:warped_stems",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:logs_that_burn",
+        &[] as &[u16],
+        &[
+            "minecraft:dark_oak_logs",
+            "minecraft:pale_oak_logs",
+            "minecraft:oak_logs",
+            "minecraft:acacia_logs",
+            "minecraft:birch_logs",
+            "minecraft:jungle_logs",
+            "minecraft:spruce_logs",
+            "minecraft:mangrove_logs",
+            "minecraft:cherry_logs",
+            "minecraft:poplar_logs",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:loom_dyes",
+        &[] as &[u16],
+        &["minecraft:dyes"] as &[&str],
+    ),
+    (
+        "minecraft:loom_patterns",
+        &[
+            1494u16, 1495u16, 1496u16, 1497u16, 1498u16, 1499u16, 1500u16, 1501u16, 1502u16,
+            1503u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:mangrove_logs",
+        &[171u16, 211u16, 186u16, 198u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:map_invisibility_equipment",
+        &[431u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:meat",
+        &[
+            1260u16, 1262u16, 1261u16, 1263u16, 1416u16, 1098u16, 1401u16, 1415u16, 1097u16,
+            1400u16, 1264u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:metal_nuggets",
+        &[1457u16, 1456u16, 1268u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:moss_blocks",
+        &[333u16, 336u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:mud", &[59u16, 174u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:mushrooms",
+        &[317u16, 318u16, 319u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:nautilus_bucket_food",
+        &[1135u16, 1137u16, 1136u16, 1138u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:nautilus_food",
+        &[] as &[u16],
+        &["minecraft:fishes", "minecraft:nautilus_bucket_food"] as &[&str],
+    ),
+    (
+        "minecraft:nautilus_taming_items",
+        &[1135u16, 1193u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:netherite_tool_materials",
+        &[1023u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:non_flammable_wood",
+        &[
+            176u16, 189u16, 214u16, 201u16, 175u16, 188u16, 213u16, 200u16, 74u16, 75u16, 353u16,
+            354u16, 886u16, 887u16, 428u16, 429u16, 922u16, 923u16, 943u16, 944u16, 527u16, 528u16,
+            869u16, 870u16, 900u16, 901u16, 1113u16, 1114u16, 1127u16, 1126u16, 389u16, 381u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:noteblock_top_instruments",
+        &[
+            1387u16, 1384u16, 1388u16, 1389u16, 1385u16, 1390u16, 1386u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:oak_logs",
+        &[163u16, 203u16, 178u16, 190u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:ocelot_food",
+        &[1190u16, 1191u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:ores",
+        &[110u16] as &[u16],
+        &[
+            "minecraft:copper_ores",
+            "minecraft:gold_ores",
+            "minecraft:iron_ores",
+            "minecraft:coal_ores",
+            "minecraft:diamond_ores",
+            "minecraft:emerald_ores",
+            "minecraft:lapis_ores",
+            "minecraft:redstone_ores",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:pale_oak_logs",
+        &[169u16, 209u16, 185u16, 197u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:panda_eats_from_ground",
+        &[1218u16] as &[u16],
+        &["minecraft:panda_food"] as &[&str],
+    ),
+    ("minecraft:panda_food", &[340u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:parrot_food",
+        &[1065u16, 1259u16, 1258u16, 1439u16, 1436u16, 1437u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:parrot_poisonous_food",
+        &[1236u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:pickaxes",
+        &[
+            1052u16, 1037u16, 1042u16, 1057u16, 1027u16, 1047u16, 1032u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:pig_food",
+        &[1378u16, 1379u16, 1438u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:piglin_food",
+        &[1097u16, 1098u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:piglin_loved",
+        &[
+            128u16, 1540u16, 873u16, 1022u16, 1514u16, 1187u16, 1383u16, 1279u16, 1100u16, 1101u16,
+            1088u16, 1089u16, 1090u16, 1091u16, 1408u16, 1486u16, 1040u16, 1451u16, 1042u16,
+            1041u16, 1043u16, 1044u16, 1021u16, 115u16, 299u16,
+        ] as &[u16],
+        &["minecraft:gold_ores"] as &[&str],
+    ),
+    (
+        "minecraft:piglin_preferred_weapons",
+        &[1491u16, 1451u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:piglin_repellents",
+        &[439u16, 1516u16, 1528u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:piglin_safe_armor",
+        &[1088u16, 1089u16, 1090u16, 1091u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:pillager_preferred_weapons",
+        &[1491u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:planks",
+        &[
+            63u16, 64u16, 65u16, 66u16, 67u16, 69u16, 70u16, 74u16, 75u16, 71u16, 73u16, 68u16,
+            72u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:poplar_logs",
+        &[172u16, 212u16, 187u16, 199u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:rabbit_food",
+        &[1378u16, 1383u16, 298u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:rails",
+        &[947u16, 945u16, 946u16, 948u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:redstone_ores",
+        &[101u16, 102u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_chain_armor",
+        &[1018u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_copper_armor",
+        &[1020u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_diamond_armor",
+        &[1012u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_gold_armor",
+        &[1022u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_iron_armor",
+        &[1018u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_leather_armor",
+        &[1133u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_netherite_armor",
+        &[1023u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_turtle_helmet",
+        &[1002u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:repairs_wolf_armor",
+        &[1003u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sand",
+        &[88u16, 91u16, 89u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:saplings",
+        &[
+            77u16, 78u16, 79u16, 80u16, 81u16, 83u16, 84u16, 242u16, 243u16, 85u16, 82u16, 86u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:shearable_from_copper_golem",
+        &[302u16] as &[u16],
+        &[] as &[&str],
+    ),
+    ("minecraft:sheep_food", &[1066u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:shovels",
+        &[
+            1051u16, 1036u16, 1041u16, 1056u16, 1026u16, 1046u16, 1031u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:shulker_boxes",
+        &[
+            656u16, 657u16, 658u16, 659u16, 660u16, 661u16, 662u16, 663u16, 664u16, 665u16, 666u16,
+            667u16, 668u16, 669u16, 670u16, 671u16, 672u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:signs",
+        &[
+            1102u16, 1103u16, 1104u16, 1106u16, 1105u16, 1108u16, 1109u16, 1113u16, 1114u16,
+            1110u16, 1111u16, 1112u16, 1107u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:skeleton_preferred_weapons",
+        &[1008u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:skulls",
+        &[
+            1386u16, 1388u16, 1387u16, 1384u16, 1385u16, 1389u16, 1390u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:slabs",
+        &[
+            355u16, 356u16, 362u16, 357u16, 360u16, 361u16, 364u16, 365u16, 366u16, 369u16, 370u16,
+            371u16, 368u16, 811u16, 359u16, 358u16, 812u16, 367u16, 807u16, 813u16, 810u16, 808u16,
+            814u16, 806u16, 818u16, 809u16, 815u16, 817u16, 816u16, 1538u16, 1542u16, 1546u16,
+            155u16, 156u16, 157u16, 158u16, 159u16, 160u16, 161u16, 162u16, 819u16, 820u16, 821u16,
+            822u16, 363u16, 352u16, 13u16, 18u16, 22u16, 490u16, 41u16, 45u16, 49u16, 28u16, 32u16,
+            36u16,
+        ] as &[u16],
+        &[
+            "minecraft:wooden_slabs",
+            "minecraft:wool_slabs",
+            "minecraft:concrete_slabs",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:small_flowers",
+        &[
+            298u16, 300u16, 302u16, 303u16, 304u16, 305u16, 306u16, 307u16, 308u16, 309u16, 310u16,
+            311u16, 312u16, 313u16, 314u16, 301u16, 299u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:smelts_to_glass",
+        &[88u16, 91u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sniffer_food",
+        &[1436u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:soul_fire_base_blocks",
+        &[434u16, 435u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:spears",
+        &[
+            1452u16, 1448u16, 1451u16, 1453u16, 1447u16, 1450u16, 1449u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:spruce_logs",
+        &[164u16, 204u16, 179u16, 191u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:stairs",
+        &[
+            409u16, 512u16, 493u16, 494u16, 502u16, 560u16, 647u16, 640u16, 641u16, 642u16, 401u16,
+            793u16, 794u16, 795u16, 789u16, 796u16, 792u16, 790u16, 797u16, 788u16, 801u16, 791u16,
+            798u16, 800u16, 799u16, 1539u16, 1543u16, 1547u16, 147u16, 148u16, 149u16, 150u16,
+            151u16, 152u16, 153u16, 154u16, 802u16, 803u16, 804u16, 805u16, 495u16, 526u16, 14u16,
+            19u16, 23u16, 489u16, 42u16, 46u16, 50u16, 29u16, 33u16, 37u16,
+        ] as &[u16],
+        &[
+            "minecraft:wooden_stairs",
+            "minecraft:wool_stairs",
+            "minecraft:concrete_stairs",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:stone_bricks",
+        &[449u16, 450u16, 451u16, 452u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:stone_buttons",
+        &[856u16, 857u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:stone_crafting_materials",
+        &[62u16, 1537u16, 9u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:stone_tool_materials",
+        &[62u16, 1537u16, 9u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:strider_food",
+        &[321u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:strider_tempt_items",
+        &[972u16] as &[u16],
+        &["minecraft:strider_food"] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/bouncy",
+        &[76u16] as &[u16],
+        &[
+            "minecraft:planks",
+            "minecraft:logs",
+            "minecraft:bamboo_blocks",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/explosive",
+        &[853u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/fast_flat",
+        &[
+            761u16, 762u16, 763u16, 764u16, 765u16, 756u16, 757u16, 758u16, 759u16, 760u16, 229u16,
+            230u16, 1144u16, 487u16, 488u16, 492u16, 483u16, 579u16, 430u16, 431u16, 432u16,
+            1573u16, 1575u16, 1574u16,
+        ] as &[u16],
+        &["minecraft:moss_blocks"] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/fast_sliding",
+        &[786u16, 597u16, 412u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/high_resistance",
+        &[434u16, 435u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/hot",
+        &[650u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/light",
+        &[] as &[u16],
+        &["minecraft:wool"] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/regular",
+        &[
+            59u16, 174u16, 453u16, 112u16, 55u16, 56u16, 58u16, 57u16, 54u16, 415u16, 654u16,
+        ] as &[u16],
+        &["minecraft:concrete_powders"] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/slow_bouncy",
+        &[
+            117u16, 6u16, 436u16, 1537u16, 376u16, 11u16, 52u16, 459u16, 500u16, 1544u16, 556u16,
+            645u16, 235u16, 452u16, 39u16, 16u16, 25u16, 40u16, 48u16, 9u16, 62u16, 456u16, 458u16,
+            499u16, 1548u16, 451u16, 60u16, 1536u16, 646u16, 236u16, 639u16, 8u16, 455u16, 457u16,
+            129u16, 4u16, 53u16, 514u16, 509u16, 510u16, 1540u16, 441u16, 2u16, 233u16, 393u16,
+            450u16, 454u16, 498u16, 433u16, 833u16, 394u16, 7u16, 437u16, 1541u16, 1545u16, 44u16,
+            10u16, 5u16, 3u16, 31u16, 17u16, 637u16, 638u16, 399u16, 400u16, 557u16, 558u16,
+            110u16, 559u16, 653u16, 644u16, 854u16, 234u16, 643u16, 438u16, 372u16, 373u16, 374u16,
+            375u16, 1u16, 449u16, 26u16, 35u16, 12u16, 21u16, 61u16,
+        ] as &[u16],
+        &[
+            "minecraft:concrete",
+            "minecraft:coal_ores",
+            "minecraft:lapis_ores",
+            "minecraft:redstone_ores",
+            "minecraft:diamond_ores",
+            "minecraft:emerald_ores",
+            "minecraft:terracotta",
+            "minecraft:glazed_terracotta",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/slow_flat",
+        &[
+            119u16, 128u16, 114u16, 115u16, 113u16, 130u16, 111u16, 120u16, 121u16, 122u16, 123u16,
+            124u16, 125u16, 126u16, 127u16, 1629u16, 1630u16, 1631u16, 1632u16, 1633u16, 1634u16,
+            1635u16, 1636u16, 139u16, 140u16, 141u16, 142u16, 143u16, 144u16, 145u16, 146u16,
+            131u16, 132u16, 133u16, 134u16, 135u16, 136u16, 137u16, 138u16,
+        ] as &[u16],
+        &[
+            "minecraft:gold_ores",
+            "minecraft:iron_ores",
+            "minecraft:copper_ores",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/slow_sliding",
+        &[461u16, 462u16, 463u16, 496u16, 1529u16] as &[u16],
+        &["minecraft:wart_blocks"] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_archetype/sticky",
+        &[1534u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_food",
+        &[1147u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:sulfur_cube_swallowable",
+        &[] as &[u16],
+        &[
+            "minecraft:sulfur_cube_archetype/bouncy",
+            "minecraft:sulfur_cube_archetype/regular",
+            "minecraft:sulfur_cube_archetype/slow_flat",
+            "minecraft:sulfur_cube_archetype/fast_flat",
+            "minecraft:sulfur_cube_archetype/light",
+            "minecraft:sulfur_cube_archetype/fast_sliding",
+            "minecraft:sulfur_cube_archetype/slow_sliding",
+            "minecraft:sulfur_cube_archetype/sticky",
+            "minecraft:sulfur_cube_archetype/high_resistance",
+            "minecraft:sulfur_cube_archetype/explosive",
+            "minecraft:sulfur_cube_archetype/hot",
+            "minecraft:sulfur_cube_archetype/slow_bouncy",
+        ] as &[&str],
+    ),
+    (
+        "minecraft:swords",
+        &[
+            1050u16, 1035u16, 1040u16, 1055u16, 1025u16, 1045u16, 1030u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:terracotta",
+        &[
+            596u16, 561u16, 562u16, 563u16, 564u16, 565u16, 566u16, 567u16, 568u16, 569u16, 570u16,
+            571u16, 572u16, 573u16, 574u16, 575u16, 576u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:trapdoors",
+        &[
+            910u16, 924u16, 925u16, 926u16, 927u16, 928u16, 929u16, 930u16, 931u16,
+        ] as &[u16],
+        &["minecraft:wooden_trapdoors"] as &[&str],
+    ),
+    (
+        "minecraft:trim_materials",
+        &[
+            1016u16, 1020u16, 1012u16, 1013u16, 1022u16, 1018u16, 1014u16, 1023u16, 1015u16,
+            824u16, 1397u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:trimmable_armor",
+        &[] as &[u16],
+        &[
+            "minecraft:foot_armor",
+            "minecraft:leg_armor",
+            "minecraft:chest_armor",
+            "minecraft:head_armor",
+        ] as &[&str],
+    ),
+    ("minecraft:turtle_food", &[248u16] as &[u16], &[] as &[&str]),
+    (
+        "minecraft:villager_picks_up",
+        &[1067u16, 1066u16, 1438u16] as &[u16],
+        &["minecraft:villager_plantable_seeds"] as &[&str],
+    ),
+    (
+        "minecraft:villager_plantable_seeds",
+        &[1065u16, 1379u16, 1378u16, 1439u16, 1436u16, 1437u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:walls",
+        &[
+            531u16, 532u16, 533u16, 534u16, 535u16, 536u16, 537u16, 538u16, 540u16, 541u16, 542u16,
+            543u16, 544u16, 545u16, 546u16, 548u16, 547u16, 549u16, 550u16, 552u16, 551u16, 539u16,
+            15u16, 20u16, 24u16, 491u16, 43u16, 47u16, 51u16, 30u16, 34u16, 38u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:warped_stems",
+        &[176u16, 189u16, 214u16, 201u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wart_blocks",
+        &[651u16, 652u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wither_skeleton_disliked_weapons",
+        &[1008u16, 1491u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wolf_collar_dyes",
+        &[] as &[u16],
+        &["minecraft:dyes"] as &[&str],
+    ),
+    (
+        "minecraft:wolf_food",
+        &[
+            1190u16, 1194u16, 1191u16, 1195u16, 1192u16, 1193u16, 1402u16,
+        ] as &[u16],
+        &["minecraft:meat"] as &[&str],
+    ),
+    (
+        "minecraft:wooden_buttons",
+        &[
+            858u16, 859u16, 860u16, 861u16, 862u16, 864u16, 865u16, 869u16, 870u16, 866u16, 868u16,
+            863u16, 867u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_doors",
+        &[
+            889u16, 890u16, 891u16, 892u16, 893u16, 895u16, 896u16, 900u16, 901u16, 897u16, 899u16,
+            894u16, 898u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_fences",
+        &[
+            417u16, 421u16, 423u16, 424u16, 418u16, 419u16, 420u16, 428u16, 429u16, 425u16, 427u16,
+            422u16, 426u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_pressure_plates",
+        &[
+            875u16, 876u16, 877u16, 878u16, 879u16, 881u16, 882u16, 886u16, 887u16, 883u16, 885u16,
+            880u16, 884u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_shelves",
+        &[
+            377u16, 378u16, 379u16, 380u16, 381u16, 382u16, 383u16, 384u16, 386u16, 387u16, 388u16,
+            389u16, 385u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_slabs",
+        &[
+            341u16, 342u16, 343u16, 344u16, 345u16, 347u16, 348u16, 353u16, 354u16, 349u16, 351u16,
+            346u16, 350u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_stairs",
+        &[
+            515u16, 516u16, 517u16, 518u16, 519u16, 521u16, 522u16, 527u16, 528u16, 523u16, 525u16,
+            520u16, 524u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wooden_tool_materials",
+        &[] as &[u16],
+        &["minecraft:planks"] as &[&str],
+    ),
+    (
+        "minecraft:wooden_trapdoors",
+        &[
+            915u16, 913u16, 917u16, 918u16, 914u16, 911u16, 912u16, 922u16, 923u16, 919u16, 921u16,
+            916u16, 920u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wool",
+        &[
+            250u16, 251u16, 252u16, 253u16, 254u16, 255u16, 256u16, 257u16, 258u16, 259u16, 260u16,
+            261u16, 262u16, 263u16, 264u16, 265u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wool_carpets",
+        &[
+            580u16, 581u16, 582u16, 583u16, 584u16, 585u16, 586u16, 587u16, 588u16, 589u16, 590u16,
+            591u16, 592u16, 593u16, 594u16, 595u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wool_slabs",
+        &[
+            282u16, 283u16, 284u16, 285u16, 286u16, 287u16, 288u16, 289u16, 290u16, 291u16, 292u16,
+            293u16, 294u16, 295u16, 296u16, 297u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:wool_stairs",
+        &[
+            266u16, 267u16, 268u16, 269u16, 270u16, 271u16, 272u16, 273u16, 274u16, 275u16, 276u16,
+            277u16, 278u16, 279u16, 280u16, 281u16,
+        ] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "minecraft:zombie_horse_food",
+        &[318u16] as &[u16],
+        &[] as &[&str],
+    ),
+    (
+        "neoforge:enchanting_fuels",
+        &[] as &[u16],
+        &["c:gems/lapis"] as &[&str],
+    ),
+    (
+        "neoforge:piglin_usable_crossbows",
+        &[] as &[u16],
+        &["c:tools/crossbow"] as &[&str],
+    ),
+    (
+        "neoforge:pillager_usable_crossbows",
+        &[] as &[u16],
+        &["c:tools/crossbow"] as &[&str],
+    ),
+    (
+        "neoforge:skeleton_usable_bows",
+        &[] as &[u16],
+        &["c:tools/bow"] as &[&str],
+    ),
+];
 #[allow(non_snake_case)]
 pub mod BannerPattern {
     use super::Tag;

@@ -173,6 +173,7 @@ enum Entry {
     Stonecutter(StonecutterEntry),
     /// A smithing recipe. A transform recipe can leave out the template and the addition.
     Smithing {
+        recipe_id: String,
         template: Option<OwnedRecipeIngredient>,
         base: OwnedRecipeIngredient,
         addition: Option<OwnedRecipeIngredient>,
@@ -192,6 +193,8 @@ pub struct RecipeIndex {
     property_sets: Vec<PropertySet>,
     /// The data pack and plugin recipes the index was built from.
     dynamic: Vec<DynamicRecipe>,
+    /// The ids of the stonecutter and smithing recipes, which have no recipe book entry.
+    unbooked_ids: Vec<String>,
     book: RecipeBook,
     /// The indices of the stonecutter recipes that a `Display` and a `Real` client get.
     display_stonecutter: Vec<usize>,
@@ -265,11 +268,13 @@ fn dynamic_entry(recipe: &DynamicRecipe) -> Entry {
             RecipeOutput::owned(&r.result),
         )),
         DynamicRecipe::SmithingTransform(r) => Entry::Smithing {
+            recipe_id: r.recipe_id.clone(),
             template: r.template.clone(),
             base: r.base.clone(),
             addition: r.addition.clone(),
         },
         DynamicRecipe::SmithingTrim(r) => Entry::Smithing {
+            recipe_id: r.recipe_id.clone(),
             template: Some(r.template.clone()),
             base: r.base.clone(),
             addition: Some(r.addition.clone()),
@@ -315,6 +320,7 @@ fn generated_entries() -> BTreeMap<(String, String), Entry> {
         recipes.insert(
             sort_key(r.recipe_id),
             Entry::Smithing {
+                recipe_id: r.recipe_id.to_string(),
                 template: Some(owned_ingredient(&r.template)),
                 base: owned_ingredient(&r.base),
                 addition: Some(owned_ingredient(&r.addition)),
@@ -325,6 +331,7 @@ fn generated_entries() -> BTreeMap<(String, String), Entry> {
         recipes.insert(
             sort_key(r.recipe_id),
             Entry::Smithing {
+                recipe_id: r.recipe_id.to_string(),
                 template: Some(owned_ingredient(&r.template)),
                 base: owned_ingredient(&r.base),
                 addition: Some(owned_ingredient(&r.addition)),
@@ -349,6 +356,7 @@ impl RecipeIndex {
 
         let mut index = Self {
             dynamic: dynamic.to_vec(),
+            unbooked_ids: Vec::new(),
             book: RecipeBook::new(dynamic),
             display_stonecutter: Vec::new(),
             real_stonecutter: Vec::new(),
@@ -390,12 +398,17 @@ impl RecipeIndex {
                     index.add_to_set(key, cooking.ingredient.clone());
                     index.cooking.push(cooking);
                 }
-                Entry::Stonecutter(stonecutter) => index.stonecutter.push(stonecutter),
+                Entry::Stonecutter(stonecutter) => {
+                    index.unbooked_ids.push(stonecutter.recipe_id.clone());
+                    index.stonecutter.push(stonecutter);
+                }
                 Entry::Smithing {
+                    recipe_id,
                     template,
                     base,
                     addition,
                 } => {
+                    index.unbooked_ids.push(recipe_id);
                     if let Some(template) = template {
                         index.add_to_set(SMITHING_TEMPLATE, template);
                     }
@@ -426,6 +439,13 @@ impl RecipeIndex {
     #[must_use]
     pub fn dynamic_recipes(&self) -> &[DynamicRecipe] {
         &self.dynamic
+    }
+
+    /// The ids of the stonecutter and smithing recipes. A player learns them, but they have no
+    /// recipe book entry.
+    #[must_use]
+    pub fn unbooked_recipe_ids(&self) -> &[String] {
+        &self.unbooked_ids
     }
 
     /// The recipe book layout of [`Self::dynamic_recipes`].
