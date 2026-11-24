@@ -66,7 +66,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.31 (#171) Loot context parameters (follows 2.16): the parameters that vanilla 26.3 sets and mods read, filled at each vanilla call site; verify: one test per call site, the vanilla loot parity dump
 - [x] 2.32 (#175) Inventory rows that M3, the content registry and wave 8 already cover, the `DeferredRegister` getters, and the abstract event rule; verify: each listed row has a test, an `M5 engine extension:` reason or a `not supported` reason, `mapping_status.py --check`, `openspec validate --all`
 - [x] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
-- [ ] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
+- [x] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
 - [ ] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
 - [ ] 2.36 (#179) Sound and vanilla game events through one `World` entry point, and the sound ranges of the wave 4 review; verify: one test per event, the list of direct sound sends that stay, a v0.2 round trip per event
 - [ ] 2.37 (#180) Item, enchantment and brewing events with their fire sites; verify: one test per event, no extra cost on the enchantment lookup without a handler
