@@ -103,6 +103,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.69 (#220) The vanilla game events that Pumpkin never emits fire at their vanilla sites (entity death, hit ground, lightning, container close, drink, bounce, mount and dismount, resonance); verify: a test per event, an upstream PR draft
 - [ ] 2.70 (#221) Scheduled ticks that a chunk loads from disk or gets from its generation step from the load on, as vanilla `LevelChunk.registerTickContainerInLevel`; verify: a save and reload test for a block tick and a fluid tick, a new chunk test, the `chunk_tick` bench, an upstream PR draft
 - [ ] 2.71 (#224) No event that a mob brain behaviour fires runs under the brain lock, and a save during the tick keeps the brain memories; verify: handler tests for the melee and sensing damage that read the attacker, the #206 lock tests
+- [ ] 2.72 (#225) The other vanilla post-processing mark sources (the block `postProcess` property of mushrooms, soul sand and magma, aquifers, the blender, jigsaw pieces) and the `capped` processor; verify: a test per source, a Java oracle for `capped`, the world generation benches
 - [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
