@@ -185,7 +185,7 @@ impl PiglinAi {
             this_entity: Some(piglin),
             ..Default::default()
         };
-        crate::world::loot::generate_loot_from_handle(&table, rand::random(), &params)
+        crate::world::loot::roll_loot(&table, 0, &params)
     }
 
     #[must_use]

@@ -5,6 +5,7 @@ pub mod dynamic_registry_loader;
 pub mod dynamic_registry_manager;
 pub mod function_loader;
 pub mod item_modifier_loader;
+mod load_error;
 pub mod loot_modifier_loader;
 pub mod loot_table_loader;
 pub mod mod_packs;
@@ -1739,7 +1740,7 @@ fn load_enabled_datapacks(
         }
 
         let (description, pack_format, known_packs) = read_pack_mcmeta(&pack_path);
-        let counts = load_pack_contents(&pack_path, acc);
+        let counts = load_pack_contents(&pack_path, &id, acc);
         let kind = if bundled {
             "bundled datapack"
         } else {
@@ -1782,6 +1783,7 @@ fn load_enabled_datapacks(
 #[allow(clippy::too_many_lines)]
 fn load_pack_contents(
     pack_path: &Path,
+    pack_id: &str,
     acc: &mut PackContentAccumulators<'_>,
 ) -> PackContentCounts {
     let data_dir = pack_path.join("data");
@@ -1803,6 +1805,7 @@ fn load_pack_contents(
                 if recipe_dir.is_dir() {
                     load_recipes_from_dir(
                         &namespace,
+                        pack_id,
                         &recipe_dir,
                         acc.recipes,
                         &mut counts.recipes,
@@ -1859,6 +1862,8 @@ fn load_pack_contents(
                     counts.int_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_INT_PROVIDER,
                             &provider_dir,
                             acc.context_int_providers,
                         );
@@ -1872,6 +1877,8 @@ fn load_pack_contents(
                     counts.float_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_FLOAT_PROVIDER,
                             &provider_dir,
                             acc.context_float_providers,
                         );
@@ -1884,6 +1891,7 @@ fn load_pack_contents(
                 if lt_dir.is_dir() {
                     counts.loot_tables += loot_table_loader::load_loot_tables_from_dir(
                         &namespace,
+                        pack_id,
                         &lt_dir,
                         acc.loot_tables,
                     );
@@ -1905,6 +1913,7 @@ fn load_pack_contents(
                 if adv_dir.is_dir() {
                     counts.advancements += advancement_loader::load_advancements_from_dir(
                         &namespace,
+                        pack_id,
                         &adv_dir,
                         acc.advancements,
                     );
@@ -1917,6 +1926,7 @@ fn load_pack_contents(
                 if pred_dir.is_dir() {
                     counts.predicates += predicate_loader::load_predicates_from_dir(
                         &namespace,
+                        pack_id,
                         &pred_dir,
                         acc.predicates,
                     );
@@ -1929,6 +1939,7 @@ fn load_pack_contents(
                 if im_dir.is_dir() {
                     counts.item_modifiers += item_modifier_loader::load_item_modifiers_from_dir(
                         &namespace,
+                        pack_id,
                         &im_dir,
                         acc.item_modifiers,
                     );
@@ -1941,6 +1952,7 @@ fn load_pack_contents(
                 if ss_dir.is_dir() {
                     counts.slot_sources += slot_source_loader::load_slot_sources_from_dir(
                         &namespace,
+                        pack_id,
                         &ss_dir,
                         acc.slot_sources,
                     );
@@ -1985,6 +1997,7 @@ fn load_pack_contents(
                 if ts_dir.is_dir() {
                     counts.trade_sets += trade_loader::load_trade_sets_from_dir(
                         &namespace,
+                        pack_id,
                         &ts_dir,
                         &mut acc.trade_registry.trade_sets,
                     );
@@ -1997,6 +2010,7 @@ fn load_pack_contents(
                 if vt_dir.is_dir() {
                     counts.trades += trade_loader::load_trades_from_dir(
                         &namespace,
+                        pack_id,
                         &vt_dir,
                         &mut acc.trade_registry.trades,
                     );
@@ -2011,6 +2025,7 @@ fn load_pack_contents(
                     if vt_tag_dir.is_dir() {
                         counts.trade_tags += trade_loader::load_trade_tags_from_dir(
                             &namespace,
+                            pack_id,
                             &vt_tag_dir,
                             &mut acc.trade_registry.trade_tags,
                         );
@@ -2145,6 +2160,7 @@ fn read_pack_mcmeta(pack_path: &Path) -> (String, u32, Vec<KnownPackData>) {
 
 fn load_recipes_recursive(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
@@ -2156,7 +2172,7 @@ fn load_recipes_recursive(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_recipes_recursive(namespace, base_dir, &path, all_recipes, count);
+            load_recipes_recursive(namespace, pack, base_dir, &path, all_recipes, count);
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
@@ -2170,9 +2186,23 @@ fn load_recipes_recursive(
                 .to_string_lossy()
                 .replace('\\', "/");
 
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Some(recipe) = recipe_loader::parse_recipe(namespace, &recipe_name, &content)
-            {
+            let recipe_id = format!("{namespace}:{recipe_name}");
+            let file = load_error::Entry {
+                registry: load_error::RECIPE,
+                id: &recipe_id,
+                pack,
+            };
+            let Some((content, _)) = file.read_json(&path) else {
+                continue;
+            };
+            let recipe = match recipe_loader::try_parse_recipe(namespace, &recipe_name, &content) {
+                Ok(recipe) => Some(recipe),
+                Err(cause) => {
+                    file.skip(cause);
+                    None
+                }
+            };
+            if let Some(recipe) = recipe {
                 // Like `RecipeManager`, a recipe of a later pack replaces the earlier one with
                 // the same id.
                 let existing = recipe.recipe_id().and_then(|id| {
@@ -2249,11 +2279,12 @@ fn data_pack_item_tags(
 
 fn load_recipes_from_dir(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     all_recipes: &mut Vec<DynamicRecipe>,
     count: &mut usize,
 ) {
-    load_recipes_recursive(namespace, dir, dir, all_recipes, count);
+    load_recipes_recursive(namespace, pack, dir, dir, all_recipes, count);
 }
 #[cfg(test)]
 mod tests {
@@ -2462,7 +2493,7 @@ mod tests {
             tags: &mut tags,
         };
 
-        let counts = super::load_pack_contents(&datapack_path, &mut acc);
+        let counts = super::load_pack_contents(&datapack_path, "file/test", &mut acc);
         assert_eq!(counts.recipes, 2042, "all vanilla recipes must load");
         assert_eq!(
             counts.loot_tables, 1447,
@@ -2544,7 +2575,7 @@ mod tests {
                 tags: &mut tags,
             };
 
-            let counts = super::load_pack_contents(&pack_path, &mut acc);
+            let counts = super::load_pack_contents(&pack_path, "file/test", &mut acc);
             assert!(counts.trades > 0, "trade rebalance must load trades");
             assert!(
                 counts.trade_tags > 0,

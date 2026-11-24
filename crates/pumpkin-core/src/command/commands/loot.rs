@@ -378,8 +378,7 @@ impl CommandExecutor for LootExecutor {
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::world::loot::roll_loot(&loot_table, 0, &params);
             }
             Source::Loot => {
                 let loot_table_str = StringArgumentType::get(context, "loot_table")?;
@@ -407,8 +406,7 @@ impl CommandExecutor for LootExecutor {
                     this_entity: source_entity.as_deref(),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::world::loot::roll_loot(&loot_table, 0, &params);
             }
             Source::Kill => {
                 let target_entities = EntityArgumentType::get_entities(context, "target")?;
@@ -451,12 +449,7 @@ impl CommandExecutor for LootExecutor {
                             ),
                             ..params.clone()
                         };
-                        let seed: i64 = rand::random();
-                        drops.extend(crate::world::loot::generate_loot_from_handle(
-                            &loot_table,
-                            seed,
-                            &params,
-                        ));
+                        drops.extend(crate::world::loot::roll_loot(&loot_table, 0, &params));
                         last_key = Some(key);
                     }
                 }

@@ -653,7 +653,8 @@ impl TrialSpawnerStateData {
                     (pos.0.z as f32 / 30.0).floor() as i32,
                 );
                 let seed = (world.level.seed.0 as i64).wrapping_add(low_res.as_long());
-                let drops = loot_table.generate_loot_with_context(
+                let drops = crate::world::loot::roll_loot(
+                    &loot_table,
                     seed,
                     &crate::world::loot::LootContextParameters {
                         world: Some(world),
@@ -1168,10 +1169,10 @@ impl TrialSpawner {
             && let Some(loot_table) = world.get_loot_table(&equip)
             && let Some(living) = entity.get_living_entity()
         {
-            let seed = rand::random::<i64>();
             // `Mob.createEquipmentParams`: the `equipment` parameter set, the mob and its position.
-            let items = loot_table.generate_loot_with_context(
-                seed,
+            let items = crate::world::loot::roll_loot(
+                &loot_table,
+                0,
                 &crate::world::loot::LootContextParameters {
                     world: Some(world),
                     position: Some(spawn_pos),
@@ -1390,9 +1391,9 @@ impl TrialSpawner {
         if let Some(key) = ejecting_loot_table
             && let Some(loot_table) = world.get_loot_table(key)
         {
-            let seed = rand::random::<i64>();
-            let items = loot_table.generate_loot_with_context(
-                seed,
+            let items = crate::world::loot::roll_loot(
+                &loot_table,
+                0,
                 &crate::world::loot::LootContextParameters {
                     world: Some(world),
                     ..Default::default()

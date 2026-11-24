@@ -3,6 +3,8 @@ pub mod badlands;
 #[cfg(test)]
 pub mod biome_hashes;
 #[cfg(test)]
+pub mod desert_well;
+#[cfg(test)]
 pub mod dumps;
 #[cfg(test)]
 pub mod resume;

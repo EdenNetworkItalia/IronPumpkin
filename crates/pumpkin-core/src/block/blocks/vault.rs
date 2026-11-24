@@ -11,7 +11,7 @@ use crate::block::entities::vault::VaultBlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::block::{BlockBehaviour, OnPlaceArgs, PlacedArgs, UseWithItemArgs};
 use crate::entity::EntityBase;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle, player_luck};
+use crate::world::loot::{LootContextParameters, player_luck, roll_loot};
 
 #[pumpkin_block("minecraft:vault")]
 pub struct VaultBlock;
@@ -132,7 +132,7 @@ impl BlockBehaviour for VaultBlock {
                     tool: Some(key_stack),
                     ..Default::default()
                 };
-                generate_loot_from_handle(&handle, rand::random(), &params)
+                roll_loot(&handle, 0, &params)
             })
             .unwrap_or_default();
 

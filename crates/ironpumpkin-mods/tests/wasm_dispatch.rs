@@ -79,7 +79,7 @@ use pumpkin_core::{
     world::ExplosionInteraction,
 };
 use pumpkin_data::{
-    Block, BlockStateId,
+    Block, BlockStateId, Enchantment,
     damage::DamageType,
     effect::StatusEffect,
     entity::EntityType,
@@ -1653,6 +1653,76 @@ fn a_v0_2_world_call_from_a_wasm_plugin() {
     assert_eq!(
         seen("EntitySpawnEvent"),
         fire("- false", "- false", "- true", "- true")
+    );
+}
+
+/// `set-equipment` is an async import and runs its server work through `run_blocking`: the
+/// `ItemAttributeModifierEvent` that the work fires reaches the handlers of the plugin that made
+/// the call, and the call returns. A host that runs the work inside the call hangs.
+#[test]
+fn a_set_equipment_call_reaches_the_handlers_of_the_calling_plugin() {
+    let _serial = setup();
+    let world = support::world();
+
+    let id: i32 = ipc(GUEST, "equip 1700.5 120 0.5").parse().unwrap();
+
+    assert!(world.get_entity_by_id(id).is_some());
+    assert!(
+        !guest_log(GUEST, "ItemAttributeModifierEvent").is_empty(),
+        "the handler of the calling plugin ran"
+    );
+}
+
+/// A Wasm handler of `GetEnchantmentLevelEvent` that damages an item (a host call that reads the
+/// enchantment levels) does not fire the event again: the host work of the handler reads the item
+/// stacks with the event off, as the handler runs on another thread than the fire. Before, the read
+/// fired the handler again, down to the depth limit of the chain.
+#[test]
+fn a_wasm_handler_that_damages_an_item_does_not_fire_itself_again() {
+    let _serial = setup();
+    act("W1", "GetEnchantmentLevelEvent", "damage=true");
+    let stack = ItemStack::new(1, &Item::DIAMOND_HOE);
+
+    let level = stack.get_enchantment_level(&Enchantment::FORTUNE);
+
+    assert_eq!(level, 0);
+    assert_eq!(
+        guest_log(GUEST, "GetEnchantmentLevelEvent"),
+        ["W1 - -", "W2 - -"]
+    );
+}
+
+/// A Wasm handler of an item hook event that plays two sounds through the synchronous world import
+/// keeps the call order: the deferred queue of the store runs the two sounds in order, also while
+/// the item hook counter is set.
+#[test]
+fn deferred_sounds_of_an_item_hook_handler_keep_their_order() {
+    let _serial = setup();
+    act("W1", "GetEnchantmentLevelEvent", "sounds=true");
+
+    let level = ItemStack::new(1, &Item::DIAMOND_HOE).get_enchantment_level(&Enchantment::FORTUNE);
+
+    assert_eq!(level, 0);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut seen = Vec::new();
+    while seen.len() < 2 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the sound events did not arrive: {seen:?}"
+        );
+        seen.extend(
+            guest_log(GUEST, "PlayLevelSoundEventAtPosition")
+                .into_iter()
+                .filter(|entry| entry.starts_with("W1 ")),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(
+        seen,
+        [
+            "W1 minecraft:block.stone.break false",
+            "W1 minecraft:block.anvil.land false"
+        ]
     );
 }
 

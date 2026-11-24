@@ -1,4 +1,4 @@
-use super::AccessorExt;
+use super::{AccessorExt, run_blocking};
 use crate::pumpkin::plugin::item_stack::HostItemStackWithStore;
 
 use crate::pumpkin::plugin::attributes::{
@@ -222,8 +222,18 @@ impl HostItemStackWithStore<PluginHostState> for HasSelf<PluginHostState> {
         amount: i32,
     ) -> wasmtime::Result<bool> {
         let stack = accessor.get_res(&res)?;
-        let mut stack = stack.lock().await;
-        Ok(stack.damage_item(amount) == pumpkin_data::item_stack::DamageResult::Broken)
+        // The stack stays unlocked while the damage runs, so a handler can read it. The write-back
+        // overwrites a change that a handler made to this stack in the meantime.
+        let mut copy = stack.lock().await.clone();
+        // The unbreaking read of `damage_item` fires `GetEnchantmentLevelEvent`: a handler of
+        // this plugin must run while this call waits, and may read the stack.
+        let (result, copy) = run_blocking(accessor, move || {
+            let result = copy.damage_item(amount);
+            (result, copy)
+        })
+        .await?;
+        *stack.lock().await = copy;
+        Ok(result == pumpkin_data::item_stack::DamageResult::Broken)
     }
 
     async fn get_max_damage(

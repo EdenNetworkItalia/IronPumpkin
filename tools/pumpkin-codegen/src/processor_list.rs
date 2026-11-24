@@ -223,14 +223,14 @@ fn block_ident(name: &str) -> syn::Ident {
     format_ident!("{}", clean.to_uppercase().replace([':', '-', '.'], "_"))
 }
 
-pub(crate) fn prop_tokens(key: &str, value: &str) -> TokenStream {
+pub(crate) fn prop_tokens(krate: &TokenStream, key: &str, value: &str) -> TokenStream {
     let key_ident = format_ident!("{}", key.to_pascal_case());
     if value == "true" || value == "false" {
         let b = value == "true";
-        return quote!(crate::block_properties::Property::#key_ident(#b));
+        return quote!(#krate::block_properties::Property::#key_ident(#b));
     }
     if let Ok(n) = value.parse::<u8>() {
-        return quote!(crate::block_properties::Property::#key_ident(#n));
+        return quote!(#krate::block_properties::Property::#key_ident(#n));
     }
     let val_ident = format_ident!("{}", value.to_pascal_case());
     let (prop_variant, enum_ty) = match (key, value) {
@@ -265,15 +265,15 @@ pub(crate) fn prop_tokens(key: &str, value: &str) -> TokenStream {
         ("type", "normal" | "sticky") => ("PistonType", "PistonType"),
         ("type", _) => ("SlabType", "SlabType"),
         _ => {
-            return quote!(crate::block_properties::Property::#key_ident(
-                crate::block_properties::#key_ident::#val_ident
+            return quote!(#krate::block_properties::Property::#key_ident(
+                #krate::block_properties::#key_ident::#val_ident
             ));
         }
     };
     let var_ident = format_ident!("{prop_variant}");
     let ty_ident = format_ident!("{enum_ty}");
-    quote!(crate::block_properties::Property::#var_ident(
-        crate::block_properties::#ty_ident::#val_ident
+    quote!(#krate::block_properties::Property::#var_ident(
+        #krate::block_properties::#ty_ident::#val_ident
     ))
 }
 
@@ -286,12 +286,12 @@ fn tag_ident(tag: &str) -> syn::Ident {
     )
 }
 
-fn rule_test_to_tokens(rule_test: &RawRuleTest) -> TokenStream {
+fn rule_test_to_tokens(krate: &TokenStream, rule_test: &RawRuleTest) -> TokenStream {
     match rule_test {
         RawRuleTest::AlwaysTrue => quote!(StaticRuleTest::AlwaysTrue),
         RawRuleTest::BlockMatch { block } => {
             let ident = block_ident(block);
-            quote!(StaticRuleTest::BlockMatch(crate::Block::#ident.id))
+            quote!(StaticRuleTest::BlockMatch(#krate::Block::#ident.id))
         }
         RawRuleTest::BlockStateMatch { block, block_state } => {
             if let Some(state) = block_state {
@@ -299,15 +299,15 @@ fn rule_test_to_tokens(rule_test: &RawRuleTest) -> TokenStream {
                 let props: Vec<TokenStream> = state
                     .properties
                     .iter()
-                    .map(|(k, v)| prop_tokens(k, v))
+                    .map(|(k, v)| prop_tokens(krate, k, v))
                     .collect();
                 quote!(StaticRuleTest::BlockStateMatch {
-                    block_id: crate::Block::#ident.id,
+                    block_id: #krate::Block::#ident.id,
                     properties: &[#(#props),*],
                 })
             } else if let Some(b) = block {
                 let ident = block_ident(b);
-                quote!(StaticRuleTest::BlockMatch(crate::Block::#ident.id))
+                quote!(StaticRuleTest::BlockMatch(#krate::Block::#ident.id))
             } else {
                 quote!(StaticRuleTest::AlwaysTrue)
             }
@@ -315,7 +315,7 @@ fn rule_test_to_tokens(rule_test: &RawRuleTest) -> TokenStream {
         RawRuleTest::RandomBlockMatch { block, probability } => {
             let ident = block_ident(block);
             quote!(StaticRuleTest::RandomBlockMatch {
-                block: crate::Block::#ident.id,
+                block: #krate::Block::#ident.id,
                 probability: #probability,
             })
         }
@@ -329,17 +329,17 @@ fn rule_test_to_tokens(rule_test: &RawRuleTest) -> TokenStream {
                 let props: Vec<TokenStream> = state
                     .properties
                     .iter()
-                    .map(|(k, v)| prop_tokens(k, v))
+                    .map(|(k, v)| prop_tokens(krate, k, v))
                     .collect();
                 quote!(StaticRuleTest::RandomBlockStateMatch {
-                    block_id: crate::Block::#ident.id,
+                    block_id: #krate::Block::#ident.id,
                     properties: &[#(#props),*],
                     probability: #probability,
                 })
             } else if let Some(b) = block {
                 let ident = block_ident(b);
                 quote!(StaticRuleTest::RandomBlockMatch {
-                    block: crate::Block::#ident.id,
+                    block: #krate::Block::#ident.id,
                     probability: #probability,
                 })
             } else {
@@ -348,7 +348,7 @@ fn rule_test_to_tokens(rule_test: &RawRuleTest) -> TokenStream {
         }
         RawRuleTest::TagMatch { tag } => {
             let ident = tag_ident(tag);
-            quote!(StaticRuleTest::TagMatch(&crate::tag::Block::#ident))
+            quote!(StaticRuleTest::TagMatch(&#krate::tag::Block::#ident))
         }
     }
 }
@@ -393,20 +393,22 @@ fn pos_rule_test_to_tokens(pos: Option<&RawPosRuleTest>) -> TokenStream {
     }
 }
 
-fn output_state_to_tokens(state: &RawOutputState) -> TokenStream {
+fn output_state_to_tokens(krate: &TokenStream, state: &RawOutputState) -> TokenStream {
     let name = state.name();
     let ident = block_ident(name);
     let props = state.properties();
     if let Some(props_map) = props {
-        let props_tokens: Vec<TokenStream> =
-            props_map.iter().map(|(k, v)| prop_tokens(k, v)).collect();
+        let props_tokens: Vec<TokenStream> = props_map
+            .iter()
+            .map(|(k, v)| prop_tokens(krate, k, v))
+            .collect();
         quote!(StaticOutputState {
-            default_state: crate::Block::#ident.default_state,
+            default_state: #krate::Block::#ident.default_state,
             properties: &[#(#props_tokens),*],
         })
     } else {
         quote!(StaticOutputState {
-            default_state: crate::Block::#ident.default_state,
+            default_state: #krate::Block::#ident.default_state,
             properties: &[],
         })
     }
@@ -428,19 +430,19 @@ fn modifier_to_tokens(modifier: Option<&RawBlockEntityModifier>) -> TokenStream 
     }
 }
 
-fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
+fn processor_to_tokens(krate: &TokenStream, proc: &RawProcessor) -> TokenStream {
     match proc {
         RawProcessor::Rule { rules } => {
             let rule_tokens: Vec<TokenStream> = rules
                 .iter()
                 .map(|r| {
                     let pos = pos_rule_test_to_tokens(r.position_predicate.as_ref());
-                    let input = rule_test_to_tokens(&r.input_predicate);
-                    let loc = r
-                        .location_predicate
-                        .as_ref()
-                        .map_or_else(|| quote!(StaticRuleTest::AlwaysTrue), rule_test_to_tokens);
-                    let output = output_state_to_tokens(&r.output_state);
+                    let input = rule_test_to_tokens(krate, &r.input_predicate);
+                    let loc = r.location_predicate.as_ref().map_or_else(
+                        || quote!(StaticRuleTest::AlwaysTrue),
+                        |test| rule_test_to_tokens(krate, test),
+                    );
+                    let output = output_state_to_tokens(krate, &r.output_state);
                     let modifier = modifier_to_tokens(r.block_entity_modifier.as_ref());
                     quote!(StaticProcessorRule {
                         position_predicate: #pos,
@@ -461,18 +463,18 @@ fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
                 None => quote!(None),
                 Some(RawRottableBlocks::Tag(tag)) => {
                     let ident = tag_ident(tag);
-                    quote!(Some(StaticRottableBlocks::Tag(&crate::tag::Block::#ident)))
+                    quote!(Some(StaticRottableBlocks::Tag(&#krate::tag::Block::#ident)))
                 }
                 Some(RawRottableBlocks::Single(block)) => {
                     let ident = block_ident(block);
-                    quote!(Some(StaticRottableBlocks::Block(crate::Block::#ident.id)))
+                    quote!(Some(StaticRottableBlocks::Block(#krate::Block::#ident.id)))
                 }
                 Some(RawRottableBlocks::List(list)) => {
                     let idents: Vec<TokenStream> = list
                         .iter()
                         .map(|b| {
                             let ident = block_ident(b);
-                            quote!(crate::Block::#ident.id)
+                            quote!(#krate::Block::#ident.id)
                         })
                         .collect();
                     quote!(Some(StaticRottableBlocks::List(&[#(#idents),*])))
@@ -493,7 +495,7 @@ fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
                     RawBlockStateOrName::Name(name) => {
                         let ident = block_ident(name);
                         quote!(StaticIgnoredBlock {
-                            block_id: crate::Block::#ident.id,
+                            block_id: #krate::Block::#ident.id,
                             properties: None,
                         })
                     }
@@ -501,17 +503,17 @@ fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
                         let ident = block_ident(&state.name);
                         if state.properties.is_empty() {
                             quote!(StaticIgnoredBlock {
-                                block_id: crate::Block::#ident.id,
+                                block_id: #krate::Block::#ident.id,
                                 properties: None,
                             })
                         } else {
                             let props: Vec<TokenStream> = state
                                 .properties
                                 .iter()
-                                .map(|(k, v)| prop_tokens(k, v))
+                                .map(|(k, v)| prop_tokens(krate, k, v))
                                 .collect();
                             quote!(StaticIgnoredBlock {
-                                block_id: crate::Block::#ident.id,
+                                block_id: #krate::Block::#ident.id,
                                 properties: Some(&[#(#props),*]),
                             })
                         }
@@ -536,14 +538,14 @@ fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
         }
         RawProcessor::ProtectedBlocks { value } => {
             let ident = tag_ident(value);
-            quote!(StaticProcessor::ProtectedBlocks(&crate::tag::Block::#ident))
+            quote!(StaticProcessor::ProtectedBlocks(&#krate::tag::Block::#ident))
         }
         RawProcessor::BlackstoneReplace => quote!(StaticProcessor::BlackstoneReplace),
         RawProcessor::JigsawReplacement => quote!(StaticProcessor::JigsawReplacement),
         RawProcessor::LavaSubmergedBlock => quote!(StaticProcessor::LavaSubmergedBlock),
         RawProcessor::Capped { limit, delegate } => {
             let limit_val = limit.as_i32();
-            let delegate_tok = processor_to_tokens(delegate);
+            let delegate_tok = processor_to_tokens(krate, delegate);
             quote!(StaticProcessor::Capped {
                 limit: #limit_val,
                 delegate: &#delegate_tok,
@@ -551,6 +553,26 @@ fn processor_to_tokens(proc: &RawProcessor) -> TokenStream {
         }
         RawProcessor::Nop => quote!(StaticProcessor::Nop),
     }
+}
+
+/// Converts an inline processor list of a feature into a `pumpkin_data` `StaticProcessor` slice
+/// for generated code outside `pumpkin-data`. An invalid list fails the codegen.
+pub(crate) fn inline_processor_list_tokens(value: &serde_json::Value) -> TokenStream {
+    let wrapper: RawProcessorListWrapper = serde_json::from_value(value.clone())
+        .unwrap_or_else(|e| panic!("Invalid inline processor list {value}: {e}"));
+    let (RawProcessorListWrapper::Object { processors }
+    | RawProcessorListWrapper::Array(processors)) = wrapper;
+    let krate = quote!(pumpkin_data);
+    let tokens: Vec<TokenStream> = processors
+        .iter()
+        .map(|proc| processor_to_tokens(&krate, proc))
+        .collect();
+    quote! {{
+        #[allow(clippy::wildcard_imports)]
+        use pumpkin_data::processor_list::*;
+        const PROCESSORS: &[StaticProcessor] = &[#(#tokens),*];
+        PROCESSORS
+    }}
 }
 
 pub fn build() -> TokenStream {
@@ -590,8 +612,10 @@ pub fn build() -> TokenStream {
         let full_id = format!("minecraft:{stem}");
         let bare_id = stem.to_string();
 
-        let proc_tokens: Vec<TokenStream> =
-            raw_processors.iter().map(processor_to_tokens).collect();
+        let proc_tokens: Vec<TokenStream> = raw_processors
+            .iter()
+            .map(|proc| processor_to_tokens(&quote!(crate), proc))
+            .collect();
 
         constants.push(quote! {
             pub const #const_ident: &'static [StaticProcessor] = &[#(#proc_tokens),*];

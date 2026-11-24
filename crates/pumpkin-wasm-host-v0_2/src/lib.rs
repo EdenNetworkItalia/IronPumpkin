@@ -71,9 +71,21 @@ pub(crate) async fn run_blocking<R: Send + 'static>(
     accessor: &Accessor<PluginHostState, HasSelf<PluginHostState>>,
     operation: impl FnOnce() -> R + Send + 'static,
 ) -> wasmtime::Result<R> {
+    let item_hooks_off = accessor.with(|mut host| {
+        host.get()
+            .item_hook_handlers
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    });
     active_plugin(accessor)?
         .store
-        .spawn_blocking_in_active_context(operation)
+        .spawn_blocking_in_active_context(move || {
+            if item_hooks_off {
+                pumpkin_core::plugin::without_item_hooks(operation)
+            } else {
+                operation()
+            }
+        })
         .await
 }
 

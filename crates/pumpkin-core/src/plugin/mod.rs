@@ -31,6 +31,7 @@ pub(crate) mod entity_events;
 pub mod guarded_call;
 pub mod guest_call;
 pub(crate) mod interact_events;
+pub(crate) mod item_events;
 pub(crate) mod level_events;
 pub(crate) mod living_events;
 pub mod loader;
@@ -41,6 +42,7 @@ pub mod network_events;
 /// host features.
 pub mod permissions;
 pub(crate) mod player_events;
+pub use item_events::{is_hooked_event, without_item_hooks};
 pub use player_events::{Deferral, defer_if_active};
 pub mod server_events;
 pub mod startup;

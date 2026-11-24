@@ -91,6 +91,7 @@ pub(crate) fn insert_handler(
     event_name: &'static str,
     handler: &Arc<dyn DynEventHandler>,
 ) {
+    super::item_events::note_registration(event_name);
     handlers.rcu(|handlers| {
         let mut new_handlers = (**handlers).clone();
         let list = new_handlers.entry(event_name).or_default();

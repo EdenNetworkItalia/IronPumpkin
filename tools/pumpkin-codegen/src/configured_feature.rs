@@ -114,6 +114,7 @@ pub fn build() -> TokenStream {
                 HasSturdyFacePredicate, InsideWorldBoundsBlockPredicate,
                 MatchingBlockTagPredicate, MatchingBlocksBlockPredicate, MatchingBlocksWrapper,
                 MatchingFluidsBlockPredicate, NotBlockPredicate, OffsetBlocksBlockPredicate,
+                VolumeMatchBlockPredicate,
                 ReplaceableBlockPredicate, SolidBlockPredicate, WouldSurviveBlockPredicate,
                 HeightRangeBlockPredicate,
             };
@@ -1006,7 +1007,17 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             quote! { ConfiguredFeature::DripstoneCluster(crate::generation::feature::features::drip_stone::cluster::DripstoneClusterFeature {}) }
         }
         "minecraft:sequence" => {
-            quote! { ConfiguredFeature::NoOp }
+            let features: Vec<TokenStream> = config["features"]
+                .as_array()
+                .unwrap_or_else(|| panic!("sequence feature without a features list: {config}"))
+                .iter()
+                .map(value_to_placed_feature_wrapper)
+                .collect();
+            quote! {
+                ConfiguredFeature::Sequence(crate::generation::feature::features::sequence::SequenceFeature {
+                    features: vec![#(#features),*],
+                })
+            }
         }
         "minecraft:stepped_column_cluster" => {
             let block = value_to_block_state_provider(&config["block"]);
@@ -1048,8 +1059,6 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             let spread_attempts = config["spread_attempts"].as_u64().unwrap() as i32;
             let growth_rounds = config["growth_rounds"].as_u64().unwrap() as i32;
             let spread_rounds = config["spread_rounds"].as_u64().unwrap() as i32;
-            let extra_rare_growths = value_to_int_provider(&config["extra_rare_growths"]);
-            let catalyst_chance = config["catalyst_chance"].as_f64().unwrap() as f32;
             quote! {
                 ConfiguredFeature::SculkPatch(crate::generation::feature::features::sculk_patch::SculkPatchFeature {
                     charge_count: #charge_count,
@@ -1057,8 +1066,6 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
                     spread_attempts: #spread_attempts,
                     growth_rounds: #growth_rounds,
                     spread_rounds: #spread_rounds,
-                    extra_rare_growths: #extra_rare_growths,
-                    catalyst_chance: #catalyst_chance,
                 })
             }
         }
@@ -1170,13 +1177,80 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
                 })
             }
         }
-        "minecraft:template" => {
-            quote! { ConfiguredFeature::NoOp }
-        }
+        "minecraft:template" => value_to_template_feature(config),
         other => {
             let msg = format!("unknown configured feature type: {other}");
             quote! { compile_error!(#msg) }
         }
+    }
+}
+
+/// Converts the configuration of vanilla `TemplateFeature` into a `ConfiguredFeature::Template`.
+fn value_to_template_feature(config: &Value) -> TokenStream {
+    const ROTATIONS: [&str; 4] = ["none", "clockwise_90", "180", "counterclockwise_90"];
+    let rotation_tokens = |name: &str| match name {
+        "none" => quote! { pumpkin_data::Rotation::None },
+        "clockwise_90" => quote! { pumpkin_data::Rotation::Clockwise90 },
+        "180" => quote! { pumpkin_data::Rotation::Rotate180 },
+        "counterclockwise_90" => quote! { pumpkin_data::Rotation::CounterClockwise90 },
+        other => panic!("unknown template rotation: {other}"),
+    };
+    let templates: Vec<TokenStream> = config["templates"]
+        .as_array()
+        .unwrap_or_else(|| panic!("template feature without a templates list: {config}"))
+        .iter()
+        .map(|weighted| {
+            let weight = weighted["weight"]
+                .as_i64()
+                .and_then(|w| i32::try_from(w).ok())
+                // Vanilla `Weighted.CODEC` takes any non-negative weight. A weight of 0 is never
+                // picked.
+                .filter(|w| *w >= 0)
+                .unwrap_or_else(|| panic!("invalid template weight: {weighted}"));
+            let data = &weighted["data"];
+            let id = data["id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("template entry without an id: {weighted}"));
+            let rotations: Vec<TokenStream> =
+                match &data["rotations"] {
+                    Value::Null => ROTATIONS.iter().map(|name| rotation_tokens(name)).collect(),
+                    Value::Array(names) => names
+                        .iter()
+                        .map(|name| {
+                            rotation_tokens(name.as_str().unwrap_or_else(|| {
+                                panic!("template rotation is not a string: {name}")
+                            }))
+                        })
+                        .collect(),
+                    other => panic!("invalid template rotations: {other}"),
+                };
+            quote! {
+                TemplateEntry {
+                    id: #id,
+                    rotations: &[#(#rotations),*],
+                    weight: #weight,
+                }
+            }
+        })
+        .collect();
+    let processors = match &config["processors"] {
+        Value::Null => quote! { TemplateProcessors::None },
+        Value::String(name) => quote! { TemplateProcessors::Named(#name) },
+        inline => {
+            let list = crate::processor_list::inline_processor_list_tokens(inline);
+            quote! { TemplateProcessors::Inline(#list) }
+        }
+    };
+    quote! {
+        ConfiguredFeature::Template({
+            use crate::generation::feature::features::template::{
+                TemplateEntry, TemplateFeature, TemplateProcessors,
+            };
+            TemplateFeature {
+                templates: &[#(#templates),*],
+                processors: #processors,
+            }
+        })
     }
 }
 
@@ -1957,7 +2031,10 @@ fn value_to_inline_placed_feature(v: &Value) -> TokenStream {
 /// – `v` – a JSON string (named reference) or object (inline placed feature).
 ///
 /// # Returns
-/// `PlacedFeatureWrapper::Named` for a string value or `PlacedFeatureWrapper::Direct` for an inline object; defaults to `PlacedFeatureWrapper::Named(pumpkin_data::placed_feature::PlacedFeature::Acacia)` for other types.
+/// `PlacedFeatureWrapper::Named` for a string value or `PlacedFeatureWrapper::Direct` for an inline object.
+///
+/// # Panics
+/// For any other JSON type, so a malformed reference fails the codegen.
 fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -1970,9 +2047,7 @@ fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
             let pf = value_to_inline_placed_feature(v);
             quote! { PlacedFeatureWrapper::Direct(#pf) }
         }
-        _ => {
-            quote! { PlacedFeatureWrapper::Named(pumpkin_data::placed_feature::PlacedFeature::Acacia) }
-        }
+        other => panic!("placed feature reference is neither a name nor an object: {other}"),
     }
 }
 
@@ -1982,7 +2057,10 @@ fn value_to_placed_feature_wrapper(v: &Value) -> TokenStream {
 /// – `v` – a JSON string (named reference) or object (inline configured feature).
 ///
 /// # Returns
-/// `Feature::Named` for a string value or `Feature::Inlined` for an object; defaults to `Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::NoOp)` for other types.
+/// `Feature::Named` for a string value or `Feature::Inlined` for an object.
+///
+/// # Panics
+/// For any other JSON type, so a malformed reference fails the codegen.
 fn value_to_feature_ref(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -1994,6 +2072,34 @@ fn value_to_feature_ref(v: &Value) -> TokenStream {
             let cf = value_to_configured_feature(v);
             quote! { Feature::Inlined(Box::new(#cf)) }
         }
-        _ => quote! { Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::NoOp) },
+        other => panic!("feature reference is neither a name nor an object: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::value_to_template_feature;
+
+    #[test]
+    fn template_accepts_weight_zero() {
+        // Vanilla `Weighted.CODEC` reads the weight as `NON_NEGATIVE_INT`.
+        let config = serde_json::json!({
+            "templates": [
+                { "weight": 0, "data": { "id": "minecraft:a" } },
+                { "weight": 2, "data": { "id": "minecraft:b", "rotations": ["none"] } }
+            ]
+        });
+        let tokens = value_to_template_feature(&config).to_string();
+        assert!(tokens.contains("weight : 0i32"), "{tokens}");
+        assert!(tokens.contains("weight : 2i32"), "{tokens}");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid template weight")]
+    fn template_rejects_negative_weight() {
+        let config = serde_json::json!({
+            "templates": [{ "weight": -1, "data": { "id": "minecraft:a" } }]
+        });
+        let _ = value_to_template_feature(&config);
     }
 }

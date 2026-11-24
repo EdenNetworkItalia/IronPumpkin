@@ -129,7 +129,7 @@ impl ScreenHandler for BrewingScreenHandler {
         self.default_on_closed(player);
     }
 
-    fn quick_move(&mut self, _player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
+    fn quick_move(&mut self, player: &dyn InventoryPlayer, slot_index: i32) -> ItemStack {
         let mut clicked = ItemStack::EMPTY.clone();
         let slot = self.get_behaviour().slots.get(slot_index as usize).cloned();
 
@@ -192,6 +192,9 @@ impl ScreenHandler for BrewingScreenHandler {
             if stack.item_count == clicked.item_count {
                 return ItemStack::EMPTY.clone();
             }
+
+            // Vanilla `BrewingStandMenu.quickMoveStack` calls `slot.onTake` with the clicked stack.
+            slot.on_take_item(player, &clicked);
         }
 
         clicked
@@ -264,7 +267,7 @@ impl Slot for BrewingPotionSlot {
 
     fn on_take_item(&self, player: &dyn InventoryPlayer, stack: &ItemStack) {
         if is_potion_item(stack.item) && stack.item.id != Item::GLASS_BOTTLE.id {
-            player.on_brewed_potion();
+            player.on_brewed_potion(stack);
         }
     }
 }

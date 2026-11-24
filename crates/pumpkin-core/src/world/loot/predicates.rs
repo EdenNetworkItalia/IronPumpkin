@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use pumpkin_data::{
     data_component::DataComponent,
     data_component_impl::{
-        DataComponentImpl, EnchantmentsImpl, EquipmentSlot,
+        DataComponentImpl, EquipmentSlot,
         basic::{CustomDataImpl, DamageImpl},
         combat::StoredEnchantmentsImpl,
         read_data,
@@ -16,7 +16,8 @@ use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::RandomImpl;
 use serde_json::Value;
 
-use super::{EntityBase, LootContextParameters, LootEntityTarget, Taggable, World, Xoroshiro};
+use super::{EntityBase, LootContextParameters, LootEntityTarget, Taggable, World};
+use pumpkin_util::random::RandomGenerator;
 
 pub(super) fn matches_entity(
     target: LootEntityTarget,
@@ -656,7 +657,7 @@ fn match_enchantments(tool: &ItemStack, requirements: &Value, stored: bool) -> b
             .map(|data| data.enchantment.to_vec())
             .unwrap_or_default()
     } else {
-        tool.get_data_component::<EnchantmentsImpl>()
+        tool.get_all_enchantments()
             .map(|data| data.enchantment.to_vec())
             .unwrap_or_default()
     };
@@ -960,7 +961,7 @@ pub(super) fn matches_value(
     value: LootNumberProvider,
     range: &Value,
     _params: &LootContextParameters<'_>,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> bool {
     let num = match value {
         LootNumberProvider::Constant(c) => c as f32,
