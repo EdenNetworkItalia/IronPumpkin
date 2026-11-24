@@ -26,6 +26,12 @@ This repository contains data files, protocol mappings, and game assets necessar
 * **Standard**: Fabric & NeoForge Conventional / Common Tags specification.
 * **License**: Apache-2.0 / MIT.
 
+### 4a. NeoForge Tags (`neoforge:`)
+* **Files**: `assets/conventional_tags/data/neoforge/tags/` and `assets/conventional_tags/data/c/tags/worldgen/biome/primary_wood_type/poplar.json`.
+* **Copyright**: © NeoForged project and contributors (https://neoforged.net).
+* **License**: GNU Lesser General Public License v2.1 (LGPL-2.1), the license of NeoForge.
+* **Source**: The generated tag files under `src/generated/resources/data/` of NeoForge commit `1af972db9cd01096ead9fd6597bd1909bae5442d` (branch `26.3.x`). The tags `needs_wood_tool`, `needs_gold_tool`, `ignores/pause_command` and `ignores/advance_time_rule` have no file in the main resources of NeoForge. They are empty here.
+
 ---
 
 ### 5. Pumpkin Source Code & Plugin API

@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 492 | 492 | 0 | 0 | 0 | 405 | 95 |
-| Inventory, planned | 455 | 450 | 3 | 2 | 0 | 298 | 17 |
+| Inventory, supported | 498 | 498 | 0 | 0 | 0 | 410 | 97 |
+| Inventory, planned | 449 | 444 | 3 | 2 | 0 | 293 | 15 |
 | Inventory, not supported | 224 | 0 | 0 | 1 | 223 | 100 | 14 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -1174,15 +1174,15 @@ How to read it:
 | `transfer.fluid` | 130 | Packages outside the families above | `ironpumpkin_mods::transfer::FluidResource`, `FluidStacksResourceHandler` | planned |
 | `fluids` | 122 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `transfer.energy` | 78 | Packages outside the families above | `ironpumpkin_mods::transfer::EnergyHandler`, `SimpleEnergyHandler` | planned |
-| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids); 5 of 10 nested classes complete | planned |
+| `Tags` | 77 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids); all 10 nested classes complete | supported |
 | `server` | 59 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
-| `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags.Items` | 51 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `ItemAbility` | 45 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.crafting` | 43 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `CommonHooks` | 42 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `ItemAbilities` | 41 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `NeoForgeMod` | 30 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
-| `Tags.Blocks` | 30 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags.Blocks` | 30 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `fluids.crafting` | 28 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `SoundAction` | 23 | Types in the root `common` package | `types` doc (other packages), not supported | planned |
 | `common.world` | 22 | Packages outside the families above | `types` doc (other packages), not supported | planned |
@@ -1194,7 +1194,7 @@ How to read it:
 | `common.world.chunk` | 13 | Packages outside the families above | `types` doc (other packages), not supported | planned |
 | `Tags.Fluids` | 12 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `IShearable` | 11 | Types in the root `common` package | gap: shear hook for mod blocks and entities; M5 | planned |
-| `Tags.DamageTypes` | 11 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags.DamageTypes` | 11 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `UsernameCache` | 10 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `server.command` | 9 | Packages outside the families above | `types` doc (other packages), not supported | not supported |
 | `resource` | 8 | Packages outside the families above | `lifecycle.add-server-reload-listeners-event`, `callbacks.on-server-reload` | planned |
@@ -1202,7 +1202,7 @@ How to read it:
 | `server.permission` | 7 | Packages outside the families above | `pumpkin:plugin/player.has-permission` (`PermissionAPI.getPermission`) | supported |
 | `server.permission.nodes` | 7 | Packages outside the families above | `pumpkin:plugin/permission.permission` via `event-bus` `permission-gather-event-nodes` | planned |
 | `PercentageAttribute` | 7 | Types in the root `common` package | `entity_attributes::AttributeBuilder::ranged` | supported |
-| `Tags.Biomes` | 4 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags.Biomes` | 4 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `BooleanAttribute` | 3 | Types in the root `common` package | `entity_attributes::AttributeBuilder::boolean` | supported |
 | `CreativeModeTabRegistry` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
 | `TranslatableEnum` | 3 | Types in the root `common` package | `types` doc (other packages), not supported | not supported |
@@ -1252,7 +1252,7 @@ How to read it:
 | `Tags.Enchantments` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `Tags.Potions` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 | `Tags.Structures` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
-| `Tags.WorldClocks` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | planned |
+| `Tags.WorldClocks` | 0 | Types in the root `common` package | `registry::tag_entries`, `registry::is_in_tag` (tag ids) | supported |
 
 ## Modpack coverage
 
