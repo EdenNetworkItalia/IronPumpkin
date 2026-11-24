@@ -34,12 +34,12 @@ use pumpkin_core::{
     },
     plugin::{
         BoxFuture, EventHandler, EventPriority, ParentEventHandler, Payload,
+        data_maps::{DataMapHost, set_host},
         player::PermissionsChangedEvent,
         server::{
             AddServerReloadListenersEvent, CommandEvent, LootTableLoadEvent, OnDatapackSyncEvent,
             ReloadListener, ReloadListenerError, TagsUpdatedEvent, TagsUpdatedEventServerDataLoad,
         },
-        data_maps::{DataMapHost, set_host},
         server_events,
     },
     server::{Server, recipe::RecipeManager},
@@ -47,9 +47,9 @@ use pumpkin_core::{
 };
 use pumpkin_data::game_rules::GameRule;
 use pumpkin_protocol::java::neoforge::KnownRegistryDataMapsPayload;
+use pumpkin_util::PermissionLvl;
 use pumpkin_util::identifier::Identifier;
 use std::collections::{BTreeMap, BTreeSet};
-use pumpkin_util::PermissionLvl;
 
 type Log = Arc<Mutex<Vec<String>>>;
 
@@ -807,10 +807,15 @@ fn a_management_op_sends_the_permission_packet() {
         bytes
     };
     let contains = |haystack: &[u8], needle: &[u8]| {
-        haystack.windows(needle.len()).any(|window| window == needle)
+        haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
     };
 
-    rpc("operators/add", serde_json::json!({"add": [operator(&player)]}));
+    rpc(
+        "operators/add",
+        serde_json::json!({"add": [operator(&player)]}),
+    );
     assert!(contains(&read_available(&mut peer), &status(4)));
 
     rpc(
@@ -850,4 +855,29 @@ fn a_management_op_event_has_the_operator_level_of_the_server() {
         )]
     );
     assert_eq!(op_level(server, &player), Some(PermissionLvl::Two));
+}
+
+/// `ServerCommandEvent` of a console line fires only when a handler listens, and a handler can
+/// replace or cancel the command.
+#[test]
+fn server_command_event_replaces_and_cancels_a_console_command() {
+    use pumpkin_core::plugin::server::ServerCommandEvent;
+
+    let _serial = support::serial();
+    let server = support::server();
+    let run = |command: &str| {
+        support::RUNTIME.block_on(server_events::console_command(server, command.to_owned()))
+    };
+    assert_eq!(run("old").as_deref(), Some("old"));
+    on::<ServerCommandEvent, _>(|event| {
+        if event.command == "old" {
+            event.command = "new".to_owned();
+        } else if event.command == "stop" {
+            event.cancelled = true;
+        }
+    });
+
+    assert_eq!(run("old").as_deref(), Some("new"));
+    assert_eq!(run("stop"), None);
+    assert_eq!(run("other").as_deref(), Some("other"));
 }

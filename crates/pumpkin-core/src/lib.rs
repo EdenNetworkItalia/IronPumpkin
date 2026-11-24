@@ -21,7 +21,6 @@ use crate::net::java::pending::PendingConnection;
 use crate::net::{ClientPlatform, DisconnectReason, PacketHandlerResult, PacketRateLimiter};
 use crate::net::{lan_broadcast::LANBroadcast, management::ManagementServer, query};
 use crate::plugin::loader::PluginLoader;
-use crate::plugin::server::server_command::ServerCommandEvent;
 use crate::server::{Server, ticker::Ticker};
 use plugin::server::server_lifecycle::{
     GameShuttingDownEvent, ServerStartingEvent, ServerStoppedEvent, ServerStoppingEvent,
@@ -860,12 +859,9 @@ fn setup_stdin_console(server: &Arc<Server>) {
             let Some(command) = command else {
                 break;
             };
-            let mut event = ServerCommandEvent::new(command.clone());
-            server_clone
-                .plugin_manager
-                .fire(&server_clone, &mut event)
-                .await;
-            if !event.cancelled {
+            if let Some(command) =
+                crate::plugin::server_events::console_command(&server_clone, command).await
+            {
                 server_clone.command_dispatcher.load().handle_command(
                     &command::CommandSender::Console.into_source(&server_clone),
                     command.as_str(),
@@ -931,9 +927,9 @@ fn setup_console(mut rl: Editor<PumpkinCommandCompleter, FileHistory>, server: A
             };
 
             if let Some(line) = result {
-                let mut event = ServerCommandEvent::new(line.clone());
-                server.plugin_manager.fire(&server, &mut event).await;
-                if !event.cancelled {
+                if let Some(line) =
+                    crate::plugin::server_events::console_command(&server, line).await
+                {
                     server.command_dispatcher.load().handle_command(
                         &command::CommandSender::Console.into_source(&server),
                         &line,

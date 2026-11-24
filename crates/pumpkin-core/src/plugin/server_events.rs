@@ -19,7 +19,7 @@ use crate::plugin::api::events::{
     player::{PermissionsChangedEvent, player_command_preprocess::PlayerCommandPreprocessEvent},
     server::{
         AddServerReloadListenersEvent, CommandEvent, LootTableLoadEvent, OnDatapackSyncEvent,
-        TagsUpdatedEventServerDataLoad,
+        ServerCommandEvent, TagsUpdatedEventServerDataLoad,
     },
 };
 use crate::server::Server;
@@ -189,4 +189,18 @@ pub fn datapack_sync(server: &Arc<Server>, player: Option<&Arc<Player>>) {
     server
         .plugin_manager
         .fire_blocking_with(server, || OnDatapackSyncEvent::new(player.cloned()));
+}
+
+/// Fires [`ServerCommandEvent`] for a console line before the dispatcher. Returns the command to
+/// run, which a handler can replace, or `None` when a handler cancelled it.
+pub async fn console_command(server: &Arc<Server>, command: String) -> Option<String> {
+    let event = server
+        .plugin_manager
+        .fire_with(server, || ServerCommandEvent::new(command.clone()))
+        .await;
+    match event {
+        None => Some(command),
+        Some(event) if event.cancelled => None,
+        Some(event) => Some(event.command),
+    }
 }
