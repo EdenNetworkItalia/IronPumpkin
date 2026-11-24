@@ -17,50 +17,52 @@ fn is_closer_than(player: &Player, position: &Vector3<f64>, range: f64) -> bool 
 }
 
 impl World {
-    /// The players of this world, except `excluded`, who are closer than `range` to `position`.
+    /// Calls `f` for each player of this world, except `excluded`, who is closer than `range` to
+    /// `position`.
     ///
     /// `PlayerList.broadcast` picks the players with the same test: the dimension of the world,
-    /// another player than the excluded one, and a distance below the range.
-    #[must_use]
-    pub fn players_near(
+    /// another player than the excluded one, and a distance below the range. `f` runs on a
+    /// snapshot of the player list: it holds no lock of the world.
+    pub fn for_each_player_near(
         &self,
         excluded: Option<&Player>,
         position: &Vector3<f64>,
         range: f64,
-    ) -> Vec<Arc<Player>> {
-        self.players
-            .load()
-            .iter()
-            .filter(|player| {
-                !excluded.is_some_and(|excluded| std::ptr::eq(excluded, player.as_ref()))
-                    && is_closer_than(player, position, range)
-            })
-            .cloned()
-            .collect()
+        mut f: impl FnMut(&Arc<Player>),
+    ) {
+        for player in self.players.load().iter() {
+            if !excluded.is_some_and(|excluded| std::ptr::eq(excluded, player.as_ref()))
+                && is_closer_than(player, position, range)
+            {
+                f(player);
+            }
+        }
     }
 
-    /// The players whose client holds the chunk at `pos`: the chunk is in their view and the
-    /// server sent it and the client received it.
+    /// Calls `f` for each player whose client holds the chunk at `pos`: the chunk is in their
+    /// view and the server sent it. `f` runs on a snapshot of the player list: it holds no lock
+    /// of the world.
     ///
     /// `ChunkMap.getPlayers(pos, false)`, which tests `isChunkTracked`.
-    #[must_use]
-    pub fn players_tracking_chunk(&self, pos: Vector2<i32>) -> Vec<Arc<Player>> {
-        self.players
-            .load()
-            .iter()
-            .filter(|player| {
-                player
-                    .watched_section
-                    .load()
-                    .is_within_distance(pos.x, pos.y)
-                    && player
-                        .chunk_sender
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner)
-                        .is_chunk_ready(&pos)
-            })
-            .cloned()
-            .collect()
+    pub fn for_each_player_tracking_chunk(
+        &self,
+        pos: Vector2<i32>,
+        mut f: impl FnMut(&Arc<Player>),
+    ) {
+        for player in self.players.load().iter() {
+            if player
+                .watched_section
+                .load()
+                .is_within_distance(pos.x, pos.y)
+                && player
+                    .chunk_sender
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .is_chunk_ready(&pos)
+            {
+                f(player);
+            }
+        }
     }
 
     /// Plays a sound event by name to the players within its range of `position`, like

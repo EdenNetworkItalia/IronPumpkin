@@ -554,11 +554,11 @@ pub fn send_to_players_near(
     channel: &str,
     data: &[u8],
 ) -> usize {
-    send_to_each(
-        &world.players_near(excluded, position, radius),
-        channel,
-        data,
-    )
+    let mut count = 0;
+    world.for_each_player_near(excluded, position, radius, |player| {
+        count += usize::from(send_to_player(player, channel, data).is_ok());
+    });
+    count
 }
 
 /// Sends a payload to the players who track `entity`, the players it is visible to.
@@ -610,7 +610,11 @@ pub fn send_to_players_tracking_chunk(
     channel: &str,
     data: &[u8],
 ) -> usize {
-    send_to_each(&world.players_tracking_chunk(chunk_pos), channel, data)
+    let mut count = 0;
+    world.for_each_player_tracking_chunk(chunk_pos, |player| {
+        count += usize::from(send_to_player(player, channel, data).is_ok());
+    });
+    count
 }
 
 /// The tracker entry of `entity`. The senders collect its viewers into a list first, so a send
