@@ -26,7 +26,7 @@ pub(super) const VILLAGER_TRADE: &str = "minecraft:villager_trade";
 pub(super) const TRADE_SET: &str = "minecraft:trade_set";
 pub(super) const VILLAGER_TRADE_TAG: &str = "minecraft:tags/villager_trade";
 
-/// The key of a NeoForge load condition list in the root object of a data file.
+/// The key of a `NeoForge` load condition list in the root object of a data file.
 const CONDITIONS_KEY: &str = "neoforge:conditions";
 
 /// The data pack file that one loader reads, for the log line of a skipped file.
