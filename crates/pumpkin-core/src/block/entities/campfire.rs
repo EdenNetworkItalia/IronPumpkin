@@ -116,33 +116,9 @@ impl BlockEntity for CampfireBlockEntity {
             // drops the raw item, for example after a reload removed its recipe.
             let recipe = self.find_recipe(&recipes, stack.item);
 
-            let mut total = *self.cooking_total_times[slot]
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if total <= 0
-                && let Some(recipe) = recipe
-            {
-                total = recipe.cooking_time;
-                // Fired with no campfire lock held: a handler can read the campfire.
-                if let Some(server) = world.server.upgrade() {
-                    let mut event =
-                        crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
-                            self.position,
-                            world.clone(),
-                            stack.clone(),
-                            slot as u8,
-                            total,
-                        );
-                    server.plugin_manager.fire_blocking(&server, &mut event);
-                    if event.cancelled {
-                        continue;
-                    }
-                    total = event.cooking_time;
-                }
-                *self.cooking_total_times[slot]
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = total;
-            }
+            let Some(total) = self.slot_total_time(world, slot, &stack, recipe) else {
+                continue;
+            };
 
             let finished = {
                 let mut progress = self.cooking_times[slot]
@@ -279,6 +255,51 @@ impl CampfireBlockEntity {
             *last = Some(recipe.recipe_id.clone());
         }
         recipe
+    }
+
+    /// The total cooking time of `slot`: the stored time, or the recipe time through
+    /// `CampfireStartEvent` when the slot starts. `None` when a handler cancels the start.
+    fn slot_total_time(
+        &self,
+        world: &Arc<World>,
+        slot: usize,
+        stack: &ItemStack,
+        recipe: Option<&recipe_index::CookingEntry>,
+    ) -> Option<i32> {
+        let stored = *self.cooking_total_times[slot]
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(recipe) = recipe.filter(|_| stored <= 0) else {
+            return Some(stored);
+        };
+        let mut total = recipe.cooking_time;
+        // Fired with no campfire lock held: a handler can read the campfire.
+        if let Some(server) = world.server.upgrade() {
+            let mut event =
+                crate::plugin::api::events::block::campfire_start::CampfireStartEvent::new(
+                    self.position,
+                    world.clone(),
+                    stack.clone(),
+                    slot as u8,
+                    total,
+                );
+            server.plugin_manager.fire_blocking(&server, &mut event);
+            if event.cancelled {
+                return None;
+            }
+            total = event.cooking_time;
+        }
+        let mut slot_total = self.cooking_total_times[slot]
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // A handler that sets the slot time itself ran after the event got its time, so the
+        // value of the handler wins.
+        if *slot_total == stored {
+            *slot_total = total;
+        } else {
+            total = *slot_total;
+        }
+        Some(total)
     }
 
     #[must_use]

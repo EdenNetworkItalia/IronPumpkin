@@ -493,3 +493,29 @@ fn the_refuel_takes_a_fuel_stack_that_grew_during_the_fuel_event() {
     assert_eq!(stand.fuel.load(Ordering::Relaxed), 20);
     assert_eq!(stand.get_stack(4).item_count, 1);
 }
+
+/// A `CampfireStartEvent` handler that sets the total time of the slot itself keeps its value.
+#[test]
+fn a_campfire_start_handler_can_set_the_slot_time() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(6, 100, 2);
+    place(&world, pos, &Block::CAMPFIRE);
+    let campfire = Arc::new(CampfireBlockEntity::new(pos));
+    *campfire.items[0].lock().unwrap() = ItemStack::new(1, &Item::STICK);
+    on({
+        let campfire = campfire.clone();
+        move |event: &mut CampfireStartEvent| {
+            if event.block_pos == pos {
+                *campfire.cooking_total_times[0].lock().unwrap() = COOKING_TIME + 5;
+            }
+        }
+    });
+    campfire.tick(&world);
+    assert_eq!(
+        *campfire.cooking_total_times[0].lock().unwrap(),
+        COOKING_TIME + 5
+    );
+    assert_eq!(*campfire.cooking_times[0].lock().unwrap(), 1);
+}
