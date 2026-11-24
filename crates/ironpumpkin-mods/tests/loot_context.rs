@@ -531,7 +531,7 @@ fn overlapping_rolls_of_one_sequence_draw_different_values() {
 
     let (sender, receiver) = std::sync::mpsc::channel();
     let second_world = world.clone();
-    let second_table = table.clone();
+    let second_table = table;
     let thread = std::thread::spawn(move || {
         let params = LootContextParameters {
             world: Some(&second_world),
@@ -860,7 +860,7 @@ fn get_block_drops_rolls_the_block_entity_and_the_center_of_the_block() {
     world.add_block_entity(Arc::new(DecoratedPotBlockEntity::new(pos)));
 
     let rolls = rolls_of("minecraft:blocks/decorated_pot", || {
-        world.get_block_drops(&pos, None, Some(player.as_ref()));
+        let _ = world.get_block_drops(&pos, None, Some(player.as_ref()));
     });
     assert_eq!(rolls.len(), 1);
     assert_eq!(rolls[0].origin, Some(center(&pos)));
@@ -877,7 +877,7 @@ fn fishing_rolls_the_owner_as_the_attacking_entity() {
     let player = support::player("angler");
     let bobber = FishingBobberEntity::new(
         ironpumpkin_mods::pumpkin_core::entity::Entity::new(
-            world.clone(),
+            world,
             Vector3::new(150.5, 101.0, 0.5),
             &EntityType::FISHING_BOBBER,
         ),
@@ -897,7 +897,7 @@ fn fishing_rolls_the_owner_as_the_attacking_entity() {
     assert_eq!(rolls[0].tool, Some("fishing_rod"));
 }
 
-/// Review 171: NeoForge sets a container minecart as the attacking entity of its loot roll.
+/// Review 171: `NeoForge` sets a container minecart as the attacking entity of its loot roll.
 #[test]
 fn a_container_minecart_rolls_itself_as_the_attacking_entity() {
     let _serial = support::serial();
