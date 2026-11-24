@@ -676,17 +676,18 @@ impl World {
 
     /// Forces or unforces a chunk and holds or releases its chunk ticket. Returns whether the
     /// set changed. The caller runs `update_active_chunks` after a batch of changes.
+    ///
+    /// The set guard stays held while the ticket changes, so two changes of one chunk cannot
+    /// leave a ticket that the set does not list.
     pub fn set_chunk_forced(&self, pos: Vector2<i32>, forced: bool) -> bool {
-        let changed = {
-            let mut forced_chunks = self
-                .forced_chunks
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if forced {
-                forced_chunks.insert(pos)
-            } else {
-                forced_chunks.remove(&pos)
-            }
+        let mut forced_chunks = self
+            .forced_chunks
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let changed = if forced {
+            forced_chunks.insert(pos)
+        } else {
+            forced_chunks.remove(&pos)
         };
         if changed {
             let mut loading = self
