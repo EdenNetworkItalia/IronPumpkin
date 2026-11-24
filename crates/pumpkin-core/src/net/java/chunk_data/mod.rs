@@ -385,6 +385,29 @@ mod tests {
     }
 
     #[test]
+    fn trial_spawner_update_tag_is_complete_while_the_tick_holds_the_spawner() {
+        let pos = BlockPos::new(6, 64, 6);
+        let mut entity = NbtCompound::new();
+        entity.put_string("id", "minecraft:zombie".to_string());
+        let mut spawn_data = NbtCompound::new();
+        spawn_data.put_compound("entity", entity);
+        let mut nbt = saved("minecraft:trial_spawner", pos);
+        nbt.put_compound("spawn_data", spawn_data);
+        let spawner = block_entity_from_nbt(&nbt).unwrap();
+        let spawner = spawner
+            .as_any()
+            .downcast_ref::<crate::block::entities::trial_spawner::TrialSpawnerBlockEntity>()
+            .unwrap();
+        let tag = spawner.hold_spawner_for_test(|| {
+            spawner.update_tag(pumpkin_data::Block::TRIAL_SPAWNER.default_state.id)
+        });
+        assert!(
+            tag.and_then(|tag| tag.get_compound("spawn_data").cloned())
+                .is_some()
+        );
+    }
+
+    #[test]
     fn a_saved_id_without_namespace_reads_as_minecraft() {
         let pos = BlockPos::new(2, 70, 3);
         let mut sign = saved_sign(pos, "bare id line");
