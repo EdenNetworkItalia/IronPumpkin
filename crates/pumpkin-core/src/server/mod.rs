@@ -365,7 +365,9 @@ impl Server {
             command_storage: std::sync::Mutex::new(std::collections::HashMap::new()),
             stopwatches: std::sync::Mutex::new(crate::world::stopwatches::Stopwatches::new()),
             random_sequences: std::sync::Mutex::new(
-                crate::world::random_sequences::RandomSequences::new(),
+                crate::world::random_sequences::RandomSequences::from_data(
+                    &pumpkin_world::world_info::data_files::read_random_sequences(&world_path),
+                ),
             ),
             advancement_manager,
             white_list,
@@ -614,8 +616,19 @@ impl Server {
 
     pub fn save_world_info(&self) -> Result<(), WorldInfoError> {
         let level_data = self.level_info.load();
+        let world_path = self.basic_config.get_world_path();
         self.world_info_writer
-            .write_world_info(&level_data, &self.basic_config.get_world_path())
+            .write_world_info(&level_data, &world_path)?;
+        // The manager lock is free before the snapshot waits for a roll that holds a sequence.
+        let snapshot = self
+            .random_sequences
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot();
+        pumpkin_world::world_info::data_files::write_random_sequences(
+            &world_path,
+            &snapshot.into_data(pumpkin_world::world_info::MAXIMUM_SUPPORTED_WORLD_DATA_VERSION),
+        )
     }
 
     /// Loads the data packs and fires the loot table events before the manager stores the tables.
