@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
 use pumpkin_inventory::recipe_index;
@@ -29,12 +29,9 @@ fn loaded(recipe: DynamicRecipe) -> Option<DynamicRecipe> {
     })
 }
 
-/// Adds `recipe` to `recipes`. A recipe replaces the one with the same id in its place, as the
-/// data pack loader does for a later pack.
-fn insert(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
-    let Some(recipe) = loaded(recipe) else {
-        return;
-    };
+/// Puts `recipe` in `recipes`. A recipe replaces the one with the same id in its place, as the
+/// data pack loader does for a later pack. A recipe without an id has nothing to replace.
+fn put(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
     let existing = recipe.recipe_id().and_then(|id| {
         recipes
             .iter()
@@ -46,9 +43,25 @@ fn insert(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
     }
 }
 
+/// Adds `recipe` to `recipes` as [`loaded`] keeps it.
+fn insert(recipes: &mut Vec<DynamicRecipe>, recipe: DynamicRecipe) {
+    if let Some(recipe) = loaded(recipe) {
+        put(recipes, recipe);
+    }
+}
+
+#[derive(Default)]
+struct Recipes {
+    /// The recipes that plugins added, as they added them. A data pack reload loads them again.
+    plugin: Vec<DynamicRecipe>,
+    /// The data pack recipes, then the plugin recipes. The crafting grid reads this list on each
+    /// change, so a reader shares it and clones no recipe.
+    loaded: Arc<[DynamicRecipe]>,
+}
+
 /// The data pack and plugin recipes. Each change rebuilds the [`recipe_index`].
 pub struct RecipeManager {
-    dynamic_recipes: RwLock<Vec<DynamicRecipe>>,
+    recipes: RwLock<Recipes>,
 }
 
 impl Default for RecipeManager {
@@ -59,9 +72,9 @@ impl Default for RecipeManager {
 
 impl RecipeManager {
     #[must_use]
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            dynamic_recipes: RwLock::new(Vec::new()),
+            recipes: RwLock::new(Recipes::default()),
         }
     }
 
@@ -72,52 +85,57 @@ impl RecipeManager {
         self.add_recipes([recipe]);
     }
 
+    /// Adds plugin recipes. They stay in the manager across [`Self::set_recipes`].
     pub fn add_recipes(&self, new_recipes: impl IntoIterator<Item = DynamicRecipe>) {
-        let mut recipes = self
-            .dynamic_recipes
+        let mut state = self
+            .recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut recipes = state.loaded.to_vec();
         for recipe in new_recipes {
+            put(&mut state.plugin, recipe.clone());
             insert(&mut recipes, recipe);
         }
         recipe_index::install(&recipes);
+        state.loaded = recipes.into();
     }
 
+    /// Replaces the data pack recipes. The plugin recipes stay, after the data pack recipes.
     pub fn set_recipes(&self, new_recipes: Vec<DynamicRecipe>) {
-        let mut recipes = self
-            .dynamic_recipes
+        let mut state = self
+            .recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.clear();
-        for recipe in new_recipes {
+        let mut recipes = Vec::new();
+        for recipe in new_recipes.into_iter().chain(state.plugin.iter().cloned()) {
             insert(&mut recipes, recipe);
         }
         recipe_index::install(&recipes);
+        state.loaded = recipes.into();
     }
 
+    /// Removes every recipe, the plugin recipes included.
     pub fn clear(&self) {
-        let mut recipes = self
-            .dynamic_recipes
+        let mut state = self
+            .recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.clear();
-        recipe_index::install(&recipes);
+        *state = Recipes::default();
+        recipe_index::install(&[]);
     }
 
     /// The loaded recipes, with the placeholders of the ignored recipes.
-    pub fn get_dynamic_recipes_internal(&self) -> Vec<DynamicRecipe> {
-        self.dynamic_recipes
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone()
+    pub fn get_dynamic_recipes_internal(&self) -> Arc<[DynamicRecipe]> {
+        self.get_dynamic_recipes()
     }
 }
 
 impl RecipeProvider for RecipeManager {
-    fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
-        self.dynamic_recipes
+    fn get_dynamic_recipes(&self) -> Arc<[DynamicRecipe]> {
+        self.recipes
             .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .loaded
             .clone()
     }
 }
@@ -232,6 +250,53 @@ mod tests {
         assert!(!generated());
     }
 
+    /// A reload loads the data pack recipes again. The recipes that plugins added stay, and a
+    /// plugin recipe replaces a data pack recipe with its id.
+    #[test]
+    fn a_reload_keeps_the_recipes_that_plugins_added() {
+        let manager = RecipeManager::new();
+        manager.set_recipes(vec![stonecutting("test:pack", "minecraft:dirt")]);
+        manager.add_recipe(stonecutting("test:plugin", "minecraft:gravel"));
+        manager.add_recipe(stonecutting("test:shadowed", "minecraft:gravel"));
+        manager.set_recipes(vec![
+            stonecutting("test:reloaded", "minecraft:dirt"),
+            stonecutting("test:shadowed", "minecraft:dirt"),
+        ]);
+        assert_eq!(
+            ids(&manager),
+            ["test:reloaded", "test:shadowed", "test:plugin"]
+        );
+        let recipes = manager.get_dynamic_recipes_internal();
+        let Some(DynamicRecipe::Stonecutting(shadowed)) = recipes
+            .iter()
+            .find(|r| r.recipe_id() == Some("test:shadowed"))
+        else {
+            panic!("a stonecutter recipe");
+        };
+        assert_eq!(
+            shadowed.ingredient,
+            OwnedRecipeIngredient::Simple("minecraft:gravel".to_string())
+        );
+        assert!(
+            recipe_index::current()
+                .stonecutter_recipes(pumpkin_data::dynamic::ContentIds::Real)
+                .any(|r| r.recipe_id == "test:plugin")
+        );
+        manager.clear();
+        assert!(ids(&manager).is_empty());
+    }
+
+    /// The crafting grid reads the recipes on each change. A read shares the list.
+    #[test]
+    fn reading_the_recipes_clones_no_recipe() {
+        let manager = RecipeManager::new();
+        manager.set_recipes(vec![stonecutting("test:a", "minecraft:dirt")]);
+        assert_eq!(
+            manager.get_dynamic_recipes().as_ptr(),
+            manager.get_dynamic_recipes().as_ptr()
+        );
+    }
+
     /// A recipe replaces the one with the same id in its place, as a later data pack does.
     #[test]
     fn a_recipe_replaces_the_recipe_with_the_same_id() {
@@ -242,9 +307,8 @@ mod tests {
         ]);
         manager.add_recipe(stonecutting("test:a", "minecraft:gravel"));
         assert_eq!(ids(&manager), ["test:a", "test:b"]);
-        let Some(DynamicRecipe::Stonecutting(first)) =
-            manager.get_dynamic_recipes_internal().into_iter().next()
-        else {
+        let recipes = manager.get_dynamic_recipes_internal();
+        let Some(DynamicRecipe::Stonecutting(first)) = recipes.first() else {
             panic!("a stonecutter recipe");
         };
         assert_eq!(

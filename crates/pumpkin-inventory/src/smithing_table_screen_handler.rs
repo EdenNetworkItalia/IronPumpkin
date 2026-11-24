@@ -252,7 +252,7 @@ impl SmithingTableScreenHandler {
         }
 
         if let Some(provider) = &self.recipe_provider {
-            for dynamic in provider.get_dynamic_recipes() {
+            for dynamic in provider.get_dynamic_recipes().iter() {
                 if let DynamicRecipe::SmithingTransform(recipe) = dynamic
                     && OwnedRecipeIngredient::match_optional(
                         recipe.template.as_ref(),
@@ -561,8 +561,8 @@ mod tests {
     struct Recipes(Vec<DynamicRecipe>);
 
     impl RecipeProvider for Recipes {
-        fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
-            self.0.clone()
+        fn get_dynamic_recipes(&self) -> Arc<[DynamicRecipe]> {
+            self.0.clone().into()
         }
     }
 
