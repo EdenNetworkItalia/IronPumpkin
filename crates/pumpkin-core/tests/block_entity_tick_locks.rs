@@ -538,3 +538,30 @@ fn a_lit_furnace_keeps_its_progress_for_an_input_without_a_recipe() {
     assert!(furnace.is_burning());
     assert_eq!(furnace.get_cooking_time_spent(), 5);
 }
+
+/// Vanilla `serverTick` (`BrewingStandBlockEntity.java:187`) sets the bottle state with flag 2:
+/// the clients get it, the neighbors get no update.
+#[test]
+fn the_bottle_state_does_not_update_the_neighbors() {
+    let _serial = support::serial();
+    let world = support::world();
+    let pos = BlockPos::new(10, 100, 2);
+    place(&world, pos, &Block::BREWING_STAND);
+    let stand = BrewingStandBlockEntity::new(pos);
+    stand.set_stack(0, water_bottle());
+    let updates: Arc<std::sync::atomic::AtomicUsize> = Arc::default();
+    on({
+        let updates = updates.clone();
+        move |event: &mut pumpkin_core::plugin::block::block_physics::BlockPhysicsEvent| {
+            if event.changed_pos == pos {
+                updates.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    });
+    stand.tick(&world);
+    assert_eq!(
+        *stand.last_potion_count.lock().unwrap(),
+        Some([true, false, false])
+    );
+    assert_eq!(updates.load(Ordering::Relaxed), 0);
+}

@@ -852,10 +852,12 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             props.r#has_bottle_1 = current[1];
             props.r#has_bottle_2 = current[2];
 
+            // Vanilla `serverTick` (`BrewingStandBlockEntity.java:187`) uses flag 2: no
+            // neighbor update.
             world.set_block_state(
                 &self.position,
                 props.to_state_id(block),
-                crate::world::BlockFlags::NOTIFY_ALL,
+                crate::world::BlockFlags::NOTIFY_LISTENERS,
             );
 
             // Also mark dirty so inventory/container updates are sent to open screens.
