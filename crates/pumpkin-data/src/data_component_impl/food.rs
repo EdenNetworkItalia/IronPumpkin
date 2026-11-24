@@ -323,17 +323,19 @@ impl ConsumeEffect {
             ConsumeEffect::PlaySound(_) => 4,
         }
     }
+    /// Reads `ConsumeEffect.CODEC`. Vanilla saves the type as a namespaced id and omits the
+    /// fields that equal their default.
     pub fn read_data(nbt: &NbtTag) -> Option<Self> {
         let compound = nbt.extract_compound()?;
         let r#type = compound.get_string("type")?;
-        match r#type {
+        match r#type.strip_prefix("minecraft:").unwrap_or(r#type) {
             "remove_effects" => {
                 let idset = IDSet::read(compound.get("effects")?)?;
                 Some(Self::RemoveEffects(idset))
             }
             "clear_all_effects" => Some(Self::ClearAllEffects),
             "teleport_randomly" => {
-                let dst = compound.get_float("diameter")?;
+                let dst = compound.get_float("diameter").unwrap_or(16.0);
                 Some(Self::TeleportRandomly(dst))
             }
             "play_sound" => {
@@ -341,7 +343,7 @@ impl ConsumeEffect {
                 Some(Self::PlaySound(sound))
             }
             "apply_effects" => {
-                let probability = compound.get_float("probability")?;
+                let probability = compound.get_float("probability").unwrap_or(1.0);
                 let effects_vec: Vec<StatusEffectInstance> = compound
                     .get_list("effects")?
                     .iter()
@@ -883,6 +885,36 @@ mod tests {
         let effect = super::StatusEffectInstance::read_data(&NbtTag::Compound(hidden)).unwrap();
         assert_eq!((effect.amplifier, effect.duration), (0, 0));
         assert!(!effect.show_icon);
+    }
+
+    /// `ApplyStatusEffectsConsumeEffect` omits `probability` at 1.0 and
+    /// `TeleportRandomlyConsumeEffect` omits `diameter` at 16.0.
+    #[test]
+    fn consume_effects_load_the_vanilla_shape_without_default_fields() {
+        use super::ConsumeEffect;
+        use pumpkin_nbt::compound::NbtCompound;
+        use pumpkin_nbt::tag::NbtTag;
+
+        let mut effect = NbtCompound::new();
+        effect.put_string("id", "minecraft:speed".to_owned());
+        effect.put_bool("show_icon", true);
+        let mut apply = NbtCompound::new();
+        apply.put_string("type", "minecraft:apply_effects".to_owned());
+        apply.put_list("effects", vec![NbtTag::Compound(effect)]);
+        let Some(ConsumeEffect::ApplyEffects((effects, probability))) =
+            ConsumeEffect::read_data(&NbtTag::Compound(apply))
+        else {
+            panic!("apply_effects loads");
+        };
+        assert_eq!(probability, 1.0);
+        assert_eq!(effects[0].effect_id, "minecraft:speed");
+
+        let mut teleport = NbtCompound::new();
+        teleport.put_string("type", "minecraft:teleport_randomly".to_owned());
+        assert_eq!(
+            ConsumeEffect::read_data(&NbtTag::Compound(teleport)),
+            Some(ConsumeEffect::TeleportRandomly(16.0))
+        );
     }
 
     #[test]
