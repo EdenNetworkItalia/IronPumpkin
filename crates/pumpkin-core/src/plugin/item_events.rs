@@ -278,22 +278,25 @@ impl StackedOnOtherChange {
     }
 
     /// Writes the stacks that a handler changed into `handler`, when its cursor and the slot
-    /// still hold the stacks that `target` got.
+    /// still hold the stacks that `target` got. It writes both changes or none: a change to the
+    /// carried stack and one to the slot belong to one click.
     pub fn apply(&self, handler: &dyn ScreenHandler, target: &ClickTarget) {
         let behaviour = handler.get_behaviour();
-        if let Some(new_carried) = &self.carried {
-            let mut cursor = behaviour
-                .cursor_stack
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            if cursor.are_equal(&target.cursor) {
-                *cursor = new_carried.clone();
-            }
+        let mut cursor = behaviour
+            .cursor_stack
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let slot = behaviour.slots.get(target.index);
+        let cursor_is_unchanged = self.carried.is_none() || cursor.are_equal(&target.cursor);
+        let slot_is_unchanged = self.stacked_on.is_none()
+            || slot.is_some_and(|slot| slot.get_cloned_stack().are_equal(&target.clicked));
+        if !cursor_is_unchanged || !slot_is_unchanged {
+            return;
         }
-        if let (Some(new_stacked), Some(slot)) =
-            (&self.stacked_on, behaviour.slots.get(target.index))
-            && slot.get_cloned_stack().are_equal(&target.clicked)
-        {
+        if let Some(new_carried) = &self.carried {
+            *cursor = new_carried.clone();
+        }
+        if let (Some(new_stacked), Some(slot)) = (&self.stacked_on, slot) {
             slot.set_stack(new_stacked.clone());
             slot.mark_dirty();
         }

@@ -796,3 +796,48 @@ fn a_handler_reads_the_equipment_during_an_enchantment_lookup() {
         "{seen:?}"
     );
 }
+
+/// The click takes the changed carried stack and the changed stack of the slot together or not at
+/// all: when the slot changed while the event fired, the carried change is not applied either.
+#[test]
+fn item_stacked_on_other_event_applies_both_changed_stacks_or_neither() {
+    let _serial = support::serial();
+    let player = support::player("BothOrNeitherPlayer");
+    let handler_player = player.clone();
+    on::<ItemStackedOnOtherEvent, _>(move |event| {
+        if event.player.gameprofile.name != "BothOrNeitherPlayer"
+            || event.carried_item.item.id != Item::COOKIE.id
+        {
+            return;
+        }
+        event.carried_item = ItemStack::new(7, &Item::GOLDEN_CARROT);
+        event.stacked_on_item = ItemStack::new(2, &Item::STICK);
+        event.cancelled = true;
+        let screen = handler_player
+            .current_screen_handler
+            .lock()
+            .unwrap()
+            .clone();
+        screen.lock().unwrap().get_behaviour().slots[SLOT]
+            .set_stack(ItemStack::new(1, &Item::APPLE));
+    });
+    set_up(
+        &player,
+        ItemStack::new(1, &Item::BREAD),
+        ItemStack::new(1, &Item::COOKIE),
+    );
+
+    click(&player, SLOT as i16);
+
+    let (slot, cursor) = read(&player);
+    assert_eq!(
+        slot.item.id,
+        Item::APPLE.id,
+        "the slot keeps the change of the handler"
+    );
+    assert_eq!(
+        cursor.item.id,
+        Item::COOKIE.id,
+        "the carried change is not applied alone"
+    );
+}
