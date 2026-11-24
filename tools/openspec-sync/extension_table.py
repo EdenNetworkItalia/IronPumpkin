@@ -56,13 +56,36 @@ def read_rows(path):
 
 
 def read_demand(path):
-    """Return {(interface, method): mods} from extension_scan.py. Overloads take the highest count."""
+    """Return {(interface, method): set of mods} from extension_scan.py (call or override)."""
     demand = {}
     lines = Path(path).read_text(encoding="utf-8").splitlines()
     for line in lines[1:]:
-        iface, name, _params, _called, _over, mods = line.split("\t")
-        demand[(iface, name)] = max(demand.get((iface, name), 0), int(mods))
+        iface, name, called, overridden = line.split("\t")
+        mods = {m for m in (called + ";" + overridden).split(";") if m}
+        demand[(iface, name)] = demand.get((iface, name), set()) | mods
     return demand
+
+
+def read_moves(path):
+    """Return {26.3 key: [21.1 keys]} from extension_moves.tsv."""
+    moves = {}
+    for n, line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.startswith("#"):
+            continue
+        cells = line.split("\t")
+        if len(cells) != 2:
+            raise TableError(f"{path} line {n}: expected 2 cells")
+        moves[cells[0].strip()] = [k.strip() for k in cells[1].split(";") if k.strip()]
+    return moves
+
+
+def demand_of(demand, moves, key):
+    """The number of mods that use `key` (Interface#method) or a 21.1 method that it replaces."""
+    mods = set()
+    for k in [key] + moves.get(key, []):
+        iface, _, method = k.partition("#")
+        mods |= demand.get((iface, method), set())
+    return len(mods)
 
 
 def test_names(crates):
@@ -87,6 +110,9 @@ def inventory(neoforge):
                  "methods": em.groups(parsed)}
         out.append(entry)
         for nested in parsed["nested"]:
+            if em.public_methods(nested):
+                raise TableError(f"{parsed['name']}.{nested['name']} declares public methods: "
+                                 "the script reads only the top-level interface")
             out.append({"name": f"{parsed['name']}.{nested['name']}", "target": None, "methods": []})
     return out
 
@@ -95,7 +121,7 @@ def lookup(rows, key, iface):
     return rows.get(key) or rows.get(f"{iface}#*")
 
 
-def build(neoforge, rows, demand, tests):
+def build(neoforge, rows, demand, moves, tests):
     """Return the list of row dicts, in inventory order, and the used keys."""
     result, used = [], set()
     for iface in inventory(neoforge):
@@ -107,7 +133,7 @@ def build(neoforge, rows, demand, tests):
                 raise TableError(f"no row for the interface {name} in extension_rows.tsv")
             used.add(name)
             result.append({**row, "iface": name, "target": iface["target"], "method": None,
-                           "kind": "interface, no public method", "mods": 0})
+                           "kind": "interface, no public method", "mods": 0, "overload_kinds": []})
             continue
         for mname, kind, overloads in entries:
             key = f"{name}#{mname}"
@@ -117,7 +143,8 @@ def build(neoforge, rows, demand, tests):
             used.add(row["key"])
             label = kind
             result.append({**row, "iface": name, "target": iface["target"], "method": mname,
-                           "kind": label, "key": key, "mods": demand.get((name, mname), 0)})
+                           "kind": label, "key": key, "mods": demand_of(demand, moves, key),
+                           "overload_kinds": [em.kind(m).split()[0] for m in overloads]})
     for key in rows:
         if key not in used:
             raise TableError(f"extension_rows.tsv has the key {key}, which matches no method")
@@ -145,14 +172,12 @@ def esc(text):
 
 
 def design_block(rows):
-    kinds = collections.Counter()
-    for r in rows:
-        for part in r["kind"].replace(" and ", " ").split(",")[0].split():
-            if part in ("default", "abstract", "static"):
-                kinds[part + " method"] += 1
+    kinds = collections.Counter(k for r in rows for k in r["overload_kinds"])
+    named = [r for r in rows if r["method"]]
     by_iface = collections.OrderedDict()
     for r in rows:
         by_iface.setdefault(r["iface"], []).append(r)
+    with_methods = sum(1 for g in by_iface.values() if g[0]["method"])
     out = [HEADING, "",
            "One row per public method name of each interface, from "
            "`net/neoforged/neoforge/common/extensions` (overloads are counted in the Kind column). "
@@ -163,10 +188,12 @@ def design_block(rows):
            "A `supported` row names the Pumpkin trait method or function and a test. A `planned` row "
            "with the prefix `M5 engine extension:` waits for an engine call site; the other "
            "`planned` rows wait for a mod API accessor.", ""]
-    named = [r for r in rows if r["method"]]
-    out.append(f"{len(named)} methods in {len(by_iface)} interfaces: "
-               f"{kinds['default method']} default, {kinds['abstract method']} abstract, "
-               f"{kinds['static method']} static. The two largest, `IBlockExtension` and "
+    total = sum(kinds.values())
+    out.append(f"{total} public methods in {with_methods} interfaces: {kinds['default']} default, "
+               f"{kinds['abstract']} abstract, {kinds['static']} static. They form {len(named)} "
+               f"rows, one per method name. {len([r for r in rows if not r['method']])} more rows are types "
+               "without a public method. "
+               "The two largest, `IBlockExtension` and "
                "`IBlockStateExtension`, hold the block hooks that ported blocks override most.")
     out.append("")
     empty = [r for r in rows if not r["method"]]
@@ -231,8 +258,9 @@ def update_summary(lines, family_counts):
     return lines
 
 
-def run(directory, neoforge, rows_path, demand_path, crates, check):
-    rows = build(neoforge, read_rows(rows_path), read_demand(demand_path), test_names(crates))
+def run(directory, neoforge, rows_path, demand_path, moves_path, crates, check):
+    rows = build(neoforge, read_rows(rows_path), read_demand(demand_path),
+                 read_moves(moves_path), test_names(crates))
     design_path, mapping_path = Path(directory) / "design.md", Path(directory) / "mapping-table.md"
     design = design_path.read_text(encoding="utf-8").split("\n")
     mapping = mapping_path.read_text(encoding="utf-8").split("\n")
@@ -255,11 +283,12 @@ def main(argv=None):
     ap.add_argument("--dir", default=str(DEFAULT_DIR))
     ap.add_argument("--rows", default=str(HERE / "extension_rows.tsv"))
     ap.add_argument("--demand", default=str(REPO / "tools/modpack-scan/extension_demand.tsv"))
+    ap.add_argument("--moves", default=str(REPO / "tools/modpack-scan/extension_moves.tsv"))
     ap.add_argument("--crates", default=str(REPO / "crates"))
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
     try:
-        return run(args.dir, args.neoforge, args.rows, args.demand, args.crates, args.check)
+        return run(args.dir, args.neoforge, args.rows, args.demand, args.moves, args.crates, args.check)
     except TableError as e:
         print(f"error: {e}", file=sys.stderr)
         return 2

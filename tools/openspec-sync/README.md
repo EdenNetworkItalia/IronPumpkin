@@ -95,12 +95,12 @@ reason is one of these:
 A `client-only` row of design.md has no row in the mapping table by design. The script counts these
 rows and does not list them.
 
-Current result: 1173 inventory rows of the mapping table, 1173 matched, 0 unmatched. design.md has
-235 `client-only` rows without a mapping row:
+Current result: 1172 inventory rows of the mapping table, 1172 matched, 0 unmatched. design.md has
+236 `client-only` rows without a mapping row:
 
 - 189 client events and 9 client-only subsystems, in tables that the mapping table does not have.
-- 37 rows in server-side families: `ModConfig.Type.CLIENT`, `ModContainer#getCustomExtension`,
-  `ModContainer#registerExtensionPoint`, 26 methods of extension interfaces that only the client
+- 38 rows in server-side families: `ModConfig.Type.CLIENT`, `ModContainer#getCustomExtension`,
+  `ModContainer#registerExtensionPoint`, 27 methods of extension interfaces that only the client
   calls, and 8 keys of `neoforge.mods.toml` (`[[mods]]` `logoFile`, `logoBlur`, `credits`,
   `licenseURL`, `bannerFile`, `iconFile`, `iconBlur`, `displayURL`).
 
@@ -127,10 +127,11 @@ The inputs are:
   without a method). The script stops when a method has no row and no default, when a key matches no
   method, when a reason is empty, when a `supported` row has no test, or when a test name is not a
   function in `crates/`.
-- `tools/modpack-scan/extension_demand.tsv`: the demand per method, from
-  `tools/modpack-scan/extension_scan.py`. The Mods column of a row is the count of mods that call or
-  override the method of the 21.1 interface with the same name. Overloads take the highest count. A
-  method that 21.1 does not have shows 0.
+- `tools/modpack-scan/extension_demand.tsv`: the mods that call or override each method, from
+  `tools/modpack-scan/extension_scan.py`. The Mods column of a row is the size of the union of these
+  mods over the overloads of the 21.1 method with the same name and over the 21.1 methods that
+  `tools/modpack-scan/extension_moves.tsv` lists for the row (methods that 26.3 moved or renamed). A
+  method that 21.1 does not have and no move names shows 0.
 
 The script also writes the family row and the Total row of "Summary per family". It does not write
 the Coverage table: run `mapping_status.py` after it. A second run writes nothing. A `client-only`

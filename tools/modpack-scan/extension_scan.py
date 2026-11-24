@@ -10,13 +10,15 @@ universal jar, in this order. A later jar replaces a class of an earlier one.
 For each method of an extension interface (`net/neoforged/neoforge/common/extensions`), the scan
 counts the mods (top-level jars, Jar-in-Jar jars included) that:
 
-- call the method: a method reference that resolves to the declaration in the extension interface,
-  through the class hierarchy of the owner;
+- call the method: a method reference whose owner has the extension interface among its supertypes,
+  and the interface declares the same name and descriptor (a call through the patched vanilla class
+  counts);
 - override the method: a class of the mod that declares a method with the same name and descriptor
   as an inherited extension method.
 
-The output is a tab-separated file, sorted, with no paths and no time stamps. Columns: interface,
-method, parameter count, mods that call it, mods that override it, mods that do either.
+The output is a tab-separated file, sorted, with no paths and no time stamps. One row per method
+name (the overloads are merged). Columns: interface, method, the mods that call it and the mods that
+override it, each a `;` separated list of jar names.
 
 The jars are data. The scanner reads them with zipfile and its own class file parser and never loads
 or runs anything from them. Standard library only.
@@ -181,38 +183,42 @@ def scan_jar(args):
 
 
 class Hierarchy:
-    """Class map with the declaring-class lookup of a method reference."""
+    """Class map with the supertype closure of a class."""
 
     def __init__(self):
         self.classes = {}
+        self._ancestors = {}
 
     def add(self, cls):
-        self.classes[cls["name"]] = (cls["super"], cls["interfaces"],
-                                     {(n, d) for n, d, _ in cls["methods"]})
+        self.classes[cls["name"]] = (cls["super"], cls["interfaces"])
 
-    def declaring(self, start, name, desc):
-        """The first class on the way up from `start` that declares (name, desc), or None."""
-        queue, seen = collections.deque([start]), set()
-        while queue:
-            cur = queue.popleft()
-            if cur in seen or cur not in self.classes:
-                continue
-            seen.add(cur)
-            sup, interfaces, declared = self.classes[cur]
-            if (name, desc) in declared:
-                return cur
-            if sup:
-                queue.append(sup)
-            queue.extend(interfaces)
-        return None
-
-    def parents(self, cls):
-        sup, interfaces, _ = self.classes[cls]
-        return ([sup] if sup else []) + interfaces
+    def ancestors(self, start):
+        """`start` and every superclass and interface above it that the class map knows."""
+        known = self._ancestors.get(start)
+        if known is None:
+            known, queue = [], collections.deque([start])
+            seen = set()
+            while queue:
+                cur = queue.popleft()
+                if cur in seen:
+                    continue
+                seen.add(cur)
+                known.append(cur)
+                if cur in self.classes:
+                    sup, interfaces = self.classes[cur]
+                    queue.extend(([sup] if sup else []) + interfaces)
+            self._ancestors[start] = known
+        return known
 
 
 def scan(mods, index_jars):
-    """Return {(interface, method, params): [call mods, override mods]} as sets of mod labels."""
+    """Return ({(interface, method): [call mods, override mods]}, [(interface, method)]).
+
+    A call counts for an extension interface when the owner of the reference has the interface among
+    its supertypes and the interface declares the same name and descriptor. That includes a call
+    through a patched vanilla class that implements or overrides the method. An override counts when
+    a class of the mod declares a method that an extension interface above it declares too.
+    """
     hierarchy = Hierarchy()
     extension_methods = {}  # (interface, name, desc) -> parameter count
     # Stage 0: the extension interfaces name the methods that are worth keeping.
@@ -232,8 +238,7 @@ def scan(mods, index_jars):
     hits = collections.defaultdict(lambda: ([set(), set()]))
     with concurrent.futures.ProcessPoolExecutor(
             max_workers=WORKERS, mp_context=multiprocessing.get_context("fork")) as pool:
-        jobs = [(m, names, None) for m in mods]
-        parsed = list(pool.map(scan_jar, jobs, chunksize=1))
+        parsed = list(pool.map(scan_jar, [(m, names, None) for m in mods], chunksize=1))
     for classes in parsed:
         for cls in classes:
             hierarchy.add(cls)
@@ -241,27 +246,29 @@ def scan(mods, index_jars):
         mod = label.rsplit("/", 1)[-1]
         for cls in classes:
             for owner, name, desc in cls["refs"]:
-                decl = hierarchy.declaring(owner, name, desc)
-                key = interface_of.get((decl, name, desc))
-                if key:
-                    hits[(key, name, param_count(desc))][0].add(mod)
+                for ancestor in hierarchy.ancestors(owner):
+                    key = interface_of.get((ancestor, name, desc))
+                    if key:
+                        hits[(key, name)][0].add(mod)
             for name, desc, access in cls["methods"]:
                 if access & (ACC_PRIVATE | ACC_STATIC | ACC_SYNTHETIC):
                     continue
-                for parent in hierarchy.parents(cls["name"]):
-                    decl = hierarchy.declaring(parent, name, desc)
-                    key = interface_of.get((decl, name, desc))
+                for ancestor in hierarchy.ancestors(cls["name"])[1:]:
+                    key = interface_of.get((ancestor, name, desc))
                     if key:
-                        hits[(key, name, param_count(desc))][1].add(mod)
-                        break
-    return hits, sorted({(i, n, c) for (i, n, _d), c in extension_methods.items()})
+                        hits[(key, name)][1].add(mod)
+    return hits, sorted({(i, n) for (i, n, _d) in extension_methods})
 
 
 def render(hits, methods):
-    lines = ["interface\tmethod\tparams\tcalled_by\toverridden_by\tmods"]
-    for iface, name, count in methods:
-        called, overridden = hits.get((iface, name, count), (set(), set()))
-        lines.append(f"{iface}\t{name}\t{count}\t{len(called)}\t{len(overridden)}\t{len(called | overridden)}")
+    """One row per method name. The mods are listed, so a reader can union rows."""
+    lines = ["interface\tmethod\tcalled_by\toverridden_by"]
+    for iface, name in methods:
+        called, overridden = hits.get((iface, name), (set(), set()))
+        for mod in called | overridden:
+            if ";" in mod or "\t" in mod:
+                raise ValueError(f"the jar name {mod!r} has a separator character")
+        lines.append(f"{iface}\t{name}\t{';'.join(sorted(called))}\t{';'.join(sorted(overridden))}")
     return "\n".join(lines) + "\n"
 
 
@@ -275,7 +282,7 @@ def main(argv):
     hits, methods = scan(mods, argv[3:])
     with open(out, "w", encoding="utf-8") as f:
         f.write(render(hits, methods))
-    print(f"{len(mods)} jars, {len(methods)} extension methods, "
+    print(f"{len(mods)} jars, {len(methods)} extension method names, "
           f"{sum(1 for h in hits.values() if h[0] | h[1])} with demand")
     return 0
 

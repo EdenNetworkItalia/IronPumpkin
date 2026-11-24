@@ -1,0 +1,11 @@
+# 26.3 method <TAB> methods of the 21.1 interfaces that it replaces (separated by ;)
+# The demand of a 26.3 row is the union of the mods of its own 21.1 method and of these methods.
+# Each pair comes from the diff of the 21.1 and 26.3 method lists and the javadoc of the 26.3 method.
+ItemInstanceExtension#canPerformAction	IItemStackExtension#canPerformAction
+ItemInstanceExtension#getEnchantmentLevel	IItemStackExtension#getEnchantmentLevel
+ItemInstanceExtension#getCraftingRemainder	IItemStackExtension#getCraftingRemainingItem
+IItemExtension#getCraftingRemainder	IItemExtension#getCraftingRemainingItem
+IItemStackExtension#isCombineRepairable	IItemStackExtension#isRepairable
+IItemExtension#isCombineRepairable	IItemExtension#isRepairable
+IItemStackExtension#isGazeDisguise	IItemStackExtension#isEnderMask
+IItemExtension#isGazeDisguise	IItemExtension#isEnderMask

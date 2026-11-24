@@ -55,12 +55,14 @@ IGadgetExtension#*\tnot supported\tboth\t-\tdata generation\t
 IEmptyExtension\tnot supported\tboth\t-\tno methods\t
 IWidgetExtension.Mode\tnot supported\tboth\t-\ta Java enum\t
 """
-DEMAND = "interface\\tmethod\\tparams\\tcalled_by\\toverridden_by\\tmods\n".replace("\\t", "\t") + (
-    "IWidgetExtension\topen\t0\t3\t1\t4\n"
-    "IWidgetExtension\tsize\t1\t2\t0\t2\n"
-    "IWidgetExtension\tsize\t2\t7\t0\t7\n"
-    "IGadgetExtension\tping\t0\t1\t0\t1\n"
+DEMAND = (
+    "interface\tmethod\tcalled_by\toverridden_by\n"
+    "IWidgetExtension\topen\ta.jar;b.jar;c.jar\tc.jar;d.jar\n"
+    "IWidgetExtension\tsize\ta.jar;b.jar\t\n"
+    "IGadgetExtension\tping\te.jar\t\n"
+    "IOldExtension\tmade\tf.jar;g.jar\t\n"
 )
+MOVES = "# comment\nIGadgetExtension#make\tIOldExtension#made;IGadgetExtension#ping\n"
 DESIGN = """\
 ## Inventory
 
@@ -115,6 +117,7 @@ class Fixture:
         self.root = root
         self.write("rows.tsv", ROWS)
         self.write("demand.tsv", DEMAND)
+        self.write("moves.tsv", MOVES)
 
     def write(self, name, text):
         (self.root / name).write_text(text)
@@ -123,7 +126,8 @@ class Fixture:
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = et.run(self.root / "doc", self.root / "nf", self.root / "rows.tsv",
-                          self.root / "demand.tsv", self.root / "crates", check)
+                          self.root / "demand.tsv", self.root / "moves.tsv", self.root / "crates",
+                          check)
         return code
 
     def text(self, name):
@@ -192,10 +196,12 @@ class TableTest(unittest.TestCase):
         self.f.run()
         mapping = self.f.text("mapping-table.md")
         keys = [line.split("|")[1].strip() for line in mapping.splitlines() if line.startswith("| `")]
-        self.assertEqual(keys[:3], ["`IWidgetExtension#size`", "`IWidgetExtension#open`",
-                                     "`IGadgetExtension#ping`"])
+        self.assertEqual(keys[:3], ["`IWidgetExtension#open`", "`IGadgetExtension#make`",
+                                     "`IWidgetExtension#size`"])
         self.assertNotIn("IWidgetExtension#label", mapping)
-        self.assertIn("| `IWidgetExtension#size` | 7 |", mapping)
+        self.assertIn("| `IWidgetExtension#size` | 2 |", mapping)
+        self.assertIn("| `IWidgetExtension#open` | 4 |", mapping)  # the union of call and override
+        self.assertIn("| `IGadgetExtension#make` | 3 |", mapping)  # own, moved and renamed
 
     def test_a_second_run_changes_nothing(self):
         self.f.run()
@@ -207,6 +213,14 @@ class TableTest(unittest.TestCase):
     def test_check_exits_1_and_writes_nothing(self):
         self.assertEqual(self.f.run(check=True), 1)
         self.assertEqual(self.f.text("design.md"), DESIGN)
+
+    def test_a_nested_interface_with_methods_fails(self):
+        nested = WIDGET.replace("public static enum Mode { A, B }",
+                                "interface Inner { default void deep() {} }")
+        (self.f.root / "nf" / em.EXTENSIONS / "IWidgetExtension.java").write_text(nested)
+        with self.assertRaises(et.TableError) as cm:
+            self.f.run()
+        self.assertIn("declares public methods", str(cm.exception))
 
     def test_errors(self):
         for name, mutate, text in (

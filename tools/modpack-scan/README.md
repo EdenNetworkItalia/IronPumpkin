@@ -46,9 +46,9 @@ python3 -I tools/modpack-scan/extension_scan.py "$P/instances/FTB StoneBlock 4/.
 ```
 
 The first jar gives the vanilla class hierarchy (Mojang names), the second the patched classes and
-the third the extension interfaces. A later jar replaces a class of an earlier one. The output has one
-row per method and parameter count: the mods that call it, the mods that override it and the mods that
-do either. `tools/openspec-sync/extension_table.py` reads it.
+the third the extension interfaces. A later jar replaces a class of an earlier one. The output has one row per method name: the mods that call it and the mods that override it, as
+`;` separated jar names. `tools/openspec-sync/extension_table.py` reads it, with
+`extension_moves.tsv` for the methods that 26.3 moved or renamed.
 
 ## Safety
 

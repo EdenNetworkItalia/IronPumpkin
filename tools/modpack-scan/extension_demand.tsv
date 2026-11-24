@@ -1,424 +1,406 @@
-interface	method	params	called_by	overridden_by	mods
-IAbstractMinecartExtension	canBeRidden	0	1	0	1
-IAbstractMinecartExtension	canUseRail	0	0	0	0
-IAbstractMinecartExtension	getComparatorLevel	0	1	1	1
-IAbstractMinecartExtension	getCurrentCartSpeedCapOnRail	0	0	0	0
-IAbstractMinecartExtension	getCurrentRailPosition	0	2	0	2
-IAbstractMinecartExtension	getDragAir	0	0	0	0
-IAbstractMinecartExtension	getMaxCartSpeedOnRail	0	1	0	1
-IAbstractMinecartExtension	getMaxSpeedAirLateral	0	0	0	0
-IAbstractMinecartExtension	getMaxSpeedAirVertical	0	0	0	0
-IAbstractMinecartExtension	getMaxSpeedWithRail	0	0	0	0
-IAbstractMinecartExtension	getSlopeAdjustment	0	1	0	1
-IAbstractMinecartExtension	isPoweredCart	0	0	0	0
-IAbstractMinecartExtension	moveMinecartOnRail	1	0	0	0
-IAbstractMinecartExtension	setCanUseRail	1	0	0	0
-IAbstractMinecartExtension	setCurrentCartSpeedCapOnRail	1	0	0	0
-IAbstractMinecartExtension	setDragAir	1	0	0	0
-IAbstractMinecartExtension	setMaxSpeedAirLateral	1	0	0	0
-IAbstractMinecartExtension	setMaxSpeedAirVertical	1	0	0	0
-IAbstractMinecartExtension	shouldDoRailFunctions	0	0	0	0
-IAdvancementBuilderExtension	save	3	2	0	2
-IAttributeExtension	getBaseId	0	0	1	1
-IAttributeExtension	getDebugInfo	2	1	0	1
-IAttributeExtension	getMergedStyle	1	0	0	0
-IAttributeExtension	toBaseComponent	4	0	0	0
-IAttributeExtension	toComponent	2	4	1	5
-IAttributeExtension	toValueComponent	3	4	1	4
-IBaseRailBlockExtension	canMakeSlopes	3	0	1	1
-IBaseRailBlockExtension	getRailDirection	4	0	0	0
-IBaseRailBlockExtension	getRailMaxSpeed	4	1	0	1
-IBaseRailBlockExtension	isFlexibleRail	3	0	0	0
-IBaseRailBlockExtension	isValidRailShape	1	0	1	1
-IBaseRailBlockExtension	onMinecartPass	4	0	1	1
-IBlockAndTintGetterExtension	getShade	4	6	6	6
-IBlockEntityExtension	getModelData	0	10	26	30
-IBlockEntityExtension	getPersistentData	0	0	0	0
-IBlockEntityExtension	handleUpdateTag	2	24	39	41
-IBlockEntityExtension	hasCustomOutlineRendering	1	1	1	2
-IBlockEntityExtension	invalidateCapabilities	0	31	3	32
-IBlockEntityExtension	onChunkUnloaded	0	19	21	21
-IBlockEntityExtension	onDataPacket	3	20	46	46
-IBlockEntityExtension	onLoad	0	29	30	30
-IBlockEntityExtension	requestModelDataUpdate	0	26	1	26
-IBlockExtension	addLandingEffects	6	1	7	7
-IBlockExtension	addRunningEffects	4	1	6	6
-IBlockExtension	canBeHydrated	5	0	2	2
-IBlockExtension	canConnectRedstone	4	6	24	25
-IBlockExtension	canDropFromExplosion	4	1	4	4
-IBlockExtension	canEntityDestroy	4	10	16	18
-IBlockExtension	canHarvestBlock	4	3	3	5
-IBlockExtension	canStickTo	2	0	1	1
-IBlockExtension	canSustainPlant	5	2	10	10
-IBlockExtension	collisionExtendsVertically	4	1	4	4
-IBlockExtension	getAdjacentBlockPathType	5	0	3	3
-IBlockExtension	getAppearance	6	4	6	7
-IBlockExtension	getBeaconColorMultiplier	4	0	6	6
-IBlockExtension	getBedDirection	3	0	0	0
-IBlockExtension	getBlockPathType	4	1	7	7
-IBlockExtension	getBubbleColumnDirection	1	0	1	1
-IBlockExtension	getCloneItemStack	5	21	38	42
-IBlockExtension	getEnchantPowerBonus	3	0	9	9
-IBlockExtension	getExpDrop	6	1	4	5
-IBlockExtension	getExplosionResistance	4	7	13	14
-IBlockExtension	getFireSpreadSpeed	4	1	6	6
-IBlockExtension	getFlammability	4	1	7	7
-IBlockExtension	getFriction	4	4	6	6
-IBlockExtension	getLightEmission	3	12	27	29
-IBlockExtension	getMapColor	4	1	3	3
-IBlockExtension	getPistonPushReaction	1	1	15	15
-IBlockExtension	getRespawnPosition	5	0	0	0
-IBlockExtension	getSoundType	4	18	11	22
-IBlockExtension	getStateAtViewpoint	4	0	1	1
-IBlockExtension	getToolModifiedState	4	6	8	10
-IBlockExtension	getWeakChanges	3	0	2	2
-IBlockExtension	hasDynamicLightEmission	1	0	7	7
-IBlockExtension	hidesNeighborFace	5	2	7	7
-IBlockExtension	ignitedByLava	4	0	0	0
-IBlockExtension	isBed	4	0	0	0
-IBlockExtension	isBurning	3	0	0	0
-IBlockExtension	isConduitFrame	4	0	1	1
-IBlockExtension	isEmpty	1	0	0	0
-IBlockExtension	isFertile	3	0	5	5
-IBlockExtension	isFireSource	4	0	6	6
-IBlockExtension	isFlammable	4	1	5	5
-IBlockExtension	isLadder	4	1	4	5
-IBlockExtension	isPortalFrame	3	0	2	2
-IBlockExtension	isScaffolding	4	0	2	2
-IBlockExtension	isSlimeBlock	1	0	0	0
-IBlockExtension	isStickyBlock	1	0	2	2
-IBlockExtension	makesOpenTrapdoorAboveClimbable	4	0	1	1
-IBlockExtension	onBlockExploded	4	9	13	13
-IBlockExtension	onBlockStateChange	4	0	1	1
-IBlockExtension	onCaughtFire	5	2	3	3
-IBlockExtension	onDestroyedByPlayer	6	16	16	19
-IBlockExtension	onDestroyedByPushReaction	5	0	0	0
-IBlockExtension	onNeighborChange	4	11	17	17
-IBlockExtension	onTreeGrow	6	0	2	2
-IBlockExtension	rotate	4	3	14	14
-IBlockExtension	setBedOccupied	5	0	0	0
-IBlockExtension	shouldCheckWeakPower	4	3	6	7
-IBlockExtension	shouldDisplayFluidOverlay	4	0	8	8
-IBlockExtension	shouldHideAdjacentFluidFace	3	0	0	0
-IBlockExtension	supportsExternalFaceHiding	1	1	5	5
-IBlockGetterExtension	getAuxLightManager	1	8	4	8
-IBlockGetterExtension	getModelData	1	13	8	14
-IBlockStateExtension	addLandingEffects	5	1	0	1
-IBlockStateExtension	addRunningEffects	3	1	0	1
-IBlockStateExtension	canBeHydrated	4	3	0	3
-IBlockStateExtension	canDropFromExplosion	3	2	0	2
-IBlockStateExtension	canEntityDestroy	3	7	0	7
-IBlockStateExtension	canHarvestBlock	3	10	0	10
-IBlockStateExtension	canRedstoneConnectTo	3	2	0	2
-IBlockStateExtension	canStickTo	1	2	0	2
-IBlockStateExtension	canSustainPlant	4	7	0	7
-IBlockStateExtension	collisionExtendsVertically	3	1	0	1
-IBlockStateExtension	getAdjacentBlockPathType	4	0	0	0
-IBlockStateExtension	getAppearance	5	10	1	11
-IBlockStateExtension	getBeaconColorMultiplier	3	1	0	1
-IBlockStateExtension	getBedDirection	2	0	0	0
-IBlockStateExtension	getBlockPathType	3	1	0	1
-IBlockStateExtension	getBubbleColumnDirection	0	0	0	0
-IBlockStateExtension	getCloneItemStack	4	16	0	16
-IBlockStateExtension	getEnchantPowerBonus	2	5	0	5
-IBlockStateExtension	getExpDrop	5	4	0	4
-IBlockStateExtension	getExplosionResistance	3	5	0	5
-IBlockStateExtension	getFireSpreadSpeed	3	2	0	2
-IBlockStateExtension	getFlammability	3	2	0	2
-IBlockStateExtension	getFriction	3	10	0	10
-IBlockStateExtension	getLightEmission	2	13	1	14
-IBlockStateExtension	getRespawnPosition	4	0	0	0
-IBlockStateExtension	getSoundType	3	22	0	22
-IBlockStateExtension	getStateAtViewpoint	3	0	0	0
-IBlockStateExtension	getToolModifiedState	3	11	0	11
-IBlockStateExtension	getWeakChanges	2	2	0	2
-IBlockStateExtension	hasDynamicLightEmission	0	0	0	0
-IBlockStateExtension	hidesNeighborFace	4	4	0	4
-IBlockStateExtension	ignitedByLava	3	2	0	2
-IBlockStateExtension	isBed	3	0	0	0
-IBlockStateExtension	isBurning	2	0	0	0
-IBlockStateExtension	isConduitFrame	3	0	0	0
-IBlockStateExtension	isEmpty	0	8	0	8
-IBlockStateExtension	isFertile	2	2	0	2
-IBlockStateExtension	isFireSource	3	2	0	2
-IBlockStateExtension	isFlammable	3	5	0	5
-IBlockStateExtension	isLadder	3	1	0	1
-IBlockStateExtension	isPortalFrame	2	0	0	0
-IBlockStateExtension	isScaffolding	1	0	0	0
-IBlockStateExtension	isSlimeBlock	0	0	0	0
-IBlockStateExtension	isStickyBlock	0	1	0	1
-IBlockStateExtension	onBlockExploded	3	2	0	2
-IBlockStateExtension	onBlockStateChange	3	0	0	0
-IBlockStateExtension	onCaughtFire	4	3	0	3
-IBlockStateExtension	onDestroyedByPlayer	5	9	0	9
-IBlockStateExtension	onDestroyedByPushReaction	4	1	0	1
-IBlockStateExtension	onNeighborChange	3	5	0	5
-IBlockStateExtension	onTreeGrow	5	0	0	0
-IBlockStateExtension	rotate	3	9	0	9
-IBlockStateExtension	setBedOccupied	4	0	0	0
-IBlockStateExtension	shouldCheckWeakPower	3	3	0	3
-IBlockStateExtension	shouldDisplayFluidOverlay	3	4	0	4
-IBlockStateExtension	shouldHideAdjacentFluidFace	2	1	0	1
-IBlockStateExtension	supportsExternalFaceHiding	0	3	0	3
-IBoatExtension	canBoatInFluid	1	0	0	0
-IBucketPickupExtension	getPickupSound	1	7	4	10
-IClientCommonPacketListenerExtension	disconnect	1	0	0	0
-IClientCommonPacketListenerExtension	getMainThreadEventLoop	0	0	0	0
-IClientCommonPacketListenerExtension	send	1	4	0	4
-ICommandSourceStackExtension	getAdvancement	1	0	0	0
-ICommandSourceStackExtension	getRecipeManager	0	2	0	2
-ICommandSourceStackExtension	getScoreboard	0	0	0	0
-ICommandSourceStackExtension	getUnsidedLevel	0	1	0	1
-ICommonPacketListener	disconnect	1	0	0	0
-ICommonPacketListener	getConnection	0	1	0	1
-ICommonPacketListener	getConnectionType	0	0	0	0
-ICommonPacketListener	getMainThreadEventLoop	0	1	0	1
-ICommonPacketListener	hasChannel	1	15	0	15
-ICommonPacketListener	send	1	0	0	0
-IDataComponentHolderExtension	addToTooltip	4	3	0	3
-IDataComponentHolderExtension	get	1	74	0	74
-IDataComponentHolderExtension	getOrDefault	2	67	0	67
-IDataComponentHolderExtension	has	1	53	0	53
-IDataComponentMapBuilderExtensions	set	2	24	0	24
-IDispensibleContainerItemExtension	emptyContents	5	5	0	5
-IEntityExtension	canBeRiddenUnderFluidType	2	0	0	0
-IEntityExtension	canFluidExtinguish	1	1	0	1
-IEntityExtension	canHydrateInFluidType	1	0	0	0
-IEntityExtension	canRiderInteract	0	5	3	8
-IEntityExtension	canStartSwimming	0	0	0	0
-IEntityExtension	canSwimInFluidType	1	0	0	0
-IEntityExtension	canTrample	3	0	0	0
-IEntityExtension	captureDrops	0	0	0	0
-IEntityExtension	captureDrops	1	0	0	0
-IEntityExtension	copyAttachmentsFrom	2	0	0	0
-IEntityExtension	deserializeNBT	2	1	0	1
-IEntityExtension	getClassification	1	3	0	3
-IEntityExtension	getEyeInFluidType	0	0	0	0
-IEntityExtension	getFluidFallDistanceModifier	1	0	0	0
-IEntityExtension	getFluidMotionScale	1	0	0	0
-IEntityExtension	getFluidTypeHeight	1	0	0	0
-IEntityExtension	getMaxHeightFluidType	0	0	0	0
-IEntityExtension	getParts	0	4	6	7
-IEntityExtension	getPersistentData	0	0	0	0
-IEntityExtension	getPickedResult	1	2	3	4
-IEntityExtension	getSoundFromFluidType	2	0	0	0
-IEntityExtension	hasCustomOutlineRendering	1	0	0	0
-IEntityExtension	isAddedToLevel	0	0	0	0
-IEntityExtension	isEyeInFluidType	1	3	0	3
-IEntityExtension	isInFluidType	0	0	0	0
-IEntityExtension	isInFluidType	1	3	0	3
-IEntityExtension	isInFluidType	2	0	0	0
-IEntityExtension	isMultipartEntity	0	7	7	11
-IEntityExtension	isPushedByFluid	1	0	5	5
-IEntityExtension	onAddedToLevel	0	0	0	0
-IEntityExtension	onRemovedFromLevel	0	0	0	0
-IEntityExtension	revive	0	0	0	0
-IEntityExtension	sendPairingData	2	1	1	1
-IEntityExtension	serializeNBT	1	1	0	1
-IEntityExtension	shouldRiderSit	0	4	6	7
-IFluidExtension	canConvertToSource	3	1	0	1
-IFluidExtension	canExtinguish	3	0	0	0
-IFluidExtension	canHydrate	5	1	1	1
-IFluidExtension	getAdjacentBlockPathType	5	0	0	0
-IFluidExtension	getBlockPathType	5	0	0	0
-IFluidExtension	getExplosionResistance	4	1	0	1
-IFluidExtension	getFluidType	0	0	0	0
-IFluidExtension	move	4	0	0	0
-IFluidExtension	supportsBoating	2	0	0	0
-IFluidStateExtension	canConvertToSource	2	1	0	1
-IFluidStateExtension	canExtinguish	2	0	0	0
-IFluidStateExtension	canHydrate	4	1	0	1
-IFluidStateExtension	getAdjacentBlockPathType	4	0	0	0
-IFluidStateExtension	getBlockPathType	4	0	0	0
-IFluidStateExtension	getExplosionResistance	3	2	0	2
-IFluidStateExtension	getFluidType	0	13	0	13
-IFluidStateExtension	move	3	0	0	0
-IFluidStateExtension	supportsBoating	1	0	0	0
-IFriendlyByteBufExtension	readArray	2	0	0	0
-IFriendlyByteBufExtension	readMap	2	0	0	0
-IFriendlyByteBufExtension	writeArray	2	0	0	0
-IFriendlyByteBufExtension	writeByte	1	13	0	13
-IFriendlyByteBufExtension	writeMap	3	0	0	0
-IFriendlyByteBufExtension	writeObjectCollection	2	0	0	0
-IHolderExtension	getDelegate	0	5	2	6
-IHolderExtension	getKey	0	48	2	49
-IHolderExtension	unwrapLookup	0	0	0	0
-IHolderLookupProviderExtension	holder	1	5	0	5
-IHolderLookupProviderExtension	holderOrThrow	1	17	0	17
-IHolderSetExtension	addInvalidationListener	1	0	0	0
-IHolderSetExtension	serializationType	0	0	0	0
-IIntrinsicHolderTagAppenderExtension	addTags	1	19	0	19
-IIntrinsicHolderTagAppenderExtension	getKey	1	0	0	0
-IIntrinsicHolderTagAppenderExtension	remove	1	6	0	6
-IIntrinsicHolderTagAppenderExtension	remove	2	3	0	3
-IIntrinsicHolderTagAppenderExtension	replace	0	0	0	0
-IIntrinsicHolderTagAppenderExtension	replace	1	5	0	5
-IItemExtension	applyEnchantments	2	2	1	2
-IItemExtension	canBeHurtBy	2	2	2	3
-IItemExtension	canContinueUsing	2	0	2	2
-IItemExtension	canDisableShield	4	0	2	2
-IItemExtension	canElytraFly	2	5	9	10
-IItemExtension	canEquip	3	2	3	4
-IItemExtension	canFitInsideContainerItems	1	0	2	2
-IItemExtension	canGrindstoneRepair	1	0	0	0
-IItemExtension	canPerformAction	2	11	15	20
-IItemExtension	canWalkOnPowderedSnow	2	0	3	3
-IItemExtension	createEntity	3	0	4	4
-IItemExtension	damageItem	4	3	4	6
-IItemExtension	doesSneakBypassUse	4	0	11	11
-IItemExtension	elytraFlightTick	3	0	5	5
-IItemExtension	getAllEnchantments	2	3	4	4
-IItemExtension	getArmorTexture	5	2	9	9
-IItemExtension	getBurnTime	2	1	12	12
-IItemExtension	getCraftingRemainingItem	1	10	12	19
-IItemExtension	getCreatorModId	1	19	9	24
-IItemExtension	getDamage	1	4	6	10
-IItemExtension	getDefaultAttributeModifiers	1	6	9	10
-IItemExtension	getEnchantmentLevel	2	3	4	4
-IItemExtension	getEnchantmentValue	1	0	2	2
-IItemExtension	getEntityLifespan	2	0	0	0
-IItemExtension	getEquipmentSlot	1	1	6	7
-IItemExtension	getFoodProperties	2	8	4	11
-IItemExtension	getHighlightTip	2	0	0	0
-IItemExtension	getMaxDamage	1	4	17	19
-IItemExtension	getMaxStackSize	1	5	12	14
-IItemExtension	getSweepHitBox	3	0	1	1
-IItemExtension	getXpRepairRatio	1	0	2	2
-IItemExtension	hasCraftingRemainingItem	1	5	11	14
-IItemExtension	hasCustomEntity	1	0	6	6
-IItemExtension	isBookEnchantable	2	3	13	14
-IItemExtension	isDamageable	1	1	12	12
-IItemExtension	isDamaged	1	0	1	1
-IItemExtension	isEnderMask	3	0	5	5
-IItemExtension	isNotReplaceableByPickAction	3	1	4	4
-IItemExtension	isPiglinCurrency	1	0	1	1
-IItemExtension	isPrimaryItemFor	2	4	8	8
-IItemExtension	isRepairable	1	0	0	0
-IItemExtension	makesPiglinsNeutral	2	0	6	6
-IItemExtension	onAnimalArmorTick	3	0	0	0
-IItemExtension	onDestroyed	2	1	2	2
-IItemExtension	onDroppedByPlayer	2	0	2	2
-IItemExtension	onEntityItemUpdate	2	5	9	9
-IItemExtension	onEntitySwing	2	0	2	2
-IItemExtension	onEntitySwing	3	1	3	3
-IItemExtension	onItemUseFirst	2	7	26	26
-IItemExtension	onLeftClickEntity	3	6	9	9
-IItemExtension	onStopUsing	3	1	2	2
-IItemExtension	setDamage	2	1	6	6
-IItemExtension	shouldCauseBlockBreakReset	2	2	6	6
-IItemExtension	shouldCauseReequipAnimation	3	5	44	44
-IItemExtension	supportsEnchantment	2	10	17	17
-IItemPropertiesExtensions	component	2	32	0	32
-IItemStackExtension	canDisableShield	3	3	0	3
-IItemStackExtension	canElytraFly	1	1	0	1
-IItemStackExtension	canEquip	2	10	0	10
-IItemStackExtension	canFitInsideContainerItems	0	2	0	2
-IItemStackExtension	canGrindstoneRepair	0	1	0	1
-IItemStackExtension	canPerformAction	1	26	0	26
-IItemStackExtension	canWalkOnPowderedSnow	1	1	0	1
-IItemStackExtension	doesSneakBypassUse	3	2	0	2
-IItemStackExtension	elytraFlightTick	2	0	0	0
-IItemStackExtension	getAllEnchantments	1	6	0	6
-IItemStackExtension	getAttributeModifiers	0	10	0	10
-IItemStackExtension	getBurnTime	1	28	0	28
-IItemStackExtension	getCapability	1	68	0	68
-IItemStackExtension	getCapability	2	7	0	7
-IItemStackExtension	getCraftingRemainingItem	0	37	0	37
-IItemStackExtension	getEnchantmentLevel	1	22	0	22
-IItemStackExtension	getEnchantmentValue	0	2	0	2
-IItemStackExtension	getEntityLifespan	1	0	0	0
-IItemStackExtension	getEquipmentSlot	0	4	0	4
-IItemStackExtension	getFoodProperties	1	17	0	17
-IItemStackExtension	getHighlightTip	1	1	0	1
-IItemStackExtension	getSweepHitBox	2	0	0	0
-IItemStackExtension	getXpRepairRatio	0	5	0	5
-IItemStackExtension	hasCraftingRemainingItem	0	29	0	29
-IItemStackExtension	isBookEnchantable	1	2	0	2
-IItemStackExtension	isEnderMask	2	2	0	2
-IItemStackExtension	isNotReplaceableByPickAction	2	1	0	1
-IItemStackExtension	isPiglinCurrency	0	2	0	2
-IItemStackExtension	isPrimaryItemFor	1	3	0	3
-IItemStackExtension	isRepairable	0	5	0	5
-IItemStackExtension	makesPiglinsNeutral	1	1	0	1
-IItemStackExtension	onAnimalArmorTick	2	0	0	0
-IItemStackExtension	onDestroyed	2	0	0	0
-IItemStackExtension	onDroppedByPlayer	1	0	0	0
-IItemStackExtension	onEntityItemUpdate	1	0	0	0
-IItemStackExtension	onEntitySwing	1	0	0	0
-IItemStackExtension	onEntitySwing	2	0	0	0
-IItemStackExtension	onItemUseFirst	1	0	0	0
-IItemStackExtension	onStopUsing	2	1	0	1
-IItemStackExtension	shouldCauseBlockBreakReset	1	0	0	0
-IItemStackExtension	supportsEnchantment	1	9	0	9
-ILevelExtension	getCapability	2	4	0	4
-ILevelExtension	getCapability	3	75	0	75
-ILevelExtension	getCapability	4	2	0	2
-ILevelExtension	getCapability	5	38	0	38
-ILevelExtension	getDescription	0	3	0	3
-ILevelExtension	getDescriptionKey	0	0	0	0
-ILevelExtension	getMaxEntityRadius	0	0	0	0
-ILevelExtension	getModelDataManager	0	3	1	4
-ILevelExtension	getPartEntities	0	1	0	1
-ILevelExtension	increaseMaxEntityRadius	1	0	0	0
-ILevelExtension	invalidateCapabilities	1	18	0	18
-ILevelReaderExtension	holder	1	6	0	6
-ILevelReaderExtension	holderOrThrow	1	12	0	12
-ILevelReaderExtension	isAreaLoaded	2	14	5	16
-ILivingEntityExtension	canDrownInFluidType	1	1	3	4
-ILivingEntityExtension	canSwimInFluidType	1	0	0	0
-ILivingEntityExtension	jumpInFluid	1	0	0	0
-ILivingEntityExtension	moveInFluid	3	0	0	0
-ILivingEntityExtension	onDamageTaken	1	0	2	2
-ILivingEntityExtension	self	0	1	0	1
-ILivingEntityExtension	sinkInFluid	1	0	0	0
-IMenuTypeExtension	create	3	0	0	0
-IMobEffectExtension	fillEffectCures	2	0	8	8
-IMobEffectExtension	getSortOrder	1	0	0	0
-IOwnedSpawner	getOwner	0	0	2	2
-IPackResourcesExtension	isHidden	0	0	2	2
-IPacketFlowExtension	getReceptionSide	0	9	0	9
-IPacketFlowExtension	isClientbound	0	16	0	16
-IPacketFlowExtension	isServerbound	0	16	0	16
-IPacketFlowExtension	self	0	0	0	0
-IPlayerExtension	isCloseEnough	2	0	0	0
-IPlayerExtension	isFakePlayer	0	7	0	7
-IPlayerExtension	mayFly	0	3	0	3
-IPlayerExtension	openMenu	2	60	0	60
-IPlayerListExtension	broadcast	6	0	0	0
-IPlayerListExtension	broadcast	7	0	0	0
-IPlayerListExtension	broadcastAll	1	0	0	0
-IPlayerListExtension	broadcastAll	2	0	0	0
-IPlayerListExtension	self	0	0	0	0
-IRecipeOutputExtension	accept	4	23	17	24
-IRecipeOutputExtension	withConditions	1	34	0	34
-IServerChunkCacheExtension	broadcast	2	0	0	0
-IServerChunkCacheExtension	broadcastAndSend	2	0	0	0
-IServerChunkCacheExtension	self	0	0	0	0
-IServerCommonPacketListenerExtension	send	1	18	0	18
-IServerCommonPacketListenerExtension	send	2	0	0	0
-IServerConfigurationPacketListenerExtension	finishCurrentTask	1	7	0	7
-IServerGamePacketListenerExtension	sendBundled	1	0	0	0
-ITagAppenderExtension	addOptionalTag	1	9	0	9
-ITagAppenderExtension	addOptionalTags	1	0	0	0
-ITagAppenderExtension	addTags	1	5	0	5
-ITagAppenderExtension	remove	1	4	0	4
-ITagAppenderExtension	remove	2	3	0	3
-ITagAppenderExtension	replace	0	0	0	0
-ITagAppenderExtension	replace	1	2	0	2
-ITagBuilderExtension	getRawBuilder	0	0	0	0
-ITagBuilderExtension	remove	2	0	0	0
-ITagBuilderExtension	removeElement	1	1	0	1
-ITagBuilderExtension	removeElement	2	0	0	0
-ITagBuilderExtension	removeTag	1	1	0	1
-ITagBuilderExtension	removeTag	2	0	0	0
-ITransformationExtension	applyOrigin	1	2	0	2
-ITransformationExtension	blockCenterToCorner	0	2	0	2
-ITransformationExtension	blockCornerToCenter	0	1	0	1
-ITransformationExtension	isIdentity	0	6	0	6
-ITransformationExtension	rotateTransform	1	1	0	1
-ITransformationExtension	transformNormal	1	1	0	1
-ITransformationExtension	transformPosition	1	1	0	1
-TooltipFlagExtension	hasAltDown	0	1	0	1
-TooltipFlagExtension	hasControlDown	0	0	0	0
-TooltipFlagExtension	hasShiftDown	0	8	0	8
-TooltipFlagExtension	shouldDisplayAllInformation	0	0	1	1
+interface	method	called_by	overridden_by
+IAbstractMinecartExtension	canBeRidden	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	canUseRail	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	getComparatorLevel	ImmersiveEngineering-1.21.1-12.4.2-194.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar
+IAbstractMinecartExtension	getCurrentCartSpeedCapOnRail		
+IAbstractMinecartExtension	getCurrentRailPosition	ImmersiveEngineering-1.21.1-12.4.2-194.jar;create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	getDragAir		
+IAbstractMinecartExtension	getMaxCartSpeedOnRail	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	getMaxSpeedAirLateral		
+IAbstractMinecartExtension	getMaxSpeedAirVertical		
+IAbstractMinecartExtension	getMaxSpeedWithRail	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	getSlopeAdjustment	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	isPoweredCart		
+IAbstractMinecartExtension	moveMinecartOnRail	create-1.21.1-6.0.10.jar	
+IAbstractMinecartExtension	setCanUseRail		
+IAbstractMinecartExtension	setCurrentCartSpeedCapOnRail		
+IAbstractMinecartExtension	setDragAir		
+IAbstractMinecartExtension	setMaxSpeedAirLateral		
+IAbstractMinecartExtension	setMaxSpeedAirVertical		
+IAbstractMinecartExtension	shouldDoRailFunctions		
+IAdvancementBuilderExtension	save	ExtraStorage-1.21.1-5.0.10.jar;artifacts-neoforge-13.2.5.jar	
+IAttributeExtension	getBaseId		lodestone-1.21.1-1.8.2.jar
+IAttributeExtension	getDebugInfo	curios-neoforge-9.5.1+1.21.1.jar	
+IAttributeExtension	getMergedStyle		
+IAttributeExtension	toBaseComponent		
+IAttributeExtension	toComponent	Apotheosis-1.21.1-8.8.0.jar;ApothicAttributes-1.21.1-2.10.1.jar;GatewaysToEternity-1.21.1-5.1.0.jar;malum-1.21.1-1.8.2.jar	curios-neoforge-9.5.1+1.21.1.jar
+IAttributeExtension	toValueComponent	Apotheosis-1.21.1-8.8.0.jar;ApothicAttributes-1.21.1-2.10.1.jar;curios-neoforge-9.5.1+1.21.1.jar;lodestone-1.21.1-1.8.2.jar	lodestone-1.21.1-1.8.2.jar
+IBaseRailBlockExtension	canMakeSlopes		create-1.21.1-6.0.10.jar
+IBaseRailBlockExtension	getRailDirection	ImmersiveEngineering-1.21.1-12.4.2-194.jar;create-1.21.1-6.0.10.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBaseRailBlockExtension	getRailMaxSpeed	create-1.21.1-6.0.10.jar	
+IBaseRailBlockExtension	isFlexibleRail		
+IBaseRailBlockExtension	isValidRailShape		FramedBlocks-10.6.2.jar
+IBaseRailBlockExtension	onMinecartPass		create-1.21.1-6.0.10.jar
+IBlockAndTintGetterExtension	getShade	ExtendedAE-1.21-2.2.36-neoforge.jar;FramedBlocks-10.6.2.jar;athena-neoforge-1.21.1-4.0.6.jar;bonsaitrees4-4.0.9.jar;guideme-21.1.17.jar;sodium-neoforge-0.8.13+mc1.21.1.jar	ExtendedAE-1.21-2.2.36-neoforge.jar;FramedBlocks-10.6.2.jar;athena-neoforge-1.21.1-4.0.6.jar;bonsaitrees4-4.0.9.jar;guideme-21.1.17.jar;sodium-neoforge-0.8.13+mc1.21.1.jar
+IBlockEntityExtension	getModelData	FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;appliedenergistics2-19.2.17.jar;bonsaitrees4-4.0.9.jar;cabletiers-neoforge-1.21.1-0.6.14.jar;create-1.21.1-6.0.10.jar;guideme-21.1.17.jar;mekanism_ponders-1.0.3-1.21.1.jar;mffs-5.4.44.jar;productivemetalworks-1.21.1-1.15.1.jar;refinedstorage-neoforge-2.0.9.jar	AdvancedAE-1.6.12-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;ExtraStorage-1.21.1-5.0.10.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;Mekanism-1.21.1-10.7.19.85.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;appliedenergistics2-19.2.17.jar;bonsaitrees4-4.0.9.jar;cabletiers-neoforge-1.21.1-0.6.14.jar;create-1.21.1-6.0.10.jar;crystalix-3.0.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;refinedstorage-neoforge-2.0.9.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;xnet-1.21-7.0.7.jar;xycraft_machines-0.7.53.jar
+IBlockEntityExtension	getPersistentData	create-1.21.1-6.0.10.jar	
+IBlockEntityExtension	handleUpdateTag	Cognition-v2.4.13-1.21.1.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;dimdungeons-210-neoforge-1.21.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;energymeter-neoforge-1.21.1-0.5.2.jar;ftb-echoes-21.1.10.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;mcjtylib-1.21-9.0.21.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;starbunclemania-1.21.1-1.5.8.jar;trophymanager-1.21.1-3.0.0.jar;xycraft_core-0.7.53-all.jar	Cognition-v2.4.13-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;EnderStorage-1.21.1-2.13.0.191.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;applied-experienced-1.21.1-1.3.2.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;buildinggadgets2-1.3.9.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;energymeter-neoforge-1.21.1-0.5.2.jar;ftb-echoes-21.1.10.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;mcjtylib-1.21-9.0.21.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;modular-routers-13.2.7+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;rftoolsbuilder-1.21-7.0.6.jar;routers-1.21.1-1.1.7.jar;starbunclemania-1.21.1-1.5.8.jar;xp_synthesiser-1.0.3.jar;xycraft_core-0.7.53-all.jar
+IBlockEntityExtension	hasCustomOutlineRendering	sodium-neoforge-0.8.13+mc1.21.1.jar	FramedBlocks-10.6.2.jar
+IBlockEntityExtension	invalidateCapabilities	AdvancedAE-1.6.12-1.21.1.jar;AppliedFlux-1.21-2.1.5-neoforge.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;CustomMachineryMekanism-1.21.1-1.4.16.jar;EnderStorage-1.21.1-2.13.0.191.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;entangled-1.3.21-neoforge-mc1.21.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;irons_spellbooks-1.21.1-3.16.3.jar;modular-routers-13.2.7+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;pipez-neoforge-1.21.1-1.2.31.jar;productivemetalworks-1.21.1-1.15.1.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;tesseract-1.0.38-neoforge-mc1.21.jar;titanium-1.21-4.0.50.jar;xycraft_machines-0.7.53.jar	FluxNetworks-1.21.1-8.0.0.jar;functionalstorage-1.21.1-1.5.8.jar;pipez-neoforge-1.21.1-1.2.31.jar
+IBlockEntityExtension	onChunkUnloaded	AdvancedPeripherals-1.21.1-0.7.62b.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;CustomMachineryCreate-1.21.1-1.2.7.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FluxNetworks-1.21.1-8.0.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Replication-1.21.1-1.2.7.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;industrial-foregoing-souls-1.21.1-1.10.7.jar;me_beam_former-1.21.1-1.3.0.jar;mffs-5.4.44.jar;more-immersive-wires-1.21.1-1.1.9.jar;occultism-1.21.1-neoforge-1.224.4.jar;rep_ae2_bridge-1.9.0.0.0-neoforge-1.21.1.jar;replication_rs2_bridge-1.21.1-NeoForge-1.2.6.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xycraft_machines-0.7.53.jar	AdvancedPeripherals-1.21.1-0.7.62b.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FluxNetworks-1.21.1-8.0.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Replication-1.21.1-1.2.7.jar;actuallyadditions-1.3.26+mc1.21.1.jar;alltheleaks-1.1.12+1.21.1-neoforge.jar;appliedenergistics2-19.2.17.jar;create-1.21.1-6.0.10.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;industrial-foregoing-souls-1.21.1-1.10.7.jar;me_beam_former-1.21.1-1.3.0.jar;mffs-5.4.44.jar;more-immersive-wires-1.21.1-1.1.9.jar;occultism-1.21.1-neoforge-1.224.4.jar;rep_ae2_bridge-1.9.0.0.0-neoforge-1.21.1.jar;replication_rs2_bridge-1.21.1-NeoForge-1.2.6.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xycraft_machines-0.7.53.jar
+IBlockEntityExtension	onDataPacket	Cognition-v2.4.13-1.21.1.jar;Glassential-renewed-1.21.1-3.4.5.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;crystalix-3.0.1.jar;enderio-8.2.12-beta.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;morered-1.21.1-6.0.0.3.jar;productivemetalworks-1.21.1-1.15.1.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xnet-1.21-7.0.7.jar;xp_synthesiser-1.0.3.jar;xycraft_core-0.7.53-all.jar	Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;BrandonsCore-1.21.1-3.2.1.309.jar;ChanceCubes-1.21.1-5.0.2.517.jar;Cognition-v2.4.13-1.21.1.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;Mekanism-1.21.1-10.7.19.85.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;create-1.21.1-6.0.10.jar;crystalix-3.0.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;ftb-echoes-21.1.10.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;mcjtylib-1.21-9.0.21.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;morered-1.21.1-6.0.0.3.jar;occultism-1.21.1-neoforge-1.224.4.jar;productivemetalworks-1.21.1-1.15.1.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;simpletomb-1.21.1-1.4.4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;titanium-1.21-4.0.50.jar;trophymanager-1.21.1-3.0.0.jar;xnet-1.21-7.0.7.jar;xp_synthesiser-1.0.3.jar;xycraft_core-0.7.53-all.jar
+IBlockEntityExtension	onLoad	AvaritiaNeo-1.21-1.3.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Replication-1.21.1-1.2.7.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;alltheleaks-1.1.12+1.21.1-neoforge.jar;ars_creo-1.21.1-5.4.0.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;fdlib-1.0.9-1.21.1.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;industrial-foregoing-souls-1.21.1-1.10.7.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;me_beam_former-1.21.1-1.3.0.jar;mffs-5.4.44.jar;more-immersive-wires-1.21.1-1.1.9.jar;occultengineering-1.21.1-0.13.1.jar;rep_ae2_bridge-1.9.0.0.0-neoforge-1.21.1.jar;replication_rs2_bridge-1.21.1-NeoForge-1.2.6.jar;roostultimate_1.21.1-curse-4.1.0.jar;schematicenergistics-1.21.1-1.5.4a.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xycraft_machines-0.7.53.jar	AvaritiaNeo-1.21-1.3.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Replication-1.21.1-1.2.7.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;alltheleaks-1.1.12+1.21.1-neoforge.jar;ars_creo-1.21.1-5.4.0.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;fdlib-1.0.9-1.21.1.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;industrial-foregoing-souls-1.21.1-1.10.7.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;me_beam_former-1.21.1-1.3.0.jar;mffs-5.4.44.jar;more-immersive-wires-1.21.1-1.1.9.jar;occultengineering-1.21.1-0.13.1.jar;rep_ae2_bridge-1.9.0.0.0-neoforge-1.21.1.jar;replication_rs2_bridge-1.21.1-NeoForge-1.2.6.jar;roostultimate_1.21.1-curse-4.1.0.jar;schematicenergistics-1.21.1-1.5.4a.jar;simplemagnets-1.1.12c-neoforge-mc1.21.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xycraft_machines-0.7.53.jar
+IBlockEntityExtension	requestModelDataUpdate	AdvancedAE-1.6.12-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;appliedenergistics2-19.2.17.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;refinedstorage-neoforge-2.0.9.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;xnet-1.21-7.0.7.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	create-1.21.1-6.0.10.jar
+IBlockExtension	addLandingEffects	FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar	CodeChickenLib-1.21.1-4.6.1.529.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	addRunningEffects	FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar	CodeChickenLib-1.21.1-4.6.1.529.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	canBeHydrated		CreateDragonsPlus-1.11.8b.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	canConnectRedstone	BrandonsCore-1.21.1-3.2.1.309.jar;Mekanism-1.21.1-10.7.19.85.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;justdirethings-1.5.7.jar;morered-1.21.1-6.0.0.3.jar;xnet-1.21-7.0.7.jar	BrandonsCore-1.21.1-3.2.1.309.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;appliedenergistics2-19.2.17.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;createaddition-1.6.0.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mffs-5.4.44.jar;morered-1.21.1-6.0.0.3.jar;occultengineering-1.21.1-0.13.1.jar;rsrequestify-1.21.1-3.0.0.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	canDropFromExplosion	crystalix-3.0.1.jar	ars_nouveau-1.21.1-5.13.1.jar;compactmachines-neoforge-7.0.81.jar;crystalix-3.0.1.jar;enderio-8.2.12-beta.jar
+IBlockExtension	canEntityDestroy	BrandonsCore-1.21.1-3.2.1.309.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ftboceanmobs-21.1.4.jar;mffs-5.4.44.jar;mighty-ender-chicken-rehatched-21.1.5.jar;modular-routers-13.2.7+mc1.21.1.jar;rftoolsbuilder-1.21-7.0.6.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar	BrandonsCore-1.21.1-3.2.1.309.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;appliedenergistics2-19.2.17.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;crystalix-3.0.1.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_core-0.7.53-all.jar;xycraft_world-0.7.53.jar
+IBlockExtension	canHarvestBlock	CustomMachinery-neoforge-1.21.1-0.10.69.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;twilightforest-1.21.1-4.8.3345-universal.jar	CustomMachinery-neoforge-1.21.1-0.10.69.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar
+IBlockExtension	canStickTo		twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	canSustainPlant	irregular-implements-1.21.1-1.12.0-build.270.jar;twilightforest-1.21.1-4.8.3345-universal.jar	FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	collisionExtendsVertically	elevatorid-neoforge-1.21.1-1.11.4.jar	Cognition-v2.4.13-1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;create_connected-1.3.3-mc1.21.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar
+IBlockExtension	getAdjacentBlockPathType		irons_spellbooks-1.21.1-3.16.3.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;xycraft_world-0.7.53.jar
+IBlockExtension	getAppearance	FramedBlocks-10.6.2.jar;ars_nouveau-1.21.1-5.13.1.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar	FramedBlocks-10.6.2.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar
+IBlockExtension	getBeaconColorMultiplier		FramedBlocks-10.6.2.jar;Psi-neoforge-1.21.1-110.jar;crystalix-3.0.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_world-0.7.53.jar
+IBlockExtension	getBedDirection		
+IBlockExtension	getBlockPathType	Mekanism-1.21.1-10.7.19.85.jar	FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;occultism-1.21.1-neoforge-1.224.4.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	getBubbleColumnDirection		xycraft_machines-0.7.53.jar
+IBlockExtension	getCloneItemStack	BrandonsCore-1.21.1-3.2.1.309.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;actuallyadditions-1.3.26+mc1.21.1.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;pipez-neoforge-1.21.1-1.2.31.jar;refinedstorage-neoforge-2.0.9.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_core-0.7.53-all.jar;xycraft_world-0.7.53.jar	Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;ApothicSpawners-1.21.1-1.4.0.jar;BrandonsCore-1.21.1-3.2.1.309.jar;CreateDragonsPlus-1.11.8b.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;Mekanism-1.21.1-10.7.19.85.jar;amendments-1.21-2.1.10-neoforge.jar;appliedenergistics2-19.2.17.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;mffs-5.4.44.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;trophymanager-1.21.1-3.0.0.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar;xycraft_world-0.7.53.jar
+IBlockExtension	getEnchantPowerBonus		ApothicEnchanting-1.21.1-1.6.2.jar;Cognition-v2.4.13-1.21.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;chisel-1.21.1-NeoForge-1.4.1.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IBlockExtension	getExpDrop	industrialforegoing-1.21-3.6.39.jar	Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;Mekanism-1.21.1-10.7.19.85.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_world-0.7.53.jar
+IBlockExtension	getExplosionResistance	CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;Mekanism-1.21.1-10.7.19.85.jar;appliedenergistics2-19.2.17.jar;create_connected-1.3.3-mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar	CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;Mekanism-1.21.1-10.7.19.85.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;amendments-1.21-2.1.10-neoforge.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;crystalix-3.0.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	getFireSpreadSpeed	irregular-implements-1.21.1-1.12.0-build.270.jar	FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IBlockExtension	getFlammability	irregular-implements-1.21.1-1.12.0-build.270.jar	FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar
+IBlockExtension	getFriction	Cognition-v2.4.13-1.21.1.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar	Cognition-v2.4.13-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar
+IBlockExtension	getLightEmission	CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;Mekanism-1.21.1-10.7.19.85.jar;applied-experienced-1.21.1-1.3.2.jar;bonsaitrees4-4.0.9.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;create-1.21.1-6.0.10.jar;crystalix-3.0.1.jar;enderio-8.2.12-beta.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Cognition-v2.4.13-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;FramedBlocks-10.6.2.jar;Glassential-renewed-1.21.1-3.4.5.jar;Mekanism-1.21.1-10.7.19.85.jar;Psi-neoforge-1.21.1-110.jar;actuallyadditions-1.3.26+mc1.21.1.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create-shimmer-1.3.1.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;crystalix-3.0.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;me_beam_former-1.21.1-1.3.0.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_world-0.7.53.jar
+IBlockExtension	getMapColor	xycraft_machines-0.7.53.jar	FramedBlocks-10.6.2.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	getPistonPushReaction	Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar	ExtendedAE-1.21-2.2.36-neoforge.jar;Mekanism-1.21.1-10.7.19.85.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;chipped-neoforge-1.21.1-4.0.2.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;irons_lib-1.21.1-2.1.0.jar;irons_spellbooks-1.21.1-3.16.3.jar;malum-1.21.1-1.8.2.jar;occultengineering-1.21.1-0.13.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	getRespawnPosition		
+IBlockExtension	getSoundType	ChanceCubes-1.21.1-5.0.2.517.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Powah-6.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;betterblockz-0.2.10-1.21.1-neoforge.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;createaddition-1.6.0.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;malum-1.21.1-1.8.2.jar;modular-routers-13.2.7+mc1.21.1.jar;rftoolsbuilder-1.21-7.0.6.jar;xnet-1.21-7.0.7.jar	CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;amendments-1.21-2.1.10-neoforge.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;moonlight-1.21.1-3.6.3-neoforge.jar
+IBlockExtension	getStateAtViewpoint		industrialforegoing-1.21-3.6.39.jar
+IBlockExtension	getToolModifiedState	irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;lodestone-1.21.1-1.8.2.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar	FarmersDelight-1.21.1-1.3.4.jar;ars_nouveau-1.21.1-5.13.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	getWeakChanges		malum-1.21.1-1.8.2.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar
+IBlockExtension	hasDynamicLightEmission		FramedBlocks-10.6.2.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	hidesNeighborFace	ars_nouveau-1.21.1-5.13.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar	FramedBlocks-10.6.2.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;mffs-5.4.44.jar;productivemetalworks-1.21.1-1.15.1.jar
+IBlockExtension	ignitedByLava		
+IBlockExtension	isBed		
+IBlockExtension	isBurning		
+IBlockExtension	isConduitFrame		ars_elemental-1.21.1-0.7.10.1.jar
+IBlockExtension	isEmpty		
+IBlockExtension	isFertile		FarmersDelight-1.21.1-1.3.4.jar;farmingforblockheads-neoforge-1.21.1-21.1.13.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	isFireSource		FramedBlocks-10.6.2.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	isFlammable	irregular-implements-1.21.1-1.12.0-build.270.jar	FramedBlocks-10.6.2.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	isLadder	ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_nouveau-1.21.1-5.13.1.jar	FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;appliedenergistics2-19.2.17.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IBlockExtension	isPortalFrame		Mekanism-1.21.1-10.7.19.85.jar;utilitarian-1.21.1-0.19.2.jar
+IBlockExtension	isScaffolding		create-1.21.1-6.0.10.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	isSlimeBlock		
+IBlockExtension	isStickyBlock		twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	makesOpenTrapdoorAboveClimbable		FramedBlocks-10.6.2.jar
+IBlockExtension	onBlockExploded	BrandonsCore-1.21.1-3.2.1.309.jar;Cognition-v2.4.13-1.21.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;crystalix-3.0.1.jar;lodestone-1.21.1-1.8.2.jar;more-immersive-wires-1.21.1-1.1.9.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	ApothicSpawners-1.21.1-1.4.0.jar;BrandonsCore-1.21.1-3.2.1.309.jar;Cognition-v2.4.13-1.21.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;crystalix-3.0.1.jar;lodestone-1.21.1-1.8.2.jar;more-immersive-wires-1.21.1-1.1.9.jar;simpletomb-1.21.1-1.4.4.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;xycraft_core-0.7.53-all.jar;xycraft_world-0.7.53.jar
+IBlockExtension	onBlockStateChange		FramedBlocks-10.6.2.jar
+IBlockExtension	onCaughtFire	Cognition-v2.4.13-1.21.1.jar;appliedenergistics2-19.2.17.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;appliedenergistics2-19.2.17.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IBlockExtension	onDestroyedByPlayer	Cognition-v2.4.13-1.21.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xnet-1.21-7.0.7.jar	Cognition-v2.4.13-1.21.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xnet-1.21-7.0.7.jar
+IBlockExtension	onDestroyedByPushReaction		
+IBlockExtension	onNeighborChange	AdvancedPeripherals-1.21.1-0.7.62b.jar;FluxNetworks-1.21.1-8.0.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;enderio-8.2.12-beta.jar;more-immersive-wires-1.21.1-1.1.9.jar;morered-1.21.1-6.0.0.3.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;xnet-1.21-7.0.7.jar	AdvancedPeripherals-1.21.1-0.7.62b.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FluxNetworks-1.21.1-8.0.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;enderio-8.2.12-beta.jar;more-immersive-wires-1.21.1-1.1.9.jar;morered-1.21.1-6.0.0.3.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;xnet-1.21-7.0.7.jar
+IBlockExtension	onTreeGrow		industrialforegoing-1.21-3.6.39.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IBlockExtension	rotate	ars_elemental-1.21.1-0.7.10.1.jar;create_connected-1.3.3-mc1.21.1.jar;mcjtylib-1.21-9.0.21.jar;xycraft_machines-0.7.53.jar	CodeChickenLib-1.21.1-4.6.1.529.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_elemental-1.21.1-0.7.10.1.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;ftb-stuff-things-21.1.19.jar;mcjtylib-1.21-9.0.21.jar;rftoolsutility-1.21-7.0.12.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	setBedOccupied		
+IBlockExtension	shouldCheckWeakPower	BrandonsCore-1.21.1-3.2.1.309.jar;Mekanism-1.21.1-10.7.19.85.jar;elevatorid-neoforge-1.21.1-1.11.4.jar	BrandonsCore-1.21.1-3.2.1.309.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;xnet-1.21-7.0.7.jar;xycraft_machines-0.7.53.jar
+IBlockExtension	shouldDisplayFluidOverlay		CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;modular-routers-13.2.7+mc1.21.1.jar
+IBlockExtension	shouldHideAdjacentFluidFace		
+IBlockExtension	supportsExternalFaceHiding	ars_nouveau-1.21.1-5.13.1.jar	ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar
+IBlockGetterExtension	getAuxLightManager	ExtendedAE-1.21-2.2.36-neoforge.jar;FramedBlocks-10.6.2.jar;athena-neoforge-1.21.1-4.0.6.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;guideme-21.1.17.jar;sodium-neoforge-0.8.13+mc1.21.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ExtendedAE-1.21-2.2.36-neoforge.jar;athena-neoforge-1.21.1-4.0.6.jar;guideme-21.1.17.jar;sodium-neoforge-0.8.13+mc1.21.1.jar
+IBlockGetterExtension	getModelData	Apotheosis-1.21.1-8.8.0.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FramedBlocks-10.6.2.jar;appliedenergistics2-19.2.17.jar;athena-neoforge-1.21.1-4.0.6.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;guideme-21.1.17.jar;mekanism_ponders-1.0.3-1.21.1.jar;pipegoggles-2.0.4.jar;productivemetalworks-1.21.1-1.15.1.jar;rftoolsbuilder-1.21-7.0.6.jar;underlay-1.0.4-hotfix.1-neoforge-mc1.21.1.jar;xycraft_machines-0.7.53.jar	ExtendedAE-1.21-2.2.36-neoforge.jar;athena-neoforge-1.21.1-4.0.6.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;guideme-21.1.17.jar;mekanism_ponders-1.0.3-1.21.1.jar;productivemetalworks-1.21.1-1.15.1.jar;sodium-neoforge-0.8.13+mc1.21.1.jar
+IBlockStateExtension	addLandingEffects	create-1.21.1-6.0.10.jar	
+IBlockStateExtension	addRunningEffects	create-1.21.1-6.0.10.jar	
+IBlockStateExtension	canBeHydrated	FarmersDelight-1.21.1-1.3.4.jar;create-shimmer-1.3.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IBlockStateExtension	canDropFromExplosion	appliedenergistics2-19.2.17.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	canEntityDestroy	FramedBlocks-10.6.2.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;irons_spellbooks-1.21.1-3.16.3.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IBlockStateExtension	canHarvestBlock	Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;Cucumber-1.21.1-8.0.16.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;industrialforegoing-1.21-3.6.39.jar;justdirethings-1.5.7.jar;moonlight-1.21.1-3.6.3-neoforge.jar;morered-1.21.1-6.0.0.3.jar	
+IBlockStateExtension	canRedstoneConnectTo	enderio-8.2.12-beta.jar;morered-1.21.1-6.0.0.3.jar	
+IBlockStateExtension	canStickTo	create-1.21.1-6.0.10.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	
+IBlockStateExtension	canSustainPlant	FarmersDelight-1.21.1-1.3.4.jar;actuallyadditions-1.3.26+mc1.21.1.jar;create-shimmer-1.3.1.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+IBlockStateExtension	collisionExtendsVertically	elevatorid-neoforge-1.21.1-1.11.4.jar	
+IBlockStateExtension	getAdjacentBlockPathType		
+IBlockStateExtension	getAppearance	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;CTM-1.21-1.2.1+3.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;appliedenergistics2-19.2.17.jar;athena-neoforge-1.21.1-4.0.6.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;fusion-1.3.15a-neoforge-mc1.21.1.jar;xycraft_core-0.7.53-all.jar	cable_facades-1.21.1-NeoForge-2.1.4.jar
+IBlockStateExtension	getBeaconColorMultiplier	FramedBlocks-10.6.2.jar	
+IBlockStateExtension	getBedDirection		
+IBlockStateExtension	getBlockPathType	ars_nouveau-1.21.1-5.13.1.jar	
+IBlockStateExtension	getBubbleColumnDirection		
+IBlockStateExtension	getCloneItemStack	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;Jade-1.21.1-NeoForge-15.10.6.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;buildinggadgets2-1.3.9.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;justdirethings-1.5.7.jar;mekanism_ponders-1.0.3-1.21.1.jar;mffs-5.4.44.jar;pipegoggles-2.0.4.jar;productivemetalworks-1.21.1-1.15.1.jar;refinedstorage-neoforge-2.0.9.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	
+IBlockStateExtension	getEnchantPowerBonus	ApothicEnchanting-1.21.1-1.6.2.jar;Jade-1.21.1-NeoForge-15.10.6.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;create-1.21.1-6.0.10.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	
+IBlockStateExtension	getExpDrop	Cucumber-1.21.1-8.0.16.jar;just-hammers-neoforge-21.1.4.jar;malum-1.21.1-1.8.2.jar;mininggadgets-1.18.7.jar	
+IBlockStateExtension	getExplosionResistance	FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	getFireSpreadSpeed	FramedBlocks-10.6.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	getFlammability	FramedBlocks-10.6.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	getFriction	FramedBlocks-10.6.2.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;irons_spellbooks-1.21.1-3.16.3.jar;moonlight-1.21.1-3.6.3-neoforge.jar;relics-1.21.1-0.10.7.6.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IBlockStateExtension	getLightEmission	ChanceCubes-1.21.1-5.0.2.517.jar;Mekanism-1.21.1-10.7.19.85.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;functionalstorage-1.21.1-1.5.8.jar;mekanism_ponders-1.0.3-1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;productivemetalworks-1.21.1-1.15.1.jar;sodium-neoforge-0.8.13+mc1.21.1.jar;xycraft_world-0.7.53.jar	cable_facades-1.21.1-NeoForge-2.1.4.jar
+IBlockStateExtension	getRespawnPosition		
+IBlockStateExtension	getSoundType	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;create-1.21.1-6.0.10.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;ftb-ez-crystals-21.1.1.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;jumbofurnace-5.0.0.9.jar;malum-1.21.1-1.8.2.jar;morered-1.21.1-6.0.0.3.jar;roostultimate_1.21.1-curse-4.1.0.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_machines-0.7.53.jar	
+IBlockStateExtension	getStateAtViewpoint		
+IBlockStateExtension	getToolModifiedState	AvaritiaNeo-1.21-1.3.1.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;omnitools-1.2.2.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar	
+IBlockStateExtension	getWeakChanges	Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar	
+IBlockStateExtension	hasDynamicLightEmission		
+IBlockStateExtension	hidesNeighborFace	ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;sodium-neoforge-0.8.13+mc1.21.1.jar	
+IBlockStateExtension	ignitedByLava	CreateDragonsPlus-1.11.8b.jar;enderio-8.2.12-beta.jar	
+IBlockStateExtension	isBed		
+IBlockStateExtension	isBurning		
+IBlockStateExtension	isConduitFrame		
+IBlockStateExtension	isEmpty	Cognition-v2.4.13-1.21.1.jar;Powah-6.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;ftboceanmobs-21.1.4.jar;kubejs-neoforge-2101.7.2-build.374.jar;malum-1.21.1-1.8.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IBlockStateExtension	isFertile	FarmersDelight-1.21.1-1.3.4.jar;xycraft_core-0.7.53-all.jar	
+IBlockStateExtension	isFireSource	ars_nouveau-1.21.1-5.13.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	isFlammable	FramedBlocks-10.6.2.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_nouveau-1.21.1-5.13.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	isLadder	ars_nouveau-1.21.1-5.13.1.jar	
+IBlockStateExtension	isPortalFrame		
+IBlockStateExtension	isScaffolding		
+IBlockStateExtension	isSlimeBlock		
+IBlockStateExtension	isStickyBlock	supplementaries-1.21.1-3.9.8-neoforge.jar	
+IBlockStateExtension	onBlockExploded	appliedenergistics2-19.2.17.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	onBlockStateChange		
+IBlockStateExtension	onCaughtFire	Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IBlockStateExtension	onDestroyedByPlayer	Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;BrandonsCore-1.21.1-3.2.1.309.jar;Cucumber-1.21.1-8.0.16.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;justdirethings-1.5.7.jar	
+IBlockStateExtension	onDestroyedByPushReaction	supplementaries-1.21.1-3.9.8-neoforge.jar	
+IBlockStateExtension	onNeighborChange	Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;industrialforegoing-1.21-3.6.39.jar;morered-1.21.1-6.0.0.3.jar	
+IBlockStateExtension	onTreeGrow		
+IBlockStateExtension	rotate	Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Morph-o-Tool-1.8-39.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;justdirethings-1.5.7.jar;moonlight-1.21.1-3.6.3-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IBlockStateExtension	setBedOccupied		
+IBlockStateExtension	shouldCheckWeakPower	BrandonsCore-1.21.1-3.2.1.309.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;morered-1.21.1-6.0.0.3.jar	
+IBlockStateExtension	shouldDisplayFluidOverlay	FramedBlocks-10.6.2.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;enderio-8.2.12-beta.jar;sodium-neoforge-0.8.13+mc1.21.1.jar	
+IBlockStateExtension	shouldHideAdjacentFluidFace	sodium-neoforge-0.8.13+mc1.21.1.jar	
+IBlockStateExtension	supportsExternalFaceHiding	ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;sodium-neoforge-0.8.13+mc1.21.1.jar	
+IBoatExtension	canBoatInFluid		
+IBucketPickupExtension	getPickupSound	Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;refinedstorage-neoforge-2.0.9.jar	CreateDragonsPlus-1.11.8b.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_elemental-1.21.1-0.7.10.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IClientCommonPacketListenerExtension	disconnect		
+IClientCommonPacketListenerExtension	getMainThreadEventLoop		
+IClientCommonPacketListenerExtension	send	FluxNetworks-1.21.1-8.0.0.jar;Jade-1.21.1-NeoForge-15.10.6.jar;Powah-6.2.10.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+ICommandSourceStackExtension	getAdvancement		
+ICommandSourceStackExtension	getRecipeManager	irons_jewelry-1.21.1-2.0.2.jar;irons_spellbooks-1.21.1-3.16.3.jar	
+ICommandSourceStackExtension	getScoreboard		
+ICommandSourceStackExtension	getUnsidedLevel	architectury-13.0.11-neoforge.jar	
+ICommonPacketListener	disconnect	FluxNetworks-1.21.1-8.0.0.jar;ftb-essentials-neoforge-2101.1.10.jar;kubejs-neoforge-2101.7.2-build.374.jar	collective-1.21.1-8.39.jar
+ICommonPacketListener	getConnection	ProjectE-1.21.1-PE1.1.0.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;alltheleaks-1.1.12+1.21.1-neoforge.jar;balm-neoforge-1.21.1-21.0.65.jar;bookshelf-neoforge-1.21.1-21.1.81.jar;collective-1.21.1-8.39.jar;fancymenu_neoforge_3.9.12_MC_1.21.1.jar;jei-1.21.1-neoforge-19.51.0.418.jar	
+ICommonPacketListener	getConnectionType	ApothicEnchanting-1.21.1-1.6.2.jar	
+ICommonPacketListener	getMainThreadEventLoop	FluxNetworks-1.21.1-8.0.0.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar	
+ICommonPacketListener	hasChannel	AdvancedLootInfo-neoforge-1.21.1-2.1.0.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;appleskin-neoforge-mc1.21-3.0.9.jar;architectury-13.0.11-neoforge.jar;ars_nouveau-1.21.1-5.13.1.jar;balm-neoforge-1.21.1-21.0.65.jar;bookshelf-neoforge-1.21.1-21.1.81.jar;collective-1.21.1-8.39.jar;ftb-library-neoforge-2101.1.35.jar;gag-neoforge-1.21.1-5.2.0.jar;jei-1.21.1-neoforge-19.51.0.418.jar;moonlight-1.21.1-3.6.3-neoforge.jar;resourcefullib-neoforge-1.21-3.0.12.jar;structurify-neoforge-2.0.35+mc1.21.1.jar;supermartijn642configlib-1.1.8-neoforge-mc1.21.jar	
+ICommonPacketListener	send	AdvancedAE-1.6.12-1.21.1.jar;Apotheosis-1.21.1-8.8.0.jar;BetterAdvancements-NeoForge-1.21.1-0.4.3.21.jar;BrandonsCore-1.21.1-3.2.1.309.jar;ChanceCubes-1.21.1-5.0.2.517.jar;CodeChickenLib-1.21.1-4.6.1.529.jar;ConstructionSticks-1.21.1-1.5.0.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FastItemFrames-v21.1.6-1.21.1-NeoForge.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;Glodium-1.21-2.2-neoforge.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Jade-1.21.1-NeoForge-15.10.6.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Lychee-1.21.1-NeoForge-6.5.3.jar;Mekanism-1.21.1-10.7.19.85.jar;Patchouli-1.21.1-93-NEOFORGE.jar;Placebo-1.21.1-9.9.2.jar;Powah-6.2.10.jar;Psi-neoforge-1.21.1-110.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ae2wtlib-19.5.1.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_nouveau-1.21.1-5.13.1.jar;artifacts-neoforge-13.2.5.jar;buildinggadgets2-1.3.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;collective-1.21.1-8.39.jar;compactmachines-neoforge-7.0.81.jar;cookingforblockheads-neoforge-1.21.1-21.1.24.jar;cosmeticarmorreworked-1.21.1-v1-neoforge.jar;craftingstationjei-1.21.1-NeoForge-2.1.1.jar;craftingtweaks-neoforge-1.21.1-21.1.11.jar;create-1.21.1-6.0.10.jar;create_hypertube-0.6.0-NEOFORGE.jar;createaddition-1.6.0.jar;createenderstorage-1.1.1.jar;crystalix-3.0.1.jar;curios-neoforge-9.5.1+1.21.1.jar;entityculling-neoforge-1.10.5-mc1.21.1.jar;entityjs-1.5.0.jar;fancymenu_neoforge_3.9.12_MC_1.21.1.jar;fdbosses-3.2-1.21.1.jar;ftb-chunks-neoforge-2101.1.22.jar;ftb-echoes-21.1.10.jar;ftb-essentials-neoforge-2101.1.10.jar;ftb-library-neoforge-2101.1.35.jar;ftb-pack-companion-21.1.22.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;ftb-team-bases-21.1.18.jar;ftb-unearthed-21.1.10.jar;ftboceanmobs-21.1.4.jar;gag-neoforge-1.21.1-5.2.0.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;irons_jewelry-1.21.1-2.0.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;kubejs-neoforge-2101.7.2-build.374.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mekanism_ponders-1.0.3-1.21.1.jar;mighty-ender-chicken-rehatched-21.1.5.jar;modernfix-neoforge-5.27.24+mc1.21.1.jar;morered-1.21.1-6.0.0.3.jar;occultism-1.21.1-neoforge-1.224.4.jar;pipez-neoforge-1.21.1-1.2.31.jar;productivemetalworks-1.21.1-1.15.1.jar;relics-1.21.1-0.10.7.6.jar;respawningstructures-1.21.1-4.4.jar;solcarrot-1.21.1-1.16.6.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;titanium-1.21-4.0.50.jar;trashslot-neoforge-1.21.1-21.1.11.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ars_nouveau-1.21.1-5.13.1.jar;collective-1.21.1-8.39.jar
+IDataComponentHolderExtension	addToTooltip	ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;compactmachines-neoforge-7.0.81.jar	
+IDataComponentHolderExtension	get	AdvancedPeripherals-1.21.1-0.7.62b.jar;AkashicTome-1.8-30.jar;ChanceCubes-1.21.1-5.0.2.517.jar;ConstructionSticks-1.21.1-1.5.0.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;Morph-o-Tool-1.8-39.jar;ProjectE-1.21.1-PE1.1.0.jar;Replication-1.21.1-1.2.7.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ToolBelt-1.21.1-2.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;artifacts-neoforge-13.2.5.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;betterblockz-0.2.10-1.21.1-neoforge.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;compactmachines-neoforge-7.0.81.jar;create-enchantment-industry-2.5.3b.jar;crystalix-3.0.1.jar;dimdungeons-210-neoforge-1.21.1.jar;fdbosses-3.2-1.21.1.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irons_jewelry-1.21.1-2.0.2.jar;irons_lib-1.21.1-2.1.0.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mekanisticrouters-1.2.0.jar;mffs-5.4.44.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moofluids-1.21.1-NeoForge-1.3.6.jar;occultism-1.21.1-neoforge-1.224.4.jar;omnitools-1.2.2.jar;pipegoggles-2.0.4.jar;pipez-neoforge-1.21.1-1.2.31.jar;relics-1.21.1-0.10.7.6.jar;reliquified_ars_nouveau-1.21.1-0.6.1.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;replication_matter_overflow-1.21.1-NeoForge-1.2.1.jar;rftoolsbase-1.21-6.0.11.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;roostultimate_1.21.1-curse-4.1.0.jar;routers-1.21.1-1.1.7.jar;simpletomb-1.21.1-1.4.4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;sophisticatedstoragecreateintegration-1.21.1-0.1.21.209.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xnet-1.21-7.0.7.jar;xycraft_core-0.7.53-all.jar	
+IDataComponentHolderExtension	getOrDefault	AkashicTome-1.8-30.jar;AvaritiaNeo-1.21-1.3.1.jar;ChanceCubes-1.21.1-5.0.2.517.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;Replication-1.21.1-1.2.7.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;betterblockz-0.2.10-1.21.1-neoforge.jar;buildinggadgets2-1.3.9.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;compactmachines-neoforge-7.0.81.jar;crystalix-3.0.1.jar;curios-neoforge-9.5.1+1.21.1.jar;enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;irons_jewelry-1.21.1-2.0.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mekanisticrouters-1.2.0.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;pipegoggles-2.0.4.jar;productivemetalworks-1.21.1-1.15.1.jar;rarcompat-1.21-0.9.7.jar;relics-1.21.1-0.10.7.6.jar;reliquified_ars_nouveau-1.21.1-0.6.1.jar;reliquified_lenders_cataclysm-1.21.1-0.1.1.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;rftoolsbase-1.21-6.0.11.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;sophisticatedstoragecreateintegration-1.21.1-0.1.21.209.jar;starbunclemania-1.21.1-1.5.8.jar;titanium-1.21-4.0.50.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xnet-1.21-7.0.7.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+IDataComponentHolderExtension	has	AdvancedPeripherals-1.21.1-0.7.62b.jar;AkashicTome-1.8-30.jar;AvaritiaNeo-1.21-1.3.1.jar;ConstructionSticks-1.21.1-1.5.0.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Morph-o-Tool-1.8-39.jar;Replication-1.21.1-1.2.7.jar;SimpleTeleportersReforged-1.21.1-2.2.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;compactmachines-neoforge-7.0.81.jar;dimdungeons-210-neoforge-1.21.1.jar;fdbosses-3.2-1.21.1.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;irons_jewelry-1.21.1-2.0.2.jar;irons_lib-1.21.1-2.1.0.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;omnitools-1.2.2.jar;oritechthings-0.0.46.jar;reliquified_ars_nouveau-1.21.1-0.6.1.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;replication_matter_overflow-1.21.1-NeoForge-1.2.1.jar;roostultimate_1.21.1-curse-4.1.0.jar;simpletomb-1.21.1-1.4.4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;sophisticatedstoragecreateintegration-1.21.1-0.1.21.209.jar;starbunclemania-1.21.1-1.5.8.jar;titanium-1.21-4.0.50.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_core-0.7.53-all.jar	
+IDataComponentMapBuilderExtensions	set	AvaritiaNeo-1.21-1.3.1.jar;FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;compactmachines-neoforge-7.0.81.jar;create-enchantment-industry-2.5.3b.jar;ftb-stuff-things-21.1.19.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;rftoolsbase-1.21-6.0.11.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xnet-1.21-7.0.7.jar	
+IDispensibleContainerItemExtension	emptyContents	Cognition-v2.4.13-1.21.1.jar;CreateDragonsPlus-1.11.8b.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	supplementaries-1.21.1-3.9.8-neoforge.jar
+IEntityExtension	canBeRiddenUnderFluidType		
+IEntityExtension	canFluidExtinguish	ars_nouveau-1.21.1-5.13.1.jar	
+IEntityExtension	canHydrateInFluidType		
+IEntityExtension	canRiderInteract	ars_affinity-1.21.1-1.1.1.jar;ars_nouveau-1.21.1-5.13.1.jar;justdirethings-1.5.7.jar;mighty-ender-chicken-rehatched-21.1.5.jar;relics-1.21.1-0.10.7.6.jar	L_Ender's Cataclysm 1.21.1-3.33.jar;irons_spellbooks-1.21.1-3.16.3.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IEntityExtension	canStartSwimming		
+IEntityExtension	canSwimInFluidType		
+IEntityExtension	canTrample	entityjs-1.5.0.jar	ars_nouveau-1.21.1-5.13.1.jar;entityjs-1.5.0.jar
+IEntityExtension	captureDrops	ApothicEnchanting-1.21.1-1.6.2.jar;ApothicSpawners-1.21.1-1.4.0.jar;GatewaysToEternity-1.21.1-5.1.0.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ToolBelt-1.21.1-2.2.10.jar;create-1.21.1-6.0.10.jar;fdbosses-3.2-1.21.1.jar;industrialforegoing-1.21-3.6.39.jar	
+IEntityExtension	copyAttachmentsFrom		
+IEntityExtension	deserializeNBT	create-1.21.1-6.0.10.jar	
+IEntityExtension	getClassification	ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+IEntityExtension	getEyeInFluidType	L_Ender's Cataclysm 1.21.1-3.33.jar;create-1.21.1-6.0.10.jar	
+IEntityExtension	getFluidFallDistanceModifier		
+IEntityExtension	getFluidMotionScale		
+IEntityExtension	getFluidTypeHeight	CreateDragonsPlus-1.11.8b.jar;amendments-1.21-2.1.10-neoforge.jar;create-shimmer-1.3.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IEntityExtension	getMaxHeightFluidType	Mekanism-1.21.1-10.7.19.85.jar	
+IEntityExtension	getParts	Jade-1.21.1-NeoForge-15.10.6.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;irons_spellbooks-1.21.1-3.16.3.jar;twilightforest-1.21.1-4.8.3345-universal.jar	L_Ender's Cataclysm 1.21.1-3.33.jar;entityjs-1.5.0.jar;ftboceanmobs-21.1.4.jar;irons_spellbooks-1.21.1-3.16.3.jar;mighty-ender-chicken-rehatched-21.1.5.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IEntityExtension	getPersistentData	AdvancedAE-1.6.12-1.21.1.jar;AdvancedPeripherals-1.21.1-0.7.62b.jar;Apotheosis-1.21.1-8.8.0.jar;ApothicAttributes-1.21.1-2.10.1.jar;ApothicEnchanting-1.21.1-1.6.2.jar;ApothicSpawners-1.21.1-1.4.0.jar;CreateDragonsPlus-1.11.8b.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;GatewaysToEternity-1.21.1-5.1.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Psi-neoforge-1.21.1-110.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ae2wtlib-19.5.1.jar;apothic_compats-0.2.4.2.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;balm-neoforge-1.21.1-21.0.65.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create-shimmer-1.3.1.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;createaddition-1.6.0.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;enderio-8.2.12-beta.jar;fdbosses-3.2-1.21.1.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;itemcollectors-1.1.10-neoforge-mc1.21.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;pocketstorage-1.2.5+1.21.1-b3.jar;rarcompat-1.21-0.9.7.jar;reliquified_ars_nouveau-1.21.1-0.6.1.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;rftoolsutility-1.21-7.0.12.jar;roostultimate_1.21.1-curse-4.1.0.jar;simplemagnets-1.1.12c-neoforge-mc1.21.jar;simpletomb-1.21.1-1.4.4.jar;simplylight-1.5.3+1.21.1-b4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IEntityExtension	getPickedResult	Jade-1.21.1-NeoForge-15.10.6.jar;create-1.21.1-6.0.10.jar	Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;create-1.21.1-6.0.10.jar
+IEntityExtension	getSoundFromFluidType		
+IEntityExtension	hasCustomOutlineRendering		
+IEntityExtension	isAddedToLevel	ProjectE-1.21.1-PE1.1.0.jar;create-1.21.1-6.0.10.jar;create_hypertube-0.6.0-NEOFORGE.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+IEntityExtension	isEyeInFluidType	Apotheosis-1.21.1-8.8.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_elemental-1.21.1-0.7.10.1.jar	
+IEntityExtension	isInFluidType	SmartBrainLib-neoforge-1.21.1-1.16.11.jar;ars_nouveau-1.21.1-5.13.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar	
+IEntityExtension	isMultipartEntity	Jade-1.21.1-NeoForge-15.10.6.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;entityjs-1.5.0.jar;ftboceanmobs-21.1.4.jar;irons_spellbooks-1.21.1-3.16.3.jar;mighty-ender-chicken-rehatched-21.1.5.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IEntityExtension	isPushedByFluid		ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;relics-1.21.1-0.10.7.6.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IEntityExtension	onAddedToLevel	entityjs-1.5.0.jar;fdbosses-3.2-1.21.1.jar;guideme-21.1.17.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;tempad-1.21.1-3.0.4-all.jar	entityjs-1.5.0.jar;fdbosses-3.2-1.21.1.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;tempad-1.21.1-3.0.4-all.jar
+IEntityExtension	onRemovedFromLevel	Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;entityjs-1.5.0.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;occultism-1.21.1-neoforge-1.224.4.jar;relics-1.21.1-0.10.7.6.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar	Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;entityjs-1.5.0.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;relics-1.21.1-0.10.7.6.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar
+IEntityExtension	revive	moonlight-1.21.1-3.6.3-neoforge.jar	
+IEntityExtension	sendPairingData	fdbosses-3.2-1.21.1.jar	fdbosses-3.2-1.21.1.jar
+IEntityExtension	serializeNBT	create-1.21.1-6.0.10.jar	
+IEntityExtension	shouldRiderSit	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;entityjs-1.5.0.jar;irons_spellbooks-1.21.1-3.16.3.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;fdbosses-3.2-1.21.1.jar;ftboceanmobs-21.1.4.jar;irons_spellbooks-1.21.1-3.16.3.jar;occultism-1.21.1-neoforge-1.224.4.jar
+IFluidExtension	canConvertToSource	functionalstorage-1.21.1-1.5.8.jar	industrialforegoing-1.21-3.6.39.jar;titanium-1.21-4.0.50.jar
+IFluidExtension	canExtinguish		
+IFluidExtension	canHydrate	ftboceanmobs-21.1.4.jar	ftboceanmobs-21.1.4.jar
+IFluidExtension	getAdjacentBlockPathType		
+IFluidExtension	getBlockPathType		
+IFluidExtension	getExplosionResistance	FramedBlocks-10.6.2.jar	
+IFluidExtension	getFluidType	CarbonConfig-Neoforge-1.21.1-2.0.2.1.jar;CodeChickenLib-1.21.1-4.6.1.529.jar;CreateDragonsPlus-1.11.8b.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Lychee-1.21.1-NeoForge-6.5.3.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_elemental-1.21.1-0.7.10.1.jar;buildinggadgets2-1.3.9.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;enderio-8.2.12-beta.jar;experiencelib-1.21.1-1.2.1.jar;ftb-stuff-things-21.1.19.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;kubejs-neoforge-2101.7.2-build.374.jar;mekanism_ponders-1.0.3-1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moofluids-1.21.1-NeoForge-1.3.6.jar;moonlight-1.21.1-3.6.3-neoforge.jar;oritech-neoforge-1.21.1-1.2.12.jar;pipez-neoforge-1.21.1-1.2.31.jar;productivemetalworks-1.21.1-1.15.1.jar;refinedstorage-neoforge-2.0.9.jar;rftoolsbuilder-1.21-7.0.6.jar;starbunclemania-1.21.1-1.5.8.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;titanium-1.21-4.0.50.jar;transfer_labels-0.1.8.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;industrialforegoing-1.21-3.6.39.jar;moonlight-1.21.1-3.6.3-neoforge.jar;resourcefullib-neoforge-1.21-3.0.12.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;titanium-1.21-4.0.50.jar
+IFluidExtension	move		
+IFluidExtension	supportsBoating		
+IFluidStateExtension	canConvertToSource	ImmersiveEngineering-1.21.1-12.4.2-194.jar	
+IFluidStateExtension	canExtinguish		
+IFluidStateExtension	canHydrate	CreateDragonsPlus-1.11.8b.jar	
+IFluidStateExtension	getAdjacentBlockPathType		
+IFluidStateExtension	getBlockPathType		
+IFluidStateExtension	getExplosionResistance	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar	
+IFluidStateExtension	getFluidType	CreateDragonsPlus-1.11.8b.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;SmartBrainLib-neoforge-1.21.1-1.16.11.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;create-1.21.1-6.0.10.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;starbunclemania-1.21.1-1.5.8.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+IFluidStateExtension	move		
+IFluidStateExtension	supportsBoating		
+IFriendlyByteBufExtension	readArray		
+IFriendlyByteBufExtension	readMap		
+IFriendlyByteBufExtension	writeArray		
+IFriendlyByteBufExtension	writeByte	CarbonConfig-Neoforge-1.21.1-2.0.2.1.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FluxNetworks-1.21.1-8.0.0.jar;appliedenergistics2-19.2.17.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;laserio-1.9.11.jar;megacells-4.11.0.jar;occultism-1.21.1-neoforge-1.224.4.jar;rftoolsutility-1.21-7.0.12.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;titanium-1.21-4.0.50.jar;xycraft_core-0.7.53-all.jar	
+IFriendlyByteBufExtension	writeMap		
+IFriendlyByteBufExtension	writeObjectCollection		
+IHolderExtension	getDelegate	Kiwi-1.21.1-NeoForge-15.8.7.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;create-enchantment-industry-2.5.3b.jar;kubejs-neoforge-2101.7.2-build.374.jar;moonlight-1.21.1-3.6.3-neoforge.jar;torchmaster-neoforge-1.21.1-21.1.11.jar	Kiwi-1.21.1-NeoForge-15.8.7.jar;moonlight-1.21.1-3.6.3-neoforge.jar
+IHolderExtension	getKey	AdvancedAE-1.6.12-1.21.1.jar;AdvancedPeripherals-1.21.1-0.7.62b.jar;Apotheosis-1.21.1-8.8.0.jar;ApothicAttributes-1.21.1-2.10.1.jar;ApothicEnchanting-1.21.1-1.6.2.jar;Applied-Mekanistics-1.6.3.jar;ChanceCubes-1.21.1-5.0.2.517.jar;CreateDragonsPlus-1.11.8b.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;GatewaysToEternity-1.21.1-5.1.0.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Measurements-neoforge-1.21.1-3.0.3.jar;Mekanism-1.21.1-10.7.19.85.jar;Placebo-1.21.1-9.9.2.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ae2jeiintegration-1.2.1.jar;alltheleaks-1.1.12+1.21.1-neoforge.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;atlas_api-1.21.1-1.2.0.jar;bonsaitrees4-4.0.9.jar;caelus-neoforge-7.0.1+1.21.1.jar;create-1.21.1-6.0.10.jar;create-central-kitchen-2.6.0.jar;create-enchantment-industry-2.5.3b.jar;create-shimmer-1.3.1.jar;create_connected-1.3.3-mc1.21.1.jar;create_hypertube-0.6.0-NEOFORGE.jar;enderio-8.2.12-beta.jar;ftb-materials-21.1.4.jar;ftb-pack-companion-21.1.22.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;gag-neoforge-1.21.1-5.2.0.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;irons_jewelry-1.21.1-2.0.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;kubejs-mekanism-neoforge-2101.1.7-build.18.jar;kubejs-neoforge-2101.7.2-build.374.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;mekanism_lasers-1.1.10.3-a.jar;modonomicon-1.21.1-neoforge-1.120.4.jar;moonlight-1.21.1-3.6.3-neoforge.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;pipegoggles-2.0.4.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;starbunclemania-1.21.1-1.5.8.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;torchmaster-neoforge-1.21.1-21.1.11.jar;trophymanager-1.21.1-3.0.0.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_machines-0.7.53.jar	Kiwi-1.21.1-NeoForge-15.8.7.jar;architectury-13.0.11-neoforge.jar;moonlight-1.21.1-3.6.3-neoforge.jar
+IHolderExtension	unwrapLookup		
+IHolderLookupProviderExtension	holder	Draconic-Evolution-1.21.1-3.1.4.633.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;irons_spellbooks-1.21.1-3.16.3.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IHolderLookupProviderExtension	holderOrThrow	AvaritiaNeo-1.21-1.3.1.jar;ChanceCubes-1.21.1-5.0.2.517.jar;Cucumber-1.21.1-8.0.16.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;Replication-1.21.1-1.2.7.jar;ars_nouveau-1.21.1-5.13.1.jar;artifacts-neoforge-13.2.5.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;fdbosses-3.2-1.21.1.jar;gag-neoforge-1.21.1-5.2.0.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;malum-1.21.1-1.8.2.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IHolderSetExtension	addInvalidationListener		
+IHolderSetExtension	serializationType		
+IIntrinsicHolderTagAppenderExtension	addTags	Draconic-Evolution-1.21.1-3.1.4.633.jar;ExtraStorage-1.21.1-5.0.10.jar;FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;metalbarrels-neoforge-1.21.1-7.jar;occultism-1.21.1-neoforge-1.224.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar;xycraft_world-0.7.53.jar	
+IIntrinsicHolderTagAppenderExtension	getKey		
+IIntrinsicHolderTagAppenderExtension	remove	FarmersDelight-1.21.1-1.3.4.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdynathings-1.20.6-hotfix1.jar;malum-1.21.1-1.8.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IIntrinsicHolderTagAppenderExtension	replace	cabletiers-neoforge-1.21.1-0.6.14.jar;occultism-1.21.1-neoforge-1.224.4.jar;refined-types-1.21.1-0.3.2.jar;refinedstorage-neoforge-2.0.9.jar;stepcrafter-neoforge-1.21.1-0.1.9.jar	
+IItemExtension	applyEnchantments	ApothicEnchanting-1.21.1-1.6.2.jar;create-enchantment-industry-2.5.3b.jar	ApothicEnchanting-1.21.1-1.6.2.jar
+IItemExtension	canBeHurtBy	Apotheosis-1.21.1-8.8.0.jar;create-1.21.1-6.0.10.jar	Apotheosis-1.21.1-8.8.0.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar
+IItemExtension	canContinueUsing		mininggadgets-1.18.7.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	canDisableShield		L_Ender's Cataclysm 1.21.1-3.33.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	canElytraFly	BrandonsCore-1.21.1-3.2.1.309.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;starbunclemania-1.21.1-1.5.8.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;justdirethings-1.5.7.jar;oritech-neoforge-1.21.1-1.2.12.jar;starbunclemania-1.21.1-1.5.8.jar
+IItemExtension	canEquip	create-1.21.1-6.0.10.jar;xycraft_machines-0.7.53.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;trophymanager-1.21.1-3.0.0.jar;xycraft_machines-0.7.53.jar
+IItemExtension	canFitInsideContainerItems		supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	canGrindstoneRepair		
+IItemExtension	canPerformAction	FramedBlocks-10.6.2.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;balm-neoforge-1.21.1-21.0.65.jar;create-1.21.1-6.0.10.jar;ftb-ultimine-neoforge-2101.1.15.jar;modular-routers-13.2.7+mc1.21.1.jar;omnitools-1.2.2.jar;simpletomb-1.21.1-1.4.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Cucumber-1.21.1-8.0.16.jar;FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;artifacts-neoforge-13.2.5.jar;create-1.21.1-6.0.10.jar;ftb-stuff-things-21.1.19.jar;gaze-1.1.7.1.jar;justdirethings-1.5.7.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;omnitools-1.2.2.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	canWalkOnPowderedSnow		Mekanism-1.21.1-10.7.19.85.jar;irons_spellbooks-1.21.1-3.16.3.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	createEntity		create-1.21.1-6.0.10.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar
+IItemExtension	damageItem	CustomMachinery-neoforge-1.21.1-0.10.69.jar;justdirethings-1.5.7.jar;twilightforest-1.21.1-4.8.3345-universal.jar	AdvancedAE-1.6.12-1.21.1.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;justdirethings-1.5.7.jar
+IItemExtension	doesSneakBypassUse		FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;malum-1.21.1-1.8.2.jar;mekanism_lasers-1.1.10.3-a.jar;rftoolsutility-1.21-7.0.12.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IItemExtension	elytraFlightTick		ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;justdirethings-1.5.7.jar;oritech-neoforge-1.21.1-1.2.12.jar
+IItemExtension	getAllEnchantments	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar;xycraft_machines-0.7.53.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getArmorTexture	mob_grinding_utils-1.1.10+mc1.21.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Psi-neoforge-1.21.1-110.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;malum-1.21.1-1.8.2.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	getBurnTime	createaddition-1.6.0.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar	Cognition-v2.4.13-1.21.1.jar;FarmersDelight-1.21.1-1.3.4.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;createaddition-1.6.0.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;justdirethings-1.5.7.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar;woodenshears-neoforge-1.21-3.2.3.0.jar
+IItemExtension	getCraftingRemainingItem	CodeChickenLib-1.21.1-4.6.1.529.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;bookshelf-neoforge-1.21.1-21.1.81.jar;occultism-1.21.1-neoforge-1.224.4.jar;stepcrafter-neoforge-1.21.1-0.1.9.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Cognition-v2.4.13-1.21.1.jar;Cucumber-1.21.1-8.0.16.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;create-shimmer-1.3.1.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;occultism-1.21.1-neoforge-1.224.4.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getCreatorModId	AkashicTome-1.8-30.jar;Apotheosis-1.21.1-8.8.0.jar;Cognition-v2.4.13-1.21.1.jar;GatewaysToEternity-1.21.1-5.1.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Jade-1.21.1-NeoForge-15.10.6.jar;Mekanism-1.21.1-10.7.19.85.jar;Morph-o-Tool-1.8-39.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_nouveau-1.21.1-5.13.1.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;irons_spellbooks-1.21.1-3.16.3.jar;jei-1.21.1-neoforge-19.51.0.418.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;pipegoggles-2.0.4.jar;refinedstorage-neoforge-2.0.9.jar;xycraft_machines-0.7.53.jar	Apotheosis-1.21.1-8.8.0.jar;ApothicSpawners-1.21.1-1.4.0.jar;GatewaysToEternity-1.21.1-5.1.0.jar;Patchouli-1.21.1-93-NEOFORGE.jar;ars_nouveau-1.21.1-5.13.1.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getDamage	ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;occultism-1.21.1-neoforge-1.224.4.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;starbunclemania-1.21.1-1.5.8.jar	AvaritiaNeo-1.21-1.3.1.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;starbunclemania-1.21.1-1.5.8.jar
+IItemExtension	getDefaultAttributeModifiers	Apotheosis-1.21.1-8.8.0.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;industrialforegoing-1.21-3.6.39.jar;lodestone-1.21.1-1.8.2.jar;xycraft_machines-0.7.53.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;chisel-1.21.1-NeoForge-1.4.1.jar;industrialforegoing-1.21-3.6.39.jar;lodestone-1.21.1-1.8.2.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getEnchantmentLevel	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getEnchantmentValue		ars_nouveau-1.21.1-5.13.1.jar;irons_spellbooks-1.21.1-3.16.3.jar
+IItemExtension	getEntityLifespan		
+IItemExtension	getEquipmentSlot	simpletomb-1.21.1-1.4.4.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;architectury-13.0.11-neoforge.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;trophymanager-1.21.1-3.0.0.jar
+IItemExtension	getFoodProperties	FarmersDelight-1.21.1-1.3.4.jar;ars_nouveau-1.21.1-5.13.1.jar;artifacts-neoforge-13.2.5.jar;create-1.21.1-6.0.10.jar;industrialforegoing-1.21-3.6.39.jar;occultism-1.21.1-neoforge-1.224.4.jar;relics-1.21.1-0.10.7.6.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar	Cognition-v2.4.13-1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;relics-1.21.1-0.10.7.6.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IItemExtension	getHighlightTip		
+IItemExtension	getMaxDamage	ExtendedAE-1.21-2.2.36-neoforge.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_nouveau-1.21.1-5.13.1.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Apotheosis-1.21.1-8.8.0.jar;Cognition-v2.4.13-1.21.1.jar;ConstructionSticks-1.21.1-1.5.0.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;buildinggadgets2-1.3.9.jar;chisel-1.21.1-NeoForge-1.4.1.jar;createaddition-1.6.0.jar;justdynathings-1.20.6-hotfix1.jar;mininggadgets-1.18.7.jar;occultism-1.21.1-neoforge-1.224.4.jar;starbunclemania-1.21.1-1.5.8.jar;woodenshears-neoforge-1.21-3.2.3.0.jar
+IItemExtension	getMaxStackSize	Draconic-Evolution-1.21.1-3.1.4.633.jar;create-1.21.1-6.0.10.jar;ftb-stuff-things-21.1.19.jar;occultism-1.21.1-neoforge-1.224.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Cognition-v2.4.13-1.21.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;create-1.21.1-6.0.10.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;occultism-1.21.1-neoforge-1.224.4.jar;pipegoggles-2.0.4.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IItemExtension	getSweepHitBox		ProjectE-1.21.1-PE1.1.0.jar
+IItemExtension	getXpRepairRatio		Draconic-Evolution-1.21.1-3.1.4.633.jar;ars_nouveau-1.21.1-5.13.1.jar
+IItemExtension	hasCraftingRemainingItem	CodeChickenLib-1.21.1-4.6.1.529.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;bookshelf-neoforge-1.21.1-21.1.81.jar;twilightforest-1.21.1-4.8.3345-universal.jar	Cognition-v2.4.13-1.21.1.jar;Cucumber-1.21.1-8.0.16.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ProjectE-1.21.1-PE1.1.0.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;create-shimmer-1.3.1.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;xycraft_machines-0.7.53.jar
+IItemExtension	hasCustomEntity		AvaritiaNeo-1.21-1.3.1.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;create-1.21.1-6.0.10.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar
+IItemExtension	isBookEnchantable	Mekanism-1.21.1-10.7.19.85.jar;jei-1.21.1-neoforge-19.51.0.418.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ApothicEnchanting-1.21.1-1.6.2.jar;Cognition-v2.4.13-1.21.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	isDamageable	ConstructionSticks-1.21.1-1.5.0.jar	Cognition-v2.4.13-1.21.1.jar;ConstructionSticks-1.21.1-1.5.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;chisel-1.21.1-NeoForge-1.4.1.jar;create-shimmer-1.3.1.jar;justdynathings-1.20.6-hotfix1.jar;starbunclemania-1.21.1-1.5.8.jar;woodenshears-neoforge-1.21-3.2.3.0.jar
+IItemExtension	isDamaged		ars_nouveau-1.21.1-5.13.1.jar
+IItemExtension	isEnderMask		Mekanism-1.21.1-10.7.19.85.jar;irons_spellbooks-1.21.1-3.16.3.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar
+IItemExtension	isNotReplaceableByPickAction	Mekanism-1.21.1-10.7.19.85.jar	AdvancedAE-1.6.12-1.21.1.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;Mekanism-1.21.1-10.7.19.85.jar;ae2wtlib-19.5.1.jar
+IItemExtension	isPiglinCurrency		Mekanism-1.21.1-10.7.19.85.jar
+IItemExtension	isPrimaryItemFor	ApothicEnchanting-1.21.1-1.6.2.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;buildinggadgets2-1.3.9.jar;justdirethings-1.5.7.jar	Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;buildinggadgets2-1.3.9.jar;justdirethings-1.5.7.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	isRepairable	ImmersiveEngineering-1.21.1-12.4.2-194.jar;malum-1.21.1-1.8.2.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	makesPiglinsNeutral		AdvancedAE-1.6.12-1.21.1.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_nouveau-1.21.1-5.13.1.jar;irons_jewelry-1.21.1-2.0.2.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemExtension	onAnimalArmorTick		
+IItemExtension	onDestroyed	Mekanism-1.21.1-10.7.19.85.jar;xycraft_machines-0.7.53.jar	Mekanism-1.21.1-10.7.19.85.jar;xycraft_machines-0.7.53.jar
+IItemExtension	onDroppedByPlayer		betterblockz-0.2.10-1.21.1-neoforge.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar
+IItemExtension	onEntityItemUpdate	Draconic-Evolution-1.21.1-3.1.4.633.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_nouveau-1.21.1-5.13.1.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar
+IItemExtension	onEntitySwing	baubley-heart-canisters-1.21.1-1.4.1.jar	ImmersiveEngineering-1.21.1-12.4.2-194.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;create-1.21.1-6.0.10.jar;industrialforegoing-1.21-3.6.39.jar
+IItemExtension	onItemUseFirst	Cognition-v2.4.13-1.21.1.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar	AE2-Things-1.4.2-beta.jar;AppliedFlux-1.21-2.1.5-neoforge.jar;Cognition-v2.4.13-1.21.1.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;EnderStorage-1.21.1-2.13.0.191.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FluxNetworks-1.21.1-8.0.0.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;applied-experienced-1.21.1-1.3.2.jar;appliedenergistics2-19.2.17.jar;ars_nouveau-1.21.1-5.13.1.jar;arseng-2.1.1-beta.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;ironchest-1.21-neoforge-16.0.7.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;mffs-5.4.44.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar
+IItemExtension	onLeftClickEntity	AvaritiaNeo-1.21-1.3.1.jar;Cucumber-1.21.1-8.0.16.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_elemental-1.21.1-0.7.10.1.jar;rftoolsutility-1.21-7.0.12.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	AvaritiaNeo-1.21-1.3.1.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_elemental-1.21.1-0.7.10.1.jar;dimdungeons-210-neoforge-1.21.1.jar;justdirethings-1.5.7.jar;rftoolsutility-1.21-7.0.12.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IItemExtension	onStopUsing	fdbosses-3.2-1.21.1.jar	fdbosses-3.2-1.21.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar
+IItemExtension	setDamage	L_Ender's Cataclysm 1.21.1-3.33.jar	L_Ender's Cataclysm 1.21.1-3.33.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;create-shimmer-1.3.1.jar;starbunclemania-1.21.1-1.5.8.jar
+IItemExtension	shouldCauseBlockBreakReset	Mekanism-1.21.1-10.7.19.85.jar;justdirethings-1.5.7.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;Mekanism-1.21.1-10.7.19.85.jar;actuallyadditions-1.3.26+mc1.21.1.jar;enderio-8.2.12-beta.jar;justdirethings-1.5.7.jar;oritech-neoforge-1.21.1-1.2.12.jar
+IItemExtension	shouldCauseReequipAnimation	FarmersDelight-1.21.1-1.3.4.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;enderio-8.2.12-beta.jar;explorerscompass-edited-1.21.1-3.0.4-neoforge.jar;irregular-implements-1.21.1-1.12.0-build.270.jar	Draconic-Evolution-1.21.1-3.1.4.633.jar;FarmersDelight-1.21.1-1.3.4.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;Psi-neoforge-1.21.1-110.jar;ToolBelt-1.21.1-2.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;buildinggadgets2-1.3.9.jar;chisel-1.21.1-NeoForge-1.4.1.jar;create-1.21.1-6.0.10.jar;enderio-8.2.12-beta.jar;explorerscompass-edited-1.21.1-3.0.4-neoforge.jar;fdbosses-3.2-1.21.1.jar;gag-neoforge-1.21.1-5.2.0.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdirethings-1.5.7.jar;laserio-1.9.11.jar;mininggadgets-1.18.7.jar;occultism-1.21.1-neoforge-1.224.4.jar;oritech-neoforge-1.21.1-1.2.12.jar;pipegoggles-2.0.4.jar;refinedstorage-neoforge-2.0.9.jar;refinedstorage-quartz-arsenal-neoforge-1.0.8.jar;relics-1.21.1-0.10.7.6.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;rftoolsbase-1.21-6.0.11.jar;rftoolsutility-1.21-7.0.12.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;starbunclemania-1.21.1-1.5.8.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;twilightforest-1.21.1-4.8.3345-universal.jar;universalgrid-neoforge-1.21.1-0.3.2.jar;xycraft_machines-0.7.53.jar
+IItemExtension	supportsEnchantment	AdvancedAE-1.6.12-1.21.1.jar;ApothicEnchanting-1.21.1-1.6.2.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;create-1.21.1-6.0.10.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;malum-1.21.1-1.8.2.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	AdvancedAE-1.6.12-1.21.1.jar;Apotheosis-1.21.1-8.8.0.jar;ApothicEnchanting-1.21.1-1.6.2.jar;Cognition-v2.4.13-1.21.1.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;bonsaitrees4-4.0.9.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;gaze-1.1.7.1.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;malum-1.21.1-1.8.2.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IItemPropertiesExtensions	component	AkashicTome-1.8-30.jar;Cucumber-1.21.1-8.0.16.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;Morph-o-Tool-1.8-39.jar;ProjectE-1.21.1-PE1.1.0.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;cable_facades-1.21.1-NeoForge-2.1.4.jar;compactmachines-neoforge-7.0.81.jar;crystalix-3.0.1.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;justdynathings-1.20.6-hotfix1.jar;malum-1.21.1-1.8.2.jar;mekanism_lasers-1.1.10.3-a.jar;mekanisticrouters-1.2.0.jar;modular-routers-13.2.7+mc1.21.1.jar;moofluids-1.21.1-NeoForge-1.3.6.jar;occultism-1.21.1-neoforge-1.224.4.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;starbunclemania-1.21.1-1.5.8.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar	
+IItemStackExtension	canDisableShield	ImmersiveEngineering-1.21.1-12.4.2-194.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;dummmmmmy-neoforge-1.21-2.1.0.jar	
+IItemStackExtension	canElytraFly	caelus-neoforge-7.0.1+1.21.1.jar	
+IItemStackExtension	canEquip	Mekanism-1.21.1-10.7.19.85.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;ae2wtlib-19.5.1.jar;cosmeticarmorreworked-1.21.1-v1-neoforge.jar;crashutilities-9.0.4.jar;curios-neoforge-9.5.1+1.21.1.jar;irons_lib-1.21.1-2.1.0.jar;justdirethings-1.5.7.jar;moonlight-1.21.1-3.6.3-neoforge.jar;xycraft_core-0.7.53-all.jar	
+IItemStackExtension	canFitInsideContainerItems	ars_nouveau-1.21.1-5.13.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IItemStackExtension	canGrindstoneRepair	occultism-1.21.1-neoforge-1.224.4.jar	
+IItemStackExtension	canPerformAction	Apotheosis-1.21.1-8.8.0.jar;FarmersDelight-1.21.1-1.3.4.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;architectury-13.0.11-neoforge.jar;artifacts-neoforge-13.2.5.jar;bonsaitrees4-4.0.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;cleanswing-1.10-1.21.jar;collective-1.21.1-8.39.jar;create-enchantment-industry-2.5.3b.jar;entityjs-1.5.0.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;lootjs-neoforge-1.21.1-3.7.0.jar;malum-1.21.1-1.8.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar;occultism-1.21.1-neoforge-1.224.4.jar;omnitools-1.2.2.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_core-0.7.53-all.jar	
+IItemStackExtension	canWalkOnPowderedSnow	curios-neoforge-9.5.1+1.21.1.jar	
+IItemStackExtension	doesSneakBypassUse	AdvancedPeripherals-1.21.1-0.7.62b.jar;create-1.21.1-6.0.10.jar	
+IItemStackExtension	elytraFlightTick		
+IItemStackExtension	getAllEnchantments	ApothicEnchanting-1.21.1-1.6.2.jar;create-enchantment-industry-2.5.3b.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;lodestone-1.21.1-1.8.2.jar;malum-1.21.1-1.8.2.jar;modular-routers-13.2.7+mc1.21.1.jar	
+IItemStackExtension	getAttributeModifiers	AdvancedPeripherals-1.21.1-0.7.62b.jar;ChanceCubes-1.21.1-5.0.2.517.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;create-1.21.1-6.0.10.jar;fdbosses-3.2-1.21.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;jei-1.21.1-neoforge-19.51.0.418.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IItemStackExtension	getBurnTime	CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_nouveau-1.21.1-5.13.1.jar;balm-neoforge-1.21.1-21.0.65.jar;better-advanced-tooltips-2101.1.0-build.5.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;jei-1.21.1-neoforge-19.51.0.418.jar;jumbofurnace-5.0.0.9.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;kubejs-neoforge-2101.7.2-build.374.jar;malum-1.21.1-1.8.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar;relics-1.21.1-0.10.7.6.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar	
+IItemStackExtension	getCapability	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;AdvancedPeripherals-1.21.1-0.7.62b.jar;Applied-Mekanistics-1.6.3.jar;AppliedFlux-1.21-2.1.5-neoforge.jar;ConstructionSticks-1.21.1-1.5.0.jar;CreateDragonsPlus-1.11.8b.jar;Cucumber-1.21.1-8.0.16.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;Psi-neoforge-1.21.1-110.jar;ToolBelt-1.21.1-2.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;applied-experienced-1.21.1-1.3.2.jar;appliedenergistics2-19.2.17.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;buildinggadgets2-1.3.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;compactmachines-neoforge-7.0.81.jar;create-1.21.1-6.0.10.jar;create-central-kitchen-2.6.0.jar;createaddition-1.6.0.jar;curios-neoforge-9.5.1+1.21.1.jar;enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;jei-1.21.1-neoforge-19.51.0.418.jar;justdirefuels-1.1.0.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;laserio-1.9.11.jar;mcjtylib-1.21-9.0.21.jar;mekanisticrouters-1.2.0.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moofluids-1.21.1-NeoForge-1.3.6.jar;occultism-1.21.1-neoforge-1.224.4.jar;oritech-neoforge-1.21.1-1.2.12.jar;pipez-neoforge-1.21.1-1.2.31.jar;pocketstorage-1.2.5+1.21.1-b3.jar;polylib-2100.1.0-build.183-neoforge.jar;productivemetalworks-1.21.1-1.15.1.jar;refined-types-1.21.1-0.3.2.jar;refinedstorage-mekanism-integration-1.1.1.jar;refinedstorage-neoforge-2.0.9.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;starbunclemania-1.21.1-1.5.8.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;titanium-1.21-4.0.50.jar;transfer_labels-0.1.8.jar;trashcans-1.1.0-neoforge-mc1.21.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+IItemStackExtension	getCraftingRemainingItem	Cognition-v2.4.13-1.21.1.jar;CreateDragonsPlus-1.11.8b.jar;Cucumber-1.21.1-8.0.16.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;FarmersDelight-1.21.1-1.3.4.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Kiwi-1.21.1-NeoForge-15.8.7.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;Replication-1.21.1-1.2.7.jar;applieddelight-1.1.0.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_nouveau-1.21.1-5.13.1.jar;balm-neoforge-1.21.1-21.0.65.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar;create-central-kitchen-2.6.0.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;jumbofurnace-5.0.0.9.jar;justdirethings-1.5.7.jar;kubejs-neoforge-2101.7.2-build.374.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar;occultism-1.21.1-neoforge-1.224.4.jar;refineddelight-1.1.0.jar;relics-1.21.1-0.10.7.6.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar	
+IItemStackExtension	getEnchantmentLevel	ApothicEnchanting-1.21.1-1.6.2.jar;ApothicSpawners-1.21.1-1.4.0.jar;Cucumber-1.21.1-8.0.16.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FarmersDelight-1.21.1-1.3.4.jar;ToolBelt-1.21.1-2.2.10.jar;aaron-1.21.1-1.20.0-build.28.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;createenchantablemachinery-3.6.0+mc1.21.1-neoforge.jar;curios-neoforge-9.5.1+1.21.1.jar;enderio-8.2.12-beta.jar;gaze-1.1.7.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar;relics-1.21.1-0.10.7.6.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IItemStackExtension	getEnchantmentValue	ApothicEnchanting-1.21.1-1.6.2.jar;create-enchantment-industry-2.5.3b.jar	
+IItemStackExtension	getEntityLifespan		
+IItemStackExtension	getEquipmentSlot	AdvancedAE-1.6.12-1.21.1.jar;Apotheosis-1.21.1-8.8.0.jar;lodestone-1.21.1-1.8.2.jar;lootjs-neoforge-1.21.1-3.7.0.jar	
+IItemStackExtension	getFoodProperties	Draconic-Evolution-1.21.1-3.1.4.633.jar;FarmersDelight-1.21.1-1.3.4.jar;Mekanism-1.21.1-10.7.19.85.jar;appleskin-neoforge-mc1.21-3.0.9.jar;create-central-kitchen-2.6.0.jar;entityjs-1.5.0.jar;ftb-unearthed-21.1.10.jar;industrialforegoing-1.21-3.6.39.jar;irons_spellbooks-1.21.1-3.16.3.jar;lootjs-neoforge-1.21.1-3.7.0.jar;malum-1.21.1-1.8.2.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;occultism-1.21.1-neoforge-1.224.4.jar;solcarrot-1.21.1-1.16.6.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	
+IItemStackExtension	getHighlightTip	supplementaries-1.21.1-3.9.8-neoforge.jar	
+IItemStackExtension	getSweepHitBox		
+IItemStackExtension	getXpRepairRatio	ars_nouveau-1.21.1-5.13.1.jar;create-enchantment-industry-2.5.3b.jar;enderio-8.2.12-beta.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar	
+IItemStackExtension	hasCraftingRemainingItem	Cognition-v2.4.13-1.21.1.jar;CreateDragonsPlus-1.11.8b.jar;Cucumber-1.21.1-8.0.16.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;FarmersDelight-1.21.1-1.3.4.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;Powah-6.2.10.jar;Replication-1.21.1-1.2.7.jar;applieddelight-1.1.0.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;justdirethings-1.5.7.jar;kubejs-neoforge-2101.7.2-build.374.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;moonlight-1.21.1-3.6.3-neoforge.jar;refineddelight-1.1.0.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar	
+IItemStackExtension	isBookEnchantable	industrialforegoing-1.21-3.6.39.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+IItemStackExtension	isEnderMask	curios-neoforge-9.5.1+1.21.1.jar;supplementaries-1.21.1-3.9.8-neoforge.jar	
+IItemStackExtension	isNotReplaceableByPickAction	ae2wtlib-19.5.1.jar	
+IItemStackExtension	isPiglinCurrency	PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;ars_nouveau-1.21.1-5.13.1.jar	
+IItemStackExtension	isPrimaryItemFor	ApothicEnchanting-1.21.1-1.6.2.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;create-enchantment-industry-2.5.3b.jar	
+IItemStackExtension	isRepairable	ProjectE-1.21.1-PE1.1.0.jar;balm-neoforge-1.21.1-21.0.65.jar;create-enchantment-industry-2.5.3b.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+IItemStackExtension	makesPiglinsNeutral	curios-neoforge-9.5.1+1.21.1.jar	
+IItemStackExtension	onAnimalArmorTick		
+IItemStackExtension	onDestroyed		
+IItemStackExtension	onDroppedByPlayer		
+IItemStackExtension	onEntityItemUpdate		
+IItemStackExtension	onEntitySwing		
+IItemStackExtension	onItemUseFirst	AdvancedPeripherals-1.21.1-0.7.62b.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;create-1.21.1-6.0.10.jar	
+IItemStackExtension	onStopUsing	supplementaries-1.21.1-3.9.8-neoforge.jar	
+IItemStackExtension	shouldCauseBlockBreakReset		
+IItemStackExtension	supportsEnchantment	ApothicEnchanting-1.21.1-1.6.2.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create-shimmer-1.3.1.jar;industrialforegoing-1.21-3.6.39.jar;jei-1.21.1-neoforge-19.51.0.418.jar;malum-1.21.1-1.8.2.jar;occultism-1.21.1-neoforge-1.224.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+ILevelExtension	getCapability	AdvancedAE-1.6.12-1.21.1.jar;AdvancedPeripherals-1.21.1-0.7.62b.jar;Applied-Mekanistics-1.6.3.jar;AppliedFlux-1.21-2.1.5-neoforge.jar;CodeChickenLib-1.21.1-4.6.1.529.jar;Cognition-v2.4.13-1.21.1.jar;CreateDragonsPlus-1.11.8b.jar;Cucumber-1.21.1-8.0.16.jar;FramedBlocks-10.6.2.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Jade-1.21.1-NeoForge-15.10.6.jar;Mekanism-1.21.1-10.7.19.85.jar;MoreRed-CCT-Compat-1.21.1-1.3.0.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;Replication-1.21.1-1.2.7.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ToolKit-neoforge-87.0.3.jar;actuallyadditions-1.3.26+mc1.21.1.jar;applied-experienced-1.21.1-1.3.2.jar;appliedenergistics2-19.2.17.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;arseng-2.1.1-beta.jar;balm-neoforge-1.21.1-21.0.65.jar;belts-neoforge-0.2.2.jar;bookshelf-neoforge-1.21.1-21.1.81.jar;buildinggadgets2-1.3.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;compactmachines-neoforge-7.0.81.jar;cookingforblockheads-neoforge-1.21.1-21.1.24.jar;craftingstationjei-1.21.1-NeoForge-2.1.1.jar;create-1.21.1-6.0.10.jar;create-central-kitchen-2.6.0.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;entangled-1.3.21-neoforge-mc1.21.jar;ftb-essentials-neoforge-2101.1.10.jar;ftb-quests-neoforge-2101.1.35.jar;ftb-stuff-things-21.1.19.jar;functionalstorage-1.21.1-1.5.8.jar;gag-neoforge-1.21.1-5.2.0.jar;industrial-foregoing-souls-1.21.1-1.10.7.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;itemcollectors-1.1.10-neoforge-mc1.21.jar;jumbofurnace-5.0.0.9.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;kubejs-neoforge-2101.7.2-build.374.jar;laserio-1.9.11.jar;mcjtylib-1.21-9.0.21.jar;me_beam_former-1.21.1-1.3.0.jar;mekanisticrouters-1.2.0.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;morered-1.21.1-6.0.0.3.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;oritech-neoforge-1.21.1-1.2.12.jar;pipe_connector-neoforge-0.5.28.jar;pipez-neoforge-1.21.1-1.2.31.jar;pipezretriever-0.0.1.jar;pocketstorage-1.2.5+1.21.1-b3.jar;polylib-2100.1.0-build.183-neoforge.jar;productivemetalworks-1.21.1-1.15.1.jar;refined-types-1.21.1-0.3.2.jar;refinedstorage-neoforge-2.0.9.jar;rftoolsbase-1.21-6.0.11.jar;rftoolsbuilder-1.21-7.0.6.jar;rftoolspower-1.21-7.0.6.jar;rftoolsutility-1.21-7.0.12.jar;roostultimate_1.21.1-curse-4.1.0.jar;routers-1.21.1-1.1.7.jar;simpletomb-1.21.1-1.4.4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticateditemactions-1.21.1-0.5.16.423.jar;soulplied_energistics-1.0.3.jar;starbunclemania-1.21.1-1.5.8.jar;supplementaries-1.21.1-3.9.8-neoforge.jar;tempad-1.21.1-3.0.4-all.jar;titanium-1.21-4.0.50.jar;transfer_labels-0.1.8.jar;xnet-1.21-7.0.7.jar;xnetgases-1.21.1-6.0.2.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+ILevelExtension	getDescription	Mekanism-1.21.1-10.7.19.85.jar;ProjectE-1.21.1-PE1.1.0.jar;experiencelib-1.21.1-1.2.1.jar	
+ILevelExtension	getDescriptionKey		
+ILevelExtension	getMaxEntityRadius		
+ILevelExtension	getModelDataManager	CodeChickenLib-1.21.1-4.6.1.529.jar;enderio-8.2.12-beta.jar;industrialforegoing-1.21-3.6.39.jar;sodium-neoforge-0.8.13+mc1.21.1.jar	compactmachines-neoforge-7.0.81.jar
+ILevelExtension	getPartEntities	SmartBrainLib-neoforge-1.21.1-1.16.11.jar	
+ILevelExtension	increaseMaxEntityRadius		
+ILevelExtension	invalidateCapabilities	CreateDragonsPlus-1.11.8b.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;Replication-1.21.1-1.2.7.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;createaddition-1.6.0.jar;enderio-8.2.12-beta.jar;energymeter-neoforge-1.21.1-0.5.2.jar;justdirethings-1.5.7.jar;mffs-5.4.44.jar;morered-1.21.1-6.0.0.3.jar;oritech-neoforge-1.21.1-1.2.12.jar;pipez-neoforge-1.21.1-1.2.31.jar;starbunclemania-1.21.1-1.5.8.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar;xycraft_world-0.7.53.jar	
+ILevelReaderExtension	holder	ApothicSpawners-1.21.1-1.4.0.jar;Mekanism-1.21.1-10.7.19.85.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;justdirethings-1.5.7.jar	
+ILevelReaderExtension	holderOrThrow	ApothicEnchanting-1.21.1-1.6.2.jar;ChanceCubes-1.21.1-5.0.2.517.jar;actuallyadditions-1.3.26+mc1.21.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;ars_nouveau-1.21.1-5.13.1.jar;create-1.21.1-6.0.10.jar;gag-neoforge-1.21.1-5.2.0.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;simpletomb-1.21.1-1.4.4.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+ILevelReaderExtension	isAreaLoaded	AdvancedPeripherals-1.21.1-0.7.62b.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FarmersDelight-1.21.1-1.3.4.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;create-1.21.1-6.0.10.jar;crystalix-3.0.1.jar;guideme-21.1.17.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;moonlight-1.21.1-3.6.3-neoforge.jar;pipez-neoforge-1.21.1-1.2.31.jar;twilightforest-1.21.1-4.8.3345-universal.jar;utilitarian-1.21.1-0.19.2.jar;xycraft_core-0.7.53-all.jar	ExtendedAE-1.21-2.2.36-neoforge.jar;create-1.21.1-6.0.10.jar;guideme-21.1.17.jar;mekanism_ponders-1.0.3-1.21.1.jar;productivemetalworks-1.21.1-1.15.1.jar
+ILivingEntityExtension	canDrownInFluidType	create-1.21.1-6.0.10.jar	ars_elemental-1.21.1-0.7.10.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;occultism-1.21.1-neoforge-1.224.4.jar
+ILivingEntityExtension	canSwimInFluidType		
+ILivingEntityExtension	jumpInFluid	ars_elemental-1.21.1-0.7.10.1.jar	ars_elemental-1.21.1-0.7.10.1.jar
+ILivingEntityExtension	moveInFluid		
+ILivingEntityExtension	onDamageTaken		Mekanism-1.21.1-10.7.19.85.jar;ftboceanmobs-21.1.4.jar
+ILivingEntityExtension	self	L_Ender's Cataclysm 1.21.1-3.33.jar	
+ILivingEntityExtension	sinkInFluid		
+IMenuTypeExtension	create		
+IMobEffectExtension	fillEffectCures		L_Ender's Cataclysm 1.21.1-3.33.jar;ars_affinity-1.21.1-1.1.1.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;deus_ex_machina-1.21.1-1.2.0.jar;ftboceanmobs-21.1.4.jar;malum-1.21.1-1.8.2.jar;starbunclemania-1.21.1-1.5.8.jar
+IMobEffectExtension	getSortOrder		
+IOwnedSpawner	getOwner	twilightforest-1.21.1-4.8.3345-universal.jar	ApothicSpawners-1.21.1-1.4.0.jar;enderio-8.2.12-beta.jar;twilightforest-1.21.1-4.8.3345-universal.jar
+IPackResourcesExtension	isHidden		moonlight-1.21.1-3.6.3-neoforge.jar;resourcefullib-neoforge-1.21-3.0.12.jar
+IPacketFlowExtension	getReceptionSide	ImmersiveEngineering-1.21.1-12.4.2-194.jar;ars_affinity-1.21.1-1.1.1.jar;ars_creo-1.21.1-5.4.0.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_nouveau-1.21.1-5.13.1.jar;baguettelib-1.21.1-NeoForge-2.0.6.jar;collective-1.21.1-8.39.jar;modonomicon-1.21.1-neoforge-1.120.4.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+IPacketFlowExtension	isClientbound	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;Apotheosis-1.21.1-8.8.0.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;CustomMachineryCreate-1.21.1-1.2.7.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;ars_ocultas-1.21.1-2.6.1.jar;explorerscompass-edited-1.21.1-3.0.4-neoforge.jar;ironchest-1.21-neoforge-16.0.7.jar;mffs-5.4.44.jar;pipe_connector-neoforge-0.5.28.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IPacketFlowExtension	isServerbound	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;ConstructionSticks-1.21.1-1.5.0.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Powah-6.2.10.jar;appliedenergistics2-19.2.17.jar;ars_ocultas-1.21.1-2.6.1.jar;beer-1.21.1-1.4.4.jar;crystalix-3.0.1.jar;explorerscompass-edited-1.21.1-3.0.4-neoforge.jar;ftb-stuff-things-21.1.19.jar;fzzy_config-0.7.6+1.21+neoforge.jar;pipe_connector-neoforge-0.5.28.jar;reliquified_twilight_forest-1.21.1-0.5.2.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IPacketFlowExtension	self		
+IPlayerExtension	isCloseEnough		
+IPlayerExtension	isFakePlayer	Mekanism-1.21.1-10.7.19.85.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;create-enchantment-industry-2.5.3b.jar;gag-neoforge-1.21.1-5.2.0.jar;kubejs-neoforge-2101.7.2-build.374.jar;xycraft_machines-0.7.53.jar	
+IPlayerExtension	mayFly	rarcompat-1.21-0.9.7.jar;reliquified_ars_nouveau-1.21.1-0.6.1.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+IPlayerExtension	openMenu	AdvancedPeripherals-1.21.1-0.7.62b.jar;ApothicEnchanting-1.21.1-1.6.2.jar;AvaritiaNeo-1.21-1.3.1.jar;CodeChickenLib-1.21.1-4.6.1.529.jar;Cognition-v2.4.13-1.21.1.jar;CustomMachinery-neoforge-1.21.1-0.10.69.jar;Draconic-Evolution-1.21.1-3.1.4.633.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FarmersDelight-1.21.1-1.3.4.jar;FluxNetworks-1.21.1-8.0.0.jar;FramedBlocks-10.6.2.jar;HostileNeuralNetworks-1.21.1-6.5.1.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Mekanism-1.21.1-10.7.19.85.jar;MekanismGenerators-1.21.1-10.7.19.85.jar;Placebo-1.21.1-9.9.2.jar;Powah-6.2.10.jar;ProjectE-1.21.1-PE1.1.0.jar;Psi-neoforge-1.21.1-110.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;Replication-1.21.1-1.2.7.jar;Super Factory Manager (SFM)-MC1.21.1-4.34.0.jar;ToolBelt-1.21.1-2.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;applieddelight-1.1.0.jar;appliedenergistics2-19.2.17.jar;architectury-13.0.11-neoforge.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_ocultas-1.21.1-2.6.1.jar;balm-neoforge-1.21.1-21.0.65.jar;baubley-heart-canisters-1.21.1-1.4.1.jar;bonsaitrees4-4.0.9.jar;buildinggadgets2-1.3.9.jar;cc-tweaked-1.21.1-forge-1.120.2.jar;chisel-1.21.1-NeoForge-1.4.1.jar;classicpipes-neoforge-1.21.1-1.1.7.jar;compactmachines-neoforge-7.0.81.jar;craftingstationjei-1.21.1-NeoForge-2.1.1.jar;create-1.21.1-6.0.10.jar;elevatorid-neoforge-1.21.1-1.11.4.jar;enderio-8.2.12-beta.jar;energymeter-neoforge-1.21.1-0.5.2.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;functionalstorage-1.21.1-1.5.8.jar;gag-neoforge-1.21.1-5.2.0.jar;industrialforegoing-1.21-3.6.39.jar;ironfurnaces-neoforge-1.21.1-4.3.2.jar;irons_spellbooks-1.21.1-3.16.3.jar;justdirethings-1.5.7.jar;justdynathings-1.20.6-hotfix1.jar;kubejs-neoforge-2101.7.2-build.374.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mffs-5.4.44.jar;mininggadgets-1.18.7.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;modular-routers-13.2.7+mc1.21.1.jar;moonlight-1.21.1-3.6.3-neoforge.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;omnitools-1.2.2.jar;oritechthings-0.0.46.jar;pipez-neoforge-1.21.1-1.2.31.jar;pocketstorage-1.2.5+1.21.1-b3.jar;productivemetalworks-1.21.1-1.15.1.jar;refineddelight-1.1.0.jar;refinedstorage-neoforge-2.0.9.jar;replication_rs2_bridge-1.21.1-NeoForge-1.2.6.jar;resourcefullib-neoforge-1.21-3.0.12.jar;rftoolsbuilder-1.21-7.0.6.jar;roostultimate_1.21.1-curse-4.1.0.jar;routers-1.21.1-1.1.7.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;sophisticatedstoragecreateintegration-1.21.1-0.1.21.209.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;titanium-1.21-4.0.50.jar;transfer_labels-0.1.8.jar;xnet-1.21-7.0.7.jar;xp_synthesiser-1.0.3.jar;xycraft_machines-0.7.53.jar	justdirethings-1.5.7.jar
+IPlayerListExtension	broadcast		
+IPlayerListExtension	broadcastAll		
+IPlayerListExtension	self		
+IRecipeOutputExtension	accept	CodeChickenLib-1.21.1-4.6.1.529.jar;CreateDragonsPlus-1.11.8b.jar;Mekanism-1.21.1-10.7.19.85.jar;actuallyadditions-1.3.26+mc1.21.1.jar;apothic_compats-0.2.4.2.jar;appliedenergistics2-19.2.17.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;industrialforegoing-1.21-3.6.39.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;occultism-1.21.1-neoforge-1.224.4.jar;pocketstorage-1.2.5+1.21.1-b3.jar;rftoolsutility-1.21-7.0.12.jar;simplylight-1.5.3+1.21.1-b4.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar	CreateDragonsPlus-1.11.8b.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;actuallyadditions-1.3.26+mc1.21.1.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;enderio-8.2.12-beta.jar;functionalstorage-1.21.1-1.5.8.jar;malum-1.21.1-1.8.2.jar;mcjtylib-1.21-9.0.21.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;pocketstorage-1.2.5+1.21.1-b3.jar;rftoolsutility-1.21-7.0.12.jar;simplylight-1.5.3+1.21.1-b4.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar
+IRecipeOutputExtension	withConditions	AE2AddonLib-1.0.3-1.21.1.jar;AdvancedAE-1.6.12-1.21.1.jar;AdvancedPeripherals-1.21.1-0.7.62b.jar;Apotheosis-1.21.1-8.8.0.jar;ExtendedAE-1.21-2.2.36-neoforge.jar;FarmersDelight-1.21.1-1.3.4.jar;Powah-6.2.10.jar;ToolBelt-1.21.1-2.2.10.jar;actuallyadditions-1.3.26+mc1.21.1.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;create_connected-1.3.3-mc1.21.1.jar;createaddition-1.6.0.jar;enderdrives-neoforge-1.21.1-1.5.23.jar;enderio-8.2.12-beta.jar;ftb-materials-21.1.4.jar;ftb-stuff-things-21.1.19.jar;ftb-unearthed-21.1.10.jar;justdynathings-1.20.6-hotfix1.jar;laserio-1.9.11.jar;malum-1.21.1-1.8.2.jar;mffs-5.4.44.jar;modular-routers-13.2.7+mc1.21.1.jar;occultengineering-1.21.1-0.13.1.jar;productivemetalworks-1.21.1-1.15.1.jar;refined-types-1.21.1-0.3.2.jar;routers-1.21.1-1.1.7.jar;sophisticatedbackpacks-1.21.1-3.26.2.2141.jar;sophisticatedcore-1.21.1-1.5.1.2341.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;tempad-1.21.1-3.0.4-all.jar;titanium-1.21-4.0.50.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_machines-0.7.53.jar	
+IServerChunkCacheExtension	broadcast		
+IServerChunkCacheExtension	broadcastAndSend		
+IServerChunkCacheExtension	self		
+IServerCommonPacketListenerExtension	send	AdvancedAE-1.6.12-1.21.1.jar;ConstructionSticks-1.21.1-1.5.0.jar;FluxNetworks-1.21.1-8.0.0.jar;Glodium-1.21-2.2-neoforge.jar;ImmersiveEngineering-1.21.1-12.4.2-194.jar;Jade-1.21.1-NeoForge-15.10.6.jar;L_Ender's Cataclysm 1.21.1-3.33.jar;Patchouli-1.21.1-93-NEOFORGE.jar;actuallyadditions-1.3.26+mc1.21.1.jar;appliedenergistics2-19.2.17.jar;buildinggadgets2-1.3.9.jar;crystalix-3.0.1.jar;fancymenu_neoforge_3.9.12_MC_1.21.1.jar;modernfix-neoforge-5.27.24+mc1.21.1.jar;solcarrot-1.21.1-1.16.6.jar;supermartijn642corelib-1.1.24-neoforge-mc1.21.jar;titanium-1.21-4.0.50.jar;twilightforest-1.21.1-4.8.3345-universal.jar	ars_nouveau-1.21.1-5.13.1.jar;collective-1.21.1-8.39.jar
+IServerConfigurationPacketListenerExtension	finishCurrentTask	CodeChickenLib-1.21.1-4.6.1.529.jar;Mekanism-1.21.1-10.7.19.85.jar;PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar;create_connected-1.3.3-mc1.21.1.jar;fzzy_config-0.7.6+1.21+neoforge.jar;gag-neoforge-1.21.1-5.2.0.jar;supermartijn642configlib-1.1.8-neoforge-mc1.21.jar	
+IServerGamePacketListenerExtension	sendBundled		
+ITagAppenderExtension	addOptionalTag	apothic_compats-0.2.4.2.jar;ars_elemental-1.21.1-0.7.10.1.jar;ars_hex-1.21.1-5.0.4b.jar;chisel-1.21.1-NeoForge-1.4.1.jar;createaddition-1.6.0.jar;justdynathings-1.20.6-hotfix1.jar;occultism-1.21.1-neoforge-1.224.4.jar;xycraft_core-0.7.53-all.jar;xycraft_machines-0.7.53.jar	
+ITagAppenderExtension	addOptionalTags		
+ITagAppenderExtension	addTags	ars_nouveau-1.21.1-5.13.1.jar;irons_spellbooks-1.21.1-3.16.3.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;mob_grinding_utils-1.1.10+mc1.21.1.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+ITagAppenderExtension	remove	ApothicEnchanting-1.21.1-1.6.2.jar;create-1.21.1-6.0.10.jar;create-enchantment-industry-2.5.3b.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;malum-1.21.1-1.8.2.jar	
+ITagAppenderExtension	replace	cabletiers-neoforge-1.21.1-0.6.14.jar;occultism-1.21.1-neoforge-1.224.4.jar	
+ITagBuilderExtension	getRawBuilder		
+ITagBuilderExtension	remove		
+ITagBuilderExtension	removeElement	PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar	
+ITagBuilderExtension	removeTag	PuzzlesLib-v21.1.60-mc1.21.1-NeoForge.jar	
+ITransformationExtension	applyOrigin	enderio-8.2.12-beta.jar;ftb-stuff-things-21.1.19.jar	
+ITransformationExtension	blockCenterToCorner	ImmersiveEngineering-1.21.1-12.4.2-194.jar;elevatorid-neoforge-1.21.1-1.11.4.jar	
+ITransformationExtension	blockCornerToCenter	ImmersiveEngineering-1.21.1-12.4.2-194.jar	
+ITransformationExtension	isIdentity	CodeChickenLib-1.21.1-4.6.1.529.jar;Mekanism-1.21.1-10.7.19.85.jar;functionalstorage-1.21.1-1.5.8.jar;sophisticatedstorage-1.21.1-1.5.91.2127.jar;twilightforest-1.21.1-4.8.3345-universal.jar;xycraft_core-0.7.53-all.jar	
+ITransformationExtension	rotateTransform	Mekanism-1.21.1-10.7.19.85.jar	
+ITransformationExtension	transformNormal	ImmersiveEngineering-1.21.1-12.4.2-194.jar	
+ITransformationExtension	transformPosition	ImmersiveEngineering-1.21.1-12.4.2-194.jar	
+TooltipFlagExtension	hasAltDown	irregular-implements-1.21.1-1.12.0-build.270.jar	
+TooltipFlagExtension	hasControlDown		
+TooltipFlagExtension	hasShiftDown	HostileNeuralNetworks-1.21.1-6.5.1.jar;ars_nouveau-1.21.1-5.13.1.jar;compactmachines-neoforge-7.0.81.jar;enderio-8.2.12-beta.jar;irregular-implements-1.21.1-1.12.0-build.270.jar;productivemetalworks-1.21.1-1.15.1.jar;tempad-1.21.1-3.0.4-all.jar;twilightforest-1.21.1-4.8.3345-universal.jar	
+TooltipFlagExtension	shouldDisplayAllInformation		jei-1.21.1-neoforge-19.51.0.418.jar
