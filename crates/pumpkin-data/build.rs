@@ -47,9 +47,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn copy_conventional_tags(assets_dir: &Path, datapack_dir: &Path) {
-    let src = assets_dir.join("conventional_tags").join("data").join("c");
-    let dst = datapack_dir.join("data").join("c");
-    if src.is_dir() && !dst.is_dir() {
+    let src = assets_dir.join("conventional_tags").join("data");
+    let dst = datapack_dir.join("data");
+    if src.is_dir() {
         let _ = copy_dir_all(&src, &dst);
     }
 }
