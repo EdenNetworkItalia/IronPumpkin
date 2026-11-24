@@ -943,8 +943,72 @@ mod tests {
         assert_eq!(random.next_i32(), 1_790_576_565);
     }
 
+    // Vanilla 26.3 FeaturePlacer with the four modifiers of warm_ocean_vegetation entry 2 and a
+    // plain tube coral block; coral/block_decoration is left out because the `random_block`
+    // provider is not generated yet.
+    const VANILLA_CORAL_MUSHROOM: [(i32, i32, i32); 58] = [
+        (5, 64, 6),
+        (5, 64, 7),
+        (5, 64, 8),
+        (5, 65, 6),
+        (5, 65, 7),
+        (5, 65, 8),
+        (5, 66, 6),
+        (5, 66, 7),
+        (5, 66, 8),
+        (5, 67, 7),
+        (5, 67, 8),
+        (6, 63, 6),
+        (6, 63, 7),
+        (6, 63, 8),
+        (6, 64, 5),
+        (6, 64, 9),
+        (6, 65, 5),
+        (6, 65, 9),
+        (6, 66, 5),
+        (6, 66, 9),
+        (6, 67, 5),
+        (6, 68, 6),
+        (6, 68, 7),
+        (6, 68, 8),
+        (7, 63, 6),
+        (7, 63, 7),
+        (7, 64, 5),
+        (7, 64, 9),
+        (7, 65, 5),
+        (7, 65, 9),
+        (7, 66, 9),
+        (7, 67, 9),
+        (7, 68, 6),
+        (7, 68, 7),
+        (7, 68, 8),
+        (8, 63, 6),
+        (8, 63, 7),
+        (8, 63, 8),
+        (8, 64, 5),
+        (8, 64, 9),
+        (8, 65, 5),
+        (8, 65, 9),
+        (8, 66, 5),
+        (8, 66, 9),
+        (8, 67, 5),
+        (8, 67, 9),
+        (8, 68, 6),
+        (8, 68, 7),
+        (9, 64, 6),
+        (9, 64, 7),
+        (9, 64, 8),
+        (9, 65, 7),
+        (9, 65, 8),
+        (9, 66, 6),
+        (9, 66, 8),
+        (9, 67, 6),
+        (9, 67, 7),
+        (9, 67, 8),
+    ];
+
     #[test]
-    fn warm_ocean_coral_mushroom_is_a_hollow_cuboid() {
+    fn warm_ocean_coral_mushroom_matches_vanilla() {
         let mut chunk = empty_chunk();
         for x in 0..16 {
             for z in 0..16 {
@@ -958,47 +1022,43 @@ mod tests {
         else {
             panic!("warm_ocean_vegetation must be a simple random selector");
         };
-        // Entry 2 is the tube coral block placed through offset, cuboid and random_chance.
-        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(3));
-        assert!(selector.features[2].generate(
-            &mut chunk,
-            &TestPortal,
-            -64,
-            384,
-            pumpkin_data::placed_feature::PlacedFeature::WarmOceanVegetation,
-            &mut random,
-            BlockPos::new(5, 64, 5),
+        let mushroom = &selector.features[2];
+        assert!(matches!(
+            mushroom.feature,
+            Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::CoralTubeBlock)
         ));
 
-        let mut corals = Vec::new();
-        for x in 0..16 {
-            for z in 0..16 {
-                for y in 50..80 {
-                    let state = GenerationCache::get_block_state(&chunk, &Vector3::new(x, y, z));
-                    if state.to_block_id() == Block::TUBE_CORAL_BLOCK {
-                        corals.push((x, y, z));
-                    }
-                }
-            }
-        }
-        let min = |f: fn(&(i32, i32, i32)) -> i32| corals.iter().map(f).min().unwrap_or(0);
-        let max = |f: fn(&(i32, i32, i32)) -> i32| corals.iter().map(f).max().unwrap_or(0);
-        let (min_x, min_y, min_z) = (min(|p| p.0), min(|p| p.1), min(|p| p.2));
-        let (max_x, max_y, max_z) = (max(|p| p.0), max(|p| p.1), max(|p| p.2));
-        assert!(corals.len() > 20, "expected a cuboid shell, got {corals:?}");
-        for &(x, y, z) in &corals {
-            let faces = [
-                x == min_x || x == max_x,
-                y == min_y || y == max_y,
-                z == min_z || z == max_z,
-            ];
-            assert_eq!(
-                faces.iter().filter(|&&f| f).count(),
-                1,
-                "{:?} is not on exactly one face of the shell",
-                (x, y, z)
-            );
-        }
+        let placed = std::cell::RefCell::new(Vec::new());
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(3));
+        generate_with_modifiers(
+            &mut chunk,
+            0,
+            mushroom.placement.len(),
+            &mut random,
+            BlockPos::new(5, 64, 5),
+            &|chunk, index, random, pos| {
+                mushroom.placement[index].get_positions(
+                    chunk,
+                    &TestPortal,
+                    -64,
+                    384,
+                    pumpkin_data::placed_feature::PlacedFeature::WarmOceanVegetation,
+                    random,
+                    pos,
+                )
+            },
+            &|chunk, _random, pos| {
+                GenerationCache::set_block_state(
+                    chunk,
+                    &pos.0,
+                    Block::TUBE_CORAL_BLOCK.default_state,
+                );
+                placed.borrow_mut().push((pos.0.x, pos.0.y, pos.0.z));
+                true
+            },
+        );
+        assert_eq!(placed.into_inner(), VANILLA_CORAL_MUSHROOM);
+        assert_eq!(random.next_i32(), 1_801_432_760);
     }
 
     #[test]
