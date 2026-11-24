@@ -68,7 +68,13 @@ pub struct StatusEffectInstance {
     pub ambient: bool,
     pub show_particles: bool,
     pub show_icon: bool,
+    /// Vanilla `MobEffectInstance.Details.hidden_effect`: the effect that comes back when this
+    /// one ends. Its `effect_id` repeats the outer one.
+    pub hidden_effect: Option<Box<StatusEffectInstance>>,
 }
+
+/// The maximum number of hidden effects inside each other that a decoder reads.
+pub const MAX_HIDDEN_EFFECTS: usize = 32;
 
 impl StatusEffectInstance {
     /// The hash of `MobEffectInstance.CODEC`. `show_icon` is always written.
@@ -76,6 +82,12 @@ impl StatusEffectInstance {
     pub fn codec_hash(&self) -> u32 {
         let mut fields = hash_ops::MapHasher::new();
         fields.put("id", hash_ops::id(&self.effect_id));
+        self.put_details_hash(&mut fields);
+        fields.finish()
+    }
+
+    /// The fields of `MobEffectInstance.Details.MAP_CODEC`.
+    fn put_details_hash(&self, fields: &mut hash_ops::MapHasher) {
         if self.amplifier != 0 {
             // `ExtraCodecs.UNSIGNED_BYTE` encodes a byte.
             fields.put("amplifier", hash_ops::byte(self.amplifier as i8));
@@ -90,7 +102,11 @@ impl StatusEffectInstance {
             fields.put("show_particles", hash_ops::boolean(false));
         }
         fields.put("show_icon", hash_ops::boolean(self.show_icon));
-        fields.finish()
+        if let Some(hidden) = &self.hidden_effect {
+            let mut details = hash_ops::MapHasher::new();
+            hidden.put_details_hash(&mut details);
+            fields.put("hidden_effect", details.finish());
+        }
     }
 
     /// Reads `MobEffectInstance.CODEC`. The amplifier is an `ExtraCodecs.UNSIGNED_BYTE`; older
@@ -98,6 +114,12 @@ impl StatusEffectInstance {
     pub fn read_data(nbt: &NbtTag) -> Option<Self> {
         let compound = nbt.extract_compound()?;
         let effect_id = Cow::Owned(compound.get_string("id")?.to_string());
+        Some(Self::read_details(compound, effect_id, 0))
+    }
+
+    /// Reads `MobEffectInstance.Details.MAP_CODEC`. A hidden effect past
+    /// [`MAX_HIDDEN_EFFECTS`] levels is dropped.
+    fn read_details(compound: &NbtCompound, effect_id: Cow<'static, str>, depth: usize) -> Self {
         let amplifier = compound
             .get_byte("amplifier")
             .map(|amplifier| i32::from(amplifier as u8))
@@ -107,14 +129,19 @@ impl StatusEffectInstance {
         let ambient = compound.get_bool("ambient").unwrap_or(false);
         let show_particles = compound.get_bool("show_particles").unwrap_or(true);
         let show_icon = compound.get_bool("show_icon").unwrap_or(show_particles);
-        Some(Self {
+        let hidden_effect = compound
+            .get_compound("hidden_effect")
+            .filter(|_| depth < MAX_HIDDEN_EFFECTS)
+            .map(|hidden| Box::new(Self::read_details(hidden, effect_id.clone(), depth + 1)));
+        Self {
             effect_id,
             amplifier,
             duration,
             ambient,
             show_particles,
             show_icon,
-        })
+            hidden_effect,
+        }
     }
 
     /// Writes `MobEffectInstance.CODEC`: the fields that equal their default are omitted,
@@ -122,6 +149,11 @@ impl StatusEffectInstance {
     pub fn as_nbt(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
         compound.put_string("id", self.effect_id.to_string());
+        self.write_details(&mut compound);
+        NbtTag::Compound(compound)
+    }
+
+    fn write_details(&self, compound: &mut NbtCompound) {
         if self.amplifier != 0 {
             compound.put_byte("amplifier", self.amplifier as i8);
         }
@@ -135,7 +167,11 @@ impl StatusEffectInstance {
             compound.put_bool("show_particles", false);
         }
         compound.put_bool("show_icon", self.show_icon);
-        NbtTag::Compound(compound)
+        if let Some(hidden) = &self.hidden_effect {
+            let mut details = NbtCompound::new();
+            hidden.write_details(&mut details);
+            compound.put_compound("hidden_effect", details);
+        }
     }
 }
 
@@ -264,9 +300,15 @@ pub fn consume_effect_hash(effect: &ConsumeEffect) -> u32 {
             fields.put("effects", hash_ops::holder_set(effects));
         }
         ConsumeEffect::ClearAllEffects => {}
-        ConsumeEffect::TeleportRandomly(diameter) => {
+        ConsumeEffect::TeleportRandomly {
+            diameter,
+            directional_particles,
+        } => {
             if !hash_ops::same_float(*diameter, 16.0) {
                 fields.put("diameter", hash_ops::float(*diameter));
+            }
+            if !directional_particles {
+                fields.put("directional_particles", hash_ops::boolean(false));
             }
         }
         ConsumeEffect::PlaySound(sound) => {
@@ -281,7 +323,11 @@ pub enum ConsumeEffect {
     ApplyEffects((Cow<'static, [StatusEffectInstance]>, f32)),
     RemoveEffects(IDSet<StatusEffect>),
     ClearAllEffects,
-    TeleportRandomly(f32),
+    /// Vanilla `TeleportRandomlyConsumeEffect`.
+    TeleportRandomly {
+        diameter: f32,
+        directional_particles: bool,
+    },
     PlaySound(IdOr<SoundEvent>),
 }
 impl Hash for ConsumeEffect {
@@ -296,9 +342,13 @@ impl Hash for ConsumeEffect {
                 status_effect_instances.hash(state)
             }
             ConsumeEffect::ClearAllEffects => (),
-            ConsumeEffect::TeleportRandomly(dst) => unsafe {
-                (*(&raw const dst).cast::<u32>()).hash(state)
-            },
+            ConsumeEffect::TeleportRandomly {
+                diameter,
+                directional_particles,
+            } => {
+                diameter.to_bits().hash(state);
+                directional_particles.hash(state);
+            }
             ConsumeEffect::PlaySound(id_or) => id_or.hash(state),
         }
     }
@@ -309,7 +359,7 @@ impl ConsumeEffect {
             ConsumeEffect::ApplyEffects(_) => "apply_effects",
             ConsumeEffect::RemoveEffects(_) => "remove_effects",
             ConsumeEffect::ClearAllEffects => "clear_all_effects",
-            ConsumeEffect::TeleportRandomly(_) => "teleport_randomly",
+            ConsumeEffect::TeleportRandomly { .. } => "teleport_randomly",
             ConsumeEffect::PlaySound(_) => "play_sound",
         }
     }
@@ -318,7 +368,7 @@ impl ConsumeEffect {
             ConsumeEffect::ApplyEffects(_) => 0,
             ConsumeEffect::RemoveEffects(_) => 1,
             ConsumeEffect::ClearAllEffects => 2,
-            ConsumeEffect::TeleportRandomly(_) => 3,
+            ConsumeEffect::TeleportRandomly { .. } => 3,
             ConsumeEffect::PlaySound(_) => 4,
         }
     }
@@ -333,10 +383,10 @@ impl ConsumeEffect {
                 Some(Self::RemoveEffects(idset))
             }
             "clear_all_effects" => Some(Self::ClearAllEffects),
-            "teleport_randomly" => {
-                let dst = compound.get_float("diameter").unwrap_or(16.0);
-                Some(Self::TeleportRandomly(dst))
-            }
+            "teleport_randomly" => Some(Self::TeleportRandomly {
+                diameter: compound.get_float("diameter").unwrap_or(16.0),
+                directional_particles: compound.get_bool("directional_particles").unwrap_or(true),
+            }),
             "play_sound" => {
                 let sound = get_idor(compound, "sound", Sound::EntityGenericEat);
                 Some(Self::PlaySound(sound))
@@ -365,7 +415,15 @@ impl ConsumeEffect {
             }
             ConsumeEffect::RemoveEffects(idset) => idset.write(&mut compound, "effects"),
             ConsumeEffect::ClearAllEffects => (),
-            ConsumeEffect::TeleportRandomly(dst) => compound.put_float("diameter", *dst),
+            ConsumeEffect::TeleportRandomly {
+                diameter,
+                directional_particles,
+            } => {
+                compound.put_float("diameter", *diameter);
+                if !directional_particles {
+                    compound.put_bool("directional_particles", false);
+                }
+            }
             ConsumeEffect::PlaySound(id_or) => {
                 put_idor(&mut compound, "sound", id_or);
             }
@@ -836,6 +894,7 @@ mod tests {
                 ambient: false,
                 show_particles: true,
                 show_icon: true,
+                hidden_effect: None,
             }],
             custom_name: Some("swift".to_owned()),
         };
@@ -917,7 +976,10 @@ mod tests {
         teleport.put_string("type", "minecraft:teleport_randomly".to_owned());
         assert_eq!(
             ConsumeEffect::read_data(&NbtTag::Compound(teleport)),
-            Some(ConsumeEffect::TeleportRandomly(16.0))
+            Some(ConsumeEffect::TeleportRandomly {
+                diameter: 16.0,
+                directional_particles: true
+            })
         );
     }
 

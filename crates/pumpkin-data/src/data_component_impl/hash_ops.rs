@@ -807,6 +807,7 @@ mod tests {
                 ambient: false,
                 show_particles: true,
                 show_icon: true,
+                hidden_effect: None,
             };
             let expected = vanilla::map(&[
                 ("id", vanilla::string("minecraft:speed")),
@@ -823,7 +824,10 @@ mod tests {
             let effects = vec![
                 ConsumeEffect::ApplyEffects((Cow::Owned(vec![effect]), 0.5)),
                 ConsumeEffect::ClearAllEffects,
-                ConsumeEffect::TeleportRandomly(16.0),
+                ConsumeEffect::TeleportRandomly {
+                    diameter: 16.0,
+                    directional_particles: true,
+                },
                 ConsumeEffect::PlaySound(IdOr::Value(SoundEvent {
                     sound_name: "custom:ding".to_owned(),
                     range: Some(8.0),
@@ -1403,6 +1407,68 @@ mod tests {
                 ]),
             };
             assert_eq!(hash(&two), vanilla::list(&[block_hash, block_hash]));
+        }
+
+        /// `MobEffectInstance.Details` nests the hidden effect without an id, and
+        /// `TeleportRandomlyConsumeEffect` omits `directional_particles` when it is true.
+        #[test]
+        fn hidden_effects_and_directional_particles_save_load_and_hash() {
+            use pumpkin_nbt::compound::NbtCompound;
+            use pumpkin_nbt::tag::NbtTag;
+            let (mut effect, _) = speed();
+            effect.hidden_effect = Some(Box::new(StatusEffectInstance {
+                effect_id: Cow::Borrowed("minecraft:speed"),
+                amplifier: 0,
+                duration: 1000,
+                ambient: false,
+                show_particles: true,
+                show_icon: true,
+                hidden_effect: None,
+            }));
+            let hidden = vanilla::map(&[
+                ("duration", vanilla::int(1000)),
+                ("show_icon", vanilla::boolean(true)),
+            ]);
+            assert_eq!(
+                effect.codec_hash(),
+                vanilla::map(&[
+                    ("id", vanilla::string("minecraft:speed")),
+                    ("amplifier", vanilla::byte(1)),
+                    ("duration", vanilla::int(200)),
+                    ("show_icon", vanilla::boolean(true)),
+                    ("hidden_effect", hidden),
+                ])
+            );
+            let saved = effect.as_nbt();
+            let mut expected_hidden = NbtCompound::new();
+            expected_hidden.put_int("duration", 1000);
+            expected_hidden.put_bool("show_icon", true);
+            assert_eq!(
+                saved
+                    .extract_compound()
+                    .unwrap()
+                    .get_compound("hidden_effect"),
+                Some(&expected_hidden)
+            );
+            assert_eq!(StatusEffectInstance::read_data(&saved), Some(effect));
+
+            let teleport = ConsumeEffect::TeleportRandomly {
+                diameter: 16.0,
+                directional_particles: false,
+            };
+            assert_eq!(
+                crate::data_component_impl::food::consume_effect_hash(&teleport),
+                vanilla::map(&[
+                    ("type", vanilla::string("minecraft:teleport_randomly")),
+                    ("directional_particles", vanilla::boolean(false)),
+                ])
+            );
+            let saved = teleport.as_nbt();
+            assert_eq!(ConsumeEffect::read_data(&saved), Some(teleport));
+            let NbtTag::Compound(saved) = saved else {
+                panic!("a consume effect saves as a compound");
+            };
+            assert_eq!(saved.get_bool("directional_particles"), Some(false));
         }
     }
 }

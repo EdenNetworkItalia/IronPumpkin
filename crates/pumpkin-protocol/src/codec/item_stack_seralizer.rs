@@ -1314,4 +1314,74 @@ mod tests {
         let hash = OptionalItemStackHash::read(&mut bytes.as_slice()).unwrap();
         assert!(hash.hash_equals(&stack));
     }
+
+    /// `MobEffectInstance.Details.STREAM_CODEC` writes each hidden effect after an optional
+    /// flag, and `TeleportRandomlyConsumeEffect.STREAM_CODEC` writes the diameter and the
+    /// `directional_particles` flag.
+    #[test]
+    fn hidden_effects_and_teleport_flags_reach_the_wire() {
+        use crate::codec::data_component::{deserialize, serialize};
+        use pumpkin_data::data_component_impl::{
+            ConsumableImpl, ConsumeAnimation, ConsumeEffect, PotionContentsImpl,
+            StatusEffectInstance,
+        };
+        use pumpkin_data::effect::StatusEffect;
+        let details = |amplifier, duration, hidden_effect| StatusEffectInstance {
+            effect_id: std::borrow::Cow::Borrowed("minecraft:speed"),
+            amplifier,
+            duration,
+            ambient: false,
+            show_particles: true,
+            show_icon: true,
+            hidden_effect,
+        };
+        let potion = PotionContentsImpl {
+            potion_id: None,
+            custom_color: None,
+            custom_effects: vec![details(1, 200, Some(Box::new(details(0, 1000, None))))],
+            custom_name: None,
+        };
+        let mut bytes = Vec::new();
+        let ids = pumpkin_data::dynamic::ContentIds::Display;
+        serialize(DataComponent::PotionContents, &potion, &mut bytes, ids).unwrap();
+        let speed = i32::from(StatusEffect::SPEED.id);
+        // No potion, no color, one effect: id, then amplifier, duration and three flags per
+        // level, each followed by the hidden effect flag; then no custom name.
+        let expected = [
+            vec![0, 0],
+            var_ints(&[1, speed, 1, 200]),
+            vec![0, 1, 1, 1],
+            var_ints(&[0, 1000]),
+            vec![0, 1, 1, 0],
+            vec![0],
+        ]
+        .concat();
+        assert_eq!(bytes, expected);
+        let decoded = deserialize(DataComponent::PotionContents, &mut bytes.as_slice()).unwrap();
+        let decoded = decoded
+            .as_any()
+            .downcast_ref::<PotionContentsImpl>()
+            .unwrap();
+        assert_eq!(decoded.custom_effects, potion.custom_effects);
+
+        let consumable = ConsumableImpl {
+            consume_seconds: 1.6,
+            animation: ConsumeAnimation::Eat,
+            sound_event: pumpkin_data::data_component_impl::IdOr::Id(
+                pumpkin_data::sound::Sound::EntityGenericEat,
+            ),
+            consume_particles: true,
+            effects: std::borrow::Cow::Owned(vec![ConsumeEffect::TeleportRandomly {
+                diameter: 8.0,
+                directional_particles: false,
+            }]),
+        };
+        let mut bytes = Vec::new();
+        serialize(DataComponent::Consumable, &consumable, &mut bytes, ids).unwrap();
+        let tail = [var_ints(&[1, 3]), 8.0f32.to_be_bytes().to_vec(), vec![0]].concat();
+        assert!(bytes.ends_with(&tail));
+        let decoded = deserialize(DataComponent::Consumable, &mut bytes.as_slice()).unwrap();
+        let decoded = decoded.as_any().downcast_ref::<ConsumableImpl>().unwrap();
+        assert_eq!(decoded.effects, consumable.effects);
+    }
 }

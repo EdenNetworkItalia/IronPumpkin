@@ -126,28 +126,39 @@ fn deserialize_status_effects(
             .minecraft_name;
         let effect_id = Cow::Borrowed(effect_name);
 
-        // Effect parameters
-        let amplifier = seq.get_var_int()?.0;
-        let duration = seq.get_var_int()?.0;
-        let ambient = seq.get_bool()?;
-        let show_particles = seq.get_bool()?;
-        let show_icon = seq.get_bool()?;
-
-        // Hidden effect (optional, recursive) - we skip it for now
-        let has_hidden = seq.get_bool()?;
-        if has_hidden {
-            // Skip hidden effect parameters recursively
-            skip_effect_parameters(seq)?;
+        // `MobEffectInstance.Details.STREAM_CODEC`, then each optional hidden effect.
+        let mut levels = Vec::new();
+        loop {
+            let amplifier = seq.get_var_int()?.0;
+            let duration = seq.get_var_int()?.0;
+            let ambient = seq.get_bool()?;
+            let show_particles = seq.get_bool()?;
+            let show_icon = seq.get_bool()?;
+            levels.push((amplifier, duration, ambient, show_particles, show_icon));
+            if !seq.get_bool()? {
+                break;
+            }
+            if levels.len() > MAX_HIDDEN_EFFECTS {
+                return Err(ReadingError::TooLarge(
+                    "Potion effect hidden depth exceeded".into(),
+                ));
+            }
         }
-
-        custom_effects.push(StatusEffectInstance {
-            effect_id,
-            amplifier,
-            duration,
-            ambient,
-            show_particles,
-            show_icon,
-        });
+        let mut effect = None;
+        for (amplifier, duration, ambient, show_particles, show_icon) in levels.into_iter().rev() {
+            effect = Some(Box::new(StatusEffectInstance {
+                effect_id: effect_id.clone(),
+                amplifier,
+                duration,
+                ambient,
+                show_particles,
+                show_icon,
+                hidden_effect: effect,
+            }));
+        }
+        if let Some(effect) = effect {
+            custom_effects.push(*effect);
+        }
     }
 
     Ok(custom_effects)
@@ -178,14 +189,16 @@ fn serialize_status_effects(
 
     for (effect_id, effect) in known {
         seq.write_var_int(&VarInt(i32::from(effect_id)))?;
-        // Effect parameters
-        seq.write_var_int(&VarInt::from(effect.amplifier))?;
-        seq.write_var_int(&VarInt::from(effect.duration))?;
-        seq.write_bool(effect.ambient)?;
-        seq.write_bool(effect.show_particles)?;
-        seq.write_bool(effect.show_icon)?;
-        // No hidden effect for now
-        seq.write_bool(false)?;
+        let mut details = Some(effect);
+        while let Some(effect) = details {
+            seq.write_var_int(&VarInt::from(effect.amplifier))?;
+            seq.write_var_int(&VarInt::from(effect.duration))?;
+            seq.write_bool(effect.ambient)?;
+            seq.write_bool(effect.show_particles)?;
+            seq.write_bool(effect.show_icon)?;
+            details = effect.hidden_effect.as_deref();
+            seq.write_bool(details.is_some())?;
+        }
     }
     Ok(())
 }
@@ -207,7 +220,11 @@ fn deserialize_consume_effect(
         2 => Ok(ConsumeEffect::ClearAllEffects),
         3 => {
             let diameter = seq.get_f32()?;
-            Ok(ConsumeEffect::TeleportRandomly(diameter))
+            let directional_particles = seq.get_bool()?;
+            Ok(ConsumeEffect::TeleportRandomly {
+                diameter,
+                directional_particles,
+            })
         }
         4 => {
             // Need to read IdOr<SoundEvent> manually. This depends on how it is serialized.
@@ -255,7 +272,13 @@ fn serialize_consume_effect(
         }
         ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq, ids)?,
         ConsumeEffect::ClearAllEffects => (),
-        ConsumeEffect::TeleportRandomly(diameter) => seq.write_f32(*diameter)?,
+        ConsumeEffect::TeleportRandomly {
+            diameter,
+            directional_particles,
+        } => {
+            seq.write_f32(*diameter)?;
+            seq.write_bool(*directional_particles)?;
+        }
         ConsumeEffect::PlaySound(id_or) => {
             crate::IdOr::<crate::SoundEvent>::write(&data_to_proto_sound(id_or), seq, |w, e| {
                 w.write_string(&e.sound_name)?;
@@ -799,36 +822,6 @@ impl DataComponentCodec<Self> for PotionContentsImpl {
             custom_name,
         })
     }
-}
-
-/// Helper to skip hidden effect parameters iteratively with a depth cap
-fn skip_effect_parameters(seq: &mut impl NetworkReadExt) -> Result<(), ReadingError> {
-    const MAX_EFFECT_DEPTH: usize = 32;
-    let mut depth = 0;
-    loop {
-        // amplifier
-        seq.get_var_int()?;
-        // duration
-        seq.get_var_int()?;
-        // ambient
-        seq.get_bool()?;
-        // show_particles
-        seq.get_bool()?;
-        // show_icon
-        seq.get_bool()?;
-        // has_hidden
-        let has_hidden = seq.get_bool()?;
-        if !has_hidden {
-            break;
-        }
-        depth += 1;
-        if depth > MAX_EFFECT_DEPTH {
-            return Err(ReadingError::TooLarge(
-                "Potion effect hidden depth exceeded".into(),
-            ));
-        }
-    }
-    Ok(())
 }
 
 impl DataComponentCodec<Self> for FireworkExplosionImpl {

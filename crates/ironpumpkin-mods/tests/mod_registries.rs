@@ -496,6 +496,7 @@ fn vanilla_components_leave_mod_effects_and_attributes_out_for_a_vanilla_client(
         ambient: false,
         show_particles: true,
         show_icon: true,
+        hidden_effect: None,
     };
     let potion = PotionContentsImpl {
         potion_id: None,
