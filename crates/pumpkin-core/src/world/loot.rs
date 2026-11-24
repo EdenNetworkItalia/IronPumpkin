@@ -1,3 +1,4 @@
+use super::random_sequences::CheckedOutSequence;
 use crate::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
@@ -665,17 +666,17 @@ pub fn generate_loot_from_handle_with_rng(
 /// fresh source (the level random) when the table has none. The roll and the placement of the
 /// loot draw from the same source.
 ///
-/// A source from a sequence goes back into the server when it drops, so the sequence goes on
-/// where the roll ended.
+/// A source from a sequence has the sequence checked out until it drops: another roll of the
+/// same sequence waits, so two rolls never draw the same values, and the sequence goes on where
+/// the roll ended. A `/random reset` during the roll replaces the sequence, and the roll ends on
+/// the old state.
 pub struct RollRandom {
-    rng: Xoroshiro,
-    sequence: Option<SequenceLink>,
+    source: RollSource,
 }
 
-struct SequenceLink {
-    server: std::sync::Arc<crate::server::Server>,
-    id: pumpkin_util::identifier::Identifier,
-    world_seed: i64,
+enum RollSource {
+    Own(Xoroshiro),
+    Sequence(CheckedOutSequence),
 }
 
 impl RollRandom {
@@ -683,8 +684,7 @@ impl RollRandom {
     #[must_use]
     pub const fn seeded(seed: i64) -> Self {
         Self {
-            rng: Xoroshiro::from_seed(seed as u64),
-            sequence: None,
+            source: RollSource::Own(Xoroshiro::from_seed(seed as u64)),
         }
     }
 
@@ -702,39 +702,23 @@ impl RollRandom {
             return Self::seeded(rand::random());
         };
         let world_seed = server.level_info.load().world_gen_settings.seed;
-        let rng = server
+        // The handle leaves the manager lock before the check out waits for another roll.
+        let handle = server
             .random_sequences
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_or_create(&id, world_seed)
-            .random()
-            .clone();
+            .handle();
         Self {
-            rng,
-            sequence: Some(SequenceLink {
-                server,
-                id,
-                world_seed,
-            }),
+            source: RollSource::Sequence(handle.check_out()),
         }
     }
 
     /// The random source of the roll.
     pub const fn rng(&mut self) -> &mut Xoroshiro {
-        &mut self.rng
-    }
-}
-
-impl Drop for RollRandom {
-    fn drop(&mut self) {
-        if let Some(link) = &self.sequence {
-            *link
-                .server
-                .random_sequences
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .get_or_create(&link.id, link.world_seed)
-                .random() = self.rng.clone();
+        match &mut self.source {
+            RollSource::Own(rng) => rng,
+            RollSource::Sequence(sequence) => sequence.rng(),
         }
     }
 }

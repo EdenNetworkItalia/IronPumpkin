@@ -41,7 +41,10 @@ use ironpumpkin_mods::{
             items::{brush::BrushItem, hoe::HoeItem},
         },
         plugin::startup::STARTUP_HOOK,
-        world::loot::{LootContextParameters, RollRandom, player_luck},
+        world::{
+            loot::{LootContextParameters, RollRandom, player_luck},
+            random_sequences::RandomSequences,
+        },
     },
     pumpkin_data::{
         Block, BlockDirection, BlockStateId,
@@ -414,68 +417,63 @@ fn trial_spawner_rolls_the_equipment_set_for_the_spawned_mob() {
     assert!(roll.tool.is_none() && roll.block_state.is_none());
 }
 
-#[test]
-fn a_roll_with_seed_zero_draws_from_the_random_sequence_of_the_table() {
-    let _serial = support::serial();
-    LazyLock::force(&SETUP);
+const DUNGEON: &str = "minecraft:chests/simple_dungeon";
+
+/// The first `count` values of the sequence `DUNGEON` of a fresh manager. The seeds of the
+/// sequences are the ones of Pumpkin, not of vanilla (issue 193), so the tests compare Pumpkin
+/// with itself.
+fn dungeon_stream(count: usize) -> Vec<i64> {
+    let id = DUNGEON.try_into().unwrap();
+    let world_seed = support::server().level_info.load().world_gen_settings.seed;
+    let mut sequences = RandomSequences::new();
+    let mut sequence = sequences
+        .get_or_create(&id, world_seed)
+        .handle()
+        .check_out();
+    (0..count).map(|_| sequence.rng().next_i64()).collect()
+}
+
+fn reset_dungeon_sequence() {
     let server = support::server();
-    let world = support::world();
-    let params = LootContextParameters {
-        world: Some(&world),
-        ..Default::default()
-    };
-    let table = world
-        .get_loot_table("minecraft:chests/simple_dungeon")
-        .unwrap();
-    let id = "minecraft:chests/simple_dungeon".try_into().unwrap();
     let world_seed = server.level_info.load().world_gen_settings.seed;
     server
         .random_sequences
         .lock()
         .unwrap()
-        .reset(&id, world_seed);
+        .reset(&DUNGEON.try_into().unwrap(), world_seed);
+}
 
-    // The expected stream: a sequence of the same id, world seed and defaults.
-    let mut expected = {
-        let mut sequences =
-            ironpumpkin_mods::pumpkin_core::world::random_sequences::RandomSequences::new();
-        let mut rng = sequences.get_or_create(&id, world_seed).random().clone();
-        [rng.next_i64(), rng.next_i64(), rng.next_i64()]
-    }
-    .into_iter();
+#[test]
+fn a_roll_with_seed_zero_goes_on_with_the_random_sequence_of_the_table() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let params = LootContextParameters {
+        world: Some(&world),
+        ..Default::default()
+    };
+    let table = world.get_loot_table(DUNGEON).unwrap();
+    reset_dungeon_sequence();
+    let expected = dungeon_stream(3);
 
-    // Two rolls go on with one stream, as `RandomSequences.get(...)` of vanilla returns it.
+    // Two rolls go on with one stream.
     let first = {
         let mut random = RollRandom::new(&params, &table, 0);
         [random.rng().next_i64(), random.rng().next_i64()]
     };
     let second = RollRandom::new(&params, &table, 0).rng().next_i64();
-    assert_eq!(first[0], expected.next().unwrap());
-    assert_eq!(first[1], expected.next().unwrap());
-    assert_eq!(second, expected.next().unwrap());
+    assert_eq!([first[0], first[1], second], expected[..]);
 
     // A seed other than 0 is a source of its own and leaves the sequence alone.
-    let before = server
-        .random_sequences
-        .lock()
-        .unwrap()
-        .get_or_create(&id, world_seed)
-        .random()
-        .clone()
-        .next_i64();
     let seeded = RollRandom::new(&params, &table, 5).rng().next_i64();
     assert_eq!(seeded, RollRandom::seeded(5).rng().next_i64());
-    let after = server
-        .random_sequences
-        .lock()
-        .unwrap()
-        .get_or_create(&id, world_seed)
-        .random()
-        .clone()
-        .next_i64();
-    assert_eq!(before, after);
+    reset_dungeon_sequence();
+    assert_eq!(
+        RollRandom::new(&params, &table, 0).rng().next_i64(),
+        expected[0]
+    );
 
-    // A table with no sequence gets the level random: two sources differ.
+    // A table with no sequence, or a roll with no world, gets the level random: two sources differ.
     let params_without_world = LootContextParameters::default();
     let a = RollRandom::new(&params_without_world, &table, 0)
         .rng()
@@ -484,6 +482,68 @@ fn a_roll_with_seed_zero_draws_from_the_random_sequence_of_the_table() {
         .rng()
         .next_i64();
     assert_ne!(a, b);
+}
+
+/// Review 171: a roll copied the state of the sequence and wrote it back, so two overlapping rolls
+/// drew the same values.
+#[test]
+fn overlapping_rolls_of_one_sequence_draw_different_values() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    reset_dungeon_sequence();
+    let expected = dungeon_stream(2);
+
+    let params = LootContextParameters {
+        world: Some(&world),
+        ..Default::default()
+    };
+    let table = world.get_loot_table(DUNGEON).unwrap();
+    let mut first = RollRandom::new(&params, &table, 0);
+    let first_value = first.rng().next_i64();
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let second_world = world.clone();
+    let second_table = table.clone();
+    let thread = std::thread::spawn(move || {
+        let params = LootContextParameters {
+            world: Some(&second_world),
+            ..Default::default()
+        };
+        let mut second = RollRandom::new(&params, &second_table, 0);
+        sender.send(second.rng().next_i64()).unwrap();
+    });
+    // The second roll waits for the first one.
+    assert!(receiver.recv_timeout(Duration::from_millis(300)).is_err());
+    drop(first);
+    let second_value = receiver.recv_timeout(support::SLOW_RUNNER).unwrap();
+    thread.join().unwrap();
+    assert_eq!([first_value, second_value], expected[..]);
+}
+
+/// Review 171: the write back of a roll overwrote a `/random reset` made during the roll.
+#[test]
+fn a_reset_during_a_roll_is_not_overwritten() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    reset_dungeon_sequence();
+    let expected = dungeon_stream(1);
+
+    let params = LootContextParameters {
+        world: Some(&world),
+        ..Default::default()
+    };
+    let table = world.get_loot_table(DUNGEON).unwrap();
+    let mut roll = RollRandom::new(&params, &table, 0);
+    roll.rng().next_i64();
+    // The reset does not wait for the roll.
+    reset_dungeon_sequence();
+    drop(roll);
+    assert_eq!(
+        RollRandom::new(&params, &table, 0).rng().next_i64(),
+        expected[0]
+    );
 }
 
 #[test]

@@ -1,34 +1,105 @@
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hasher};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use pumpkin_util::identifier::Identifier;
 use pumpkin_util::random::RandomImpl;
 use pumpkin_util::random::xoroshiro128::Xoroshiro;
 
 /// A single random sequence wrapper.
+///
+/// A roll that draws from the sequence checks it out for the whole roll: see
+/// [`SequenceHandle::check_out`].
 pub struct RandomSequence {
-    rng: Xoroshiro,
+    slot: Arc<SequenceSlot>,
+}
+
+/// The state of a sequence. It is `None` while a roll has the sequence checked out.
+struct SequenceSlot {
+    rng: Mutex<Option<Xoroshiro>>,
+    returned: Condvar,
+}
+
+impl SequenceSlot {
+    /// Waits until no roll has the sequence checked out and locks the state.
+    fn wait_ready(&self) -> MutexGuard<'_, Option<Xoroshiro>> {
+        let guard = self.rng.lock().unwrap_or_else(PoisonError::into_inner);
+        self.returned
+            .wait_while(guard, |rng| rng.is_none())
+            .unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 impl RandomSequence {
     #[must_use]
-    pub const fn new(seed: u64) -> Self {
+    pub fn new(seed: u64) -> Self {
         Self {
-            rng: Xoroshiro::from_seed(seed),
+            slot: Arc::new(SequenceSlot {
+                rng: Mutex::new(Some(Xoroshiro::from_seed(seed))),
+                returned: Condvar::new(),
+            }),
         }
     }
 
-    /// The random source of the sequence: a roll without a seed draws from it, so its state
-    /// advances for every draw.
-    pub const fn random(&mut self) -> &mut Xoroshiro {
-        &mut self.rng
+    /// A handle to check the sequence out without the lock of the sequence manager. A reset of
+    /// the sequence replaces it: the handle goes on with the state it had, as vanilla `reset`
+    /// leaves a roll that holds the old source alone.
+    #[must_use]
+    pub fn handle(&self) -> SequenceHandle {
+        SequenceHandle(self.slot.clone())
     }
 
     pub fn random_between_inclusive(&mut self, min: i32, max: i32) -> i32 {
         if min >= max {
             return min;
         }
-        self.rng.next_inbetween_i32(min, max)
+        self.slot
+            .wait_ready()
+            .as_mut()
+            .map_or(min, |rng| rng.next_inbetween_i32(min, max))
+    }
+}
+
+/// A handle to a [`RandomSequence`].
+#[derive(Clone)]
+pub struct SequenceHandle(Arc<SequenceSlot>);
+
+impl SequenceHandle {
+    /// Takes the state of the sequence for a roll. A second check out waits until the first one
+    /// drops, so two rolls never draw the same values. Call it without the lock of the sequence
+    /// manager.
+    #[must_use]
+    pub fn check_out(&self) -> CheckedOutSequence {
+        // `wait_ready` returns with the state present, so the fallback never runs.
+        let rng = self
+            .0
+            .wait_ready()
+            .take()
+            .unwrap_or_else(|| Xoroshiro::from_seed(0));
+        CheckedOutSequence {
+            slot: self.0.clone(),
+            rng,
+        }
+    }
+}
+
+/// The state of a random sequence during a roll. It goes back to the sequence when it drops.
+pub struct CheckedOutSequence {
+    slot: Arc<SequenceSlot>,
+    rng: Xoroshiro,
+}
+
+impl CheckedOutSequence {
+    /// The random source of the sequence.
+    pub const fn rng(&mut self) -> &mut Xoroshiro {
+        &mut self.rng
+    }
+}
+
+impl Drop for CheckedOutSequence {
+    fn drop(&mut self) {
+        *self.slot.rng.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.rng.clone());
+        self.slot.returned.notify_one();
     }
 }
 
