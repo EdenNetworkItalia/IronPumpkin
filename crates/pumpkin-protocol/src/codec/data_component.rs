@@ -396,8 +396,10 @@ impl DataComponentCodec<Self> for LoreImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt(self.lines.len() as i32))?;
         for line in &self.lines {
+            // The hash of a clicked stack reads the same encoding.
             seq.write_slice(
-                &line.encode_for_version(&pumpkin_util::version::JavaMinecraftVersion::V_26_2),
+                &line
+                    .encode_for_version(&pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION),
             )?;
         }
         Ok(())
@@ -1913,7 +1915,9 @@ impl DataComponentCodec<Self> for AttributeModifiersImpl {
                 }
                 pumpkin_data::data_component_impl::ModifierDisplay::Override(text) => {
                     seq.write_var_int(&VarInt(2))?;
-                    seq.write_slice(&text.encode_for_version(&JavaMinecraftVersion::V_26_3))?;
+                    seq.write_slice(&text.encode_for_version(
+                        &pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION,
+                    ))?;
                 }
             }
         }
@@ -2724,7 +2728,10 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         seq.write_var_int(&VarInt(self.generation))?;
         seq.write_var_int(&VarInt::from(self.pages.len() as i32))?;
         for page in &self.pages {
-            seq.write_slice(&page.encode_for_version(&JavaMinecraftVersion::V_26_3))?;
+            seq.write_slice(
+                &page
+                    .encode_for_version(&pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION),
+            )?;
             seq.write_bool(false)?;
         }
         seq.write_bool(self.resolved)

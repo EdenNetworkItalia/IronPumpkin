@@ -239,8 +239,12 @@ pub fn codec_nbt(value: &NbtTag) -> u32 {
 /// The hash of a `ComponentSerialization.CODEC` value, from the NBT that the client gets.
 #[must_use]
 pub fn text(component: &TextComponent) -> u32 {
-    codec_nbt(&component.to_nbt_tag_for_version(&JavaMinecraftVersion::V_26_3))
+    codec_nbt(&component.to_nbt_tag_for_version(&TEXT_VERSION))
 }
+
+/// The text encoding that the component codecs send and hash. A component codec does not know
+/// the version of the client, so both use the current protocol.
+pub const TEXT_VERSION: JavaMinecraftVersion = JavaMinecraftVersion::V_26_3;
 
 /// The hash of a registry id string, such as a `Holder` reference or a `ResourceKey`.
 #[must_use]
@@ -1260,6 +1264,25 @@ mod tests {
                     .unwrap()
                     .get("filtered_messages")
                     .is_none()
+            );
+        }
+
+        /// The server translates its own text keys before it sends a text. The hash must cover
+        /// the translated text.
+        #[test]
+        fn lore_hashes_server_translations_as_sent() {
+            use pumpkin_util::translation::Locale;
+            let lore = LoreImpl {
+                lines: vec![TextComponent::custom(
+                    "pumpkin",
+                    "commands.pumpkin.github",
+                    Locale::EnUs,
+                    vec![],
+                )],
+            };
+            assert_eq!(
+                hash(&lore),
+                vanilla::list(&[vanilla::string("[Github Repository]")])
             );
         }
     }
