@@ -1,4 +1,4 @@
-use super::flowing_trait::FlowingFluid;
+use super::flowing_trait::{FlowingFluid, spread_is_cancelled};
 use crate::{
     block::{
         FluidMetadata,
@@ -287,6 +287,9 @@ impl FlowingFluid for FlowingLava {
         if new_props.level == Level::L8 && new_props.falling == Falling::True {
             // Stone creation when lava meets water
             if block == &Block::WATER {
+                if spread_is_cancelled(world, fluid, from, pos) {
+                    return;
+                }
                 world.set_block_state(pos, Block::STONE.default_state.id, BlockFlags::NOTIFY_ALL);
                 world.sync_world_event(WorldEvent::LavaFizz, *pos, 0);
                 return;

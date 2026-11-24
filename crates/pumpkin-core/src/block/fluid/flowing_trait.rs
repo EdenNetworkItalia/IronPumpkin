@@ -10,6 +10,25 @@ use pumpkin_world::{tick::TickPriority, world::BlockFlags};
 use std::sync::Arc;
 pub type FlowingFluidProperties = pumpkin_data::fluid::FlowingWaterLikeFluidProperties;
 
+/// Fires `BlockFromToEvent` for `fluid` flowing from `from` to `to`. Returns whether a handler
+/// cancelled the spread.
+pub fn spread_is_cancelled(world: &World, fluid: &Fluid, from: &BlockPos, to: &BlockPos) -> bool {
+    let flowing_block = if fluid.id == Fluid::FLOWING_LAVA.id || fluid.id == Fluid::LAVA.id {
+        &Block::LAVA
+    } else {
+        &Block::WATER
+    };
+    let mut event = crate::plugin::api::events::block::block_from_to::BlockFromToEvent::new(
+        *from,
+        *to,
+        flowing_block,
+    );
+    if let Some(server) = world.server.upgrade() {
+        server.plugin_manager.fire_blocking(&server, &mut event);
+    }
+    event.cancelled
+}
+
 #[allow(async_fn_in_trait)]
 pub trait FlowingFluid: Send + Sync {
     fn get_level_decrease_per_block(&self, world: &World) -> i32;
@@ -357,20 +376,7 @@ pub trait FlowingFluid: Send + Sync {
             breaks_block = world.get_block(pos).id != Block::AIR.id;
         }
 
-        let flowing_block = if fluid.id == Fluid::FLOWING_LAVA.id || fluid.id == Fluid::LAVA.id {
-            &Block::LAVA
-        } else {
-            &Block::WATER
-        };
-        let mut event = crate::plugin::api::events::block::block_from_to::BlockFromToEvent::new(
-            *from,
-            *pos,
-            flowing_block,
-        );
-        if let Some(server) = world.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if spread_is_cancelled(world, fluid, from, pos) {
             return;
         }
 

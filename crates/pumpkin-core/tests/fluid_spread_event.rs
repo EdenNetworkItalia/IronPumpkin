@@ -176,3 +176,43 @@ fn a_cancelled_spread_leaves_the_target_block_in_place() {
     assert_eq!(state_at(target), grass);
     assert_ne!(state_at(pos.offset(SIDES[1])), Block::AIR.default_state.id);
 }
+
+/// Lava at `pos` over a water source, on a stone floor.
+fn lava_over_water(pos: BlockPos) {
+    set(pos.down().down(), Block::STONE.default_state.id);
+    set(pos.down(), Block::WATER.default_state.id);
+    set(pos, Block::LAVA.default_state.id);
+}
+
+#[test]
+fn lava_that_turns_water_to_stone_sends_the_spread_event() {
+    let _serial = support::serial();
+    let pos = spot(4);
+    lava_over_water(pos);
+    let log = record(pos);
+
+    tick(&Fluid::FLOWING_LAVA, pos);
+
+    let seen = log.lock().unwrap().clone();
+    assert!(
+        seen.contains(&(pos, pos.down(), Block::LAVA.name)),
+        "{seen:?}"
+    );
+    assert_eq!(state_at(pos.down()), Block::STONE.default_state.id);
+}
+
+#[test]
+fn a_cancelled_spread_leaves_the_water_under_the_lava() {
+    let _serial = support::serial();
+    let pos = spot(5);
+    lava_over_water(pos);
+    on(move |event| {
+        if event.from_pos == pos && event.to_pos == pos.down() {
+            event.set_cancelled(true);
+        }
+    });
+
+    tick(&Fluid::FLOWING_LAVA, pos);
+
+    assert_eq!(state_at(pos.down()), Block::WATER.default_state.id);
+}
