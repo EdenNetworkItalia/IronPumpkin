@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use pumpkin_core::command::CommandSender;
 use pumpkin_util::math::vector2::Vector2;
 use pumpkin_world::chunk_system::ChunkLoading;
 
@@ -83,4 +84,25 @@ fn concurrent_changes_of_one_chunk_keep_the_ticket_and_the_set_in_agreement() {
                 .count()
         });
     assert_eq!(tickets, usize::from(forced));
+}
+
+fn run(command: &str) -> Result<i32, String> {
+    let server = support::server();
+    let source = CommandSender::Console.into_source(server).with_silent();
+    server
+        .command_dispatcher
+        .load()
+        .execute_input(command, &source)
+        .map_err(|error| format!("{:?}", error.error_type))
+}
+
+#[test]
+fn forceload_rejects_a_huge_area_and_coordinates_outside_the_world() {
+    let _serial = support::serial();
+
+    let huge = run("forceload add 0 0 1048575 1048575").unwrap_err();
+    assert!(huge.contains("commands.forceload.toobig"), "{huge}");
+    let outside = run("forceload add 30000000 0").unwrap_err();
+    assert!(outside.contains("argument.pos.outofworld"), "{outside}");
+    assert!(support::world().forced_chunks.lock().unwrap().is_empty());
 }
