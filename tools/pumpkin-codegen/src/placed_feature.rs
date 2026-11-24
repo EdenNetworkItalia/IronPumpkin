@@ -373,6 +373,10 @@ pub fn value_to_placement_modifier(v: &Value) -> TokenStream {
                 .iter()
                 .map(value_to_placement_modifier)
                 .collect();
+            assert!(
+                !placements.is_empty(),
+                "randomly_selected needs at least one placement"
+            );
             quote! {
                 PlacementModifier::RandomlySelected(RandomlySelectedPlacementModifier {
                     placements: vec![#(#placements),*],
