@@ -141,25 +141,24 @@ fn distribute_to_container(inventory: &dyn Inventory, mut stack: ItemStack) -> b
     changed
 }
 
+/// `LootCommand.getSourceHandItem`: the held item of the entity of the source, which must be a
+/// living entity.
 fn get_hand_item(
     context: &CommandContext,
     is_mainhand: bool,
 ) -> Result<Option<ItemStack>, CommandSyntaxError> {
-    context.source.as_player().map_or_else(
-        || {
-            let display_name = TextComponent::text("Server");
-            Err(ERROR_NO_HELD_ITEMS.create_without_context(display_name))
-        },
-        |player| {
-            let stack = if is_mainhand {
-                let slot = player.inventory().get_selected_slot() as usize;
-                player.inventory().get_stack(slot)
-            } else {
-                player.inventory().get_stack(40)
-            };
-            Ok(Some(stack))
-        },
-    )
+    let Some(entity) = context.source.entity.as_deref() else {
+        let display_name = TextComponent::text("Server");
+        return Err(ERROR_NO_HELD_ITEMS.create_without_context(display_name));
+    };
+    let Some(living) = entity.get_living_entity() else {
+        return Err(ERROR_NO_HELD_ITEMS.create_without_context(entity.get_display_name()));
+    };
+    Ok(Some(if is_mainhand {
+        living.held_item(entity)
+    } else {
+        living.off_hand_item(entity)
+    }))
 }
 
 #[allow(clippy::too_many_lines)]

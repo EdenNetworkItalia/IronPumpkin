@@ -1097,4 +1097,36 @@ fn loot_commands_use_the_entity_of_the_source() {
     });
     assert_eq!(rolls.len(), 1);
     assert_eq!(rolls[0].this_entity, zombie_id);
+
+    // `mainhand` reads the held item of the zombie, not of the player of the output.
+    zombie
+        .get_living_entity()
+        .unwrap()
+        .entity_equipment
+        .lock()
+        .unwrap()
+        .put(
+            &ironpumpkin_mods::pumpkin_data::data_component_impl::EquipmentSlot::MAIN_HAND,
+            ItemStack::new(1, &Item::DIAMOND_PICKAXE),
+        );
+    let rolls = rolls_of("minecraft:gameplay/fishing", || {
+        run(format!(
+            "{give} fish minecraft:gameplay/fishing 200 100 0 mainhand"
+        ));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].tool, Some("diamond_pickaxe"));
+    let rolls = rolls_of("minecraft:blocks/decorated_pot", || {
+        run(format!("{give} mine 204 100 0 mainhand"));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].tool, Some("diamond_pickaxe"));
+    // The off hand of the zombie is empty.
+    let rolls = rolls_of("minecraft:gameplay/fishing", || {
+        run(format!(
+            "{give} fish minecraft:gameplay/fishing 200 100 0 offhand"
+        ));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].tool, Some("air"));
 }
