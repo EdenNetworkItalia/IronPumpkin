@@ -568,7 +568,10 @@ impl World {
         }
 
         for pos in newly_block_ticking {
-            if self.level.is_chunk_loaded(&pos) && tracker.loaded_block_ticking_chunks.insert(pos) {
+            if block_ticking_chunks.contains(&pos)
+                && self.level.is_chunk_loaded(&pos)
+                && tracker.loaded_block_ticking_chunks.insert(pos)
+            {
                 migrations.push(pos);
             }
         }
