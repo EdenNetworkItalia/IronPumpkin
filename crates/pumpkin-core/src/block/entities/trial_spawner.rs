@@ -1729,6 +1729,12 @@ impl TrialSpawnerBlockEntity {
         Some(result)
     }
 
+    /// Spawns one mob of the spawner now, as a tick does, and returns its UUID.
+    pub fn spawn_mob(&self, world: &Arc<World>) -> Option<Uuid> {
+        self.with_spawner(|spawner| spawner.spawn_mob(world, self.position))
+            .flatten()
+    }
+
     #[must_use]
     pub fn from_key(position: BlockPos, key: &TrialSpawnerKey) -> Self {
         Self::with_config(position, TrialSpawnerFullConfig::from_key(key))

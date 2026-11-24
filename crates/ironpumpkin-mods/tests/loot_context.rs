@@ -429,7 +429,7 @@ fn trial_spawner_rolls_the_equipment_set_for_the_spawned_mob() {
 
     let mut spawned = None;
     let rolls = rolls_of("minecraft:equipment/trial_chamber_melee", || {
-        spawned = spawner.trial_spawner.lock().unwrap().spawn_mob(&world, pos);
+        spawned = spawner.spawn_mob(&world);
     });
     let mob = spawned.unwrap();
     assert_eq!(rolls.len(), 1);
