@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicI32, AtomicU8, Ordering};
 
 use crate::crafting::recipe_provider::RecipeProvider;
 use crate::player::player_inventory::PlayerInventory;
+use crate::recipe_index::RecipeOutput;
 use crate::screen_handler::{
     InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour, ScreenProperty,
 };
@@ -263,13 +264,10 @@ impl SmithingTableScreenHandler {
                         addition.item,
                     )
                 {
-                    let res_key = recipe
-                        .result
-                        .item_id
-                        .strip_prefix("minecraft:")
-                        .unwrap_or(&recipe.result.item_id);
-                    if let Some(target_item) = Item::from_registry_key(res_key) {
-                        return Some(base.transmute_copy(target_item, recipe.result.count));
+                    // Vanilla `SmithingTransformRecipe.assemble` (`SmithingTransformRecipe.java:56-57`).
+                    let result = RecipeOutput::owned(&recipe.result).apply_to(base);
+                    if !result.is_empty() {
+                        return Some(result);
                     }
                 }
             }
@@ -546,5 +544,66 @@ impl Slot for SmithingOutputSlot {
 
     fn mark_dirty(&self) {
         self.inventory.mark_dirty();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use pumpkin_data::data_component_impl::MaxStackSizeImpl;
+    use pumpkin_nbt::compound::NbtCompound;
+    use pumpkin_protocol::codec::recipe::{OwnedRecipeResult, OwnedSmithingTransformRecipe};
+
+    use super::*;
+    use crate::entity_equipment::EntityEquipment;
+
+    struct Recipes(Vec<DynamicRecipe>);
+
+    impl RecipeProvider for Recipes {
+        fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
+            self.0.clone()
+        }
+    }
+
+    fn handler(components: Option<NbtCompound>) -> SmithingTableScreenHandler {
+        let recipe = DynamicRecipe::SmithingTransform(OwnedSmithingTransformRecipe {
+            recipe_id: "test:dirt_to_diamond".to_string(),
+            template: None,
+            base: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            addition: None,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 1,
+                components,
+            },
+        });
+        let player_inventory = Arc::new(PlayerInventory::new(
+            Arc::new(Mutex::new(EntityEquipment::new())),
+            Arc::new(rustc_hash::FxHashMap::default()),
+        ));
+        SmithingTableScreenHandler::new(1, &player_inventory, Some(Arc::new(Recipes(vec![recipe]))))
+    }
+
+    /// Vanilla `TransmuteRecipe.createWithOriginalComponents`: the base components, and the
+    /// result components over them.
+    #[test]
+    fn a_transform_result_puts_its_components_over_the_base_components() {
+        let mut base = ItemStack::new(1, &Item::DIRT);
+        base.set_data_component(MaxStackSizeImpl { size: 3 });
+        let empty = ItemStack::EMPTY.clone();
+
+        let kept = handler(None)
+            .find_transform_result(&empty, &base, &empty)
+            .unwrap();
+        assert_eq!(kept.item.id, Item::DIAMOND.id);
+        assert_eq!(kept.get_max_stack_size(), 3);
+
+        let mut components = NbtCompound::new();
+        components.put_int("minecraft:max_stack_size", 7);
+        let replaced = handler(Some(components))
+            .find_transform_result(&empty, &base, &empty)
+            .unwrap();
+        assert_eq!(replaced.get_max_stack_size(), 7);
     }
 }

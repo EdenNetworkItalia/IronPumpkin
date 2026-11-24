@@ -47,7 +47,9 @@ impl RecipeOutput {
         }
     }
 
-    fn owned(result: &OwnedRecipeResult) -> Self {
+    /// The output of a data pack or plugin recipe result.
+    #[must_use]
+    pub fn owned(result: &OwnedRecipeResult) -> Self {
         let template = result.components.as_ref().and_then(|components| {
             let mut compound = NbtCompound::new();
             compound.put_string("id", result.item_id.clone());
@@ -80,6 +82,22 @@ impl RecipeOutput {
         let mut stack = ItemStack::new(self.count, item);
         for (component, value) in self.components {
             stack.patch.push((*component, Some(value.clone_dyn())));
+        }
+        stack
+    }
+
+    /// Vanilla `TransmuteRecipe.createWithOriginalComponents`: the result item with the
+    /// components of `base`, and the components of the result over them
+    /// (`ItemStackTemplate.apply`).
+    #[must_use]
+    pub fn apply_to(&self, base: &ItemStack) -> ItemStack {
+        let Some(item) = self.item() else {
+            return ItemStack::EMPTY.clone();
+        };
+        let mut stack = base.transmute_copy(item, self.count);
+        for (component, value) in self.assemble().patch {
+            stack.patch.retain(|(id, _)| *id != component);
+            stack.patch.push((component, value));
         }
         stack
     }
