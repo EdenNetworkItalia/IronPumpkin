@@ -822,3 +822,78 @@ fn a_dropper_inserts_into_the_item_capability_of_a_plain_block() {
     assert_eq!(handler.get_amount_as_long(0), 1);
     assert_eq!(dropper.get_stack(0).item_count, 1);
 }
+
+/// Spawns a chest minecart at the center of `at` and returns its inventory.
+fn chest_minecart_at(test: &TestWorld, at: BlockPos) -> Arc<dyn Inventory> {
+    use pumpkin_core::entity::{Entity, EntityBase, vehicle::minecart::MinecartEntity};
+
+    let _guard = test.runtime.enter();
+    let entity = Entity::new(
+        test.world.clone(),
+        at.to_centered_f64(),
+        &EntityType::CHEST_MINECART,
+    );
+    let minecart = Arc::new(MinecartEntity::new(entity));
+    let inventory = minecart.get_container_inventory().unwrap();
+    test.world.spawn_entity(minecart);
+    inventory
+}
+
+/// `HopperBlockEntity.getContainerOrHandlerAt`: the block capability comes before the
+/// container entities, so a chest minecart inside the block gets nothing.
+#[test]
+fn the_block_capability_wins_over_a_chest_minecart_for_a_hopper_and_a_dropper() {
+    use pumpkin_core::block::entities::dropper::DropperBlockEntity;
+
+    let test = TestWorld::new();
+    let target = pos(12, 63, 12);
+    test.place(target, Block::DRIED_KELP_BLOCK.default_state.id);
+    let handler = plain_block(target, None);
+    let cart = chest_minecart_at(&test, target);
+    let hopper = hopper_at(&test, target.up(), Some(ItemStack::new(3, &Item::DIAMOND)));
+    hopper.tick(&test.world);
+    assert_eq!(handler.get_amount_as_long(0), 1);
+    assert!(cart.is_empty(), "the hopper fed the minecart");
+
+    let at = pos(14, 64, 12);
+    test.place(at.down(), Block::DRIED_KELP_BLOCK.default_state.id);
+    let dropper_target = plain_block(at.down(), None);
+    let dropper_cart = chest_minecart_at(&test, at.down());
+    let mut props = DispenserLikeProperties::from_state_id(Block::DROPPER.default_state.id);
+    props.facing = Facing::Down;
+    test.place(at, props.to_state_id(&Block::DROPPER));
+    let dropper = Arc::new(DropperBlockEntity::new(at));
+    dropper.set_stack(0, ItemStack::new(2, &Item::GOLD_INGOT));
+    test.world.add_block_entity(dropper.clone());
+    let Some(behaviour) = test
+        .world
+        .block_registry
+        .get_pumpkin_block(Block::DROPPER.id)
+    else {
+        panic!("the dropper has no behaviour");
+    };
+    behaviour.on_scheduled_tick(OnScheduledTickArgs {
+        world: &test.world,
+        block: &Block::DROPPER,
+        position: &at,
+    });
+    assert_eq!(dropper_target.get_amount_as_long(0), 1);
+    assert!(dropper_cart.is_empty(), "the dropper fed the minecart");
+}
+
+/// The pull side: a hopper below a block with an item capability takes from the block, not
+/// from the chest minecart inside it.
+#[test]
+fn a_hopper_pulls_from_the_block_capability_before_a_chest_minecart() {
+    let test = TestWorld::new();
+    let source = pos(13, 66, 12);
+    test.place(source, Block::DRIED_KELP_BLOCK.default_state.id);
+    let handler = plain_block(source, Some(ItemStack::new(4, &Item::EMERALD)));
+    let cart = chest_minecart_at(&test, source);
+    cart.set_stack(0, ItemStack::new(5, &Item::DIAMOND));
+    let hopper = hopper_at(&test, pos(13, 65, 12), None);
+    hopper.tick(&test.world);
+    assert_eq!(handler.get_amount_as_long(0), 3);
+    assert_eq!(hopper.get_stack(0).item.id, Item::EMERALD.id);
+    assert_eq!(cart.get_stack(0).item_count, 5);
+}

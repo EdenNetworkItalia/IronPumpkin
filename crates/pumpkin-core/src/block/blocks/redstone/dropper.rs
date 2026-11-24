@@ -12,7 +12,7 @@ use crate::entity::item::ItemEntity;
 use crate::entity::{Entity, EntityBase};
 
 use crate::block::entities::dropper::DropperBlockEntity;
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{ContainerOrHandler, HopperBlockEntity};
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::Facing;
 use pumpkin_data::entity::EntityType;
@@ -162,46 +162,54 @@ impl BlockBehaviour for DropperBlock {
                 let direction = props.facing.to_block_direction();
                 let target_pos = args.position.offset(direction.to_offset());
 
-                if let Some(container) =
-                    HopperBlockEntity::get_container_at(args.world, &target_pos)
-                {
-                    // Taken and restored under the slot lock, a hopper filling the dropper meanwhile keeps its items.
-                    let Some(one_item) = HopperBlockEntity::take_one(dropper, slot_index, &item)
-                    else {
-                        return;
-                    };
-                    if !HopperBlockEntity::add_item(
-                        Some(dropper),
-                        container.as_ref(),
-                        one_item.clone(),
-                        Some(direction.opposite()),
-                    )
-                    .is_empty()
-                        && let Some(leftover) =
-                            HopperBlockEntity::put_back(dropper, slot_index, one_item)
-                    {
-                        args.world.drop_stack(args.position, leftover);
-                    }
-                    return;
-                }
-                if let Some(target) = HopperBlockEntity::capability_target(
+                let target_state = args.world.get_block_and_state(&target_pos);
+                let center = target_pos.to_centered_f64();
+                match HopperBlockEntity::container_or_handler_at(
                     args.world,
                     &target_pos,
                     direction.opposite(),
-                    None,
+                    target_state,
+                    center.x,
+                    center.y,
+                    center.z,
                 ) {
-                    // `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
-                    let Some(one_item) = HopperBlockEntity::take_one(dropper, slot_index, &item)
-                    else {
+                    Some(ContainerOrHandler::Container(container)) => {
+                        // Taken and restored under the slot lock, a hopper filling the dropper meanwhile keeps its items.
+                        let Some(one_item) =
+                            HopperBlockEntity::take_one(dropper, slot_index, &item)
+                        else {
+                            return;
+                        };
+                        if !HopperBlockEntity::add_item(
+                            Some(dropper),
+                            container.as_ref(),
+                            one_item.clone(),
+                            Some(direction.opposite()),
+                        )
+                        .is_empty()
+                            && let Some(leftover) =
+                                HopperBlockEntity::put_back(dropper, slot_index, one_item)
+                        {
+                            args.world.drop_stack(args.position, leftover);
+                        }
                         return;
-                    };
-                    if target.insert(&one_item) == 0
-                        && let Some(leftover) =
-                            HopperBlockEntity::put_back(dropper, slot_index, one_item)
-                    {
-                        args.world.drop_stack(args.position, leftover);
                     }
-                    return;
+                    Some(ContainerOrHandler::Handler(target)) => {
+                        // `DropperBlock.dispenseFrom` with `ItemUtil.insertItemReturnRemaining`.
+                        let Some(one_item) =
+                            HopperBlockEntity::take_one(dropper, slot_index, &item)
+                        else {
+                            return;
+                        };
+                        if target.insert(&one_item) == 0
+                            && let Some(leftover) =
+                                HopperBlockEntity::put_back(dropper, slot_index, one_item)
+                        {
+                            args.world.drop_stack(args.position, leftover);
+                        }
+                        return;
+                    }
+                    None => {}
                 }
 
                 // No container found, dispense item into the world
