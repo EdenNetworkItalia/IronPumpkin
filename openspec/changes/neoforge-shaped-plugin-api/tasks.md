@@ -73,7 +73,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.38 (#181) Living and player events that need a vanilla code path (equipment diff, wake checks, the experience orb follow, clone, advancement progress, negotiation); verify: one test per event and per ported vanilla path
 - [ ] 2.39 (#182) Farmland trample, entity section, entity constructing and spawn position events; verify: one test per event, the fixed-seed spawn equal to master, the world generation benches
 - [ ] 2.40 (#183) The NeoForge tag ids missing from the conventional tags; verify: a codegen rerun changes nothing, a unit test per registry
-- [ ] 2.41 (#184) Extension interfaces as one inventory row per hook, with the demand of the modpack scan; verify: the script reruns with no diff, `mapping_status.py --check`
+- [x] 2.41 (#184) Extension interfaces as one inventory row per hook, with the demand of the modpack scan; verify: the script reruns with no diff, `mapping_status.py --check`
 - [ ] 2.42 (#185) Damage container, permission nodes, transfer handlers and the other remaining packages; verify: a test per handler and per reduction kind
 - [ ] 2.43 (#186) Block and item event gaps of the wave 4 review; verify: a test per fix
 - [ ] 2.44 (#187) Damage, cause, explosion and tick gaps of the wave 4 review; verify: a test per fix
