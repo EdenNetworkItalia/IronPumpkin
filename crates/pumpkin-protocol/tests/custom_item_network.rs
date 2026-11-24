@@ -136,6 +136,7 @@ fn recipe_book_tag_sends_each_network_id_once() {
         result: OwnedRecipeResult {
             item_id: "minecraft:stick".to_string(),
             count: 1,
+            components: None,
         },
     });
     let entry = dynamic_entries(&[recipe]);

@@ -51,6 +51,7 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 
@@ -86,6 +87,7 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 
@@ -120,6 +122,7 @@ impl HostRecipeManagerWithStore<PluginHostState> for HasSelf<PluginHostState> {
             result: OwnedRecipeResult {
                 item_id: result_stack.item.registry_key.to_string(),
                 count: result_stack.item_count,
+                components: None,
             },
         };
 

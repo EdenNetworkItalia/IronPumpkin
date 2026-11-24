@@ -435,6 +435,7 @@ fn recipe_book_follows_the_mode() {
             result: OwnedRecipeResult {
                 item_id: result.to_string(),
                 count: 1,
+                components: None,
             },
         })]
     };

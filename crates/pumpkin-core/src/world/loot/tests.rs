@@ -1096,6 +1096,7 @@ fn furnace_smelt_multiplies_by_the_input_count_up_to_a_stack() {
             result: OwnedRecipeResult {
                 item_id: "minecraft:diamond".to_string(),
                 count: 3,
+                components: None,
             },
         }),
     )]);

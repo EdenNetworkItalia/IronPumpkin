@@ -476,6 +476,7 @@ fn a_transaction_reset_uses_the_recipes_of_the_furnace_type() {
             result: OwnedRecipeResult {
                 item_id: "minecraft:diamond".to_string(),
                 count: 1,
+                components: None,
             },
         }),
     )]);

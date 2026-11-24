@@ -45,6 +45,7 @@ fn cooking(id: &str, ingredient: &str, result: &str) -> OwnedCookingRecipe {
         result: OwnedRecipeResult {
             item_id: result.to_string(),
             count: 1,
+            components: None,
         },
     }
 }

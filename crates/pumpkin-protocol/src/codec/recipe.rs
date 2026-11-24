@@ -3,6 +3,7 @@ use pumpkin_data::recipes::RecipeCategoryTypes;
 use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name, tag_ids};
 use pumpkin_data::item::Item;
 use pumpkin_data::tag::RegistryKey;
+use pumpkin_nbt::compound::NbtCompound;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedRecipeIngredient {
@@ -78,7 +79,8 @@ impl OwnedRecipeIngredient {
 pub struct OwnedRecipeResult {
     pub item_id: String,
     pub count: u8,
-    // TODO: Add components/enchantments if needed for the display result
+    /// The `components` of the `ItemStackTemplate`, in NBT form.
+    pub components: Option<NbtCompound>,
 }
 
 #[derive(Clone, Debug)]

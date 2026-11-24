@@ -1,4 +1,5 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedBrewingRecipe, OwnedCookingRecipe, OwnedCookingRecipeType,
     OwnedCraftingRecipe, OwnedRecipeIngredient, OwnedRecipeResult, OwnedSmithingTransformRecipe,
@@ -99,6 +100,7 @@ fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
         Value::String(s) => Some(OwnedRecipeResult {
             item_id: normalize_id(s),
             count: 1,
+            components: None,
         }),
         Value::Object(map) => {
             let id = map
@@ -110,9 +112,16 @@ fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
                 .and_then(Value::as_u64)
                 .unwrap_or(1)
                 .min(99) as u8;
+            let components = map.get("components").and_then(|components| {
+                match super::dynamic_registry_loader::json_to_nbt_tag(components) {
+                    NbtTag::Compound(compound) => Some(compound),
+                    _ => None,
+                }
+            });
             Some(OwnedRecipeResult {
                 item_id: normalize_id(id),
                 count,
+                components,
             })
         }
         _ => None,
@@ -302,6 +311,7 @@ fn parse_transmute(recipe_id: String, value: &Value) -> Option<OwnedCraftingReci
     let result = parse_result(value.get("result")?).unwrap_or(OwnedRecipeResult {
         item_id: "minecraft:filled_map".to_string(),
         count: 1,
+        components: None,
     });
     Some(OwnedCraftingRecipe::Shapeless {
         recipe_id: Some(recipe_id),
@@ -608,6 +618,28 @@ mod tests {
         assert_eq!(recipe.addition, None);
         assert!(OwnedRecipeIngredient::match_optional(None, &Item::AIR));
         assert!(!OwnedRecipeIngredient::match_optional(None, &Item::STICK));
+    }
+
+    #[test]
+    fn a_result_keeps_its_components() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "ingredient": "minecraft:dirt",
+            "result": {
+                "id": "minecraft:diamond",
+                "components": { "minecraft:max_stack_size": 7 }
+            }
+        }"#;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "shiny", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        let components = cooking
+            .result
+            .components
+            .expect("the result has components");
+        assert_eq!(components.get_int("minecraft:max_stack_size"), Some(7));
     }
 
     #[test]

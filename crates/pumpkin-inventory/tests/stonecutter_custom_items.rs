@@ -39,6 +39,7 @@ fn index() -> RecipeIndex {
         result: OwnedRecipeResult {
             item_id: "minecraft:diamond".to_string(),
             count: 1,
+            components: None,
         },
     })])
 }

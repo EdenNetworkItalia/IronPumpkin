@@ -141,6 +141,7 @@ mod tests {
             result: OwnedRecipeResult {
                 item_id: "minecraft:stone".to_string(),
                 count: 1,
+                components: None,
             },
         })
     }

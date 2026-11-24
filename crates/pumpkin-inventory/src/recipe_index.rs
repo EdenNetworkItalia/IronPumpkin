@@ -19,6 +19,7 @@ use pumpkin_data::recipes::{
     RECIPES_SMITHING_TRANSFORM, RECIPES_SMITHING_TRIM, RECIPES_STONECUTTING, RecipeIngredientTypes,
     RecipeResultStruct,
 };
+use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe,
     OwnedRecipeIngredient, OwnedRecipeResult,
@@ -32,6 +33,8 @@ pub struct RecipeOutput {
     pub item_id: String,
     pub count: u8,
     pub components: Components,
+    /// The stack of a data pack result with components, read once from its NBT form.
+    template: Option<ItemStack>,
 }
 
 impl RecipeOutput {
@@ -40,14 +43,23 @@ impl RecipeOutput {
             item_id: result.id.to_string(),
             count: result.count,
             components: result.components,
+            template: None,
         }
     }
 
     fn owned(result: &OwnedRecipeResult) -> Self {
+        let template = result.components.as_ref().and_then(|components| {
+            let mut compound = NbtCompound::new();
+            compound.put_string("id", result.item_id.clone());
+            compound.put_int("count", i32::from(result.count));
+            compound.put_compound("components", components.clone());
+            ItemStack::read_item_stack(&compound)
+        });
         Self {
             item_id: result.item_id.clone(),
             count: result.count,
             components: &[],
+            template,
         }
     }
 
@@ -59,6 +71,9 @@ impl RecipeOutput {
     /// The result stack, or an empty stack when the item does not exist.
     #[must_use]
     pub fn assemble(&self) -> ItemStack {
+        if let Some(template) = &self.template {
+            return template.clone();
+        }
         let Some(item) = self.item() else {
             return ItemStack::EMPTY.clone();
         };
@@ -520,6 +535,7 @@ mod tests {
             result: OwnedRecipeResult {
                 item_id: result.to_string(),
                 count: 1,
+                components: None,
             },
         }))
     }
@@ -532,6 +548,7 @@ mod tests {
             result: OwnedRecipeResult {
                 item_id: "minecraft:stone".to_string(),
                 count: 1,
+                components: None,
             },
         })
     }
@@ -628,6 +645,21 @@ mod tests {
     }
 
     #[test]
+    fn a_data_pack_result_keeps_its_components() {
+        let mut components = NbtCompound::new();
+        components.put_int("minecraft:max_stack_size", 7);
+        let output = RecipeOutput::owned(&OwnedRecipeResult {
+            item_id: "minecraft:diamond".to_string(),
+            count: 2,
+            components: Some(components),
+        });
+        let stack = output.assemble();
+        assert_eq!(stack.item.id, Item::DIAMOND.id);
+        assert_eq!(stack.item_count, 2);
+        assert_eq!(stack.get_max_stack_size(), 7);
+    }
+
+    #[test]
     fn a_hint_keeps_the_last_recipe_while_it_matches() {
         let early = smelting("z:a", "minecraft:raw_iron", "minecraft:diamond");
         let late = smelting("a:zzz", "minecraft:raw_iron", "minecraft:emerald");
@@ -686,6 +718,7 @@ mod tests {
             result: OwnedRecipeResult {
                 item_id: "minecraft:diamond".to_string(),
                 count: 1,
+                components: None,
             },
         });
         let index = RecipeIndex::build(&[recipe]);
