@@ -54,6 +54,26 @@ impl BeaconBlockEntity {
         }
     }
 
+    fn write_effects_nbt(&self, nbt: &mut NbtCompound) {
+        let primary = self.primary_effect.load(Ordering::Relaxed);
+        if primary >= 0 {
+            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(primary as u16) {
+                nbt.put_string("primary_effect", eff.minecraft_name.to_string());
+            } else {
+                nbt.put_int("primary_effect", primary);
+            }
+        }
+        let secondary = self.secondary_effect.load(Ordering::Relaxed);
+        if secondary >= 0 {
+            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(secondary as u16) {
+                nbt.put_string("secondary_effect", eff.minecraft_name.to_string());
+            } else {
+                nbt.put_int("secondary_effect", secondary);
+            }
+        }
+        nbt.put_int("Levels", self.levels.load(Ordering::Relaxed));
+    }
+
     /// Replicates the Java `ContainerData` used to sync values to the `BeaconMenu`
     pub fn get_data(&self, id: usize) -> i32 {
         match id {
@@ -286,23 +306,7 @@ impl BlockEntity for BeaconBlockEntity {
     }
 
     fn write_nbt(&self, nbt: &mut NbtCompound) {
-        let primary = self.primary_effect.load(Ordering::Relaxed);
-        if primary >= 0 {
-            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(primary as u16) {
-                nbt.put_string("primary_effect", eff.minecraft_name.to_string());
-            } else {
-                nbt.put_int("primary_effect", primary);
-            }
-        }
-        let secondary = self.secondary_effect.load(Ordering::Relaxed);
-        if secondary >= 0 {
-            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(secondary as u16) {
-                nbt.put_string("secondary_effect", eff.minecraft_name.to_string());
-            } else {
-                nbt.put_int("secondary_effect", secondary);
-            }
-        }
-        nbt.put_int("Levels", self.levels.load(Ordering::Relaxed));
+        self.write_effects_nbt(nbt);
 
         if let Some(name) = &*self
             .custom_name
@@ -353,35 +357,12 @@ impl BlockEntity for BeaconBlockEntity {
         }
     }
 
+    /// Vanilla `saveCustomOnly`: the effects, the levels, the component `CustomName` and the
+    /// `lock` predicate, without the legacy string keys of the saved form.
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         let mut nbt = NbtCompound::new();
-        let primary = self.primary_effect.load(Ordering::Relaxed);
-        if primary >= 0 {
-            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(primary as u16) {
-                nbt.put_string("primary_effect", eff.minecraft_name.to_string());
-            } else {
-                nbt.put_int("primary_effect", primary);
-            }
-        }
-        let secondary = self.secondary_effect.load(Ordering::Relaxed);
-        if secondary >= 0 {
-            if let Some(eff) = <StatusEffect as IDSetContent>::from_id(secondary as u16) {
-                nbt.put_string("secondary_effect", eff.minecraft_name.to_string());
-            } else {
-                nbt.put_int("secondary_effect", secondary);
-            }
-        }
-        nbt.put_int("Levels", self.levels.load(Ordering::Relaxed));
-        if let Ok(name) = self.custom_name.try_lock()
-            && let Some(ref name) = *name
-        {
-            nbt.put_string("CustomName", name.clone());
-        }
-        if let Ok(lock) = self.lock_key.try_lock()
-            && let Some(ref lock) = *lock
-        {
-            nbt.put_string("Lock", lock.clone());
-        }
+        self.write_effects_nbt(&mut nbt);
+        self.metadata.write_nbt(&mut nbt);
         Some(nbt)
     }
 
@@ -514,5 +495,21 @@ mod tests {
         assert_eq!(nbt.get_int("primary"), Some(1));
         assert_eq!(nbt.get_int("secondary"), Some(1));
         assert_eq!(nbt.get_bool("isMovable"), Some(false));
+    }
+
+    #[test]
+    fn update_tag_writes_the_vanilla_lock_predicate() {
+        let mut nbt = NbtCompound::new();
+        nbt.put_string("Lock", "secret".to_string());
+        nbt.put_int("Levels", 2);
+        let beacon = BeaconBlockEntity::from_nbt(&nbt, BlockPos::new(0, 64, 0));
+        let tag = beacon.chunk_data_nbt().unwrap();
+        assert!(tag.get("Lock").is_none());
+        assert!(
+            tag.get_compound("lock")
+                .and_then(|lock| lock.get_compound("components"))
+                .is_some()
+        );
+        assert_eq!(tag.get_int("Levels"), Some(2));
     }
 }
