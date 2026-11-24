@@ -10,7 +10,7 @@ use pumpkin_data::{
     processor_list::StaticProcessor,
     tag,
 };
-use pumpkin_nbt::compound::NbtCompound;
+use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use pumpkin_util::{
     math::{position::BlockPos, vector3::Vector3},
     random::{RandomGenerator, RandomImpl},
@@ -20,7 +20,7 @@ use crate::generation::{
     proto_chunk::GenerationCache,
     structure::template::{
         BlockPlacer, StructureProcessor, StructureTemplate, get_template, load_processor_list,
-        place_template_palette_with_random,
+        place_template_palette_with_random, template_entities,
     },
 };
 
@@ -136,7 +136,26 @@ fn place<T: GenerationCache>(
     );
     update_shapes(placer.chunk, &placer.placed);
 
+    // Vanilla `addEntitiesToWorld`: `WorldGenRegion.addFreshEntity` stores each entity in the
+    // chunk of its block position.
+    for (_, nbt) in template_entities(template, corner, rotation) {
+        let Some(pos) = entity_block_pos(&nbt) else {
+            continue;
+        };
+        placer.chunk.add_entity(&pos, nbt);
+    }
     true
+}
+
+/// Vanilla `Entity.blockPosition`: the floor of the `Pos` of the entity.
+fn entity_block_pos(nbt: &NbtCompound) -> Option<Vector3<i32>> {
+    let pos = nbt.get_list("Pos")?;
+    let coord = |i: usize| {
+        pos.get(i)
+            .and_then(NbtTag::extract_double)
+            .map(|v| v.floor() as i32)
+    };
+    Some(Vector3::new(coord(0)?, coord(1)?, coord(2)?))
 }
 
 /// Returns the world position of the minimum corner of the rotated template.
@@ -477,8 +496,8 @@ mod tests {
         }
     }
 
+    use crate::ProtoChunk;
     use crate::generation::feature::placed_features::tests::empty_chunk;
-    use pumpkin_nbt::tag::NbtTag;
     use pumpkin_util::random::xoroshiro128::Xoroshiro;
 
     const ORIGIN: BlockPos = BlockPos(Vector3::new(8, 64, 8));
@@ -634,6 +653,77 @@ mod tests {
                 random.next_i32(),
                 expected_random.next_i32(),
                 "seed {seed}: random"
+            );
+        }
+    }
+
+    fn placed_entities(chunk: &mut ProtoChunk) -> Vec<NbtCompound> {
+        chunk.take_pending_structure_entities()
+    }
+
+    #[test]
+    fn places_template_entities() {
+        // Vanilla `addEntitiesToWorld`: `Pos` is the placed position plus
+        // `StructureTemplate.transform(Vec3)` around pivot zero, `UUID` is removed, and the yaw
+        // turns with the rotation.
+        let mut entity = NbtCompound::new();
+        entity.put_string("id", "minecraft:armor_stand".to_string());
+        entity.put("UUID", NbtTag::IntArray(vec![1, 2, 3, 4]));
+        entity.put(
+            "Rotation",
+            NbtTag::List(vec![NbtTag::Float(10.0), NbtTag::Float(0.0)]),
+        );
+        let local = [1.25, 0.5, 0.75];
+        let template = template(
+            [3, 2, 2],
+            &["minecraft:stone"],
+            &[[0, 0, 0]],
+            &[(local, entity)],
+        );
+        for (rotation, yaw_turn) in [
+            (Rotation::None, 0.0),
+            (Rotation::Clockwise90, 90.0),
+            (Rotation::Rotate180, 180.0),
+            (Rotation::CounterClockwise90, 270.0),
+        ] {
+            let (ox, oz) = rotation.rotate_offset(-(template.size.x / 2), -(template.size.z / 2));
+            let base = (f64::from(ORIGIN.0.x + ox), f64::from(ORIGIN.0.z + oz));
+            let (x, z) = (local[0], local[2]);
+            let (rx, rz) = match rotation {
+                Rotation::None => (x, z),
+                Rotation::Clockwise90 => (1.0 - z, x),
+                Rotation::Rotate180 => (1.0 - x, 1.0 - z),
+                Rotation::CounterClockwise90 => (z, 1.0 - x),
+            };
+            let expected = [base.0 + rx, f64::from(ORIGIN.0.y) + local[1], base.1 + rz];
+
+            let mut chunk = empty_chunk();
+            let mut random = xoroshiro(1);
+            assert!(place(
+                &mut chunk,
+                &template,
+                rotation,
+                &[],
+                &mut random,
+                ORIGIN
+            ));
+            let entities = placed_entities(&mut chunk);
+            assert_eq!(entities.len(), 1, "{rotation:?}");
+            let nbt = &entities[0];
+            let pos: Vec<f64> = nbt
+                .get_list("Pos")
+                .unwrap()
+                .iter()
+                .map(|v| v.extract_double().unwrap())
+                .collect();
+            assert_eq!(pos, expected, "{rotation:?}");
+            assert!(nbt.get("UUID").is_none(), "{rotation:?}");
+            let yaw = nbt.get_list("Rotation").unwrap()[0]
+                .extract_float()
+                .unwrap();
+            assert!(
+                (yaw - (10.0 + yaw_turn)).abs() < 1e-4,
+                "{rotation:?}: yaw {yaw}"
             );
         }
     }

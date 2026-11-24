@@ -382,16 +382,29 @@ pub(crate) fn place_template_entities(
     rotation: Rotation,
     chunk_box: &pumpkin_util::math::block_box::BlockBox,
 ) {
-    for entity in &template.entities {
+    for (block_pos, nbt) in template_entities(template, origin, rotation) {
+        if chunk_box.contains_pos(&block_pos) {
+            chunk.add_structure_entity(nbt);
+        }
+    }
+}
+
+/// The entities of a template placed at `origin`.
+///
+/// Vanilla `StructureTemplate.addEntitiesToWorld` builds them: the block position of each entity
+/// and its NBT with the placed `Pos` and rotation and without `UUID`.
+pub fn template_entities(
+    template: &StructureTemplate,
+    origin: Vector3<i32>,
+    rotation: Rotation,
+) -> impl Iterator<Item = (Vector3<i32>, NbtCompound)> + '_ {
+    template.entities.iter().map(move |entity| {
         let block_pos = rotation.transform_pos(entity.block_pos, template.size);
         let world_block_pos = Vector3::new(
             origin.x + block_pos.x,
             origin.y + block_pos.y,
             origin.z + block_pos.z,
         );
-        if !chunk_box.contains_pos(&world_block_pos) {
-            continue;
-        }
 
         let pos = match rotation {
             Rotation::None => entity.pos,
@@ -421,6 +434,16 @@ pub(crate) fn place_template_entities(
             ]),
         );
         nbt.child_tags.remove("UUID");
+        if nbt.child_tags.contains_key("block_pos") {
+            nbt.put(
+                "block_pos",
+                NbtTag::IntArray(vec![
+                    world_block_pos.x,
+                    world_block_pos.y,
+                    world_block_pos.z,
+                ]),
+            );
+        }
 
         if let Some(rotation_nbt) = nbt.get_list("Rotation")
             && rotation_nbt.len() == 2
@@ -436,8 +459,8 @@ pub(crate) fn place_template_entities(
             nbt.put("Rotation", NbtTag::List(vec![yaw.into(), pitch.into()]));
         }
 
-        chunk.add_structure_entity(nbt);
-    }
+        (world_block_pos, nbt)
+    })
 }
 
 /// Returns the block entity ID for blocks that require one, or None if not needed.
