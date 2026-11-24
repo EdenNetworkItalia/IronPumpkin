@@ -16,7 +16,10 @@ use pumpkin_core::{
     server::Server,
     world::World,
 };
-use pumpkin_wasm_host_common::{plugin::WasmPlugin, state::PluginHostState};
+use pumpkin_wasm_host_common::{
+    plugin::WasmPlugin,
+    state::{ItemHookScope, PluginHostState},
+};
 
 /// Implements [`ToFromWasmEvent`] for a `NeoForge` event whose record `cleanup` releases: `to`
 /// builds the record, `apply` writes the settable fields of the returned record back.
@@ -349,15 +352,17 @@ impl WasmPluginEventHandler {
                     let dispatched_case = std::mem::discriminant(&wasm_event);
                     // The guest owns the input resources once lowered
                     // Only a successful return transfers the returned event's resources back to the host
-                    if item_hook_event {
-                        guest.with(|mut store| store.data_mut().item_hook_handlers += 1);
-                    }
+                    let hook_scope = if item_hook_event {
+                        let counter =
+                            guest.with(|mut store| store.data().item_hook_handlers.clone());
+                        Some(ItemHookScope::enter(counter))
+                    } else {
+                        None
+                    };
                     let returned = guest
                         .call(function, (handler_id, server_res, wasm_event))
                         .await;
-                    if item_hook_event {
-                        guest.with(|mut store| store.data_mut().item_hook_handlers -= 1);
-                    }
+                    drop(hook_scope);
                     let (returned_event,) = returned?;
                     guest.with(|mut store| {
                         event.from_wasm(returned_event, dispatched_case, store.data_mut())

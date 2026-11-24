@@ -222,6 +222,8 @@ impl HostItemStackWithStore<PluginHostState> for HasSelf<PluginHostState> {
         amount: i32,
     ) -> wasmtime::Result<bool> {
         let stack = accessor.get_res(&res)?;
+        // The stack stays unlocked while the damage runs, so a handler can read it. The write-back
+        // overwrites a change that a handler made to this stack in the meantime.
         let mut copy = stack.lock().await.clone();
         // The unbreaking read of `damage_item` fires `GetEnchantmentLevelEvent`: a handler of
         // this plugin must run while this call waits, and may read the stack.

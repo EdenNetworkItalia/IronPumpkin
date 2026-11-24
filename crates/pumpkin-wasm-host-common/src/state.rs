@@ -137,7 +137,25 @@ pub struct PluginHostState {
     /// How many handlers of an event that the item stack reads fire (`ItemAttributeModifierEvent`,
     /// `GetEnchantmentLevelEvent`) run in this store now. Host work that a handler starts reads
     /// the item stacks with those events off, so the handler does not fire itself again.
-    pub item_hook_handlers: u32,
+    pub item_hook_handlers: Arc<std::sync::atomic::AtomicU32>,
+}
+
+/// Counts one running handler of an event that the item stack reads fire, until it drops, also
+/// when the call that runs the handler unwinds.
+pub struct ItemHookScope(Arc<std::sync::atomic::AtomicU32>);
+
+impl ItemHookScope {
+    #[must_use]
+    pub fn enter(counter: Arc<std::sync::atomic::AtomicU32>) -> Self {
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Self(counter)
+    }
+}
+
+impl Drop for ItemHookScope {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 impl Default for PluginHostState {
@@ -164,7 +182,7 @@ impl PluginHostState {
             permissions: Vec::new(),
             name: None,
             marketplace_metadata: None,
-            item_hook_handlers: 0,
+            item_hook_handlers: Arc::default(),
         }
     }
 
