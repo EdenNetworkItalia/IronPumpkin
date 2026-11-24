@@ -8,7 +8,8 @@ use pumpkin_data::villager::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::warn;
+
+use super::load_error::{self, Entry};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DynamicTradeModifier {
@@ -467,16 +468,18 @@ impl TradeRegistry {
 
 pub fn load_trades_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     registry: &mut HashMap<String, VillagerTradeDefinition, S>,
 ) -> usize {
     let before = registry.len();
-    load_trades_recursive(namespace, dir, dir, registry);
+    load_trades_recursive(namespace, pack, dir, dir, registry);
     registry.len() - before
 }
 
 fn load_trades_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut HashMap<String, VillagerTradeDefinition, S>,
@@ -487,28 +490,21 @@ fn load_trades_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_trades_recursive(namespace, base_dir, &path, registry);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-            let stem_path = stem_path.replace('\\', "/");
-            let full_id = format!("{namespace}:{stem_path}");
-
-            if let Ok(content) = fs::read_to_string(&path) {
+            load_trades_recursive(namespace, pack, base_dir, &path, registry);
+        } else if let Some(full_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: load_error::VILLAGER_TRADE,
+                id: &full_id,
+                pack,
+            };
+            if let Some((content, _)) = file.read_json(&path) {
                 match serde_json::from_str::<VillagerTradeDefinition>(&content) {
                     Ok(def) => {
-                        registry.insert(full_id, def.clone());
-                        registry.insert(stem_path, def);
+                        let stem_path = full_id.split_once(':').map_or("", |(_, path)| path);
+                        registry.insert(stem_path.to_string(), def.clone());
+                        registry.insert(full_id, def);
                     }
-                    Err(err) => {
-                        warn!("Failed to parse villager trade {full_id}: {err}");
-                    }
+                    Err(err) => file.skip(err),
                 }
             }
         }
@@ -517,16 +513,18 @@ fn load_trades_recursive<S: std::hash::BuildHasher>(
 
 pub fn load_trade_sets_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     registry: &mut HashMap<String, TradeSetDefinition, S>,
 ) -> usize {
     let before = registry.len();
-    load_trade_sets_recursive(namespace, dir, dir, registry);
+    load_trade_sets_recursive(namespace, pack, dir, dir, registry);
     registry.len() - before
 }
 
 fn load_trade_sets_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut HashMap<String, TradeSetDefinition, S>,
@@ -537,28 +535,21 @@ fn load_trade_sets_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_trade_sets_recursive(namespace, base_dir, &path, registry);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-            let stem_path = stem_path.replace('\\', "/");
-            let full_id = format!("{namespace}:{stem_path}");
-
-            if let Ok(content) = fs::read_to_string(&path) {
+            load_trade_sets_recursive(namespace, pack, base_dir, &path, registry);
+        } else if let Some(full_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: load_error::TRADE_SET,
+                id: &full_id,
+                pack,
+            };
+            if let Some((content, _)) = file.read_json(&path) {
                 match serde_json::from_str::<TradeSetDefinition>(&content) {
                     Ok(def) => {
-                        registry.insert(full_id, def.clone());
-                        registry.insert(stem_path, def);
+                        let stem_path = full_id.split_once(':').map_or("", |(_, path)| path);
+                        registry.insert(stem_path.to_string(), def.clone());
+                        registry.insert(full_id, def);
                     }
-                    Err(err) => {
-                        warn!("Failed to parse trade set {full_id}: {err}");
-                    }
+                    Err(err) => file.skip(err),
                 }
             }
         }
@@ -567,16 +558,18 @@ fn load_trade_sets_recursive<S: std::hash::BuildHasher>(
 
 pub fn load_trade_tags_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     registry: &mut HashMap<String, Vec<String>, S>,
 ) -> usize {
     let before = registry.len();
-    load_trade_tags_recursive(namespace, dir, dir, registry);
+    load_trade_tags_recursive(namespace, pack, dir, dir, registry);
     registry.len() - before
 }
 
 fn load_trade_tags_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut HashMap<String, Vec<String>, S>,
@@ -587,49 +580,50 @@ fn load_trade_tags_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_trade_tags_recursive(namespace, base_dir, &path, registry);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-            let stem_path = stem_path.replace('\\', "/");
-            let full_id = format!("{namespace}:{stem_path}");
-
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Ok(tag_file) = serde_json::from_str::<TradeTagDefinition>(&content)
-            {
-                let replace = tag_file.replace;
-                let values = tag_file
-                    .values
-                    .into_iter()
-                    .filter_map(|v| match v {
-                        Value::String(s) => Some(s),
-                        Value::Object(obj) => {
-                            obj.get("id").and_then(Value::as_str).map(String::from)
-                        }
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                // `TagLoader`: a file merges with the same tag of earlier packs, unless it sets
-                // `"replace": true`.
-                let mut merged = if replace {
-                    Vec::new()
-                } else {
-                    registry.get(&full_id).cloned().unwrap_or_default()
-                };
-                for value in values {
-                    if !merged.contains(&value) {
-                        merged.push(value);
-                    }
+            load_trade_tags_recursive(namespace, pack, base_dir, &path, registry);
+        } else if let Some(full_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: load_error::VILLAGER_TRADE_TAG,
+                id: &full_id,
+                pack,
+            };
+            let Some((content, _)) = file.read_json(&path) else {
+                continue;
+            };
+            let tag_file = match serde_json::from_str::<TradeTagDefinition>(&content) {
+                Ok(tag_file) => tag_file,
+                Err(err) => {
+                    file.skip(err);
+                    continue;
                 }
-                registry.insert(full_id, merged.clone());
-                registry.insert(stem_path, merged);
+            };
+            let stem_path = full_id
+                .split_once(':')
+                .map_or_else(String::new, |(_, path)| path.to_string());
+            let replace = tag_file.replace;
+            let values = tag_file
+                .values
+                .into_iter()
+                .filter_map(|v| match v {
+                    Value::String(s) => Some(s),
+                    Value::Object(obj) => obj.get("id").and_then(Value::as_str).map(String::from),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            // `TagLoader`: a file merges with the same tag of earlier packs, unless it sets
+            // `"replace": true`.
+            let mut merged = if replace {
+                Vec::new()
+            } else {
+                registry.get(&full_id).cloned().unwrap_or_default()
+            };
+            for value in values {
+                if !merged.contains(&value) {
+                    merged.push(value);
+                }
             }
+            registry.insert(full_id, merged.clone());
+            registry.insert(stem_path, merged);
         }
     }
 }
@@ -773,15 +767,24 @@ mod tests {
         .unwrap();
 
         let mut reg = TradeRegistry::new();
-        let loaded_sets =
-            load_trade_sets_from_dir("custom", &temp_dir.join("trade_set"), &mut reg.trade_sets);
+        let loaded_sets = load_trade_sets_from_dir(
+            "custom",
+            "file/test",
+            &temp_dir.join("trade_set"),
+            &mut reg.trade_sets,
+        );
         let loaded_tags = load_trade_tags_from_dir(
             "custom",
+            "file/test",
             &temp_dir.join("tags").join("villager_trade"),
             &mut reg.trade_tags,
         );
-        let loaded_trades =
-            load_trades_from_dir("custom", &temp_dir.join("villager_trade"), &mut reg.trades);
+        let loaded_trades = load_trades_from_dir(
+            "custom",
+            "file/test",
+            &temp_dir.join("villager_trade"),
+            &mut reg.trades,
+        );
 
         assert_eq!(loaded_sets, 2); // full and stem
         assert_eq!(loaded_tags, 2);

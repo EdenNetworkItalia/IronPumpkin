@@ -107,6 +107,24 @@ The server writes the new files to `mod_data/.staging-<mod id>/`, renames the ol
 
 Do not edit `mod_data/`. Edit the files in the crate and rebuild. A server with no mod that ships files does not create the folder. The mod id is a folder name, so the names that Windows reserves (`con`, `prn`, `aux`, `nul`, `com1` and the others) cannot be written on Windows.
 
+## A file that does not decode
+
+Vanilla loads recipes, loot tables, predicates, item modifiers and advancements as reloadable registries. If one file of these registries fails to decode, vanilla collects the error, fails the load, and keeps the old data on `/reload`. At server start it refuses to load the data packs. NeoForge keeps this rule. A mod skips a file on purpose with `neoforge:conditions`.
+
+IronPumpkin keeps the Pumpkin rule: the server skips the file that does not decode, logs one line for it, and loads the other files. The server start and `/reload` do not fail. A modpack with one broken file still starts. The line has this form:
+
+```text
+Failed to parse <namespace>:<path> from pack <pack id>: <cause> (skipped minecraft:<registry> entry)
+```
+
+The first words are the message of vanilla `RegistryDataLoader`. The cause is the decoder error: a JSON error, a missing key (`No key criteria in MapLike[...]`), or an unknown type. The recipe manager reports a recipe that decodes but names an unknown item or tag with the vanilla message, in the form `Failed to parse <id>: <cause>`.
+
+The rule applies to the reloadable registries that the server loads: recipes, loot tables, predicates, item modifiers, advancements, slot sources and the context int and float providers. It applies to villager trades, trade sets and villager trade tags too. A `/reload` that has a bad file keeps the good files of the same reload and replaces all old data with them. The log line is the same for all of them.
+
+A file that holds only `neoforge:conditions` is a removal stub: NeoForge uses it to remove an entry when the conditions pass. The server does not evaluate conditions yet, so it skips such a file with a debug line and logs no error. A file that has other keys next to `neoforge:conditions` loads as before, whatever its conditions say.
+
+A mod that relied on the vanilla failure to catch a typo must read the log of the server start. Do not use a bad file to disable content. Use a load condition when the server supports it.
+
 ## Rebuild after you add a file
 
 Cargo rebuilds the crate when an embedded file changes. It does not notice a file that you add or remove. Add a `build.rs` to the mod crate that watches the folder:
