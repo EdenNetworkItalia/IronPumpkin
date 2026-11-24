@@ -519,3 +519,22 @@ fn a_campfire_start_handler_can_set_the_slot_time() {
     );
     assert_eq!(*campfire.cooking_times[0].lock().unwrap(), 1);
 }
+
+/// Vanilla `serverTick` (`AbstractFurnaceBlockEntity.java:173-176`) leaves the cook progress
+/// alone for an input without a recipe.
+#[test]
+fn a_lit_furnace_keeps_its_progress_for_an_input_without_a_recipe() {
+    let _serial = support::serial();
+    install_recipes();
+    let world = support::world();
+    let pos = BlockPos::new(8, 100, 2);
+    place(&world, pos, &Block::FURNACE);
+    let furnace = FurnaceBlockEntity::new(pos);
+    furnace.set_stack(0, ItemStack::new(1, &Item::GRAVEL));
+    furnace.set_lit_time_remaining(100);
+    furnace.set_lit_total_time(100);
+    furnace.set_cooking_time_spent(5);
+    furnace.tick(&world);
+    assert!(furnace.is_burning());
+    assert_eq!(furnace.get_cooking_time_spent(), 5);
+}

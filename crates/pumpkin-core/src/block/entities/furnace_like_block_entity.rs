@@ -629,7 +629,9 @@ macro_rules! impl_block_entity_for_cooking {
                                 }
                             }
                         }
-                    } else {
+                    } else if is_top_items_empty || furnace_recipe.is_some() {
+                        // Vanilla `serverTick` (`AbstractFurnaceBlockEntity.java:173-176`) keeps
+                        // the progress for an input without a recipe.
                         self.set_cooking_time_spent(0);
                     }
                 } else if !self.is_burning() && self.get_cooking_time_spent() > 0 {
