@@ -103,8 +103,8 @@ pub static ENCHANTMENT_ARGUMENT: ResourceArgument =
 
 pub static MOB_EFFECT_ARGUMENT: ResourceArgument =
     ResourceArgument(MOB_EFFECT_REGISTRY, &|id: Identifier| {
-        pumpkin_data::effect::StatusEffect::from_name(id.path())
-            .or_else(|| pumpkin_data::effect::StatusEffect::from_minecraft_name(&id.to_string()))
+        // The full name: the path alone would resolve `othermod:speed` to vanilla speed.
+        pumpkin_data::effect::StatusEffect::from_minecraft_name(&id.to_string())
             .map(|value| value as &'static (dyn Any + Send + Sync))
     });
 
