@@ -197,6 +197,39 @@ fn a_provider_of_one_mod_answers_the_lookup_of_another() {
 }
 
 #[test]
+fn an_item_provider_answers_the_lookup_of_its_items_only() {
+    let capability = ItemCapability::<ItemHandler, ()>::create_void("test:stick_handler").unwrap();
+    let provided = Arc::new(ItemStacksResourceHandler::new(1, 64));
+    let mut event = open_event();
+    event
+        .register_item(
+            &capability,
+            move |_, ()| {
+                let handler: Arc<ItemHandler> = provided.clone();
+                Some(handler)
+            },
+            &["minecraft:stick"],
+        )
+        .unwrap();
+    assert!(event.is_item_registered(&capability, "minecraft:stick"));
+
+    let found = capability
+        .get_capability(&ItemStack::new(1, &Item::STICK), ())
+        .unwrap();
+    assert_eq!(found.size(), 1);
+    assert!(
+        capability
+            .get_capability(&ItemStack::new(1, &Item::DIAMOND), ())
+            .is_none()
+    );
+    assert!(
+        capability
+            .get_capability(&ItemStack::new(0, &Item::STICK), ())
+            .is_none()
+    );
+}
+
+#[test]
 fn a_chest_has_27_slots_and_a_double_chest_54_with_the_right_half_first() {
     vanilla_providers();
     let test = TestWorld::new();
