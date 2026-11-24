@@ -10,7 +10,7 @@ use crate::entity::mob::Mob;
 use crate::entity::player::Player;
 use crate::plugin::api::events::player::player_shear_entity::PlayerShearEntityEvent;
 use crate::world::game_event::GameEventContext;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, roll_loot};
 
 /// Vanilla `Shearable`: a mob that players and dispensers can shear.
 pub trait Shearable: Mob {
@@ -106,5 +106,5 @@ pub fn shearing_loot(
         tool: Some(tool.clone()),
         ..Default::default()
     };
-    generate_loot_from_handle(&loot_table, rand::random(), &params)
+    roll_loot(&loot_table, 0, &params)
 }

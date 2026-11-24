@@ -50,7 +50,10 @@ use ironpumpkin_mods::{
         },
         plugin::startup::STARTUP_HOOK,
         world::{
-            loot::{LootContextParameters, RollRandom, player_luck},
+            loot::{
+                LootContextParameters, RollRandom, generate_loot_from_handle_with_rng, player_luck,
+                roll_loot,
+            },
             random_sequences::RandomSequences,
         },
     },
@@ -446,9 +449,7 @@ fn trial_spawner_rolls_the_equipment_set_for_the_spawned_mob() {
 
 const DUNGEON: &str = "minecraft:chests/simple_dungeon";
 
-/// The first `count` values of the sequence `DUNGEON` of a fresh manager. The seeds of the
-/// sequences are the ones of Pumpkin, not of vanilla (issue 193), so the tests compare Pumpkin
-/// with itself.
+/// The first `count` values of the sequence `DUNGEON` of a fresh manager.
 fn dungeon_stream(count: usize) -> Vec<i64> {
     let id = DUNGEON.try_into().unwrap();
     let world_seed = support::server().level_info.load().world_gen_settings.seed;
@@ -509,6 +510,80 @@ fn a_roll_with_seed_zero_goes_on_with_the_random_sequence_of_the_table() {
         .rng()
         .next_i64();
     assert_ne!(a, b);
+}
+
+fn names(items: &[ItemStack]) -> Vec<String> {
+    items
+        .iter()
+        .map(|item| format!("{}x{}", item.item.id, item.item_count))
+        .collect()
+}
+
+/// `getRandomItems(params)` and a seed of 0 take the random sequence of the table, so rolls of
+/// one table go on with one stream: they equal rolls on one random source. A seed other than 0
+/// leaves the sequence alone.
+#[test]
+fn unseeded_rolls_of_one_table_continue_one_stream() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let params = LootContextParameters {
+        world: Some(&world),
+        ..Default::default()
+    };
+    let table = world.get_loot_table(DUNGEON).unwrap();
+
+    reset_dungeon_sequence();
+    let mut random = RollRandom::new(&params, &table, 0);
+    let expected: Vec<_> = (0..3)
+        .map(|_| {
+            names(&generate_loot_from_handle_with_rng(
+                &table,
+                random.rng(),
+                &params,
+            ))
+        })
+        .collect();
+    drop(random);
+
+    reset_dungeon_sequence();
+    let first = names(&roll_loot(&table, 0, &params));
+    let second = names(&roll_loot(&table, 0, &params));
+    let seeded = names(&roll_loot(&table, 5, &params));
+    let third = names(&roll_loot(&table, 0, &params));
+    assert_eq!([first, second, third], expected[..]);
+    assert_eq!(seeded, names(&roll_loot(&table, 5, &params)));
+}
+
+/// `Block.getDrops` rolls with no seed: the roll draws from the sequence of the table.
+#[test]
+fn a_block_break_draws_from_the_random_sequence_of_its_table() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let server = support::server();
+    let world_seed = server.level_info.load().world_gen_settings.seed;
+    let id = "minecraft:blocks/gravel".try_into().unwrap();
+    server
+        .random_sequences
+        .lock()
+        .unwrap()
+        .reset(&id, world_seed);
+    let handle = server
+        .random_sequences
+        .lock()
+        .unwrap()
+        .get_or_create(&id, world_seed)
+        .handle();
+    let before = handle.state();
+
+    let pos = BlockPos::new(61, 100, 0);
+    let params = LootContextParameters {
+        world: Some(&world),
+        ..Default::default()
+    };
+    collect_loot(&world, &Block::GRAVEL, &pos, &params);
+    assert_ne!(handle.state(), before, "the roll drew from the sequence");
 }
 
 /// Review 171: a roll copied the state of the sequence and wrote it back, so two overlapping rolls

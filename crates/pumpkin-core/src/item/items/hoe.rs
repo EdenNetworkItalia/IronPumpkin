@@ -68,9 +68,9 @@ impl ItemBehaviour for HoeItem {
             if let Some(loot_key) = result.entry.loot
                 && let Some(loot_table) = world.get_loot_table(loot_key)
             {
-                let seed = rand::random::<i64>();
-                let drops = loot_table.generate_loot_with_context(
-                    seed,
+                let drops = crate::world::loot::roll_loot(
+                    &loot_table,
+                    0,
                     // `Block.dropFromBlockInteractLootTable`: the `block_interact` parameter set.
                     &crate::world::loot::LootContextParameters::block_interact(
                         &world,

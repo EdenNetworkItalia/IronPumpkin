@@ -707,6 +707,21 @@ pub fn generate_loot_from_handle_with_rng(
     generation::generate_with_rng(handle.into(), rng, params)
 }
 
+/// Vanilla `LootTable.getRandomItems(params, optionalLootTableSeed)`.
+///
+/// The roll uses the random source of [`RollRandom::new`]. A seed other than 0 gives a source of
+/// its own. The seed 0 gives the random sequence of the table, which goes on where the last roll
+/// of the sequence ended. `getRandomItems(params)` is the seed 0.
+#[must_use]
+pub fn roll_loot(
+    handle: &LootTableHandle,
+    optional_seed: i64,
+    params: &LootContextParameters<'_>,
+) -> Vec<ItemStack> {
+    let mut random = RollRandom::new(params, handle, optional_seed);
+    generate_loot_from_handle_with_rng(handle, random.rng(), params)
+}
+
 /// The random source of a container roll.
 ///
 /// `LootTable.fill` and `getRandomItems(params, seed)` create it with
