@@ -400,8 +400,9 @@ Gaps:
 - `ExtendPoiTypesEvent#addStatesToPoi` with a part of the states has no counterpart: a mod block has no state ids before the freeze, and the server tracks job sites by block. `add_block_to_poi` adds every state.
 - Only the job site POI types accept added blocks. A block added to `minecraft:home`, `minecraft:meeting` or another POI type without a profession logs a warning and changes nothing.
 - `BlockEntityTypeAddBlocksEvent` gives a block state one block entity type. A vanilla block keeps its own, and a mod block keeps the first one, with a warning. A block entity type that is not registered changes nothing, with a warning, as NeoForge skips it.
-- `EntityAttributeCreationEvent#put` and `EntityAttributeModificationEvent#add` take the vanilla and NeoForge `Attributes`. A mod attribute binds at the freeze, after these events, so they cannot name it. Set its base value on the entity with `entity_attributes::set_base_value`.
+- `AttributeSupplier::add`, `EntityAttributeModificationEvent::add` and `has` take an `Attributes` value or the namespaced name of an attribute. A mod attribute has no id before the freeze, so name it (`"mymod:mana"`): the server binds the name at the freeze and the default changes for every entity of the type. A name that no mod registered is an `UnknownAttribute` error.
 - A spawn predicate gets the entity type, the world and the position. The spawn reason and the random source of the NeoForge predicate have no Pumpkin counterpart.
+- A vanilla entity type that has no entry in `SpawnPlacements` (`allay`, `sniffer`, `piglin_brute`, `player`) takes its first registration as its placement, so the call must name the placement type and the heightmap. The server reads the generated `EntityType::has_spawn_placement` flag. The Extractor does not write the flag yet, so it is `true` for every type, and a registration for these four types is an error until the Extractor writes `has_spawn_placement: false` for them.
 
 ## Errors
 

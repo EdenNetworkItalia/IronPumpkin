@@ -1491,7 +1491,7 @@ Minecraft, NeoForge and Mojang classes that ported mods use and that the invento
 |:--|--:|:--|:--|
 | `net.minecraft.core.component.DataComponentType` | 232 | same | `data_components::DataComponentType<T>`; registered with `DataComponentTypeBuilder` |
 | `net.minecraft.core.component.DataComponents` | 153 | same | `pumpkin_data::data_component::DataComponent` and the typed components of `ItemStack`; mod types through `data_components` |
-| `net.minecraft.core.component.DataComponentType$Builder` | 148 | same | `data_components::DataComponentTypeBuilder` (`persistent`; the stream codec is the NBT form of the codec) |
+| `net.minecraft.core.component.DataComponentType$Builder` | 148 | same | `data_components::DataComponentTypeBuilder` (`persistent`; the stream codec is the NBT form of the codec, or the bytes of `stream_codec`) |
 | `net.minecraft.core.component.DataComponentMap` | 103 | same | the components of `ItemStack` (`patch` for vanilla types, `custom_components` for mod types) |
 | `net.minecraft.core.component.TypedDataComponent` | 27 | same | `types.component-value`; `pumpkin:plugin/item-stack` components |
 
