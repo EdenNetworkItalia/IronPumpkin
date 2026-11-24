@@ -269,11 +269,19 @@ impl BeehiveBlockEntity {
             SoundCategory::Blocks,
             &self.position.to_f64(),
         );
-        world.emit_game_event(GameEvent::BlockChange.name(), self.position.to_f64());
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            self.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_entity_state(
+                Some(bee as &dyn crate::entity::EntityBase),
+                world.get_block_state_id(&self.position),
+            ),
+        );
         world.remove_entity(bee);
         self.mark_chunk_dirty(world);
     }
 
+    #[expect(clippy::too_many_lines)]
     pub fn release_occupants(
         &self,
         world: &Arc<World>,
@@ -296,6 +304,7 @@ impl BeehiveBlockEntity {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut failed = Vec::new();
         let honey_before = props.honey_level;
+        let mut expected_state = state;
         let sedated = player.is_some() && CampfireBlock::is_smokey_pos(world, &self.position);
         for occupant in candidates {
             let Some(bee) = occupant
@@ -327,6 +336,20 @@ impl BeehiveBlockEntity {
                         1
                     };
                     props.honey_level = (honey_before + increase).min(MAX_HONEY_LEVEL);
+                    // Vanilla sets the level before the `block_change` of each bee.
+                    let new_state = props.to_state_id(block);
+                    if new_state != expected_state
+                        && world
+                            .set_block_state_if(
+                                &self.position,
+                                new_state,
+                                BlockFlags::NOTIFY_ALL,
+                                |current| current == expected_state,
+                            )
+                            .is_some()
+                    {
+                        expected_state = new_state;
+                    }
                 }
             }
             world.play_sound(
@@ -334,7 +357,16 @@ impl BeehiveBlockEntity {
                 SoundCategory::Blocks,
                 &self.position.to_f64(),
             );
-            world.emit_game_event(GameEvent::BlockChange.name(), self.position.to_f64());
+            // Vanilla emits before the bee joins the world, so the bee itself is the cause.
+            let owner: Arc<dyn crate::entity::EntityBase> = bee.clone();
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                self.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext::of_owner_state(
+                    &owner,
+                    world.get_block_state_id(&self.position),
+                ),
+            );
             if !world.spawn_entity(bee.clone()) {
                 failed.push(occupant);
                 continue;
@@ -355,14 +387,6 @@ impl BeehiveBlockEntity {
             }
         }
 
-        if props.honey_level != honey_before {
-            world.set_block_state_if(
-                &self.position,
-                props.to_state_id(block),
-                BlockFlags::NOTIFY_ALL,
-                |current| current == state,
-            );
-        }
         self.mark_chunk_dirty(world);
 
         let mut bees = self

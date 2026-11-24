@@ -95,10 +95,8 @@ impl Goal for PlaceBlockGoal {
         let source: &dyn EntityBase = enderman.as_ref();
         world.emit_game_event_with_context(
             GameEvent::BlockPlace.name(),
-            target_pos.to_f64(),
-            &GameEventContext {
-                source_entity: Some(source),
-            },
+            target_pos.to_centered_f64(),
+            &GameEventContext::of_entity_state(Some(source), carried),
         );
         enderman.set_carried_block(None);
     }

@@ -1,4 +1,6 @@
-use pumpkin_data::game_event::GameEvent;
+use std::sync::Arc;
+
+use pumpkin_data::{BlockStateId, game_event::GameEvent};
 use pumpkin_util::math::{
     boundingbox::BoundingBox,
     position::{BlockPos, chunk_section_from_pos},
@@ -9,8 +11,93 @@ use pumpkin_world::generation::section_coords::section_to_block;
 use super::{World, entity_islands};
 use crate::entity::EntityBase;
 
+/// The context of a game event, vanilla `GameEvent.Context`: the entity that causes the event
+/// and the block state that the event affects. Build it with the constructors, as the vanilla
+/// `Context.of` calls.
 pub struct GameEventContext<'a> {
+    /// The entity that causes the event (`sourceEntity`).
     pub source_entity: Option<&'a dyn EntityBase>,
+    /// The block state that the event affects (`affectedState`). A vibration listener ignores a
+    /// state in the `dampens_vibrations` tag.
+    pub affected_state: Option<BlockStateId>,
+    /// The owner of `source_entity`, when the caller holds it. The cause of the event is then this
+    /// entity, also after the world has removed it.
+    owner: Option<&'a Arc<dyn EntityBase>>,
+}
+
+impl<'a> GameEventContext<'a> {
+    /// `Context.of((Entity) null)`: no entity and no state.
+    pub const NONE: Self = Self {
+        source_entity: None,
+        affected_state: None,
+        owner: None,
+    };
+
+    /// `Context.of(entity)`.
+    #[must_use]
+    pub const fn of_entity(entity: Option<&'a dyn EntityBase>) -> Self {
+        Self {
+            source_entity: entity,
+            affected_state: None,
+            owner: None,
+        }
+    }
+
+    /// `Context.of(state)`.
+    #[must_use]
+    pub const fn of_state(state: BlockStateId) -> Self {
+        Self {
+            source_entity: None,
+            affected_state: Some(state),
+            owner: None,
+        }
+    }
+
+    /// `Context.of(entity, state)`.
+    #[must_use]
+    pub const fn of_entity_state(entity: Option<&'a dyn EntityBase>, state: BlockStateId) -> Self {
+        Self {
+            source_entity: entity,
+            affected_state: Some(state),
+            owner: None,
+        }
+    }
+
+    /// `Context.of(entity)` for an entity that the caller owns. The cause of the event is `owner`,
+    /// also when the world does not list it: an entity that the world removed (the shulker bullet
+    /// emits `entity_damage` after its removal) or that it has not yet added (a bee leaves its
+    /// hive before it joins the world). Vanilla `Entity.kill` also emits `entity_die` after the
+    /// removal, but Pumpkin emits no `entity_die` yet (#220).
+    #[must_use]
+    pub fn of_owner(owner: &'a Arc<dyn EntityBase>) -> Self {
+        Self {
+            source_entity: Some(owner.as_ref()),
+            affected_state: None,
+            owner: Some(owner),
+        }
+    }
+
+    /// `Context.of(entity, state)` for an entity that the caller owns, see [`Self::of_owner`].
+    #[must_use]
+    pub fn of_owner_state(owner: &'a Arc<dyn EntityBase>, state: BlockStateId) -> Self {
+        Self {
+            affected_state: Some(state),
+            ..Self::of_owner(owner)
+        }
+    }
+
+    /// The same context with `state` as the affected state, `None` for no state.
+    #[must_use]
+    pub const fn with_state(mut self, state: Option<BlockStateId>) -> Self {
+        self.affected_state = state;
+        self
+    }
+
+    /// The owner of the source entity, when the caller gave one.
+    #[must_use]
+    pub const fn owner(&self) -> Option<&'a Arc<dyn EntityBase>> {
+        self.owner
+    }
 }
 
 pub trait GameEventListener {

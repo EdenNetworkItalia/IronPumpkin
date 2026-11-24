@@ -1064,10 +1064,11 @@ impl LivingEntity {
             .get_data_component::<pumpkin_data::data_component_impl::UseEffectsImpl>()
             .is_none_or(|u| u.interact_vibrations)
         {
-            self.entity
-                .world
-                .load()
-                .emit_game_event(event.name(), self.entity.pos.load());
+            self.entity.world.load().emit_game_event_by(
+                event.name(),
+                self.entity.pos.load(),
+                &self.entity,
+            );
         }
     }
 
@@ -5298,7 +5299,7 @@ impl LivingEntity {
                             EntityStatus::Teleport,
                             ActorEventID::None,
                         );
-                        world.emit_game_event("teleport", center);
+                        world.emit_game_event_by("teleport", center, &self.entity);
                         world.play_sound(
                             Sound::ItemChorusFruitTeleport,
                             SoundCategory::Players,

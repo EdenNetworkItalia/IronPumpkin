@@ -101,9 +101,10 @@ impl BlockBehaviour for TripwireBlock {
                 props.to_state_id(args.block),
                 BlockFlags::empty(),
             );
-            args.world.emit_game_event(
+            args.world.emit_game_event_by(
                 pumpkin_data::game_event::GameEvent::Shear.name(),
                 args.position.to_centered_f64(),
+                &args.player.living_entity.entity,
             );
             // TODO: Deduct 1 durability from held shears (skip in Creative mode).
         }

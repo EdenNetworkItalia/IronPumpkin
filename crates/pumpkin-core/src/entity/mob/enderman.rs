@@ -224,9 +224,7 @@ impl EndermanEntity {
         world.emit_game_event_with_context(
             GameEvent::Teleport.name(),
             origin,
-            &GameEventContext {
-                source_entity: Some(self),
-            },
+            &GameEventContext::of_entity(Some(self)),
         );
         if !entity.is_silent() {
             let destination_block_pos = entity.block_pos.load();

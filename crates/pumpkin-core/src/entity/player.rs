@@ -3800,9 +3800,10 @@ impl Player {
                     self.damage_item_in_slot(&slots[rand::random_range(0..slots.len())], 1);
                 }
             }
-            self.world().emit_game_event(
+            self.world().emit_game_event_by(
                 pumpkin_data::game_event::GameEvent::ElytraGlide.name(),
                 entity.pos.load(),
+                entity,
             );
         }
     }

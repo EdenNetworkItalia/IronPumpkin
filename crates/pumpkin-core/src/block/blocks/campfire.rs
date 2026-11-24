@@ -103,9 +103,13 @@ impl BlockBehaviour for CampfireBlock {
                     pumpkin_data::statistic::CustomStatistic::InteractWithCampfire as i32,
                     1,
                 );
-                args.world.emit_game_event(
+                args.world.emit_game_event_with_context(
                     GameEvent::BlockChange.name(),
                     args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_entity_state(
+                        Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                        args.world.get_block_state_id(args.position),
+                    ),
                 );
                 args.world.update_block_entity(&block_entity);
                 return BlockActionResult::SuccessServer;
@@ -124,9 +128,10 @@ impl BlockBehaviour for CampfireBlock {
         {
             args.world
                 .sync_world_event(WorldEvent::SoundExtinguishFire, *args.position, 0);
-            args.world.emit_game_event(
+            args.world.emit_game_event_by(
                 GameEvent::BlockChange.name(),
                 args.position.to_centered_f64(),
+                &args.player.living_entity.entity,
             );
             props.lit = false;
             args.world.set_block_state(

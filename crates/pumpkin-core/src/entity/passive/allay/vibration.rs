@@ -224,15 +224,21 @@ fn is_valid_vibration(event: GameEvent, context: &GameEventContext<'_>) -> bool 
     {
         return false;
     }
-    let Some(source) = context.source_entity else {
-        return true;
-    };
-    let ignored_while_sneaking = tag::GameEvent::MINECRAFT_IGNORE_VIBRATIONS_SNEAKING
-        .0
-        .contains(&event.name());
-    !source.is_spectator()
-        && (!source.is_stepping_carefully() || !ignored_while_sneaking)
-        && !source.dampens_vibrations()
+    if let Some(source) = context.source_entity {
+        let ignored_while_sneaking = tag::GameEvent::MINECRAFT_IGNORE_VIBRATIONS_SNEAKING
+            .0
+            .contains(&event.name());
+        if source.is_spectator()
+            || (source.is_stepping_carefully() && ignored_while_sneaking)
+            || source.dampens_vibrations()
+        {
+            return false;
+        }
+    }
+    context.affected_state.is_none_or(|state| {
+        !pumpkin_data::Block::from_state_id(state)
+            .has_tag(&tag::Block::MINECRAFT_DAMPENS_VIBRATIONS)
+    })
 }
 
 fn is_occluded(world: &World, origin: Vector3<f64>, destination: Vector3<f64>) -> bool {
@@ -370,6 +376,22 @@ mod tests {
         Ok(())
     }
 
+    /// Vanilla `VibrationSystem.Listener.isValidVibration`: a game event that affects a block
+    /// state of the `dampens_vibrations` tag, such as wool, makes no vibration.
+    #[test]
+    fn a_dampening_affected_state_makes_no_vibration() {
+        let event = GameEvent::NoteBlockPlay;
+        assert!(is_valid_vibration(event, &GameEventContext::NONE));
+        assert!(is_valid_vibration(
+            event,
+            &GameEventContext::of_state(pumpkin_data::Block::STONE.default_state.id)
+        ));
+        assert!(!is_valid_vibration(
+            event,
+            &GameEventContext::of_state(pumpkin_data::Block::WHITE_WOOL.default_state.id)
+        ));
+    }
+
     #[tokio::test]
     async fn wool_occludes_notes_but_a_solid_stone_block_does_not()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -394,9 +416,7 @@ mod tests {
         VibrationListener(&allay).handle_game_event(
             &world,
             GameEvent::NoteBlockPlay,
-            &GameEventContext {
-                source_entity: None,
-            },
+            &GameEventContext::NONE,
             origin,
         );
         assert!(
@@ -416,9 +436,7 @@ mod tests {
         VibrationListener(&allay).handle_game_event(
             &world,
             GameEvent::NoteBlockPlay,
-            &GameEventContext {
-                source_entity: None,
-            },
+            &GameEventContext::NONE,
             origin,
         );
         assert!(
@@ -447,9 +465,7 @@ mod tests {
         VibrationListener(&allay).handle_game_event(
             &world,
             GameEvent::NoteBlockPlay,
-            &GameEventContext {
-                source_entity: None,
-            },
+            &GameEventContext::NONE,
             origin.to_centered_f64(),
         );
         allay.tick_vibration();

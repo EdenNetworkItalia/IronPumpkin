@@ -402,8 +402,11 @@ impl BlockBehaviour for ShelfBlock {
         };
         args.world
             .play_block_sound(sound, SoundCategory::Blocks, *args.position);
-        args.world
-            .emit_game_event(event.name(), args.position.to_centered_f64());
+        args.world.emit_game_event_with_context(
+            event.name(),
+            args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_state(new_state_id),
+        );
     }
 
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {

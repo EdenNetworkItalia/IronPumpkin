@@ -855,7 +855,7 @@ impl GameTestWorld for ServerGameTestWorld {
                 tick: 0,
             });
         }
-        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position);
+        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position, None);
         Ok(())
     }
 
@@ -869,7 +869,7 @@ impl GameTestWorld for ServerGameTestWorld {
                 tick: 0,
             });
         }
-        crate::block::blocks::redstone::lever::LeverBlock::pull(&self.world, position);
+        crate::block::blocks::redstone::lever::LeverBlock::pull(&self.world, position, None);
         Ok(())
     }
 

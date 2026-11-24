@@ -49,7 +49,7 @@ impl BlockBehaviour for WeightedPressurePlateBlock {
         let output = self.get_redstone_output(args.block, state.id);
         if output > 0 {
             let (block, state) = args.world.get_block_and_state(args.position);
-            Self.update_plate_state(args.world, args.position, block, state, output);
+            Self.update_plate_state(args.world, args.position, block, state, output, None);
         }
     }
 

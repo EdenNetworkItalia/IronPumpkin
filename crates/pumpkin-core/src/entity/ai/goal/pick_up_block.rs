@@ -100,14 +100,13 @@ impl Goal for PickUpBlockGoal {
             return;
         }
 
+        let old_state = world.get_block_state_id(&target_pos);
         world.set_block_state(&target_pos, BlockStateId::AIR, BlockFlags::NOTIFY_ALL);
         let source: &dyn EntityBase = enderman.as_ref();
         world.emit_game_event_with_context(
             GameEvent::BlockDestroy.name(),
-            target_pos.to_f64(),
-            &GameEventContext {
-                source_entity: Some(source),
-            },
+            target_pos.to_centered_f64(),
+            &GameEventContext::of_entity_state(Some(source), old_state),
         );
         enderman.set_carried_block(Some(block.default_state.id));
     }

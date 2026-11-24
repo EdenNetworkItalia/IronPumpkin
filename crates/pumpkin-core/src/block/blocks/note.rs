@@ -46,9 +46,7 @@ impl NoteBlock {
             world.emit_game_event_with_context(
                 pumpkin_data::game_event::GameEvent::NoteBlockPlay.name(),
                 pos.to_centered_f64(),
-                &GameEventContext {
-                    source_entity: source,
-                },
+                &GameEventContext::of_entity(source),
             );
         }
     }

@@ -508,9 +508,7 @@ fn a_vanilla_game_event_carries_its_cause() {
     support::world().emit_game_event_with_context(
         "entity_action",
         Vector3::new(x, 100.0, 0.5),
-        &pumpkin_core::world::game_event::GameEventContext {
-            source_entity: Some(player.as_ref()),
-        },
+        &pumpkin_core::world::game_event::GameEventContext::of_entity(Some(player.as_ref())),
     );
 
     assert_eq!(*seen.lock().unwrap(), [Some(cause)]);

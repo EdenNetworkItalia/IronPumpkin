@@ -104,9 +104,10 @@ impl BlockBehaviour for CakeBlock {
                     candle_cake.default_state.id,
                     BlockFlags::NOTIFY_ALL,
                 );
-                args.world.emit_game_event(
+                args.world.emit_game_event_by(
                     GameEvent::BlockChange.name(),
                     args.position.to_centered_f64(),
+                    &args.player.living_entity.entity,
                 );
                 args.player.increment_stat(
                     pumpkin_data::statistic::StatisticCategory::Used,

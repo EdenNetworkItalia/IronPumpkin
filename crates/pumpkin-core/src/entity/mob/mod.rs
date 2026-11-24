@@ -1921,13 +1921,11 @@ pub trait Mob: EntityBase + Send + Sync {
 
         let _ = player.damage_held_stack(shears, 1, hand);
         mob_entity.set_item_slot(&slot, ItemStack::EMPTY.clone());
-        world.emit_game_event(GameEvent::Unequip.name(), entity.pos.load());
+        world.emit_game_event_by(GameEvent::Unequip.name(), entity.pos.load(), entity);
         world.emit_game_event_with_context(
             GameEvent::Shear.name(),
             entity.pos.load(),
-            &crate::world::game_event::GameEventContext {
-                source_entity: Some(player.as_ref()),
-            },
+            &crate::world::game_event::GameEventContext::of_entity(Some(player.as_ref())),
         );
         let item_id = stack.item.registry_key.to_string();
         entity.spawn_at_location_with_offset(stack, super::average_passenger_attachment(self));
@@ -3384,9 +3382,7 @@ fn emit_entity_interact(entity: &Entity, player: &Arc<Player>) {
     entity.world.load().emit_game_event_with_context(
         GameEvent::EntityInteract.name(),
         entity.pos.load(),
-        &crate::world::game_event::GameEventContext {
-            source_entity: Some(player.as_ref()),
-        },
+        &crate::world::game_event::GameEventContext::of_entity(Some(player.as_ref())),
     );
 }
 

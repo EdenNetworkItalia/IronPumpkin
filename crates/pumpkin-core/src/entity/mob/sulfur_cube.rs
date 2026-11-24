@@ -561,10 +561,7 @@ impl SulfurCubeEntity {
         self.fuse.store(fuse, Ordering::Relaxed);
         entity.set_synced_data(tracked_data::sulfur_cube::MAX_FUSE, fuse);
         self.play_sound(Sound::EntityTntPrimed);
-        world.emit_game_event(
-            GameEvent::PrimeFuse.name(),
-            entity.block_pos.load().to_centered_f64(),
-        );
+        world.emit_game_event_by(GameEvent::PrimeFuse.name(), entity.pos.load(), entity);
         true
     }
 
@@ -1134,7 +1131,11 @@ impl Mob for SulfurCubeEntity {
                 let Some(sheared_item) = Self::shear(self) else {
                     return false;
                 };
-                world.emit_game_event(GameEvent::Shear.name(), entity.pos.load());
+                world.emit_game_event_by(
+                    GameEvent::Shear.name(),
+                    entity.pos.load(),
+                    &player.living_entity.entity,
+                );
                 let _ = player.damage_item_stack(item_stack, 1);
                 player.trigger_advancement(AdvancementTrigger::PlayerShearedEquipment {
                     entity_type: "minecraft:sulfur_cube".to_string(),
@@ -1147,9 +1148,10 @@ impl Mob for SulfurCubeEntity {
                 let equipped = self.equip_item(item_stack);
                 if equipped {
                     item_stack.decrement_unless_creative(player.gamemode.load(), 1);
-                    self.get_entity().world.load().emit_game_event(
+                    self.get_entity().world.load().emit_game_event_by(
                         GameEvent::EntityInteract.name(),
-                        self.get_entity().block_pos.load().to_centered_f64(),
+                        self.get_entity().pos.load(),
+                        self.get_entity(),
                     );
                 }
                 return equipped;

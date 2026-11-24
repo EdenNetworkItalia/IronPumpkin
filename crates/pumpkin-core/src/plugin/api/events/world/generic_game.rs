@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use pumpkin_data::BlockStateId;
 use pumpkin_macros::{Event, cancellable};
 use pumpkin_util::math::vector3::Vector3;
 
@@ -24,8 +25,12 @@ pub struct GenericGameEvent {
     /// The position where the game event occurred (`getEventPosition`).
     position: Vector3<f64>,
 
-    /// The entity that caused the game event, if it still lives (`getCause`).
+    /// The entity that caused the game event (`getCause`). It is set for an entity that the world
+    /// lists and for an entity that the emitting code owns, also after its removal.
     pub cause: Option<Arc<dyn EntityBase>>,
+
+    /// The block state that the event affects (`getContext().affectedState()`).
+    affected_state: Option<BlockStateId>,
 }
 
 impl GenericGameEvent {
@@ -41,6 +46,19 @@ impl GenericGameEvent {
         self.position
     }
 
+    /// The block state that the event affects (`getContext().affectedState()`).
+    #[must_use]
+    pub const fn affected_state(&self) -> Option<BlockStateId> {
+        self.affected_state
+    }
+
+    /// Sets the affected block state of a new event.
+    #[must_use]
+    pub const fn with_affected_state(mut self, state: Option<BlockStateId>) -> Self {
+        self.affected_state = state;
+        self
+    }
+
     #[must_use]
     pub const fn new(
         world: Arc<World>,
@@ -53,6 +71,7 @@ impl GenericGameEvent {
             event_key,
             position,
             cause,
+            affected_state: None,
             cancelled: false,
         }
     }

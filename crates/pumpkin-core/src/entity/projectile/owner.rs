@@ -146,9 +146,7 @@ impl ProjectileOwner {
             world.emit_game_event_with_context(
                 GameEvent::ProjectileShoot.name(),
                 projectile.pos.load(),
-                &GameEventContext {
-                    source_entity: owner.as_deref(),
-                },
+                &GameEventContext::of_entity(owner.as_deref()),
             );
         }
         self.check_left_owner(projectile);

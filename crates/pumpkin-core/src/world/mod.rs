@@ -8164,31 +8164,28 @@ impl World {
         Self::broadcast_bedrock_grouped(be_packet, bedrock_recipients.into_iter());
     }
 
+    /// Emits the game event `event_key` with no cause, as `Level.gameEvent(null, event, position)`.
     pub fn emit_game_event(&self, event_key: impl AsRef<str>, position: Vector3<f64>) {
-        self.emit_game_event_with_context(
-            event_key,
-            position,
-            &game_event::GameEventContext {
-                source_entity: None,
-            },
-        );
+        self.emit_game_event_with_context(event_key, position, &game_event::GameEventContext::NONE);
     }
 
     /// Emits the game event `event_key` with `entity` as its cause, as `Level.gameEvent(entity,
     /// event, position)`. The cause is the entity that the world lists under the id of `entity`.
-    pub fn emit_game_event_by(
+    /// A caller that holds the entity and may emit after its removal uses
+    /// [`game_event::GameEventContext::of_owner`] instead.
+    pub fn emit_game_event_by<'e>(
         &self,
         event_key: impl AsRef<str>,
         position: Vector3<f64>,
-        entity: &Entity,
+        entity: impl Into<Option<&'e Entity>>,
     ) {
-        let listed = self.get_entity_by_id(entity.entity_id);
+        let listed = entity
+            .into()
+            .and_then(|entity| self.get_entity_by_id(entity.entity_id));
         self.emit_game_event_with_context(
             event_key,
             position,
-            &game_event::GameEventContext {
-                source_entity: listed.as_deref(),
-            },
+            &game_event::GameEventContext::of_entity(listed.as_deref()),
         );
     }
 
@@ -8196,6 +8193,9 @@ impl World {
     /// [`GenericGameEvent`](crate::plugin::api::events::world::generic_game::GenericGameEvent),
     /// the `NeoForge` `VanillaGameEvent`, and then posts the event to the listeners of the world.
     /// A cancel posts nothing.
+    ///
+    /// The cause of the event is the owner of the context, else the entity that the world lists
+    /// under the id of the source entity.
     pub fn emit_game_event_with_context(
         &self,
         event_key: impl AsRef<str>,
@@ -8210,10 +8210,13 @@ impl World {
                     world,
                     event_key.to_owned(),
                     position,
-                    context
-                        .source_entity
-                        .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id)),
+                    context.owner().cloned().or_else(|| {
+                        context
+                            .source_entity
+                            .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id))
+                    }),
                 )
+                .with_affected_state(context.affected_state)
             })
             .is_some_and(|event| event.cancelled)
         {

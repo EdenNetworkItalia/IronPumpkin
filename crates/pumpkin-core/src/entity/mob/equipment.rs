@@ -801,7 +801,7 @@ pub fn equip_on_target(mob: &dyn Mob, player: &Player, stack: &mut ItemStack) ->
     entity
         .world
         .load()
-        .emit_game_event(GameEvent::Equip.name(), entity.pos.load());
+        .emit_game_event_by(GameEvent::Equip.name(), entity.pos.load(), entity);
     true
 }
 

@@ -144,9 +144,7 @@ impl Behavior for HarvestFarmland {
                 tick.world.emit_game_event_with_context(
                     GameEvent::BlockDestroy.name(),
                     farmland_pos.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(source),
-                    },
+                    &GameEventContext::of_entity_state(Some(source), state.id),
                 );
             }
 
@@ -168,9 +166,7 @@ impl Behavior for HarvestFarmland {
                         tick.world.emit_game_event_with_context(
                             GameEvent::BlockPlace.name(),
                             farmland_pos.to_centered_f64(),
-                            &GameEventContext {
-                                source_entity: Some(source),
-                            },
+                            &GameEventContext::of_entity_state(Some(source), place.id),
                         );
                         true
                     } else {

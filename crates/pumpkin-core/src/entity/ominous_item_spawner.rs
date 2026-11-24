@@ -132,9 +132,7 @@ impl OminousItemSpawnerEntity {
         world.emit_game_event_with_context(
             GameEvent::EntityPlace.name(),
             pos,
-            &GameEventContext {
-                source_entity: Some(spawned_entity.as_ref()),
-            },
+            &GameEventContext::of_entity(Some(spawned_entity.as_ref())),
         );
         self.set_item(ItemStack::EMPTY.clone());
     }
