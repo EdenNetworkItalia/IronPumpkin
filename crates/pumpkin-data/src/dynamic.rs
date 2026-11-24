@@ -29,7 +29,7 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map::Entry};
 use std::fmt;
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock, PoisonError, RwLock};
 
 use pumpkin_util::identifier::{Identifier, VANILLA_NAMESPACE};
 use pumpkin_util::math::{boundingbox::BoundingBox, vector3::Vector3};
@@ -2183,6 +2183,34 @@ fn tag_tables_of(key: RegistryKey) -> Option<&'static TagTables> {
         RegistryKey::EntityType => Some(&tables.entity_type_tags),
         _ => None,
     }
+}
+
+/// The item tags that only a data pack of the world defines, by namespaced name. A world data
+/// pack loads at runtime, after the tag tables freeze, so these tags live in their own table.
+static DATA_PACK_ITEM_TAGS: LazyLock<RwLock<HashMap<String, Arc<[u16]>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+/// Replaces the data pack item tags. Vanilla loads the tags before the recipes, so a data pack
+/// load calls this before it installs its recipes.
+pub fn set_data_pack_item_tags(tags: HashMap<String, Vec<u16>>) {
+    *DATA_PACK_ITEM_TAGS
+        .write()
+        .unwrap_or_else(PoisonError::into_inner) = tags
+        .into_iter()
+        .map(|(name, ids)| (name, Arc::from(ids)))
+        .collect();
+}
+
+/// The item ids of a tag that only a data pack defines. A leading `#` is optional and a name
+/// without a namespace uses `minecraft`.
+#[must_use]
+pub fn data_pack_item_tag(tag: &str) -> Option<Arc<[u16]>> {
+    let tag = tag.strip_prefix('#').unwrap_or(tag);
+    DATA_PACK_ITEM_TAGS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&*namespaced_name(tag))
+        .cloned()
 }
 
 /// The custom ids in a generated or mod tag, by tag name.

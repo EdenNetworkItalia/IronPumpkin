@@ -1,6 +1,6 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
 
-use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name, tag_ids};
+use pumpkin_data::dynamic::{DynamicTaggable, data_pack_item_tag, namespaced_name, tag_ids};
 use pumpkin_data::item::Item;
 use pumpkin_data::tag::RegistryKey;
 use pumpkin_nbt::compound::NbtCompound;
@@ -19,7 +19,10 @@ impl OwnedRecipeIngredient {
         let name = namespaced_name(item.registry_key);
         match self {
             Self::Simple(id) => namespaced_name(id) == name,
-            Self::Tagged(tag) => item.has_tag_dynamic(tag),
+            Self::Tagged(tag) => {
+                item.has_tag_dynamic(tag)
+                    || data_pack_item_tag(tag).is_some_and(|ids| ids.contains(&item.id))
+            }
             Self::OneOf(ids) => ids.iter().any(|id| namespaced_name(id) == name),
         }
     }
@@ -57,6 +60,10 @@ impl OwnedRecipeIngredient {
                         .chain(custom)
                         .filter_map(|&id| Item::from_id(id))
                     {
+                        push(item);
+                    }
+                } else if let Some(ids) = data_pack_item_tag(tag) {
+                    for item in ids.iter().filter_map(|&id| Item::from_id(id)) {
                         push(item);
                     }
                 }

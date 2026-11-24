@@ -247,6 +247,8 @@ impl DatapackManager {
 
         let damage_type_registry = build_damage_type_registry(all_damage_type_defs);
 
+        // Vanilla loads the tags before the recipes, so a recipe can use a tag of the pack.
+        pumpkin_data::dynamic::set_data_pack_item_tags(data_pack_item_tags(&all_tags));
         recipe_manager.set_recipes(all_recipes);
         *self
             .loaded_packs
@@ -2162,6 +2164,63 @@ fn load_recipes_recursive(
     }
 }
 
+/// The item tags of the loaded packs that no generated or mod tag holds, as item ids. A `#tag`
+/// value adds the members of that tag. A value that names no item or tag is left out.
+fn data_pack_item_tags(
+    tags: &HashMap<String, HashMap<String, tag_loader::DynamicTagEntry>>,
+) -> HashMap<String, Vec<u16>> {
+    fn resolve(
+        name: &str,
+        items: &HashMap<String, tag_loader::DynamicTagEntry>,
+        visiting: &mut Vec<String>,
+        out: &mut Vec<u16>,
+    ) {
+        let Some(entry) = items.get(name) else {
+            return;
+        };
+        if visiting.iter().any(|tag| tag == name) {
+            return;
+        }
+        visiting.push(name.to_string());
+        for value in &entry.values {
+            if let Some(tag) = value.strip_prefix('#') {
+                let tag = pumpkin_data::dynamic::namespaced_name(tag);
+                if let Some((generated, custom)) =
+                    pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &tag)
+                {
+                    for id in generated.iter().chain(custom) {
+                        if !out.contains(id) {
+                            out.push(*id);
+                        }
+                    }
+                } else {
+                    resolve(&tag, items, visiting, out);
+                }
+            } else if let Some(item) = pumpkin_data::item::Item::from_registry_key(value)
+                && !out.contains(&item.id)
+            {
+                out.push(item.id);
+            }
+        }
+        visiting.pop();
+    }
+
+    let Some(items) = tags.get("item") else {
+        return HashMap::new();
+    };
+    items
+        .keys()
+        .filter(|name| {
+            pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, name).is_none()
+        })
+        .map(|name| {
+            let mut ids = Vec::new();
+            resolve(name, items, &mut Vec::new(), &mut ids);
+            (name.clone(), ids)
+        })
+        .collect()
+}
+
 fn load_recipes_from_dir(
     namespace: &str,
     dir: &Path,
@@ -2525,6 +2584,54 @@ mod tests {
             manager.get_tag_entries("item", "minecraft:ordered"),
             Some(vec!["minecraft:oak_planks".to_owned()])
         );
+    }
+
+    /// Vanilla loads the tags before the recipes: a recipe keeps a tag that only a world data
+    /// pack defines.
+    #[test]
+    fn a_recipe_can_use_a_tag_of_a_world_data_pack() {
+        let world = tempfile::tempdir().expect("tempdir");
+        let data = world.path().join("datapacks/gems/data/test");
+        std::fs::create_dir_all(data.join("tags/item")).expect("create dir");
+        std::fs::create_dir_all(data.join("recipe")).expect("create dir");
+        std::fs::write(
+            data.join("tags/item/gems.json"),
+            r##"{"values": ["minecraft:emerald", "#minecraft:planks"]}"##,
+        )
+        .expect("write");
+        std::fs::write(
+            data.join("recipe/gem.json"),
+            r##"{
+                "type": "minecraft:smelting",
+                "ingredient": "#test:gems",
+                "result": { "id": "minecraft:diamond" }
+            }"##,
+        )
+        .expect("write");
+        let recipes = crate::server::recipe::RecipeManager::default();
+        DatapackManager::new().load_all(
+            world.path(),
+            &["vanilla".to_owned(), "file/gems".to_owned()],
+            &recipes,
+        );
+        let Some(pumpkin_protocol::codec::recipe::DynamicRecipe::Cooking(
+            pumpkin_protocol::codec::recipe::OwnedCookingRecipeType::Smelting(gem),
+        )) = recipes
+            .get_dynamic_recipes_internal()
+            .into_iter()
+            .find(|recipe| recipe.recipe_id() == Some("test:gem"))
+        else {
+            panic!("the recipe with the data pack tag must load");
+        };
+        assert!(
+            gem.ingredient
+                .match_item(&pumpkin_data::item::Item::EMERALD)
+        );
+        assert!(
+            gem.ingredient
+                .match_item(&pumpkin_data::item::Item::OAK_PLANKS)
+        );
+        assert!(!gem.ingredient.match_item(&pumpkin_data::item::Item::DIRT));
     }
 
     #[test]
