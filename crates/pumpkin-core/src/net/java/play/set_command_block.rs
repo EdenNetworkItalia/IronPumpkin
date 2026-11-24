@@ -3,10 +3,11 @@ use super::*;
 
 impl JavaClient {
     pub fn handle_set_command_block(&self, player: &Arc<Player>, command: &SSetCommandBlock<'_>) {
-        if !player.is_creative() {
-            return;
-        }
-        if player.permission_lvl.load() < PermissionLvl::Two {
+        if !player.can_use_game_master_blocks() {
+            player.send_system_message(&TextComponent::translate(
+                translation::java::ADVMODE_NOTALLOWED,
+                [],
+            ));
             return;
         }
         let pos = command.pos;
