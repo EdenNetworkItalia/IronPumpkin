@@ -1,8 +1,8 @@
 use super::{
     Arc, Block, BlockBreakEvent, BlockFlags, BlockPos, BlockState, BlockStateId, CLevelEvent,
-    CWorldEvent, Entity, EntityBase, ItemStack, LevelEvent, NbtCompound, Player, SoundCategory,
-    StructureKeys, StructureStart, VarInt, Vector2, Vector3, World, WorldEvent, cause_id,
-    load_entity_from_nbt, self_and_passengers,
+    CWorldEvent, Entity, EntityBase, ItemStack, LevelEvent, NbtCompound, Player, StructureKeys,
+    StructureStart, VarInt, Vector2, Vector3, World, WorldEvent, cause_id, load_entity_from_nbt,
+    self_and_passengers,
 };
 
 use super::sound::is_closer_than;
@@ -54,34 +54,6 @@ impl World {
                 f(player);
             }
         }
-    }
-
-    /// Plays a direct sound event by name to the players within its range of `position`, like
-    /// `ServerLevel.playSeededSound` with a direct holder, and returns how many Java players got
-    /// it. A Bedrock player gets nothing and does not count.
-    ///
-    /// The range is `fixed_range`, or 16 blocks times a volume above 1, like `SoundEvent.getRange`.
-    /// [`World::play_seeded_sound`] fires the sound event and sends to the players closer than
-    /// the range.
-    pub fn play_sound_event_near(
-        &self,
-        sound_name: &str,
-        fixed_range: Option<f32>,
-        category: SoundCategory,
-        position: &Vector3<f64>,
-        volume: f32,
-        pitch: f32,
-    ) -> usize {
-        self.play_sound_holder(
-            position,
-            pumpkin_protocol::IdOr::Value(pumpkin_protocol::SoundEvent {
-                sound_name: sound_name.into(),
-                range: fixed_range,
-            }),
-            category,
-            volume,
-            pitch,
-        )
     }
 
     /// Makes the entities of a record of a loaded chunk live, the root and its passengers, and
