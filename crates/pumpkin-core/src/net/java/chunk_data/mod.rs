@@ -269,6 +269,42 @@ mod tests {
     }
 
     #[test]
+    fn moving_piston_sends_its_update_tag_without_a_data_packet() {
+        let pos = BlockPos::new(5, 64, 5);
+        let mut nbt = saved("minecraft:piston", pos);
+        nbt.put_compound(
+            "blockState",
+            pumpkin_world::block::state_nbt::block_state_to_nbt(
+                pumpkin_data::Block::STONE.default_state.id,
+            ),
+        );
+        nbt.put_byte("facing", 2);
+        nbt.put_float("progress", 0.5);
+        nbt.put_bool("extending", true);
+        nbt.put_bool("source", false);
+        let chunk = chunk_with(vec![nbt]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let piston = entry(&packet, pos);
+        assert_eq!(
+            piston
+                .tag
+                .get_compound("blockState")
+                .and_then(|state| state.get_string("id")),
+            Some("minecraft:stone")
+        );
+        assert_eq!(piston.tag.get_byte("facing"), Some(2));
+        assert_eq!(piston.tag.get_float("progress"), Some(0.5));
+        assert_eq!(piston.tag.get_bool("extending"), Some(true));
+        assert_eq!(piston.tag.get_bool("source"), Some(false));
+
+        let live =
+            block_entity_from_nbt(&chunk.pending_block_entities.lock().unwrap()[&pos]).unwrap();
+        assert!(World::block_entity_data_packet(&live).is_none());
+        let sign = block_entity_from_nbt(&saved_sign(pos, "line")).unwrap();
+        assert!(World::block_entity_data_packet(&sign).is_some());
+    }
+
+    #[test]
     fn unknown_block_entity_types_stay_out_of_the_packet() {
         let chunk = chunk_with(vec![
             saved("examplemod:chest", BlockPos::new(0, 64, 0)),

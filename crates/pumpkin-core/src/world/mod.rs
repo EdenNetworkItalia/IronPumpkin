@@ -2065,19 +2065,11 @@ impl World {
                     &CBlockUpdate::new(block_pos, i32::from(block_state_id.as_u16()).into()),
                     &pumpkin_protocol::bedrock::client::CUpdateBlock::new(block_pos, be_block_id),
                 );
-                if let Some(block_entity) = self.get_block_entity(&block_pos)
-                    && let Some(type_id) = block_entity.get_id()
-                    && let Some(nbt) = block_entity.chunk_data_nbt()
+                if let Some(packet) = self
+                    .get_block_entity(&block_pos)
+                    .and_then(|block_entity| Self::block_entity_data_packet(&block_entity))
                 {
-                    let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
-                    self.broadcast_to_chunk(
-                        chunk_pos,
-                        &CBlockEntityData::new(
-                            block_pos,
-                            VarInt(i32::from(type_id)),
-                            bytes.as_ref().into(),
-                        ),
-                    );
+                    self.broadcast_to_chunk(chunk_pos, &packet);
                 }
                 if let Some(data) = self.bedrock_block_entity_data(block_state_id, block_pos) {
                     self.broadcast_to_chunk_bedrock(
@@ -2137,19 +2129,11 @@ impl World {
                 );
 
                 for (block_pos, _) in &updates {
-                    if let Some(block_entity) = self.get_block_entity(block_pos)
-                        && let Some(type_id) = block_entity.get_id()
-                        && let Some(nbt) = block_entity.chunk_data_nbt()
+                    if let Some(packet) = self
+                        .get_block_entity(block_pos)
+                        .and_then(|block_entity| Self::block_entity_data_packet(&block_entity))
                     {
-                        let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
-                        self.broadcast_to_chunk(
-                            chunk_pos,
-                            &CBlockEntityData::new(
-                                *block_pos,
-                                VarInt(i32::from(type_id)),
-                                bytes.as_ref().into(),
-                            ),
-                        );
+                        self.broadcast_to_chunk(chunk_pos, &packet);
                     }
                 }
             }
@@ -7406,18 +7390,8 @@ impl World {
         let block_entity_nbt = block_entity.chunk_data_nbt();
         let entity_id = block_entity.resource_location().to_string();
 
-        if let Some(nbt) = &block_entity_nbt
-            && let Some(type_id) = block_entity.get_id()
-        {
-            let bytes = pumpkin_nbt::Nbt::from(nbt.clone()).write_unnamed();
-            self.broadcast_to_chunk(
-                chunk_pos,
-                &CBlockEntityData::new(
-                    block_entity.get_position(),
-                    VarInt(i32::from(type_id)),
-                    bytes.as_ref().into(),
-                ),
-            );
+        if let Some(packet) = Self::block_entity_data_packet(&block_entity) {
+            self.broadcast_to_chunk(chunk_pos, &packet);
         }
 
         let state = self.get_block_state(&block_pos);
@@ -7445,6 +7419,24 @@ impl World {
             chunk.mark_dirty(true);
         });
         crate::plugin::capabilities::invalidate_block(self, &block_pos);
+    }
+
+    /// The block entity data packet of `block_entity`: vanilla `getUpdatePacket`.
+    #[must_use]
+    pub fn block_entity_data_packet(
+        block_entity: &Arc<dyn BlockEntity>,
+    ) -> Option<CBlockEntityData> {
+        if !block_entity.sends_update_packet() {
+            return None;
+        }
+        let type_id = block_entity.get_id()?;
+        let nbt = block_entity.chunk_data_nbt()?;
+        let bytes = pumpkin_nbt::Nbt::from(nbt).write_unnamed();
+        Some(CBlockEntityData::new(
+            block_entity.get_position(),
+            VarInt(i32::from(type_id)),
+            bytes.as_ref().into(),
+        ))
     }
 
     pub fn add_block_entity_nbt(&self, block_pos: BlockPos, nbt: &NbtCompound) {
@@ -7531,18 +7523,10 @@ impl World {
         let chunk_pos = block_pos.chunk_position();
         let block_entity_nbt = block_entity.chunk_data_nbt();
 
+        if let Some(packet) = Self::block_entity_data_packet(block_entity) {
+            self.broadcast_to_chunk(chunk_pos, &packet);
+        }
         if let Some(nbt) = &block_entity_nbt {
-            if let Some(type_id) = block_entity.get_id() {
-                let bytes = pumpkin_nbt::Nbt::from(nbt.clone()).write_unnamed();
-                self.broadcast_to_chunk(
-                    chunk_pos,
-                    &CBlockEntityData::new(
-                        block_entity.get_position(),
-                        VarInt(i32::from(type_id)),
-                        bytes.as_ref().into(),
-                    ),
-                );
-            }
             let mut full_nbt = nbt.clone();
             full_nbt.put_string("id", block_entity.resource_location().to_string());
             let pos = block_entity.get_position();

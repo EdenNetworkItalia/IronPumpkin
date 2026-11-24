@@ -115,9 +115,16 @@ pub trait BlockEntity: Any + Send + Sync {
         block_entity_type_id(self.resource_location())
     }
 
-    /// Obtain NBT data for sending to the client in `ChunkData`
+    /// The update tag: what the client gets in the chunk packet and in the block entity data
+    /// packet (vanilla `getUpdateTag`). `None` for the types that keep the empty default.
     fn chunk_data_nbt(&self) -> Option<NbtCompound> {
         None
+    }
+
+    /// Whether a change sends the update tag in a block entity data packet: vanilla
+    /// `getUpdatePacket` is not null.
+    fn sends_update_packet(&self) -> bool {
+        true
     }
 
     /// Obtain block actor NBT for fields Bedrock does not include in its block state.
