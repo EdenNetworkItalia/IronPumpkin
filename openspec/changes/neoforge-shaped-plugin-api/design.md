@@ -1,6 +1,6 @@
 # Design
 
-The inventory tables are hand-written. A task edits the rows of its issue, recounts the counts in the `####` headings, the family rows and the Total row, and runs `python3 -I tools/openspec-sync/mapping_status.py` (`tools/openspec-sync/README.md`). A generator wrote the first version of the tables; it is not in the repository. The mapping tables of the generator follow the decision "Engine extensions are the next phase": a row whose reason is a missing engine extension point is `planned` with the reason prefix `M5 engine extension:`. The arguments are: the NeoForge clone (`git clone --filter=blob:none --sparse -b 26.3.x https://github.com/neoforged/NeoForge`, then `git sparse-checkout add src/main/java src/client/java src/generated src/main/resources patches`), the unpacked FancyModLoader sources (`https://maven.neoforged.net/releases/net/neoforged/fancymodloader/loader/12.0.8/loader-12.0.8-sources.jar`), the unpacked eventbus sources (`https://maven.neoforged.net/releases/net/neoforged/bus/8.0.5/bus-8.0.5-sources.jar`), this checkout, the prose before and after the tables, and the output file.
+The inventory tables are hand-written. A task edits the rows of its issue, recounts the counts in the `####` headings, the family rows and the Total row, and runs `python3 -I tools/openspec-sync/mapping_status.py` (`tools/openspec-sync/README.md`). A generator wrote the first version of the tables; it is not in the repository. The one exception is the family "Extension interfaces": `tools/openspec-sync/extension_table.py` writes its tables and its rows in `mapping-table.md` from the NeoForge sources, `tools/openspec-sync/extension_rows.tsv` (the hand-written statuses) and `tools/modpack-scan/extension_demand.tsv` (the demand per method). The mapping tables of the generator follow the decision "Engine extensions are the next phase": a row whose reason is a missing engine extension point is `planned` with the reason prefix `M5 engine extension:`. The arguments are: the NeoForge clone (`git clone --filter=blob:none --sparse -b 26.3.x https://github.com/neoforged/NeoForge`, then `git sparse-checkout add src/main/java src/client/java src/generated src/main/resources patches`), the unpacked FancyModLoader sources (`https://maven.neoforged.net/releases/net/neoforged/fancymodloader/loader/12.0.8/loader-12.0.8-sources.jar`), the unpacked eventbus sources (`https://maven.neoforged.net/releases/net/neoforged/bus/8.0.5/bus-8.0.5-sources.jar`), this checkout, the prose before and after the tables, and the output file.
 
 ## Context
 
@@ -42,7 +42,6 @@ The status of each row comes from hand-written mapping tables next to the genera
 
 **Non-Goals:**
 
-- Hook-by-hook mapping of `IBlockExtension`, `IItemExtension` and the other extension interfaces. Each has one row here; the mapping table splits them.
 - What the reference modpack uses. That is `modpack-usage.md` (#46).
 - The patches of a mod. They live in the mod crate, and the modpack build applies them; this phase defines the contract of the build (#54).
 - Precompiled drop-in mods. Mods compile from source into the pack binary; this phase does not build precompiled mods.
@@ -349,10 +348,10 @@ The server crates are GPL-3.0. A mod linked into a pack binary is a derivative w
 | Networking | 88 | 53 | 10 | 0 | 25 |
 | Lifecycle and metadata | 82 | 42 | 0 | 10 | 30 |
 | Loot and conditions | 25 | 5 | 18 | 0 | 2 |
-| Extension interfaces | 59 | 0 | 43 | 1 | 15 |
+| Extension interfaces | 373 | 11 | 258 | 26 | 78 |
 | Client-only subsystems | 9 | 0 | 0 | 9 | 0 |
 | Other server-side packages | 87 | 12 | 34 | 0 | 41 |
-| Total | 1094 | 466 | 260 | 210 | 158 |
+| Total | 1408 | 477 | 475 | 235 | 221 |
 
 Method: each family row counts the Status cells of the tables in one section of this inventory. The section "Events" gives two families: the table "Client events" and all other event tables. Every other section gives one family. The Total row is the sum of the family rows. `python3 -I tools/openspec-sync/mapping_status.py` compares the Total row with the Status cells of all inventory tables.
 
@@ -1521,71 +1520,672 @@ The global loot modifiers (task 2.16, #166) keep the NeoForge 26.3 behaviour wit
 
 ### Extension interfaces NeoForge adds to `net.minecraft`
 
-Targets come from `src/main/resources/META-INF/injected-interfaces.json`. Default = default methods a mod can override or call; abstract = methods the target class implements.
+One row per public method name of each interface, from `net/neoforged/neoforge/common/extensions` (overloads are counted in the Kind column). Targets come from `src/main/resources/META-INF/injected-interfaces.json`. `python3 -I tools/openspec-sync/extension_table.py` writes these tables and the family of `mapping-table.md` from the NeoForge sources and `tools/openspec-sync/extension_rows.tsv`: edit the TSV, not the tables. A `supported` row names the Pumpkin trait method or function and a test. A `planned` row with the prefix `M5 engine extension:` waits for an engine call site; the other `planned` rows wait for a mod API accessor.
 
-| Interface | Minecraft target | Default | Abstract | Side | Status | Pumpkin concept | Reason |
-|:--|:--|:--|:--|:--|:--|:--|:--|
-| `BootstrapContextAccessExtension` | `BootstrapContextAccess` | 1 | 0 | both | not supported | - | data generation of datapack registries |
-| `BootstrapContextExtension` | `BootstrapContext` | 1 | 0 | both | not supported | - | data generation of datapack registries |
-| `ContainerExtension` | `Container` | 2 | 0 | both | planned | `Inventory` trait (pumpkin-inventory) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `GameTestHelperExtension` | `GameTestHelper` | 4 | 0 | both | not supported | - | game test framework |
-| `IAbstractBoatExtension` | `AbstractBoat` | 2 | 0 | both | planned | boat entity | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IAdvancementBuilderExtension` | `Advancement.Builder` | 2 | 0 | both | not supported | - | data generation of advancements |
-| `IAttributeExtension` | `Attribute` | 5 | 1 | both | not supported | - | formats attribute values for tooltips; display only |
-| `IBaseRailBlockExtension` | `BaseRailBlock` | 2 | 2 | both | planned | rail `BlockBehaviour` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IBlockEntityExtension` | `BlockEntity` | 8 | 1 | both | planned | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), phase 6 | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IBlockExtension` | `Block` | 58 | 0 | both | planned | `BlockBehaviour` trait (pumpkin-core `block/mod.rs`) | each hook needs its own row in the M4 mapping table |
-| `IBlockGetterExtension` | `BlockGetter` | 3 | 0 | both | planned | `World` block reads | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IBlockStateExtension` | `BlockState` | 55 | 0 | both | planned | `BlockState` (pumpkin-data) forwarding to `BlockBehaviour` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IBucketPickupExtension` | `BucketPickup` | 1 | 0 | both | planned | bucket `ItemBehaviour` (`item/items/bucket.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IClientCommonPacketListenerExtension` | `ClientCommonPacketListener` | 2 | 0 | client | client-only | - | client packet listener |
-| `ICommandSourceExtension` | `CommandSource` | 1 | 0 | both | planned | `CommandSender` (pumpkin-core `command/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ICommandSourceStackExtension` | `CommandSourceStack` | 4 | 0 | both | planned | `CommandSender` (pumpkin-core `command/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ICommonPacketListener` | not injected (used through a cast or a patch) | 3 | 6 | both | planned | `JavaClient` (pumpkin-core `net/java/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IDataComponentHolderExtension` | `DataComponentHolder` | 2 | 0 | both | planned | data components on `ItemStack` (pumpkin-data) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IDataComponentMapBuilderExtensions` | `DataComponentMap.Builder` | 1 | 0 | both | planned | data components on `ItemStack` (pumpkin-data) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IDispensibleContainerItemExtension` | `DispensibleContainerItem` | 1 | 0 | both | planned | bucket `ItemBehaviour` (`item/items/bucket.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IEnchantmentExtension` | not injected (used through a cast or a patch) | 0 | 0 | both | not supported | - | declares no methods in 26.3 |
-| `IEntityExtension` | `Entity` | 25 | 8 | both | planned | `EntityBase` trait and `Entity` (pumpkin-core `entity/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IFallableExtension` | `Fallable` | 1 | 0 | both | planned | falling block `BlockBehaviour` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IFluidExtension` | `Fluid` | 8 | 1 | both | planned | `FluidBehaviour` trait (pumpkin-core `block/fluid/mod.rs`) | methods that take a FluidType have no target |
-| `IFluidStateExtension` | `FluidState` | 8 | 0 | both | planned | `FluidBehaviour` trait (pumpkin-core `block/fluid/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IFriendlyByteBufExtension` | `FriendlyByteBuf` | 5 | 0 | both | planned | pumpkin-protocol codec helpers for payloads | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IHolderExtension` | `Holder` | 4 | 0 | both | planned | registry handles of the phase 2 content registry | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IHolderLookupProviderExtension` | `HolderLookup.Provider` | 2 | 0 | both | planned | registry lookups of the phase 2 content registry | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IHolderSetExtension` | `HolderSet` | 3 | 0 | both | planned | tag and holder set lookups | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IHolderSetExtension.SerializationType` | not injected (used through a cast or a patch) | 0 | 0 | both | planned | tag and holder set lookups | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IItemExtension` | `Item` | 44 | 1 | both | planned | `ItemBehaviour` trait (pumpkin-core `item/mod.rs`) | each hook needs its own row in the M4 mapping table |
-| `IItemPropertiesExtensions` | `Item.Properties` | 1 | 0 | both | planned | item definition of the phase 2 content registry | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IItemStackExtension` | `ItemStack` | 30 | 0 | both | planned | `ItemStack` (pumpkin-data `item_stack`) forwarding to `ItemBehaviour` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ILevelExtension` | `Level` | 9 | 2 | both | planned | `World` (pumpkin-core `world/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ILevelReaderExtension` | `LevelReader` | 3 | 0 | both | planned | `World` block and chunk reads | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ILivingEntityExtension` | `LivingEntity` | 7 | 0 | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IMenuProviderExtension` | `MenuProvider` | 2 | 0 | both | planned | `ScreenHandlerFactory` (pumpkin-inventory), phase 6 | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IMenuTypeExtension` | `MenuType` | 0 | 1 | both | planned | `ScreenHandlerFactory` (pumpkin-inventory), phase 6 | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IMobEffectExtension` | `MobEffect` | 1 | 0 | both | planned | `MobEffect` trait (pumpkin-core `entity/effect/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IOwnedSpawner` | `BaseSpawner`, `TrialSpawner` | 0 | 1 | both | not supported | - | finds the owner entity of a spawner for spawn events; Pumpkin spawners have no owner link |
-| `IPacketFlowExtension` | `PacketFlow` | 4 | 0 | both | planned | payload direction in `ironpumpkin-mods` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IPlayerExtension` | `Player` | 5 | 0 | both | planned | `Player` (pumpkin-core `entity/player.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IPlayerListExtension` | `PlayerList` | 5 | 0 | both | planned | server player list and broadcast | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IRecipeOutputExtension` | `RecipeOutput` | 1 | 1 | both | not supported | - | data generation of recipes |
-| `IServerChunkCacheExtension` | `ServerChunkCache` | 3 | 0 | both | planned | `Level` (pumpkin-world `level.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IServerCommonPacketListenerExtension` | `ServerCommonPacketListener` | 2 | 1 | both | planned | `JavaClient` (pumpkin-core `net/java/mod.rs`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IServerConfigurationPacketListenerExtension` | `ServerConfigurationPacketListener` | 0 | 1 | both | planned | phase 3 configuration-task queue in `net/java/pending.rs` | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `IServerGamePacketListenerExtension` | `ServerGamePacketListener` | 2 | 0 | both | planned | `JavaClient` play handling | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ITagAppenderExtension` | `TagAppender` | 5 | 4 | both | not supported | - | data generation of tags |
-| `ITagBuilderExtension` | `TagBuilder` | 2 | 0 | both | not supported | - | data generation of tags |
-| `ITransformationExtension` | `Transformation` | 7 | 0 | both | not supported | - | model transformation math for client models |
-| `ItemInstanceExtension` | `ItemInstance` | 3 | 0 | both | planned | `ItemStack` (pumpkin-data `item_stack`) | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `LootTableSubProviderContextExtension` | `LootTableSubProvider.Context` | 1 | 0 | both | not supported | - | data generation of loot tables |
-| `PackMetadataResourcesExtension` | `PackMetadataResources` | 1 | 0 | both | not supported | - | pack resource internals |
-| `PendingTagsExtension` | `Registry.PendingTags` | 0 | 1 | both | not supported | - | internal tag loading state |
-| `TooltipFlagExtension` | `TooltipFlag` | 4 | 0 | both | not supported | - | tooltip display only |
-| `TypedInstanceExtension` | `TypedInstance` | 1 | 0 | both | planned | registry handles of the phase 2 content registry | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ValueInputExtension` | `ValueInput` | 3 | 0 | both | planned | NBT reads (pumpkin-nbt) in entity and block entity load | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
-| `ValueOutputExtension` | `ValueOutput` | 2 | 0 | both | planned | NBT writes (pumpkin-nbt) in entity and block entity save | `ironpumpkin-mods` forwards the hooks that the Pumpkin type has; the rest need new Pumpkin hooks |
+371 methods in 59 interfaces: 344 default, 29 abstract, 2 static. The two largest, `IBlockExtension` and `IBlockStateExtension`, hold the block hooks that ported blocks override most.
 
-Default methods in total: 362. The two largest, `IBlockExtension` and `IBlockStateExtension`, hold the block hooks that ported blocks override most.
+#### `BootstrapContextAccessExtension` (target `BootstrapContextAccess`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `BootstrapContextAccessExtension#holderLookup` | default method | both | not supported | - | data generation of datapack registries |
+
+#### `BootstrapContextExtension` (target `BootstrapContext`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `BootstrapContextExtension#register` | default method | both | not supported | - | data generation of datapack registries |
+
+#### `ContainerExtension` (target `Container`; 2 rows: 2 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ContainerExtension#setItem` | default method | both | planned | `Inventory` trait (pumpkin-inventory), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ContainerExtension#onTransfer` | default method | both | planned | `Inventory` trait (pumpkin-inventory), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `GameTestHelperExtension` (target `GameTestHelper`; 3 rows: 3 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `GameTestHelperExtension#fail` | default method, 2 overloads | both | not supported | - | game test framework |
+| `GameTestHelperExtension#getCapability` | default method | both | not supported | - | game test framework |
+| `GameTestHelperExtension#requireCapability` | default method | both | not supported | - | game test framework |
+
+#### `IAbstractBoatExtension` (target `AbstractBoat`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IAbstractBoatExtension#canBoatInFluid` | default method, 2 overloads | both | planned | boat entity, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IAdvancementBuilderExtension` (target `Advancement.Builder`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IAdvancementBuilderExtension#save` | default method, 2 overloads | both | not supported | - | data generation of advancements |
+
+#### `IAttributeExtension` (target `Attribute`; 7 rows: 7 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IAttributeExtension#toValueComponent` | default method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#toComponent` | default method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#getDebugInfo` | default method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#getBaseId` | default method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#toBaseComponent` | default method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#getMergedStyle` | abstract method | both | not supported | - | formats attribute values for tooltips; display only |
+| `IAttributeExtension#isNullOrAddition` | static method | both | not supported | - | formats attribute values for tooltips; display only |
+
+#### `IBaseRailBlockExtension` (target `BaseRailBlock`; 4 rows: 4 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBaseRailBlockExtension#isFlexibleRail` | abstract method | both | planned | rail `BlockBehaviour`, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBaseRailBlockExtension#canMakeSlopes` | default method | both | planned | rail `BlockBehaviour`, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBaseRailBlockExtension#getRailDirection` | abstract method | both | planned | rail `BlockBehaviour`, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBaseRailBlockExtension#isValidRailShape` | default method | both | planned | rail `BlockBehaviour`, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IBlockEntityExtension` (target `BlockEntity`; 9 rows: 1 supported, 3 planned, 4 client-only, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBlockEntityExtension#onDataPacket` | default method | client | client-only | - | the client calls it when it receives block entity data or renders the block entity |
+| `IBlockEntityExtension#handleUpdateTag` | default method | client | client-only | - | the client calls it when it receives block entity data or renders the block entity |
+| `IBlockEntityExtension#getPersistentData` | abstract method | both | not supported | `attachments::block_entity` | design difference: data attachments hold the persistent data of a block entity |
+| `IBlockEntityExtension#onChunkUnloaded` | default method | both | planned | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockEntityExtension#onLoad` | default method | both | planned | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockEntityExtension#requestModelDataUpdate` | default method | client | client-only | - | the client calls it when it receives block entity data or renders the block entity |
+| `IBlockEntityExtension#getModelData` | default method | client | client-only | - | the client calls it when it receives block entity data or renders the block entity |
+| `IBlockEntityExtension#invalidateCapabilities` | default method | both | supported | `ironpumpkin_mods::capabilities::invalidate_capabilities` | the host also invalidates on block entity placement and removal |
+| `IBlockEntityExtension#applyStructureRotation` | default method | both | planned | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IBlockExtension` (target `Block`; 58 rows: 52 planned, 6 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBlockExtension#getFriction` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#hasDynamicLightEmission` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#getLightEmission` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#ignitedByLava` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isLadder` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#makesOpenTrapdoorAboveClimbable` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isBurning` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canHarvestBlock` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#onDestroyedByPlayer` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#onDestroyedByPushReaction` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getRespawnPosition` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getExplosionResistance` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getCloneItemStack` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#addLandingEffects` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#addRunningEffects` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#playFallSound` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#playStepSound` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canSustainPlant` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#onTreeGrow` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isFertile` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getExpDrop` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#rotate` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getEnchantPowerBonus` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#onNeighborChange` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#shouldCheckWeakPower` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getWeakChanges` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getSoundType` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getBeaconColorMultiplier` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getStateAtViewpoint` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getBlockPathType` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getAdjacentBlockPathType` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isSlimeBlock` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isStickyBlock` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canStickTo` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getFlammability` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isFlammable` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#onCaughtFire` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getFireSpreadSpeed` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isFireSource` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canEntityDestroy` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canDropFromExplosion` | default method | both | planned | `BlockBehaviour::should_drop_items_on_explosion` | M5 engine extension: the engine calls the hook in `world/explosion.rs`, but the hook takes no state, position or explosion, and no test covers it |
+| `IBlockExtension#onBlockExploded` | default method | both | planned | `BlockBehaviour::explode` | M5 engine extension: the engine calls `explode` after it removes the block; NeoForge calls `onBlockExploded` in place of the removal |
+| `IBlockExtension#collisionExtendsVertically` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#shouldDisplayFluidOverlay` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#getToolModifiedState` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isScaffolding` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#hidesNeighborFace` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#supportsExternalFaceHiding` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#onBlockStateChange` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#canBeHydrated` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getMapColor` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getAppearance` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#getPistonPushReaction` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#isEmpty` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getBubbleColumnDirection` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#shouldHideAdjacentFluidFace` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockExtension#getBounceRestitution` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockExtension#getRelocability` | default method | both | planned | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IBlockGetterExtension` (target `BlockGetter`; 2 rows: 1 planned, 1 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBlockGetterExtension#getAuxLightManager` | default method, 2 overloads | both | planned | `World` light engine | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IBlockGetterExtension#getModelData` | default method | client | client-only | - | model data is a client rendering feature |
+
+#### `IBlockStateExtension` (target `BlockState`; 55 rows: 49 planned, 6 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBlockStateExtension#getFriction` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#hasDynamicLightEmission` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#getLightEmission` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#ignitedByLava` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isLadder` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canHarvestBlock` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onDestroyedByPlayer` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onDestroyedByPushReaction` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getRespawnPosition` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getExplosionResistance` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getCloneItemStack` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#addLandingEffects` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#addRunningEffects` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#playFallSound` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#playStepSound` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canSustainPlant` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onTreeGrow` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isFertile` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getExpDrop` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#rotate` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getEnchantPowerBonus` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onNeighborChange` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#shouldCheckWeakPower` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getWeakChanges` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getSoundType` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getBeaconColorMultiplier` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getStateAtViewpoint` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isSlimeBlock` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isStickyBlock` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canStickTo` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getFlammability` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isFlammable` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onCaughtFire` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getFireSpreadSpeed` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isFireSource` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canEntityDestroy` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isBurning` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getBlockPathType` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getAdjacentBlockPathType` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canDropFromExplosion` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#onBlockExploded` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#collisionExtendsVertically` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#shouldDisplayFluidOverlay` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#getToolModifiedState` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#isScaffolding` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#hidesNeighborFace` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#supportsExternalFaceHiding` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#onBlockStateChange` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#canBeHydrated` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getAppearance` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#isEmpty` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getBubbleColumnDirection` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#shouldHideAdjacentFluidFace` | default method | client | client-only | - | only the client calls it: dynamic light, face culling or the rendered appearance |
+| `IBlockStateExtension#getBounceRestitution` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IBlockStateExtension#getRelocability` | default method | both | planned | `BlockState` forwarding to `BlockBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+
+#### `IBucketPickupExtension` (target `BucketPickup`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IBucketPickupExtension#getPickupSound` | default method | both | planned | bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IClientCommonPacketListenerExtension` (target `ClientCommonPacketListener`; 2 rows: 2 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IClientCommonPacketListenerExtension#send` | default method | client | client-only | - | client packet listener; a dedicated server never runs it |
+| `IClientCommonPacketListenerExtension#disconnect` | default method | client | client-only | - | client packet listener; a dedicated server never runs it |
+
+#### `ICommandSourceExtension` (target `CommandSource`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ICommandSourceExtension#getGameProfile` | default method | both | planned | `CommandSender` (pumpkin-core `command/mod.rs`) | the Pumpkin type has the data; no mod API reads it yet |
+
+#### `ICommandSourceStackExtension` (target `CommandSourceStack`; 4 rows: 4 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ICommandSourceStackExtension#getScoreboard` | default method | both | planned | `CommandSender`, scoreboard of the server | the Pumpkin type has the data; no mod API reads it yet |
+| `ICommandSourceStackExtension#getAdvancement` | default method | both | planned | `CommandSender`, advancement lookup | the Pumpkin type has the data; no mod API reads it yet |
+| `ICommandSourceStackExtension#getUnsidedLevel` | default method | both | planned | `CommandSender` world | the Pumpkin type has the data; no mod API reads it yet |
+| `ICommandSourceStackExtension#getSourceProfile` | default method | both | planned | `CommandSender` (pumpkin-core `command/mod.rs`) | the Pumpkin type has the data; no mod API reads it yet |
+
+#### `ICommonPacketListener` (not injected (used through a cast or a patch); 6 rows: 2 supported, 2 planned, 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ICommonPacketListener#send` | abstract method, 2 overloads | both | planned | `pumpkin_core` payload send of the connection | M5 engine extension: a mod sends a payload only through the registrar and the player helpers; the `Packet` overload is Java-only |
+| `ICommonPacketListener#disconnect` | abstract method | both | planned | `JavaClient` kick (pumpkin-core `net/java/mod.rs`) | M5 engine extension: no mod API disconnects a connection with a text component |
+| `ICommonPacketListener#getConnection` | abstract method | both | not supported | - | Java-only: returns the Netty connection object |
+| `ICommonPacketListener#getPacketProcessor` | abstract method | both | not supported | - | Java-only: returns the Netty packet processor |
+| `ICommonPacketListener#hasChannel` | default method, 3 overloads | both | supported | `NegotiatedChannels::has_channel` (pumpkin-core `plugin/network_events.rs`) | reads the negotiated channels, the common channels and the ad hoc channels of the connection |
+| `ICommonPacketListener#getConnectionType` | abstract method | both | supported | `NegotiatedChannels::connection_type` | the connection is `NeoForge`, `Vanilla` or `Other` after the negotiation |
+
+#### `IDataComponentHolderExtension` (target `DataComponentHolder`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IDataComponentHolderExtension#addToTooltip` | default method, 2 overloads | both | not supported | - | tooltip text is built for display |
+
+#### `IDataComponentMapBuilderExtensions` (target `DataComponentMap.Builder`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IDataComponentMapBuilderExtensions#set` | default method | both | not supported | `ItemBuilder` component calls | Java-only: a `Supplier` overload of the builder `set` |
+
+#### `IDispensibleContainerItemExtension` (target `DispensibleContainerItem`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IDispensibleContainerItemExtension#emptyContents` | default method | both | planned | bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IEntityExtension` (target `Entity`; 29 rows: 28 planned, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IEntityExtension#captureDrops` | abstract method, 2 overloads | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getPersistentData` | abstract method | both | not supported | `Entity::attachments` | design difference: data attachments hold the persistent data of an entity |
+| `IEntityExtension#shouldRiderSit` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canRiderInteract` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canBeRiddenUnderFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canTrample` | abstract method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getClassification` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#isAddedToLevel` | abstract method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#onAddedToLevel` | abstract method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#onRemovedFromLevel` | abstract method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#revive` | abstract method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#isMultipartEntity` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getParts` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getFluidTypeHeight` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getMaxHeightFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#isInFluidType` | default method, 4 overloads | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getFirstEyeInFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#isEyeInFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canStartSwimming` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getFluidMotionScale` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#isPushedByFluid` | default method | both | planned | `EntityBase::is_pushed_by_fluids` | M5 engine extension: the hook takes no fluid type, because Pumpkin has no fluid types |
+| `IEntityExtension#canSwimInFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canFluidExtinguish` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getFluidFallDistanceModifier` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#canHydrateInFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getSoundFromFluidType` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#sendPairingData` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#copyAttachmentsFrom` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IEntityExtension#getBlockBounciness` | default method | both | planned | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IFallableExtension` (target `Fallable`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IFallableExtension#fallingTick` | default method | both | planned | falling block `BlockBehaviour`, new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IFluidExtension` (target `Fluid`; 9 rows: 8 planned, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IFluidExtension#getExplosionResistance` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#getFluidType` | abstract method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#canConvertToSource` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#supportsBoating` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#getBlockPathType` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#getAdjacentBlockPathType` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#canHydrate` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#canExtinguish` | default method | both | planned | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IFluidExtension#appendHoverText` | default method | both | not supported | - | tooltip text for display |
+
+#### `IFluidStateExtension` (target `FluidState`; 8 rows: 8 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IFluidStateExtension#getExplosionResistance` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#getFluidType` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#canConvertToSource` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#supportsBoating` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#getBlockPathType` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#getAdjacentBlockPathType` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#canHydrate` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IFluidStateExtension#canExtinguish` | default method | both | planned | `FluidState` forwarding to `FluidBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+
+#### `IFriendlyByteBufExtension` (target `FriendlyByteBuf`; 5 rows: 5 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IFriendlyByteBufExtension#readArray` | default method | both | not supported | - | Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec |
+| `IFriendlyByteBufExtension#writeArray` | default method | both | not supported | - | Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec |
+| `IFriendlyByteBufExtension#writeByte` | default method | both | not supported | - | Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec |
+| `IFriendlyByteBufExtension#readMap` | default method | both | not supported | - | Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec |
+| `IFriendlyByteBufExtension#writeMap` | default method | both | not supported | - | Java-only: helpers of the Java wire buffer; a payload in `ironpumpkin_mods::network` is a Rust type with its own codec |
+
+#### `IHolderExtension` (target `Holder`; 5 rows: 3 supported, 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IHolderExtension#getDelegate` | default method | both | not supported | `registry::key_of`, `registry::id_of` | Java-only: IronPumpkin has no holder object; the mod keeps the name |
+| `IHolderExtension#unwrapLookup` | default method | both | not supported | `registry::key_of`, `registry::id_of` | Java-only: IronPumpkin has no holder object; the mod keeps the name |
+| `IHolderExtension#getKey` | default method | both | supported | `ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin) | answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it |
+| `IHolderExtension#key` | default method | both | supported | `ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin) | answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it |
+| `IHolderExtension#keyOrNull` | default method | both | supported | `ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin) | answers for vanilla and mod entries; the mod already holds the name, and `key_of` maps an id to it |
+
+#### `IHolderLookupProviderExtension` (target `HolderLookup.Provider`; 2 rows: 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IHolderLookupProviderExtension#holderOrThrow` | default method | both | not supported | `registry::contains`, `registry::id_of` | Java-only: returns a holder object; the mod asks the registry by name |
+| `IHolderLookupProviderExtension#holder` | default method | both | not supported | `registry::contains`, `registry::id_of` | Java-only: returns a holder object; the mod asks the registry by name |
+
+#### `IHolderSetExtension` (target `HolderSet`; 3 rows: 3 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IHolderSetExtension#addInvalidationListener` | default method | both | not supported | `registry::tag_entries` | Java-only: a holder set is a tag name, and `tag_entries` answers its members |
+| `IHolderSetExtension#serializationType` | default method | both | not supported | `registry::tag_entries` | Java-only: a holder set is a tag name, and `tag_entries` answers its members |
+| `IHolderSetExtension#isImmediatelyResolvable` | default method | both | not supported | `registry::tag_entries` | Java-only: a holder set is a tag name, and `tag_entries` answers its members |
+
+#### `IItemExtension` (target `Item`; 46 rows: 42 planned, 3 client-only, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IItemExtension#getDefaultAttributeModifiers` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onDroppedByPlayer` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getHighlightTip` | default method | client | client-only | - | only the client calls it, for the item name above the hotbar |
+| `IItemExtension#onItemUseFirst` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isPiglinCurrency` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#makesPiglinsNeutral` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isCombineRepairable` | abstract method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getXpRepairRatio` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onStopUsing` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onLeftClickEntity` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getCraftingRemainder` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getEntityLifespan` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#hasCustomEntity` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#createEntity` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onEntityItemUpdate` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#doesSneakBypassUse` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canEquip` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getEquipmentSlot` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onEntitySwing` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getDamage` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getMaxDamage` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isDamaged` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#setDamage` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canPerformAction` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getMaxStackSize` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isPrimaryItemFor` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#supportsEnchantment` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getEnchantmentLevel` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getAllEnchantments` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#shouldCauseReequipAnimation` | default method | client | client-only | - | only the client calls it, for the held item animation |
+| `IItemExtension#shouldCauseBlockBreakReset` | default method | client | client-only | - | only the client calls it, to reset the block breaking progress |
+| `IItemExtension#canContinueUsing` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getCreatorModId` | default method | both | not supported | - | names the mod of an item for tooltips; display only |
+| `IItemExtension#onAnimalArmorTick` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#damageItem` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onDestroyed` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isGazeDisguise` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canWalkOnPowderedSnow` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isDamageable` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#getSweepHitBox` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#isNotReplaceableByPickAction` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canGrindstoneRepair` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canBeHurtBy` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#applyEnchantments` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#canFitInsideContainerItems` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IItemExtension#onGlideDamage` | default method | both | planned | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IItemPropertiesExtensions` (target `Item.Properties`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IItemPropertiesExtensions#component` | default method | both | not supported | `ItemBuilder` component calls | Java-only: a `Supplier` overload of the builder `component` |
+
+#### `IItemStackExtension` (target `ItemStack`; 29 rows: 1 supported, 26 planned, 2 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IItemStackExtension#onItemUseFirst` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#shouldCauseBlockBreakReset` | default method | client | client-only | - | only the client calls it, to reset the block breaking progress |
+| `IItemStackExtension#isPrimaryItemFor` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#supportsEnchantment` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getAllEnchantments` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getEquipmentSlot` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onEntitySwing` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onStopUsing` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getEntityLifespan` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onEntityItemUpdate` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getXpRepairRatio` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onAnimalArmorTick` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#canEquip` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onDroppedByPlayer` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getHighlightTip` | default method | client | client-only | - | only the client calls it, for the item name above the hotbar |
+| `IItemStackExtension#doesSneakBypassUse` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#isCombineRepairable` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#isPiglinCurrency` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#makesPiglinsNeutral` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#isGazeDisguise` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#canWalkOnPowderedSnow` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getSweepHitBox` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onDestroyed` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#isNotReplaceableByPickAction` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#canGrindstoneRepair` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#getCapability` | default method, 2 overloads | both | supported | `ironpumpkin_mods::capabilities::ItemCapability::get_capability` | an empty stack has no capability; `get_capability_from` answers for an `ItemAccess` |
+| `IItemStackExtension#getAttributeModifiers` | default method | both | planned | `ItemStack` attribute modifier component | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#canFitInsideContainerItems` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `IItemStackExtension#onGlideDamage` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+
+#### `ILevelExtension` (target `Level`; 7 rows: 2 supported, 1 client-only, 4 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ILevelExtension#getMaxEntityRadius` | abstract method | both | not supported | - | Java-only: the size of the entity lookup of the Java engine |
+| `ILevelExtension#increaseMaxEntityRadius` | abstract method | both | not supported | - | Java-only: the size of the entity lookup of the Java engine |
+| `ILevelExtension#getModelDataManager` | default method | client | client-only | - | model data is a client rendering feature |
+| `ILevelExtension#getCapability` | default method, 4 overloads | both | supported | `ironpumpkin_mods::capabilities::BlockCapability::get_capability` | four overloads; the lookup goes through the providers of the mods and of vanilla blocks |
+| `ILevelExtension#invalidateCapabilities` | default method, 2 overloads | both | supported | `ironpumpkin_mods::capabilities::invalidate_capabilities` and `invalidate_capabilities_in_chunk` | a plain block calls it; the host calls it for chunk loads and unloads |
+| `ILevelExtension#getDescriptionKey` | default method | both | not supported | - | display name of the dimension |
+| `ILevelExtension#getDescription` | default method | both | not supported | - | display name of the dimension |
+
+#### `ILevelReaderExtension` (target `LevelReader`; 3 rows: 1 planned, 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ILevelReaderExtension#isAreaLoaded` | default method | both | planned | `World` chunk loading state | the Pumpkin type has the data; no mod API reads it yet |
+| `ILevelReaderExtension#holderOrThrow` | default method | both | not supported | `registry::contains`, `registry::id_of` | Java-only: returns a holder object; the mod asks the registry by name |
+| `ILevelReaderExtension#holder` | default method | both | not supported | `registry::contains`, `registry::id_of` | Java-only: returns a holder object; the mod asks the registry by name |
+
+#### `ILivingEntityExtension` (target `LivingEntity`; 7 rows: 6 planned, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ILivingEntityExtension#self` | default method | both | not supported | - | Java-only: returns the receiver of the interface |
+| `ILivingEntityExtension#canSwimInFluidType` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ILivingEntityExtension#jumpInFluid` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ILivingEntityExtension#sinkInFluid` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ILivingEntityExtension#canDrownInFluidType` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ILivingEntityExtension#moveInFluid` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `ILivingEntityExtension#onDamageTaken` | default method | both | planned | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+
+#### `IMenuProviderExtension` (target `MenuProvider`; 2 rows: 2 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IMenuProviderExtension#shouldTriggerClientSideContainerClosingOnOpen` | default method | both | planned | `menus::MenuDefinition` | M5 engine extension: no Pumpkin hook exists for this method and the engine has no call site |
+| `IMenuProviderExtension#writeClientSideData` | default method, 2 overloads | both | planned | `menus::MenuDefinition` | M5 engine extension: the extra data of a mod menu waits for `neoforge:advanced_open_screen` |
+
+#### `IMenuTypeExtension` (target `MenuType`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IMenuTypeExtension#create` | abstract and static method, 2 overloads | both | planned | `registration.menu-type-definition.extra-data` | M5 engine extension: mod menu types with extra data wait for `neoforge:advanced_open_screen` |
+
+#### `IMobEffectExtension` (target `MobEffect`; 1 row: 1 client-only)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IMobEffectExtension#getSortOrder` | default method | client | client-only | - | sorts the effects in GUIs; the server never calls it |
+
+#### `IOwnedSpawner` (target `BaseSpawner, TrialSpawner`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IOwnedSpawner#getOwner` | abstract method | both | not supported | - | finds the owner entity of a spawner for spawn events; Pumpkin spawners have no owner link |
+
+#### `IPacketFlowExtension` (target `PacketFlow`; 4 rows: 4 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IPacketFlowExtension#self` | default method | both | not supported | - | Java-only: returns the receiver of the interface |
+| `IPacketFlowExtension#isClientbound` | default method | both | not supported | `ironpumpkin_mods::network::PacketFlow` match | Java-only: helper of the Java enum; a port matches the Rust `PacketFlow` directly |
+| `IPacketFlowExtension#isServerbound` | default method | both | not supported | `ironpumpkin_mods::network::PacketFlow` match | Java-only: helper of the Java enum; a port matches the Rust `PacketFlow` directly |
+| `IPacketFlowExtension#getReceptionSide` | default method | both | not supported | `ironpumpkin_mods::network::PacketFlow` match | Java-only: helper of the Java enum; a port matches the Rust `PacketFlow` directly |
+
+#### `IPlayerExtension` (target `Player`; 4 rows: 4 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IPlayerExtension#isCloseEnough` | default method | both | planned | `Player` (pumpkin-core `entity/player.rs`) | the Pumpkin type has the data; no mod API reads it yet |
+| `IPlayerExtension#openMenu` | default method, 2 overloads | both | planned | `ironpumpkin_mods::menus::open_menu` | M5 engine extension: `openMenu(provider)` works through `open_menu`; the overloads with extra data or a position wait for `neoforge:advanced_open_screen` |
+| `IPlayerExtension#mayFly` | default method | both | planned | `Player` abilities | the Pumpkin type has the data; no mod API reads it yet |
+| `IPlayerExtension#isFakePlayer` | default method | both | planned | `Player` (no fake player type) | the Pumpkin type has the data; no mod API reads it yet |
+
+#### `IPlayerListExtension` (target `PlayerList`; 3 rows: 2 planned, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IPlayerListExtension#self` | default method | both | not supported | - | Java-only: returns the receiver of the interface |
+| `IPlayerListExtension#broadcastAll` | default method, 2 overloads | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete |
+| `IPlayerListExtension#broadcast` | default method, 2 overloads | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete |
+
+#### `IRecipeOutputExtension` (target `RecipeOutput`; 2 rows: 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IRecipeOutputExtension#accept` | abstract method | both | not supported | - | data generation of recipes |
+| `IRecipeOutputExtension#withConditions` | default method | both | not supported | - | data generation of recipes |
+
+#### `IServerChunkCacheExtension` (target `ServerChunkCache`; 3 rows: 2 planned, 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IServerChunkCacheExtension#self` | default method | both | not supported | - | Java-only: returns the receiver of the interface |
+| `IServerChunkCacheExtension#sendToTrackingPlayersAndSelf` | default method | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete |
+| `IServerChunkCacheExtension#sendToTrackingPlayers` | default method | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete |
+
+#### `IServerCommonPacketListenerExtension` (target `ServerCommonPacketListener`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IServerCommonPacketListenerExtension#send` | abstract and default method, 3 overloads | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete; the overload with a Netty `ChannelFutureListener` is Java-only |
+
+#### `IServerConfigurationPacketListenerExtension` (target `ServerConfigurationPacketListener`; 1 row: 1 supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IServerConfigurationPacketListenerExtension#finishCurrentTask` | abstract method | both | supported | `ironpumpkin_mods::network::PayloadContext::finish_current_task` | a request for a task that is not current disconnects the client |
+
+#### `IServerGamePacketListenerExtension` (target `ServerGamePacketListener`; 1 row: 1 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IServerGamePacketListenerExtension#sendBundled` | default method, 2 overloads | both | planned | `ironpumpkin_mods::network` payload send helpers | M5 engine extension: the payload send helpers of the mod API are not complete |
+
+#### `ITagAppenderExtension` (target `TagAppender`; 5 rows: 5 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ITagAppenderExtension#addTags` | default method | both | not supported | - | data generation of tags |
+| `ITagAppenderExtension#addOptionalTags` | default method | both | not supported | - | data generation of tags |
+| `ITagAppenderExtension#add` | abstract method | both | not supported | - | data generation of tags |
+| `ITagAppenderExtension#replace` | abstract and default method, 2 overloads | both | not supported | - | data generation of tags |
+| `ITagAppenderExtension#remove` | abstract and default method, 4 overloads | both | not supported | - | data generation of tags |
+
+#### `ITagBuilderExtension` (target `TagBuilder`; 2 rows: 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ITagBuilderExtension#removeElement` | default method | both | not supported | - | data generation of tags |
+| `ITagBuilderExtension#removeTag` | default method | both | not supported | - | data generation of tags |
+
+#### `ITransformationExtension` (target `Transformation`; 7 rows: 7 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ITransformationExtension#isIdentity` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#transformPosition` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#transformNormal` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#rotateTransform` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#blockCenterToCorner` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#blockCornerToCenter` | default method | both | not supported | - | model transformation math for client models |
+| `ITransformationExtension#applyOrigin` | default method | both | not supported | - | model transformation math for client models |
+
+#### `ItemInstanceExtension` (target `ItemInstance`; 4 rows: 4 planned)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ItemInstanceExtension#canPerformAction` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `ItemInstanceExtension#getTagEnchantments` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `ItemInstanceExtension#getEnchantmentLevel` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+| `ItemInstanceExtension#getCraftingRemainder` | default method | both | planned | `ItemStack` forwarding to `ItemBehaviour`, new hook | M5 engine extension: forwards to the hook of the block, item or fluid of the same name, which has no call site |
+
+#### `LootTableSubProviderContextExtension` (target `LootTableSubProvider.Context`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `LootTableSubProviderContextExtension#withConditions` | default method | both | not supported | - | data generation of loot tables |
+
+#### `PackMetadataResourcesExtension` (target `PackMetadataResources`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `PackMetadataResourcesExtension#isHidden` | default method | both | not supported | - | pack resource internals |
+
+#### `PendingTagsExtension` (target `Registry.PendingTags`; 1 row: 1 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `PendingTagsExtension#contents` | abstract method | both | not supported | - | internal tag loading state |
+
+#### `TooltipFlagExtension` (target `TooltipFlag`; 4 rows: 4 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `TooltipFlagExtension#hasControlDown` | default method | both | not supported | - | tooltip display only |
+| `TooltipFlagExtension#hasShiftDown` | default method | both | not supported | - | tooltip display only |
+| `TooltipFlagExtension#hasAltDown` | default method | both | not supported | - | tooltip display only |
+| `TooltipFlagExtension#shouldDisplayAllInformation` | default method | both | not supported | - | tooltip display only |
+
+#### `TypedInstanceExtension` (target `TypedInstance`; 1 row: 1 supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `TypedInstanceExtension#getData` | default method | both | supported | `ironpumpkin_mods::data_maps::DataMapType::get_data` | a data map entry is read by registry name |
+
+#### `ValueInputExtension` (target `ValueInput`; 3 rows: 3 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ValueInputExtension#keySet` | default method | both | not supported | `NbtCompound` in `EntityBase::read_custom_nbt` | Java-only: reader of the Java codec layer; Rust hooks read an `NbtCompound` |
+| `ValueInputExtension#readChild` | default method | both | not supported | `NbtCompound` in `EntityBase::read_custom_nbt` | Java-only: reader of the Java codec layer; Rust hooks read an `NbtCompound` |
+| `ValueInputExtension#rawChildOrEmpty` | default method | both | not supported | `NbtCompound` in `EntityBase::read_custom_nbt` | Java-only: reader of the Java codec layer; Rust hooks read an `NbtCompound` |
+
+#### `ValueOutputExtension` (target `ValueOutput`; 2 rows: 2 not supported)
+
+| Method | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `ValueOutputExtension#store` | default method | both | not supported | `NbtCompound` in `EntityBase::write_custom_nbt` | Java-only: writer of the Java codec layer; Rust hooks write an `NbtCompound` |
+| `ValueOutputExtension#putChild` | default method | both | not supported | `NbtCompound` in `EntityBase::write_custom_nbt` | Java-only: writer of the Java codec layer; Rust hooks write an `NbtCompound` |
+
+#### Types without a public method (2: 2 not supported)
+
+| Interface | Kind | Side | Status | Pumpkin concept | Reason |
+|:--|:--|:--|:--|:--|:--|
+| `IEnchantmentExtension` | interface, no public method | both | not supported | - | declares no methods in 26.3 |
+| `IHolderSetExtension.SerializationType` | interface, no public method | both | not supported | - | enum of the Java holder set serialization; a holder set is a tag name in `registry::tag_entries` |
 
 ### Client-only subsystems (families with counts)
 
