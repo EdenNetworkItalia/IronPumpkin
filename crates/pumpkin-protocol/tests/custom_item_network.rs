@@ -141,7 +141,9 @@ fn recipe_book_tag_sends_each_network_id_once() {
     });
     let entry = dynamic_entries(&[recipe]);
 
-    // Each generated id once in tag order, then the ruby's display item; no custom id.
+    // The slot display shows each generated id once in tag order, then the ruby's display item;
+    // no custom id. The holder set that the client matches holds the generated ids only: with
+    // the diamond in it, the client would take a real diamond.
     let ids: Vec<i32> = generated
         .iter()
         .chain([&Item::DIAMOND.id])
@@ -149,8 +151,11 @@ fn recipe_book_tag_sends_each_network_id_once() {
         .collect();
     let count = i32::try_from(ids.len()).unwrap();
     let holder_set = [
-        var_int(count + 1),
-        ids.iter().flat_map(|&id| var_int(id)).collect(),
+        var_int(count),
+        ids[..ids.len() - 1]
+            .iter()
+            .flat_map(|&id| var_int(id))
+            .collect(),
     ]
     .concat();
     // Composite slot display (10) of item slot displays (4).

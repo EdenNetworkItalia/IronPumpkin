@@ -11,7 +11,7 @@ use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
 
 use super::recipe_book_add::{
-    network_item_ids, write_dynamic_ingredient_holderset, write_empty_slot_display,
+    synced_item_ids, write_dynamic_ingredient_holderset, write_empty_slot_display,
     write_item_stack_slot_display,
 };
 
@@ -58,14 +58,14 @@ impl<'a> CUpdateRecipes<'a> {
     }
 }
 
-/// The network ids of the items of `ingredients`, without duplicates. Vanilla holds them in a
+/// The network ids of the items of `ingredients` that the client matches, without duplicates. Vanilla holds them in a
 /// `Set`, so the order is free.
 fn property_set_item_ids(ingredients: &[OwnedRecipeIngredient], version: EncodingKey) -> Vec<i32> {
     let items: Vec<&'static Item> = ingredients
         .iter()
         .flat_map(OwnedRecipeIngredient::items)
         .collect();
-    network_item_ids(&items, version)
+    synced_item_ids(&items, version)
 }
 
 impl ClientPacket for CUpdateRecipes<'_> {

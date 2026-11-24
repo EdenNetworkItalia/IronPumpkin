@@ -1,5 +1,6 @@
 //! The stonecutter list of a client is the list that the server selects from. A vanilla client
-//! sees a custom item as its display item, so the server selects by the display item. The content registry is process-wide and freezes once, so this file is its own test
+//! sees a custom item as its display item, so it gets the vanilla items of each ingredient only,
+//! and the server selects by the display item. The content registry is process-wide and freezes once, so this file is its own test
 //! binary.
 #![expect(
     clippy::unwrap_used,
@@ -90,6 +91,23 @@ fn a_display_client_selects_by_the_display_item() {
     assert_eq!(
         ids_for(&index, ruby, ContentIds::Display),
         ids_for(&index, &Item::STONE, ContentIds::Display)
+    );
+}
+
+/// A `Display` client gets a recipe whose ingredient holds a vanilla item, with the vanilla
+/// items only.
+#[test]
+fn a_display_client_gets_the_vanilla_items_of_a_mixed_ingredient() {
+    ruby();
+    let index = index();
+    assert_eq!(
+        ids_for(&index, &Item::DIRT, ContentIds::Display),
+        ["test:ruby_or_dirt".to_string()]
+    );
+    assert!(
+        index
+            .stonecutter_recipes(ContentIds::Display)
+            .any(|r| r.recipe_id == "test:ruby_or_dirt")
     );
 }
 

@@ -128,9 +128,22 @@ pub(super) fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'
     if items.is_empty() { None } else { Some(items) }
 }
 
+/// The network ids of the items of `items` that the client matches as the server does, without
+/// duplicates. A `Display` client sees a custom item as its display item, so the list leaves the
+/// custom item out: the client would else match the display item.
+pub(super) fn synced_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
+    let ids = version.content_ids();
+    let items: Vec<&'static Item> = items
+        .iter()
+        .copied()
+        .filter(|item| item.id < Item::COUNT || item.to_java_network_id(ids) >= Item::COUNT)
+        .collect();
+    network_item_ids(&items, version)
+}
+
 /// The network ids of `items` for the connection, without duplicates. A custom item can map to
 /// its display item, which can already be in the list.
-pub(super) fn network_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
+fn network_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
     let mut ids = Vec::with_capacity(items.len());
     for item in items {
         let id = i32::from(item.to_java_network_id(version.content_ids()));
@@ -831,7 +844,7 @@ pub(super) fn write_dynamic_ingredient_holderset(
     ingredient: &OwnedRecipeIngredient,
     version: EncodingKey,
 ) -> Result<(), WritingError> {
-    let ids = network_item_ids(&ingredient.items(), version);
+    let ids = synced_item_ids(&ingredient.items(), version);
     // Vanilla `Ingredient` rejects an empty list, and `RecipeManager` drops such recipes.
     if ids.is_empty() {
         return Err(WritingError::Message(format!(

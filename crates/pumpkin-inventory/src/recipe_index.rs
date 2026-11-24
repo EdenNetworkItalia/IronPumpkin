@@ -104,31 +104,35 @@ pub struct StonecutterEntry {
     pub result: RecipeOutput,
     /// The custom items of the ingredient.
     custom_items: Vec<&'static Item>,
+    /// Whether the ingredient holds a vanilla item.
+    has_vanilla_item: bool,
 }
 
 impl StonecutterEntry {
     fn new(recipe_id: String, ingredient: OwnedRecipeIngredient, result: RecipeOutput) -> Self {
-        let custom_items = ingredient
+        let (custom_items, vanilla_items): (Vec<&'static Item>, Vec<&'static Item>) = ingredient
             .items()
             .into_iter()
-            .filter(|item| item.id >= Item::COUNT)
-            .collect();
+            .partition(|item| item.id >= Item::COUNT);
         Self {
             recipe_id,
             ingredient,
             result,
             custom_items,
+            has_vanilla_item: !vanilla_items.is_empty(),
         }
     }
 
-    /// Whether a client in mode `ids` matches the ingredient as the server does. A client that
-    /// sees a custom item as its display item would show the recipe for the display item too,
-    /// and its button index would then select another recipe on the server.
+    /// Whether a client in mode `ids` gets the recipe: its ingredient holds an item that the
+    /// client knows by its own id. A `Display` client gets the vanilla items of the ingredient
+    /// only, because it sees a custom item as its display item.
     #[must_use]
     pub fn syncs_to(&self, ids: ContentIds) -> bool {
-        self.custom_items
-            .iter()
-            .all(|item| item.to_java_network_id(ids) >= Item::COUNT)
+        self.has_vanilla_item
+            || self
+                .custom_items
+                .iter()
+                .any(|item| item.to_java_network_id(ids) >= Item::COUNT)
     }
 }
 

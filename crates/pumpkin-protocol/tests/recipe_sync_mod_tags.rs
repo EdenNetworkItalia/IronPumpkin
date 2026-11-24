@@ -80,12 +80,14 @@ fn expected_prefix(members: &[u16]) -> Vec<u8> {
     expected
 }
 
+/// A `Display` client sees the ruby as a diamond. With the diamond in the lists, it would take
+/// a real diamond as a smithing addition and as the stonecutter input.
 #[test]
-fn a_display_client_gets_the_display_items_of_a_mod_tag() {
+fn a_display_client_gets_the_vanilla_items_of_a_mod_tag() {
     let ruby = ruby();
     assert!(OwnedRecipeIngredient::Tagged("test:gems".to_string()).match_item(ruby));
     let body = body(ContentIds::Display);
-    let expected = expected_prefix(&[Item::EMERALD.id, Item::DIAMOND.id]);
+    let expected = expected_prefix(&[Item::EMERALD.id]);
     assert_eq!(body[..expected.len()], expected[..]);
 }
 
