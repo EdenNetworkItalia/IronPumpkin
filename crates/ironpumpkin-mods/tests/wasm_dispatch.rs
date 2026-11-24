@@ -1656,6 +1656,23 @@ fn a_v0_2_world_call_from_a_wasm_plugin() {
     );
 }
 
+/// `set-equipment` is an async import and runs its server work through `run_blocking`: the
+/// `ItemAttributeModifierEvent` that the work fires reaches the handlers of the plugin that made
+/// the call, and the call returns. A host that runs the work inside the call hangs.
+#[test]
+fn a_set_equipment_call_reaches_the_handlers_of_the_calling_plugin() {
+    let _serial = setup();
+    let world = support::world();
+
+    let id: i32 = ipc(GUEST, "equip 1700.5 120 0.5").parse().unwrap();
+
+    assert!(world.get_entity_by_id(id).is_some());
+    assert!(
+        !guest_log(GUEST, "ItemAttributeModifierEvent").is_empty(),
+        "the handler of the calling plugin ran"
+    );
+}
+
 /// The scenario "Internal machine state", and the table rows without an event:
 /// `World::set_block_state`, `LivingEntity::set_health` and the block entity mutators reach no
 /// handler.

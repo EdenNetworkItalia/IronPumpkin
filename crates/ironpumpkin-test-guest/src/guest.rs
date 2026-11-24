@@ -25,17 +25,19 @@ use bindings::{
 use bindings::pumpkin::plugin::{
     common::BlockPos,
     entity_types::EntityType,
+    item_stack::ItemStack,
     event::{EventPriority, EventType},
     gametest::{
         AsyncTestCallbackId, BlockPermutation, BlockPredicateCallbackId, EntityPredicateCallbackId,
         Test, TestCallbackId, VoidCallbackId,
     },
     neoforge_events::MobEffectEventApplicableResult,
+    world::EquipmentSlot,
 };
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
-const EVENTS: [EventType; 29] = [
+const EVENTS: [EventType; 30] = [
     EventType::CommandEvent,
     EventType::BlockBreakEvent,
     EventType::BlockPlaceEvent,
@@ -65,6 +67,7 @@ const EVENTS: [EventType; 29] = [
     EventType::ArrowLooseEvent,
     EventType::MobEffectEventApplicable,
     EventType::EntityPotionEffectEvent,
+    EventType::ItemAttributeModifierEvent,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -250,6 +253,7 @@ fn view(event: &mut Event) -> Option<View<'_>> {
             Some(&mut data.amplifier),
             Some(&mut data.cancelled),
         ),
+        Event::ItemAttributeModifierEvent(_) => ("ItemAttributeModifierEvent", None, None),
         _ => return None,
     })
 }
@@ -364,6 +368,34 @@ async fn spawn(words: &[&str]) -> Result<String, String> {
     Ok(pig.get_id().to_string())
 }
 
+/// `equip <x> <y> <z>`: spawns a pig and sets a golden sword in its main hand through the v0.2
+/// `set-equipment` import, which reads the attribute modifiers of the sword and so fires
+/// `ItemAttributeModifierEvent` at the handlers of this plugin. Returns the entity id.
+async fn equip(words: &[&str]) -> Result<String, String> {
+    let [x, y, z] = words else {
+        return Err("equip <x> <y> <z>".to_owned());
+    };
+    let coordinate = |text: &str| text.parse::<f64>().map_err(|_| format!("not a number: {text}"));
+    let position = (coordinate(x)?, coordinate(y)?, coordinate(z)?);
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    let pig = world.spawn_entity(EntityType::Pig, position).await;
+    let living = pig.as_living().ok_or("a pig is not living")?;
+    living
+        .set_equipment(
+            EquipmentSlot::MainHand,
+            Some(ItemStack::new("minecraft:golden_sword", 1)),
+        )
+        .await;
+    Ok(pig.get_id().to_string())
+}
+
 struct Component;
 
 impl Guest for Component {
@@ -414,7 +446,8 @@ impl Guest for Component {
     async fn handle_task(_handler_id: u32, _server: ServerInstance) {}
 
     /// The test protocol: `reset`, `on ...` (see [`configure`]), `log` (returns and clears the
-    /// log), `spawn ...` (see [`spawn`]) and `perform ...` (see [`perform`]).
+    /// log), `spawn ...` (see [`spawn`]), `equip ...` (see [`equip`]) and `perform ...` (see
+    /// [`perform`]).
     async fn handle_ipc_message(_sender: String, message: Vec<u8>) -> Result<Vec<u8>, String> {
         let message = String::from_utf8(message).map_err(|error| error.to_string())?;
         let words: Vec<&str> = message.split_whitespace().collect();
@@ -434,6 +467,7 @@ impl Guest for Component {
             ["log"] => STATE.with_borrow_mut(|state| std::mem::take(&mut state.log).join("\n")),
             ["spawn", rest @ ..] => spawn(rest).await?,
             ["perform", rest @ ..] => perform(rest).await?,
+            ["equip", rest @ ..] => equip(rest).await?,
             _ => return Err(format!("unknown message: {message}")),
         };
         Ok(reply.into_bytes())
