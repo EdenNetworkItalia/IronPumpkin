@@ -3066,10 +3066,13 @@ impl LivingEntity {
         let world = self.entity.world.load();
         let block_pos = self.entity.block_pos.load();
 
+        // `prevents_equipment_drop` fires `GetEnchantmentLevelEvent`: a handler may set a drop
+        // chance, so the loop reads a copy.
         let drop_chances = self
             .equipment_drop_chances
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
 
         let slots_to_drop: Vec<EquipmentSlot> = {
             let mut slots: Vec<_> = self.equipment_slots.values().cloned().collect();

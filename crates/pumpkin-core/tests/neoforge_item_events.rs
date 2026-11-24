@@ -841,3 +841,55 @@ fn item_stacked_on_other_event_applies_both_changed_stacks_or_neither() {
         "the carried change is not applied alone"
     );
 }
+
+/// The equipment drops read the enchantments of each dropped stack with no drop chance lock held:
+/// a handler of `GetEnchantmentLevelEvent` can set a drop chance of the mob.
+#[test]
+fn the_equipment_drops_read_the_enchantments_with_the_drop_chances_free() {
+    let _serial = support::serial();
+    let world = support::world();
+    let killer = support::player("DropChanceKiller");
+    let zombie: Arc<dyn EntityBase> = from_type(
+        &EntityType::ZOMBIE,
+        Vector3::new(80.5, 120.0, 80.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    world.spawn_entity(zombie.clone());
+    let living = zombie.get_living_entity().unwrap();
+    living.entity_equipment.lock().unwrap().put(
+        &EquipmentSlot::FEET,
+        ItemStack::new(1, &Item::CHAINMAIL_BOOTS),
+    );
+    living
+        .equipment_drop_chances
+        .lock()
+        .unwrap()
+        .insert(EquipmentSlot::FEET, 2.0);
+    let seen = log();
+    let (record, probe) = (seen.clone(), zombie.clone());
+    on::<GetEnchantmentLevelEvent, _>(move |event| {
+        if event.stack.item.id == Item::CHAINMAIL_BOOTS.id {
+            let free = probe
+                .get_living_entity()
+                .unwrap()
+                .equipment_drop_chances
+                .try_lock()
+                .is_ok();
+            push(&record, if free { "chances free" } else { "chances held" });
+        }
+    });
+
+    living.damage_with_context(
+        zombie.as_ref(),
+        1000.0,
+        DamageType::PLAYER_ATTACK,
+        None,
+        Some(killer.as_ref()),
+        Some(killer.as_ref()),
+    );
+
+    let seen = entries(&seen);
+    assert!(!seen.is_empty(), "the event did not fire");
+    assert!(seen.iter().all(|entry| entry == "chances free"), "{seen:?}");
+}
