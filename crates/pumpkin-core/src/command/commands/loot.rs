@@ -366,6 +366,8 @@ impl CommandExecutor for LootExecutor {
                             .create_without_context(TextComponent::text(loot_table_str.to_string()))
                     })?;
 
+                // `LootCommand.dropFishingLoot`: the command entity is the `this_entity`.
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
                     position: Some(Vector3::new(
@@ -373,6 +375,7 @@ impl CommandExecutor for LootExecutor {
                         f64::from(pos.0.y) + 0.5,
                         f64::from(pos.0.z) + 0.5,
                     )),
+                    this_entity: source_entity.as_deref(),
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };
@@ -396,9 +399,13 @@ impl CommandExecutor for LootExecutor {
                             .create_without_context(TextComponent::text(loot_table_str.to_string()))
                     })?;
 
+                // `LootCommand.dropChestLoot`: the command entity and the source position, for
+                // every kind of source.
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
-                    position: context.source.as_player().map(|p| p.position()),
+                    position: Some(context.source.position),
+                    this_entity: source_entity.as_deref(),
                     ..Default::default()
                 };
                 let seed: i64 = rand::random();
@@ -406,16 +413,14 @@ impl CommandExecutor for LootExecutor {
             }
             Source::Kill => {
                 let target_entities = EntityArgumentType::get_entities(context, "target")?;
-                let killer = context.source.as_player();
-                let killer_tool = killer.as_ref().map(|p| {
-                    p.inventory()
-                        .get_stack(p.inventory().get_selected_slot() as usize)
-                });
+                // `source.getEntity()`: any entity. Only a player is the last damage player.
+                let killer = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
                     last_damage_player: killer
-                        .as_ref()
-                        .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                        .as_deref()
+                        .and_then(crate::entity::EntityBase::get_player)
+                        .map(|player| player as &dyn crate::entity::EntityBase),
                     // `target.damageSources().magic()` has no causing or direct entity. The
                     // killer is the attacking and direct attacking entity of the roll.
                     damage_source: Some(crate::world::loot::LootDamageSource {
@@ -423,8 +428,7 @@ impl CommandExecutor for LootExecutor {
                         attacker: None,
                         direct: None,
                     }),
-                    tool: killer_tool,
-                    // `source.getPosition()`, for every target.
+                    // `source.getPosition()`, for every target. The `entity` set has no tool.
                     position: Some(context.source.position),
                     ..Default::default()
                 };
@@ -437,12 +441,8 @@ impl CommandExecutor for LootExecutor {
                     {
                         let params = LootContextParameters {
                             this_entity: Some(entity.as_ref()),
-                            killer_entity: killer
-                                .as_ref()
-                                .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
-                            direct_killer_entity: killer
-                                .as_ref()
-                                .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                            killer_entity: killer.as_deref(),
+                            direct_killer_entity: killer.as_deref(),
                             is_on_fire: Some(
                                 entity
                                     .get_entity()
@@ -500,12 +500,10 @@ impl CommandExecutor for LootExecutor {
 
                 // `LootCommand.dropBlockLoot`: the block state, the center of the block, the block
                 // entity, the command entity and the tool, as `BlockState.getDrops` rolls them.
-                let source_player = context.source.as_player();
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
                     block_state: Some(block_state),
-                    this_entity: source_player
-                        .as_ref()
-                        .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                    this_entity: source_entity.as_deref(),
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };

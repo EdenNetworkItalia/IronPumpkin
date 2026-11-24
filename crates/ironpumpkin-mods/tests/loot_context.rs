@@ -933,6 +933,17 @@ fn run_command(
     position: Vector3<f64>,
     command: &str,
 ) {
+    run_command_as(player, player.clone(), position, command);
+}
+
+/// Runs `command` with the output of `player` and `entity` as the entity of the source, as
+/// `/execute as <entity> run ...` does.
+fn run_command_as(
+    player: &Arc<ironpumpkin_mods::pumpkin_core::entity::player::Player>,
+    entity: Arc<dyn EntityBase>,
+    position: Vector3<f64>,
+    command: &str,
+) {
     use ironpumpkin_mods::pumpkin_core::command::{CommandSender, CommandSource};
     player
         .permission_lvl
@@ -941,7 +952,7 @@ fn run_command(
     let source = CommandSource::new(
         CommandSender::Player(player.clone()),
         support::world(),
-        Some(player.clone() as Arc<dyn EntityBase>),
+        Some(entity),
         position,
         ironpumpkin_mods::pumpkin_util::math::vector2::Vector2::new(0.0, 0.0),
         player.gameprofile.name.clone(),
@@ -1020,4 +1031,70 @@ fn loot_mine_rolls_the_block_entity_and_the_command_entity() {
     assert_eq!(roll.block_state, Some(state));
     assert_eq!(roll.block_entity, Some(pos));
     assert_eq!(roll.this_entity, Some(entity_id(player.as_ref())));
+}
+
+/// Review 171: the entity of a command source is any entity, not only a player.
+#[test]
+fn loot_commands_use_the_entity_of_the_source() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("loot_executor");
+    set(BlockPos::new(200, 100, 0), Block::STONE.default_state.id);
+    let zombie = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::ZOMBIE,
+        Vector3::new(200.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(zombie.clone()));
+    let chicken = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::CHICKEN,
+        Vector3::new(203.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(chicken.clone()));
+    let zombie_id = Some(entity_id(zombie.as_ref()));
+    let position = Vector3::new(201.5, 101.0, 0.5);
+    let give = format!("loot give {}", player.gameprofile.name);
+    let run = |command: String| {
+        run_command_as(&player, zombie.clone(), position, &command);
+    };
+
+    // `/loot loot`: the zombie and the source position.
+    let rolls = rolls_of(DUNGEON, || {
+        run(format!("{give} loot {DUNGEON}"));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].this_entity, zombie_id);
+    assert_eq!(rolls[0].origin, Some([201.5, 101.0, 0.5]));
+
+    // `/loot fish`: the zombie and the center of the position of the command.
+    let rolls = rolls_of("minecraft:gameplay/fishing", || {
+        run(format!("{give} fish minecraft:gameplay/fishing 200 100 0"));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].this_entity, zombie_id);
+
+    // `/loot kill`: the zombie kills, and it is no player, so no last damage player. It has no
+    // tool in the roll.
+    let rolls = rolls_of("minecraft:entities/chicken", || {
+        run(format!("{give} kill {}", chicken.get_entity().entity_uuid));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].attacking_entity, zombie_id);
+    assert_eq!(rolls[0].last_damage_player, None);
+    assert_eq!(rolls[0].tool, None);
+    assert_eq!(rolls[0].origin, Some([201.5, 101.0, 0.5]));
+
+    // `/loot mine`: the zombie.
+    let pos = BlockPos::new(204, 100, 0);
+    set(pos, Block::DECORATED_POT.default_state.id);
+    world.add_block_entity(Arc::new(DecoratedPotBlockEntity::new(pos)));
+    let rolls = rolls_of("minecraft:blocks/decorated_pot", || {
+        run(format!("{give} mine 204 100 0"));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].this_entity, zombie_id);
 }
