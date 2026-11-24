@@ -5,6 +5,7 @@ use pumpkin_data::BlockStateId;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::random::{RandomGenerator, get_seed, xoroshiro128::Xoroshiro};
 
+use crate::block::entities::BlockEntity;
 use crate::entity::experience_orb::ExperienceOrbEntity;
 use crate::entity::player::Player;
 use crate::world::World;
@@ -505,11 +506,14 @@ pub struct BlockEvent {
     pub data: u8,
 }
 
-/// Rolls the block's loot table and fires `BlockDropItemEvent`, without spawning anything.
-pub fn collect_loot(
+/// `Block.getDrops`: rolls the loot table of `block` with `params`, as `LootContextParamSets.BLOCK`
+/// sets it. The origin is the center of `pos`, whatever `params` says, and the block entity is the
+/// one at `pos`. The caller sets the block state, the tool and the breaker.
+fn roll_block_loot(
     world: &Arc<World>,
     block: &Block,
     pos: &BlockPos,
+    block_entity: Option<&dyn BlockEntity>,
     params: &LootContextParameters,
 ) -> Vec<ItemStack> {
     let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
@@ -517,10 +521,10 @@ pub fn collect_loot(
     };
     // TODO: vanilla rolls from the loot table's `random_sequence`, which is seeded per world.
     let seed: i64 = rand::random();
-    let block_entity = world.get_block_entity(pos);
     let params = LootContextParameters {
         world: Some(world),
-        block_entity: block_entity.as_deref(),
+        position: Some(pos.to_centered_f64()),
+        block_entity,
         tool: Some(
             params
                 .tool
@@ -529,7 +533,46 @@ pub fn collect_loot(
         ),
         ..params.clone()
     };
-    let items = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+    crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params)
+}
+
+/// Gives each stack of the block itself the components of its block entity.
+fn collect_block_entity_components(
+    block: &Block,
+    block_entity: Option<&Arc<dyn BlockEntity>>,
+    items: &mut [ItemStack],
+) {
+    if let Some(block_entity) = block_entity {
+        for stack in items {
+            if Block::from_item_id(stack.item.id) == Some(block) {
+                block_entity.collect_item_components(stack);
+            }
+        }
+    }
+}
+
+/// The drops of `block` at `pos` as `Block.getDrops` rolls them, with no event and nothing spawned.
+pub fn block_drops(
+    world: &Arc<World>,
+    block: &Block,
+    pos: &BlockPos,
+    params: &LootContextParameters,
+) -> Vec<ItemStack> {
+    let block_entity = world.get_block_entity(pos);
+    let mut items = roll_block_loot(world, block, pos, block_entity.as_deref(), params);
+    collect_block_entity_components(block, block_entity.as_ref(), &mut items);
+    items
+}
+
+/// Rolls the block's loot table and fires `BlockDropItemEvent`, without spawning anything.
+pub fn collect_loot(
+    world: &Arc<World>,
+    block: &Block,
+    pos: &BlockPos,
+    params: &LootContextParameters,
+) -> Vec<ItemStack> {
+    let block_entity = world.get_block_entity(pos);
+    let items = roll_block_loot(world, block, pos, block_entity.as_deref(), params);
     if items.is_empty() {
         return items;
     }
@@ -549,13 +592,7 @@ pub fn collect_loot(
     }
 
     let mut items = event.items;
-    if let Some(block_entity) = &block_entity {
-        for stack in &mut items {
-            if Block::from_item_id(stack.item.id) == Some(block) {
-                block_entity.collect_item_components(stack);
-            }
-        }
-    }
+    collect_block_entity_components(block, block_entity.as_ref(), &mut items);
     items
 }
 

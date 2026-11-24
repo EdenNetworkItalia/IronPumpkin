@@ -825,3 +825,42 @@ fn armadillo_brush_rolls_the_entity_interact_set() {
         }]
     );
 }
+
+/// Review 171: `Block.getDrops` sets the center of the block and the breaker.
+#[test]
+fn a_block_break_rolls_the_center_of_the_block_and_the_breaker() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("miner");
+    let pos = BlockPos::new(130, 100, 0);
+    let state = Block::DIRT.default_state.id;
+    set(pos, state);
+
+    let rolls = rolls_of("minecraft:blocks/dirt", || {
+        world.break_block(&pos, Some(&player), BlockFlags::NOTIFY_ALL);
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].origin, Some(center(&pos)));
+    assert_eq!(rolls[0].block_state, Some(state));
+    assert_eq!(rolls[0].this_entity, Some(entity_id(player.as_ref())));
+}
+
+#[test]
+fn get_block_drops_rolls_the_block_entity_and_the_center_of_the_block() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("collector");
+    let pos = BlockPos::new(140, 100, 0);
+    set(pos, Block::DECORATED_POT.default_state.id);
+    world.add_block_entity(Arc::new(DecoratedPotBlockEntity::new(pos)));
+
+    let rolls = rolls_of("minecraft:blocks/decorated_pot", || {
+        world.get_block_drops(&pos, None, Some(player.as_ref()));
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].origin, Some(center(&pos)));
+    assert_eq!(rolls[0].block_entity, Some(pos));
+    assert_eq!(rolls[0].this_entity, Some(entity_id(player.as_ref())));
+}

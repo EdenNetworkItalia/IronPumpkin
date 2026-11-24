@@ -6137,7 +6137,7 @@ impl World {
                 world: Some(self),
                 tool: tool.clone().filter(|item| !item.is_empty()),
                 block_state: Some(broken_block_state),
-                position: Some(position.to_f64()),
+                this_entity: cause.map(|player| player.as_ref() as &dyn EntityBase),
                 ..Default::default()
             };
             crate::block::drop_loot(self, broken_block, position, exp.is_none(), &params);
@@ -6220,29 +6220,13 @@ impl World {
         {
             return Vec::new();
         }
-        let Some(loot_table) = block.loot_table.and_then(|key| self.get_loot_table(key)) else {
-            return Vec::new();
-        };
-        let seed: i64 = rand::random();
         let params = crate::world::loot::LootContextParameters {
-            world: Some(self),
             tool: Some(tool.unwrap_or_else(|| ItemStack::EMPTY.clone())),
             block_state: Some(state),
-            position: Some(position.to_f64()),
             this_entity: entity,
             ..Default::default()
         };
-        let mut items = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
-        if !items.is_empty()
-            && let Some(block_entity) = self.get_block_entity(position)
-        {
-            for stack in &mut items {
-                if Block::from_item_id(stack.item.id) == Some(block) {
-                    block_entity.collect_item_components(stack);
-                }
-            }
-        }
-        items
+        crate::block::block_drops(self, block, position, &params)
     }
 
     pub fn break_block_naturally(
@@ -6267,7 +6251,6 @@ impl World {
                 world: Some(self),
                 tool: tool.filter(|item| !item.is_empty()),
                 block_state: Some(broken_block_state),
-                position: Some(position.to_f64()),
                 ..Default::default()
             };
             crate::block::drop_loot(self, broken_block, position, true, &params);
