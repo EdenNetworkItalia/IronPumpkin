@@ -260,7 +260,7 @@ These events fire when the server reads the attribute modifiers or the enchantme
 | `ItemStackedOnOtherEvent` | `inventory::ItemStackedOnOtherEvent` | Fires on a pickup click, outside the screen-handler lock, before the bundle logic. `carried_item` and `stacked_on_item` are settable. A cancel with `cancellation_result` true (the default) ends the click. A cancel with false runs the click without the bundle logic. `slot` is the slot index. A quick move fires nothing. |
 | `PlayerBrewedPotionEvent` | `inventory::PlayerBrewedPotionEvent` | Fires when a player takes a potion out of a brewing stand, at the end of the click and before the advancement trigger. `stack` is a copy: a change does nothing. |
 
-The reads of the item stack are on the hot path of the server. Before the first handler of `GetEnchantmentLevelEvent` or `ItemAttributeModifierEvent` registers, a read costs one atomic load and builds nothing. After that, the read fires the event on each server of the process that has a handler. An item stack has no server, so a process with two servers fires the event on both.
+The reads of the item stack are on the hot path of the server. Before the first handler of `GetEnchantmentLevelEvent` or `ItemAttributeModifierEvent` registers, a read costs one atomic load and builds nothing. After that, the read fires the event only while a handler listens, and allocates nothing otherwise. One read fires the handlers of every server of the process, because an item stack has no server. A game process runs one server, so this matters only for tests that start several servers in one process.
 
 ## The player events
 
