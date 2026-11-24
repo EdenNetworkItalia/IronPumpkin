@@ -335,15 +335,14 @@ impl DataComponentImpl for EnchantmentsImpl {
         }
         NbtTag::Compound(data)
     }
+    /// `ItemEnchantments.CODEC`: a map from the enchantment id to the level.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[2u8]);
-        for (enc, level) in self.enchantment.iter() {
-            digest.update(&get_str_hash(enc.name).to_le_bytes());
-            digest.update(&get_i32_hash(*level).to_le_bytes());
-        }
-        digest.update(&[3u8]);
-        digest.finalize() as i32
+        hash_ops::map(
+            self.enchantment
+                .iter()
+                .map(|(enchantment, level)| (hash_ops::id(enchantment.name), hash_ops::int(*level)))
+                .collect(),
+        ) as i32
     }
     default_impl!(Enchantments);
 }
@@ -492,7 +491,9 @@ impl DataComponentImpl for DamageResistantImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        get_idset_hash(&self.types) as i32
+        hash_ops::MapHasher::new()
+            .put("types", hash_ops::holder_set(&self.types))
+            .finish() as i32
     }
     default_impl!(DamageResistant);
 }
@@ -658,10 +659,20 @@ impl DataComponentImpl for WeaponImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_i32_hash(self.item_damage_per_attack as i32).to_le_bytes());
-        digest.update(&get_f32_hash(self.disable_blocking_for_seconds).to_le_bytes());
-        digest.finalize() as i32
+        let mut fields = hash_ops::MapHasher::new();
+        if self.item_damage_per_attack != 1 {
+            fields.put(
+                "item_damage_per_attack",
+                hash_ops::int(self.item_damage_per_attack as i32),
+            );
+        }
+        if !hash_ops::same_float(self.disable_blocking_for_seconds, 0.0) {
+            fields.put(
+                "disable_blocking_for_seconds",
+                hash_ops::float(self.disable_blocking_for_seconds),
+            );
+        }
+        fields.finish() as i32
     }
     default_impl!(Weapon);
 }
@@ -710,11 +721,20 @@ impl DataComponentImpl for AttackRangeImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        for value in self.values() {
-            digest.update(&get_f32_hash(value).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        for (key, value, default) in [
+            ("min_reach", self.min_reach, 0.0),
+            ("max_reach", self.max_reach, 3.0),
+            ("min_creative_reach", self.min_creative_reach, 0.0),
+            ("max_creative_reach", self.max_creative_reach, 5.0),
+            ("hitbox_margin", self.hitbox_margin, 0.3),
+            ("mob_factor", self.mob_factor, 1.0),
+        ] {
+            if !hash_ops::same_float(value, default) {
+                fields.put(key, hash_ops::float(value));
+            }
         }
-        digest.finalize() as i32
+        fields.finish() as i32
     }
     default_impl!(AttackRange);
 }
@@ -804,29 +824,35 @@ impl EquippableImpl {
 }
 impl DataComponentImpl for EquippableImpl {
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[16u8]);
-        digest.update(&get_i32_hash(self.slot.get_slot_index()).to_le_bytes());
-        digest.update(&get_idor_hash(&self.equip_sound).to_le_bytes());
-        if let Some(asset) = &self.asset_id {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(asset).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put("slot", hash_ops::string(self.slot.to_name()));
+        if !hash_ops::is_registry_sound(&self.equip_sound, "item.armor.equip_generic") {
+            fields.put("equip_sound", hash_ops::sound(&self.equip_sound));
         }
-        if let Some(overlay) = &self.camera_overlay {
-            digest.update(&[2u8]);
-            digest.update(&get_str_hash(overlay).to_le_bytes());
+        if let Some(asset_id) = &self.asset_id {
+            fields.put("asset_id", hash_ops::id(asset_id));
+        }
+        if let Some(camera_overlay) = &self.camera_overlay {
+            fields.put("camera_overlay", hash_ops::id(camera_overlay));
         }
         if let Some(allowed_entities) = &self.allowed_entities {
-            digest.update(&[3u8]);
-            digest.update(&get_idset_hash(allowed_entities).to_le_bytes());
+            fields.put("allowed_entities", hash_ops::holder_set(allowed_entities));
         }
-        digest.update(&[self.dispensable as u8]);
-        digest.update(&[self.swappable as u8]);
-        digest.update(&[self.damage_on_hurt as u8]);
-        digest.update(&[self.equip_on_interact as u8]);
-        digest.update(&[self.can_be_sheared as u8]);
-        digest.update(&get_idor_hash(&self.shearing_sound).to_le_bytes());
-        digest.finalize() as i32
+        for (key, value, default) in [
+            ("dispensable", self.dispensable, true),
+            ("swappable", self.swappable, true),
+            ("damage_on_hurt", self.damage_on_hurt, true),
+            ("equip_on_interact", self.equip_on_interact, false),
+            ("can_be_sheared", self.can_be_sheared, false),
+        ] {
+            if value != default {
+                fields.put(key, hash_ops::boolean(value));
+            }
+        }
+        if !hash_ops::is_registry_sound(&self.shearing_sound, "item.shears.snip") {
+            fields.put("shearing_sound", hash_ops::sound(&self.shearing_sound));
+        }
+        fields.finish() as i32
     }
     fn write_data(&self) -> NbtTag {
         let mut compound = NbtCompound::new();
@@ -958,11 +984,18 @@ impl DataComponentImpl for DeathProtectionImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        for effect in self.death_effects.iter() {
-            digest.update(&effect.get_hash().to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        if !self.death_effects.is_empty() {
+            fields.put(
+                "death_effects",
+                hash_ops::list(
+                    self.death_effects
+                        .iter()
+                        .map(crate::data_component_impl::food::consume_effect_hash),
+                ),
+            );
         }
-        digest.finalize() as i32
+        fields.finish() as i32
     }
     default_impl!(DeathProtection);
 }
@@ -1189,32 +1222,70 @@ impl DataComponentImpl for BlocksAttacksImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_f32_hash(self.block_delay_seconds).to_le_bytes());
-        digest.update(&get_f32_hash(self.disable_cooldown_scale).to_le_bytes());
-        for r in self.damage_reductions.iter() {
-            digest.update(&get_f32_hash(r.horizontal_blocking_angle).to_le_bytes());
-            if let Some(dt) = &r.damage_type {
-                digest.update(&[1u8]);
-                digest.update(&get_idset_hash(dt).to_le_bytes());
-            } else {
-                digest.update(&[0u8]);
-            }
-            digest.update(&get_f32_hash(r.base).to_le_bytes());
-            digest.update(&get_f32_hash(r.factor).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        if !hash_ops::same_float(self.block_delay_seconds, 0.0) {
+            fields.put(
+                "block_delay_seconds",
+                hash_ops::float(self.block_delay_seconds),
+            );
         }
-        digest.update(&get_f32_hash(self.item_damage.threshold).to_le_bytes());
-        digest.update(&get_f32_hash(self.item_damage.base).to_le_bytes());
-        digest.update(&get_f32_hash(self.item_damage.factor).to_le_bytes());
-        if let Some(bypassed) = &self.bypassed_by {
-            digest.update(&[1u8]);
-            digest.update(&get_idset_hash(bypassed).to_le_bytes());
-        } else {
-            digest.update(&[0u8]);
+        if !hash_ops::same_float(self.disable_cooldown_scale, 1.0) {
+            fields.put(
+                "disable_cooldown_scale",
+                hash_ops::float(self.disable_cooldown_scale),
+            );
         }
-        update_optional_idor(&mut digest, self.block_sound.as_ref());
-        update_optional_idor(&mut digest, self.disabled_sound.as_ref());
-        digest.finalize() as i32
+        // The default is one reduction of every type: angle 90, base 0, factor 1.
+        let default_reductions = matches!(&*self.damage_reductions, [reduction]
+            if hash_ops::same_float(reduction.horizontal_blocking_angle, 90.0)
+                && reduction.damage_type.is_none()
+                && hash_ops::same_float(reduction.base, 0.0)
+                && hash_ops::same_float(reduction.factor, 1.0));
+        if !default_reductions {
+            fields.put(
+                "damage_reductions",
+                hash_ops::list(self.damage_reductions.iter().map(|reduction| {
+                    let mut fields = hash_ops::MapHasher::new();
+                    if !hash_ops::same_float(reduction.horizontal_blocking_angle, 90.0) {
+                        fields.put(
+                            "horizontal_blocking_angle",
+                            hash_ops::float(reduction.horizontal_blocking_angle),
+                        );
+                    }
+                    if let Some(damage_type) = &reduction.damage_type {
+                        fields.put("type", hash_ops::holder_set(damage_type));
+                    }
+                    fields
+                        .put("base", hash_ops::float(reduction.base))
+                        .put("factor", hash_ops::float(reduction.factor))
+                        .finish()
+                })),
+            );
+        }
+        let item_damage = &self.item_damage;
+        let default_item_damage = hash_ops::same_float(item_damage.threshold, 1.0)
+            && hash_ops::same_float(item_damage.base, 0.0)
+            && hash_ops::same_float(item_damage.factor, 1.0);
+        if !default_item_damage {
+            fields.put(
+                "item_damage",
+                hash_ops::MapHasher::new()
+                    .put("threshold", hash_ops::float(item_damage.threshold))
+                    .put("base", hash_ops::float(item_damage.base))
+                    .put("factor", hash_ops::float(item_damage.factor))
+                    .finish(),
+            );
+        }
+        if let Some(bypassed_by) = &self.bypassed_by {
+            fields.put("bypassed_by", hash_ops::holder_set(bypassed_by));
+        }
+        if let Some(sound) = &self.block_sound {
+            fields.put("block_sound", hash_ops::sound(sound));
+        }
+        if let Some(sound) = &self.disabled_sound {
+            fields.put("disabled_sound", hash_ops::sound(sound));
+        }
+        fields.finish() as i32
     }
     default_impl!(BlocksAttacks);
 }
@@ -1228,15 +1299,6 @@ fn get_optional_idor(compound: &NbtCompound, key: &str) -> Option<IdOr<SoundEven
 fn put_optional_idor(compound: &mut NbtCompound, key: &str, sound: Option<&IdOr<SoundEvent>>) {
     if let Some(sound) = sound {
         put_idor(compound, key, sound);
-    }
-}
-
-fn update_optional_idor(digest: &mut Digest, sound: Option<&IdOr<SoundEvent>>) {
-    if let Some(sound) = sound {
-        digest.update(&[1u8]);
-        digest.update(&get_idor_hash(sound).to_le_bytes());
-    } else {
-        digest.update(&[0u8]);
     }
 }
 
@@ -1268,11 +1330,20 @@ impl DataComponentImpl for PiercingWeaponImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[self.deals_knockback as u8, self.dismounts as u8]);
-        update_optional_idor(&mut digest, self.sound.as_ref());
-        update_optional_idor(&mut digest, self.hit_sound.as_ref());
-        digest.finalize() as i32
+        let mut fields = hash_ops::MapHasher::new();
+        if !self.deals_knockback {
+            fields.put("deals_knockback", hash_ops::boolean(false));
+        }
+        if self.dismounts {
+            fields.put("dismounts", hash_ops::boolean(true));
+        }
+        if let Some(sound) = &self.sound {
+            fields.put("sound", hash_ops::sound(sound));
+        }
+        if let Some(sound) = &self.hit_sound {
+            fields.put("hit_sound", hash_ops::sound(sound));
+        }
+        fields.finish() as i32
     }
     default_impl!(PiercingWeapon);
 }
@@ -1377,22 +1448,55 @@ impl DataComponentImpl for KineticWeaponImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_i32_hash(self.contact_cooldown_ticks).to_le_bytes());
-        digest.update(&get_i32_hash(self.delay_ticks).to_le_bytes());
-        for (_, condition) in self.conditions() {
-            if let Some(condition) = condition {
-                digest.update(&[1u8]);
-                condition.update_digest(&mut digest);
-            } else {
-                digest.update(&[0u8]);
+        let condition = |condition: &KineticConditionImpl| {
+            let mut fields = hash_ops::MapHasher::new();
+            fields.put(
+                "max_duration_ticks",
+                hash_ops::int(condition.max_duration_ticks),
+            );
+            if !hash_ops::same_float(condition.min_speed, 0.0) {
+                fields.put("min_speed", hash_ops::float(condition.min_speed));
+            }
+            if !hash_ops::same_float(condition.min_relative_speed, 0.0) {
+                fields.put(
+                    "min_relative_speed",
+                    hash_ops::float(condition.min_relative_speed),
+                );
+            }
+            fields.finish()
+        };
+        let mut fields = hash_ops::MapHasher::new();
+        if self.contact_cooldown_ticks != 10 {
+            fields.put(
+                "contact_cooldown_ticks",
+                hash_ops::int(self.contact_cooldown_ticks),
+            );
+        }
+        if self.delay_ticks != 0 {
+            fields.put("delay_ticks", hash_ops::int(self.delay_ticks));
+        }
+        for (key, value) in [
+            ("dismount_conditions", &self.dismount_conditions),
+            ("knockback_conditions", &self.knockback_conditions),
+            ("damage_conditions", &self.damage_conditions),
+        ] {
+            if let Some(value) = value {
+                fields.put(key, condition(value));
             }
         }
-        digest.update(&get_f32_hash(self.forward_movement).to_le_bytes());
-        digest.update(&get_f32_hash(self.damage_multiplier).to_le_bytes());
-        update_optional_idor(&mut digest, self.sound.as_ref());
-        update_optional_idor(&mut digest, self.hit_sound.as_ref());
-        digest.finalize() as i32
+        if !hash_ops::same_float(self.forward_movement, 0.0) {
+            fields.put("forward_movement", hash_ops::float(self.forward_movement));
+        }
+        if !hash_ops::same_float(self.damage_multiplier, 1.0) {
+            fields.put("damage_multiplier", hash_ops::float(self.damage_multiplier));
+        }
+        if let Some(sound) = &self.sound {
+            fields.put("sound", hash_ops::sound(sound));
+        }
+        if let Some(sound) = &self.hit_sound {
+            fields.put("hit_sound", hash_ops::sound(sound));
+        }
+        fields.finish() as i32
     }
     default_impl!(KineticWeapon);
 }
@@ -1630,10 +1734,13 @@ impl DataComponentImpl for MobVisibilityImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_idset_hash(&self.targeting_entity_types).to_le_bytes());
-        digest.update(&get_f32_hash(self.visibility).to_le_bytes());
-        digest.finalize() as i32
+        hash_ops::MapHasher::new()
+            .put(
+                "targeting_entity_types",
+                hash_ops::holder_set(&self.targeting_entity_types),
+            )
+            .put("visibility", hash_ops::float(self.visibility))
+            .finish() as i32
     }
     default_impl!(MobVisibility);
 }
@@ -1657,15 +1764,14 @@ impl DataComponentImpl for StoredEnchantmentsImpl {
         }
         NbtTag::Compound(data)
     }
+    /// `ItemEnchantments.CODEC`: a map from the enchantment id to the level.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[2u8]);
-        for (enc, level) in self.enchantment.iter() {
-            digest.update(&get_str_hash(enc.name).to_le_bytes());
-            digest.update(&get_i32_hash(*level).to_le_bytes());
-        }
-        digest.update(&[3u8]);
-        digest.finalize() as i32
+        hash_ops::map(
+            self.enchantment
+                .iter()
+                .map(|(enchantment, level)| (hash_ops::id(enchantment.name), hash_ops::int(*level)))
+                .collect(),
+        ) as i32
     }
     default_impl!(StoredEnchantments);
 }

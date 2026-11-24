@@ -72,6 +72,28 @@ pub struct StatusEffectInstance {
 }
 
 impl StatusEffectInstance {
+    /// The hash of `MobEffectInstance.CODEC`. `show_icon` is always written.
+    #[must_use]
+    pub fn codec_hash(&self) -> u32 {
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put("id", hash_ops::id(&self.effect_id));
+        if self.amplifier != 0 {
+            // `ExtraCodecs.UNSIGNED_BYTE` encodes a byte.
+            fields.put("amplifier", hash_ops::byte(self.amplifier as i8));
+        }
+        if self.duration != 0 {
+            fields.put("duration", hash_ops::int(self.duration));
+        }
+        if self.ambient {
+            fields.put("ambient", hash_ops::boolean(true));
+        }
+        if !self.show_particles {
+            fields.put("show_particles", hash_ops::boolean(false));
+        }
+        fields.put("show_icon", hash_ops::boolean(self.show_icon));
+        fields.finish()
+    }
+
     pub fn read_data(nbt: &NbtTag) -> Option<Self> {
         let compound = nbt.extract_compound()?;
         let effect_id = Cow::Owned(compound.get_string("id")?.to_string());
@@ -99,17 +121,6 @@ impl StatusEffectInstance {
         compound.put_bool("show_particles", self.show_particles);
         compound.put_bool("show_icon", self.show_icon);
         NbtTag::Compound(compound)
-    }
-
-    pub fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_str_hash(self.effect_id.as_ref()).to_le_bytes());
-        digest.update(&get_i32_hash(self.amplifier).to_le_bytes());
-        digest.update(&get_i32_hash(self.duration).to_le_bytes());
-        digest.update(&[self.ambient as u8]);
-        digest.update(&[self.show_particles as u8]);
-        digest.update(&[self.show_icon as u8]);
-        digest.finalize() as i32
     }
 }
 
@@ -216,6 +227,40 @@ mod consume_animation_tests {
     }
 }
 
+/// The hash of `ConsumeEffect.CODEC`: the fields of the effect type and its `type` id.
+#[must_use]
+pub fn consume_effect_hash(effect: &ConsumeEffect) -> u32 {
+    let mut fields = hash_ops::MapHasher::new();
+    fields.put(
+        "type",
+        hash_ops::string(&format!("minecraft:{}", effect.to_str())),
+    );
+    match effect {
+        ConsumeEffect::ApplyEffects((effects, probability)) => {
+            fields.put(
+                "effects",
+                hash_ops::list(effects.iter().map(StatusEffectInstance::codec_hash)),
+            );
+            if !hash_ops::same_float(*probability, 1.0) {
+                fields.put("probability", hash_ops::float(*probability));
+            }
+        }
+        ConsumeEffect::RemoveEffects(effects) => {
+            fields.put("effects", hash_ops::holder_set(effects));
+        }
+        ConsumeEffect::ClearAllEffects => {}
+        ConsumeEffect::TeleportRandomly(diameter) => {
+            if !hash_ops::same_float(*diameter, 16.0) {
+                fields.put("diameter", hash_ops::float(*diameter));
+            }
+        }
+        ConsumeEffect::PlaySound(sound) => {
+            fields.put("sound", hash_ops::sound(sound));
+        }
+    }
+    fields.finish()
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConsumeEffect {
     ApplyEffects((Cow<'static, [StatusEffectInstance]>, f32)),
@@ -310,35 +355,6 @@ impl ConsumeEffect {
         }
         NbtTag::Compound(compound)
     }
-    pub fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        match self {
-            ConsumeEffect::ApplyEffects((effects, probability)) => {
-                digest.update(&[1u8]);
-                for effect in effects.iter() {
-                    digest.update(&effect.get_hash().to_le_bytes());
-                }
-                digest.update(&[13u8]);
-                digest.update(&get_f32_hash(*probability).to_le_bytes());
-            }
-            ConsumeEffect::RemoveEffects(idset) => {
-                digest.update(&[2u8]);
-                digest.update(&get_idset_hash(idset).to_le_bytes());
-            }
-            ConsumeEffect::ClearAllEffects => {
-                digest.update(&[3u8]);
-            }
-            ConsumeEffect::TeleportRandomly(dst) => {
-                digest.update(&[4u8]);
-                digest.update(&get_f32_hash(*dst).to_le_bytes());
-            }
-            ConsumeEffect::PlaySound(id_or) => {
-                digest.update(&[5u8]);
-                digest.update(&get_idor_hash(id_or).to_le_bytes());
-            }
-        }
-        digest.finalize() as i32
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -415,17 +431,26 @@ impl DataComponentImpl for ConsumableImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[2u8]);
-        digest.update(&get_f32_hash(self.consume_seconds).to_le_bytes());
-        digest.update(&get_i32_hash(self.animation as i32).to_le_bytes());
-        digest.update(&get_idor_hash(&self.sound_event).to_be_bytes());
-        digest.update(&[self.consume_particles as u8]);
-        for effect in self.effects.iter() {
-            digest.update(&effect.get_hash().to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        if !hash_ops::same_float(self.consume_seconds, 1.6) {
+            fields.put("consume_seconds", hash_ops::float(self.consume_seconds));
         }
-        digest.update(&[3u8]);
-        digest.finalize() as i32
+        if self.animation != ConsumeAnimation::Eat {
+            fields.put("animation", hash_ops::string(self.animation.to_str()));
+        }
+        if !hash_ops::is_registry_sound(&self.sound_event, "entity.generic.eat") {
+            fields.put("sound", hash_ops::sound(&self.sound_event));
+        }
+        if !self.consume_particles {
+            fields.put("has_consume_particles", hash_ops::boolean(false));
+        }
+        if !self.effects.is_empty() {
+            fields.put(
+                "on_consume_effects",
+                hash_ops::list(self.effects.iter().map(consume_effect_hash)),
+            );
+        }
+        fields.finish() as i32
     }
     default_impl!(Consumable);
 }
@@ -480,11 +505,19 @@ impl DataComponentImpl for UseEffectsImpl {
         compound.put_float("speed_multiplier", self.speed_multiplier);
         NbtTag::Compound(compound)
     }
+    /// The defaults are `UseEffects.DEFAULT`.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[self.can_sprint as u8, self.interact_vibrations as u8]);
-        digest.update(&get_f32_hash(self.speed_multiplier).to_le_bytes());
-        digest.finalize() as i32
+        let mut fields = hash_ops::MapHasher::new();
+        if self.can_sprint {
+            fields.put("can_sprint", hash_ops::boolean(true));
+        }
+        if !self.interact_vibrations {
+            fields.put("interact_vibrations", hash_ops::boolean(false));
+        }
+        if !hash_ops::same_float(self.speed_multiplier, 0.2) {
+            fields.put("speed_multiplier", hash_ops::float(self.speed_multiplier));
+        }
+        fields.finish() as i32
     }
     default_impl!(UseEffects);
 }
@@ -616,12 +649,12 @@ impl DataComponentImpl for UseCooldownImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&get_f32_hash(self.seconds).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put("seconds", hash_ops::float(self.seconds));
         if let Some(group) = &self.cooldown_group {
-            digest.update(&get_str_hash(group).to_le_bytes());
+            fields.put("cooldown_group", hash_ops::id(group));
         }
-        digest.finalize() as i32
+        fields.finish() as i32
     }
     default_impl!(UseCooldown);
 }
@@ -720,27 +753,33 @@ impl DataComponentImpl for PotionContentsImpl {
         }
         NbtTag::Compound(compound)
     }
+    /// `PotionContents.CODEC` encodes with its full record codec.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        if let Some(id) = self.potion_id {
-            digest.update(&[1u8]);
-            digest.update(&get_i32_hash(id).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        if let Some(potion) = self
+            .potion_id
+            .and_then(|id| u8::try_from(id).ok())
+            .and_then(crate::potion::Potion::from_id)
+        {
+            fields.put("potion", hash_ops::id(potion.name));
         }
         if let Some(color) = self.custom_color {
-            digest.update(&[2u8]);
-            digest.update(&get_i32_hash(color).to_le_bytes());
-        }
-        if let Some(name) = &self.custom_name {
-            digest.update(&[3u8]);
-            digest.update(&get_str_hash(name).to_le_bytes());
+            fields.put("custom_color", hash_ops::int(color));
         }
         if !self.custom_effects.is_empty() {
-            digest.update(&[4u8]);
-            for effect in &self.custom_effects {
-                digest.update(&effect.get_hash().to_le_bytes());
-            }
+            fields.put(
+                "custom_effects",
+                hash_ops::list(
+                    self.custom_effects
+                        .iter()
+                        .map(StatusEffectInstance::codec_hash),
+                ),
+            );
         }
-        digest.finalize() as i32
+        if let Some(name) = &self.custom_name {
+            fields.put("custom_name", hash_ops::string(name));
+        }
+        fields.finish() as i32
     }
     default_impl!(PotionContents);
 }
@@ -846,12 +885,14 @@ impl DataComponentImpl for SuspiciousStewEffectsImpl {
         )
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        for effect in self.effects.iter() {
-            digest.update(&get_str_hash(&effect.effect).to_le_bytes());
-            digest.update(&get_i32_hash(effect.duration).to_le_bytes());
-        }
-        digest.finalize() as i32
+        hash_ops::list(self.effects.iter().map(|effect| {
+            let mut fields = hash_ops::MapHasher::new();
+            fields.put("id", hash_ops::id(&effect.effect));
+            if effect.duration != 160 {
+                fields.put("duration", hash_ops::int(effect.duration));
+            }
+            fields.finish()
+        })) as i32
     }
     default_impl!(SuspiciousStewEffects);
 }

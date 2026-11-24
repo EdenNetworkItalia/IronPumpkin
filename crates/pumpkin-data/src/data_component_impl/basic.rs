@@ -992,7 +992,7 @@ impl DataComponentImpl for BreakSoundImpl {
         }
     }
     fn get_hash(&self) -> i32 {
-        get_idor_hash(&self.sound) as i32
+        hash_ops::sound(&self.sound) as i32
     }
     default_impl!(BreakSound);
 }

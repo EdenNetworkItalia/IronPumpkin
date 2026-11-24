@@ -234,15 +234,14 @@ impl DataComponentImpl for BlockStateImpl {
         }
         NbtTag::Compound(compound)
     }
+    /// A map from the property name to its value.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        let mut props = self.properties.to_vec();
-        props.sort_by(|a, b| a.0.cmp(&b.0));
-        for (k, v) in props {
-            digest.update(k.as_ref().as_bytes());
-            digest.update(v.as_ref().as_bytes());
-        }
-        digest.finalize() as i32
+        hash_ops::map(
+            self.properties
+                .iter()
+                .map(|(name, value)| (hash_ops::string(name), hash_ops::string(value)))
+                .collect(),
+        ) as i32
     }
     default_impl!(BlockState);
 }

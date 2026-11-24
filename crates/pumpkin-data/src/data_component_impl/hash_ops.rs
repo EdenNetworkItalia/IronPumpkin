@@ -2,7 +2,8 @@
 //! clicked stack. Each function returns the 4-byte CRC-32C of one encoded value. A compound
 //! value feeds the hashes of its parts into a new digest, as a Guava `HashCode` does.
 
-use crate::data_component_impl::{IDSet, IDSetContent};
+use crate::data_component_impl::basic::SoundEvent;
+use crate::data_component_impl::{IDSet, IDSetContent, IdOr};
 use crate::dynamic::namespaced_name;
 use crate::item_stack::ItemStack;
 use pumpkin_nbt::compound::NbtCompound;
@@ -260,6 +261,36 @@ pub fn holder_set<T: IDSetContent>(set: &IDSet<T>) -> u32 {
     }
 }
 
+/// Whether a float equals the default of an `optionalFieldOf` field. `Float.equals` compares
+/// the bits.
+#[must_use]
+pub const fn same_float(value: f32, default: f32) -> bool {
+    value.to_bits() == default.to_bits()
+}
+
+/// The hash of `SoundEvent.CODEC`: a registry sound as its id, an inline sound as
+/// `SoundEvent.DIRECT_CODEC`.
+#[must_use]
+pub fn sound(sound: &IdOr<SoundEvent>) -> u32 {
+    match sound {
+        IdOr::Id(sound) => id(sound.to_name()),
+        IdOr::Value(event) => {
+            let mut fields = MapHasher::new();
+            fields.put("sound_id", id(&event.sound_name));
+            if let Some(range) = event.range {
+                fields.put("range", float(range));
+            }
+            fields.finish()
+        }
+    }
+}
+
+/// Whether `sound` is the registry sound `name`, the default of an `optionalFieldOf` field.
+#[must_use]
+pub fn is_registry_sound(sound: &IdOr<SoundEvent>, name: &str) -> bool {
+    matches!(sound, IdOr::Id(sound) if sound.to_name() == name)
+}
+
 /// The hash of `ItemStackTemplate.CODEC`, which encodes a template as its map form.
 #[must_use]
 pub fn item_stack_template(stack: &ItemStack) -> u32 {
@@ -420,6 +451,11 @@ mod tests {
             crc(&[&[4], &values, &[5]])
         }
 
+        pub fn int_array(values: &[i32]) -> u32 {
+            let values: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+            crc(&[&[16], &values, &[17]])
+        }
+
         /// `HASH_COMPARATOR` compares `padToLong`, the unsigned value of the hash.
         pub fn map(entries: &[(&str, u32)]) -> u32 {
             let mut entries: Vec<(u32, u32)> = entries
@@ -533,5 +569,560 @@ mod tests {
             tool.get_hash() as u32,
             vanilla::map(&[("rules", vanilla::list(&[rule]))])
         );
+    }
+
+    mod codec_defaults {
+        use super::vanilla;
+        use crate::Enchantment;
+        use crate::data_component_impl::basic::{BreakSoundImpl, SoundEvent};
+        use crate::data_component_impl::block_entity::BlockStateImpl;
+        use crate::data_component_impl::combat::{
+            AttackRangeImpl, BlocksAttacksImpl, DamageReduction, DamageResistantImpl,
+            DeathProtectionImpl, EnchantmentsImpl, EquippableImpl, ItemDamageFunction,
+            KineticConditionImpl, KineticWeaponImpl, MobVisibilityImpl, PiercingWeaponImpl,
+            StoredEnchantmentsImpl, WeaponImpl,
+        };
+        use crate::data_component_impl::food::{
+            ConsumableImpl, ConsumeAnimation, ConsumeEffect, PotionContentsImpl,
+            StatusEffectInstance, SuspiciousStewEffect, SuspiciousStewEffectsImpl, UseCooldownImpl,
+            UseEffectsImpl,
+        };
+        use crate::data_component_impl::utility::{
+            BrewingFuelImpl, CookingFuelImpl, FireworkExplosionImpl, FireworkExplosionShape,
+            FireworksImpl, FloatProvider, IntProvider, ProfileImpl, ProfileProperty,
+        };
+        use crate::data_component_impl::{DataComponentImpl, EquipmentSlot, IDSet, IdOr, LoreImpl};
+        use crate::entity_type::EntityType;
+        use crate::potion::Potion;
+        use crate::sound::Sound;
+        use pumpkin_util::text::TextComponent;
+        use pumpkin_util::text::color::NamedColor;
+        use std::borrow::Cow;
+
+        fn hash(component: &impl DataComponentImpl) -> u32 {
+            component.get_hash() as u32
+        }
+
+        fn tag(name: &'static str) -> IDSet<crate::damage::DamageType> {
+            IDSet::Tag(Cow::Borrowed(name))
+        }
+
+        #[test]
+        fn enchantments_hash_a_sorted_map_of_ids_to_levels() {
+            let levels: Cow<'static, [(&'static Enchantment, i32)]> = Cow::Owned(vec![
+                (&Enchantment::SHARPNESS, 5),
+                (&Enchantment::UNBREAKING, 3),
+            ]);
+            let expected = vanilla::map(&[
+                ("minecraft:unbreaking", vanilla::int(3)),
+                ("minecraft:sharpness", vanilla::int(5)),
+            ]);
+            let stored = StoredEnchantmentsImpl {
+                enchantment: levels.clone(),
+            };
+            assert_eq!(
+                hash(&EnchantmentsImpl {
+                    enchantment: levels
+                }),
+                expected
+            );
+            assert_eq!(hash(&stored), expected);
+        }
+
+        #[test]
+        fn weapon_and_attack_range_omit_default_fields() {
+            let weapon = |damage, seconds| WeaponImpl {
+                item_damage_per_attack: damage,
+                disable_blocking_for_seconds: seconds,
+            };
+            assert_eq!(hash(&weapon(1, 0.0)), vanilla::map(&[]));
+            assert_eq!(
+                hash(&weapon(2, 5.0)),
+                vanilla::map(&[
+                    ("item_damage_per_attack", vanilla::int(2)),
+                    ("disable_blocking_for_seconds", vanilla::float(5.0)),
+                ])
+            );
+            let range = AttackRangeImpl {
+                min_reach: 0.0,
+                max_reach: 4.5,
+                min_creative_reach: 0.0,
+                max_creative_reach: 5.0,
+                hitbox_margin: 0.3,
+                mob_factor: 1.0,
+            };
+            assert_eq!(
+                hash(&range),
+                vanilla::map(&[("max_reach", vanilla::float(4.5))])
+            );
+        }
+
+        #[test]
+        fn holder_set_components_hash_tags_and_ids() {
+            let resistant = DamageResistantImpl {
+                types: tag("minecraft:is_fire"),
+            };
+            assert_eq!(
+                hash(&resistant),
+                vanilla::map(&[("types", vanilla::string("#minecraft:is_fire"))])
+            );
+            let visibility = MobVisibilityImpl {
+                targeting_entity_types: IDSet::IDs(Cow::Owned(vec![
+                    &EntityType::ZOMBIE,
+                    &EntityType::SKELETON,
+                ])),
+                visibility: 0.5,
+            };
+            // `ExtraCodecs.compactListCodec`: two ids are a list.
+            let ids = vanilla::list(&[
+                vanilla::string("minecraft:zombie"),
+                vanilla::string("minecraft:skeleton"),
+            ]);
+            assert_eq!(
+                hash(&visibility),
+                vanilla::map(&[
+                    ("targeting_entity_types", ids),
+                    ("visibility", vanilla::float(0.5)),
+                ])
+            );
+        }
+
+        #[test]
+        fn equippable_omits_default_sounds_and_flags() {
+            let mut equippable = EquippableImpl {
+                slot: &EquipmentSlot::HEAD,
+                equip_sound: IdOr::Id(Sound::ItemArmorEquipGeneric),
+                asset_id: None,
+                camera_overlay: None,
+                allowed_entities: None,
+                dispensable: true,
+                swappable: true,
+                damage_on_hurt: true,
+                equip_on_interact: false,
+                can_be_sheared: false,
+                shearing_sound: IdOr::Id(Sound::ItemShearsSnip),
+            };
+            assert_eq!(
+                hash(&equippable),
+                vanilla::map(&[("slot", vanilla::string("head"))])
+            );
+            equippable.equip_sound = IdOr::Id(Sound::ItemArmorEquipDiamond);
+            equippable.asset_id = Some(Cow::Borrowed("diamond"));
+            equippable.swappable = false;
+            assert_eq!(
+                hash(&equippable),
+                vanilla::map(&[
+                    ("slot", vanilla::string("head")),
+                    (
+                        "equip_sound",
+                        vanilla::string("minecraft:item.armor.equip_diamond")
+                    ),
+                    ("asset_id", vanilla::string("minecraft:diamond")),
+                    ("swappable", vanilla::boolean(false)),
+                ])
+            );
+        }
+
+        /// `MobEffectInstance.CODEC` with amplifier 1 and duration 200: the amplifier is an
+        /// `ExtraCodecs.UNSIGNED_BYTE` and `show_icon` is always written.
+        fn speed() -> (StatusEffectInstance, u32) {
+            let effect = StatusEffectInstance {
+                effect_id: Cow::Borrowed("minecraft:speed"),
+                amplifier: 1,
+                duration: 200,
+                ambient: false,
+                show_particles: true,
+                show_icon: true,
+            };
+            let expected = vanilla::map(&[
+                ("id", vanilla::string("minecraft:speed")),
+                ("amplifier", vanilla::byte(1)),
+                ("duration", vanilla::int(200)),
+                ("show_icon", vanilla::boolean(true)),
+            ]);
+            (effect, expected)
+        }
+
+        #[test]
+        fn consumable_and_death_protection_hash_consume_effects() {
+            let (effect, effect_hash) = speed();
+            let effects = vec![
+                ConsumeEffect::ApplyEffects((Cow::Owned(vec![effect]), 0.5)),
+                ConsumeEffect::ClearAllEffects,
+                ConsumeEffect::TeleportRandomly(16.0),
+                ConsumeEffect::PlaySound(IdOr::Value(SoundEvent {
+                    sound_name: "custom:ding".to_owned(),
+                    range: Some(8.0),
+                })),
+            ];
+            // `ConsumeEffect.CODEC` dispatches on `type` and puts the fields next to it.
+            let expected_effects = vanilla::list(&[
+                vanilla::map(&[
+                    ("type", vanilla::string("minecraft:apply_effects")),
+                    ("effects", vanilla::list(&[effect_hash])),
+                    ("probability", vanilla::float(0.5)),
+                ]),
+                vanilla::map(&[("type", vanilla::string("minecraft:clear_all_effects"))]),
+                vanilla::map(&[("type", vanilla::string("minecraft:teleport_randomly"))]),
+                vanilla::map(&[
+                    ("type", vanilla::string("minecraft:play_sound")),
+                    (
+                        "sound",
+                        vanilla::map(&[
+                            ("sound_id", vanilla::string("custom:ding")),
+                            ("range", vanilla::float(8.0)),
+                        ]),
+                    ),
+                ]),
+            ]);
+            let consumable = ConsumableImpl {
+                consume_seconds: 1.6,
+                animation: ConsumeAnimation::Drink,
+                sound_event: IdOr::Id(Sound::EntityGenericDrink),
+                consume_particles: true,
+                effects: Cow::Owned(effects.clone()),
+            };
+            assert_eq!(
+                hash(&consumable),
+                vanilla::map(&[
+                    ("animation", vanilla::string("drink")),
+                    ("sound", vanilla::string("minecraft:entity.generic.drink")),
+                    ("on_consume_effects", expected_effects),
+                ])
+            );
+            let protection = DeathProtectionImpl {
+                death_effects: Cow::Owned(effects),
+            };
+            assert_eq!(
+                hash(&protection),
+                vanilla::map(&[("death_effects", expected_effects)])
+            );
+            let default_consumable = ConsumableImpl {
+                consume_seconds: 1.6,
+                animation: ConsumeAnimation::Eat,
+                sound_event: IdOr::Id(Sound::EntityGenericEat),
+                consume_particles: true,
+                effects: Cow::Borrowed(&[]),
+            };
+            assert_eq!(hash(&default_consumable), vanilla::map(&[]));
+        }
+
+        #[test]
+        fn blocks_attacks_omit_the_default_reduction_and_item_damage() {
+            let mut blocks = BlocksAttacksImpl {
+                block_delay_seconds: 0.25,
+                disable_cooldown_scale: 1.0,
+                damage_reductions: Cow::Owned(vec![DamageReduction {
+                    horizontal_blocking_angle: 90.0,
+                    damage_type: None,
+                    base: 0.0,
+                    factor: 1.0,
+                }]),
+                item_damage: ItemDamageFunction {
+                    threshold: 1.0,
+                    base: 0.0,
+                    factor: 1.0,
+                },
+                bypassed_by: Some(tag("minecraft:bypasses_shield")),
+                block_sound: Some(IdOr::Id(Sound::ItemShieldBlock)),
+                disabled_sound: None,
+            };
+            let block_delay = ("block_delay_seconds", vanilla::float(0.25));
+            let bypassed_by = ("bypassed_by", vanilla::string("#minecraft:bypasses_shield"));
+            let block_sound = (
+                "block_sound",
+                vanilla::string("minecraft:item.shield.block"),
+            );
+            assert_eq!(
+                hash(&blocks),
+                vanilla::map(&[block_delay, bypassed_by, block_sound])
+            );
+            blocks.damage_reductions = Cow::Owned(vec![DamageReduction {
+                horizontal_blocking_angle: 45.0,
+                damage_type: Some(tag("minecraft:is_explosion")),
+                base: 1.0,
+                factor: 0.5,
+            }]);
+            blocks.item_damage.threshold = 3.0;
+            let reduction = vanilla::map(&[
+                ("horizontal_blocking_angle", vanilla::float(45.0)),
+                ("type", vanilla::string("#minecraft:is_explosion")),
+                ("base", vanilla::float(1.0)),
+                ("factor", vanilla::float(0.5)),
+            ]);
+            let item_damage = vanilla::map(&[
+                ("threshold", vanilla::float(3.0)),
+                ("base", vanilla::float(0.0)),
+                ("factor", vanilla::float(1.0)),
+            ]);
+            assert_eq!(
+                hash(&blocks),
+                vanilla::map(&[
+                    block_delay,
+                    ("damage_reductions", vanilla::list(&[reduction])),
+                    ("item_damage", item_damage),
+                    bypassed_by,
+                    block_sound,
+                ])
+            );
+        }
+
+        #[test]
+        fn piercing_and_kinetic_weapons_omit_default_fields() {
+            let piercing = PiercingWeaponImpl {
+                deals_knockback: false,
+                dismounts: true,
+                sound: Some(IdOr::Id(Sound::ItemTridentThrow)),
+                hit_sound: None,
+            };
+            assert_eq!(
+                hash(&piercing),
+                vanilla::map(&[
+                    ("deals_knockback", vanilla::boolean(false)),
+                    ("dismounts", vanilla::boolean(true)),
+                    ("sound", vanilla::string("minecraft:item.trident.throw")),
+                ])
+            );
+            let kinetic = KineticWeaponImpl {
+                contact_cooldown_ticks: 10,
+                delay_ticks: 5,
+                dismount_conditions: Some(KineticConditionImpl {
+                    max_duration_ticks: 100,
+                    min_speed: 0.0,
+                    min_relative_speed: 4.0,
+                }),
+                knockback_conditions: None,
+                damage_conditions: None,
+                forward_movement: 0.0,
+                damage_multiplier: 2.0,
+                sound: None,
+                hit_sound: None,
+            };
+            assert_eq!(
+                hash(&kinetic),
+                vanilla::map(&[
+                    ("delay_ticks", vanilla::int(5)),
+                    (
+                        "dismount_conditions",
+                        vanilla::map(&[
+                            ("max_duration_ticks", vanilla::int(100)),
+                            ("min_relative_speed", vanilla::float(4.0)),
+                        ]),
+                    ),
+                    ("damage_multiplier", vanilla::float(2.0)),
+                ])
+            );
+        }
+
+        #[test]
+        fn use_components_hash_like_their_codecs() {
+            let effects = UseEffectsImpl {
+                can_sprint: false,
+                interact_vibrations: true,
+                speed_multiplier: 0.2,
+            };
+            assert_eq!(hash(&effects), vanilla::map(&[]));
+            let effects = UseEffectsImpl {
+                can_sprint: true,
+                interact_vibrations: false,
+                speed_multiplier: 1.0,
+            };
+            assert_eq!(
+                hash(&effects),
+                vanilla::map(&[
+                    ("can_sprint", vanilla::boolean(true)),
+                    ("interact_vibrations", vanilla::boolean(false)),
+                    ("speed_multiplier", vanilla::float(1.0)),
+                ])
+            );
+            let cooldown = UseCooldownImpl {
+                seconds: 0.5,
+                cooldown_group: Some("ender_pearl".to_owned()),
+            };
+            assert_eq!(
+                hash(&cooldown),
+                vanilla::map(&[
+                    ("seconds", vanilla::float(0.5)),
+                    ("cooldown_group", vanilla::string("minecraft:ender_pearl")),
+                ])
+            );
+        }
+
+        #[test]
+        fn potion_and_stew_effects_hash_their_full_codecs() {
+            let (effect, effect_hash) = speed();
+            let potion = PotionContentsImpl {
+                potion_id: Some(i32::from(Potion::SWIFTNESS.id)),
+                custom_color: Some(0x00FF_0000),
+                custom_effects: vec![effect],
+                custom_name: None,
+            };
+            assert_eq!(
+                hash(&potion),
+                vanilla::map(&[
+                    ("potion", vanilla::string("minecraft:swiftness")),
+                    ("custom_color", vanilla::int(0x00FF_0000)),
+                    ("custom_effects", vanilla::list(&[effect_hash])),
+                ])
+            );
+            let stew = SuspiciousStewEffectsImpl {
+                effects: Cow::Owned(vec![
+                    SuspiciousStewEffect {
+                        effect: Cow::Borrowed("minecraft:night_vision"),
+                        duration: 160,
+                    },
+                    SuspiciousStewEffect {
+                        effect: Cow::Borrowed("minecraft:poison"),
+                        duration: 220,
+                    },
+                ]),
+            };
+            assert_eq!(
+                hash(&stew),
+                vanilla::list(&[
+                    vanilla::map(&[("id", vanilla::string("minecraft:night_vision"))]),
+                    vanilla::map(&[
+                        ("id", vanilla::string("minecraft:poison")),
+                        ("duration", vanilla::int(220)),
+                    ]),
+                ])
+            );
+        }
+
+        #[test]
+        fn fuels_hash_resolvable_numbers() {
+            let cooking = CookingFuelImpl {
+                burn_time: IntProvider::Inline(200),
+                speed_multiplier: FloatProvider::Id(Cow::Borrowed("custom:fast")),
+            };
+            assert_eq!(
+                hash(&cooking),
+                vanilla::map(&[
+                    ("burn_time", vanilla::int(200)),
+                    ("speed_multiplier", vanilla::string("custom:fast")),
+                ])
+            );
+            let brewing = BrewingFuelImpl {
+                uses: IntProvider::Id(Cow::Borrowed("blaze_powder_uses")),
+                speed_multiplier: FloatProvider::Inline(1.0),
+            };
+            assert_eq!(
+                hash(&brewing),
+                vanilla::map(&[
+                    ("uses", vanilla::string("minecraft:blaze_powder_uses")),
+                    ("speed_multiplier", vanilla::float(1.0)),
+                ])
+            );
+        }
+
+        #[test]
+        fn fireworks_hash_explosions_and_a_byte_duration() {
+            let explosion = FireworkExplosionImpl {
+                shape: FireworkExplosionShape::Star,
+                colors: vec![0x00FF_0000],
+                fade_colors: Vec::new(),
+                has_trail: true,
+                has_twinkle: false,
+            };
+            let explosion_hash = vanilla::map(&[
+                ("shape", vanilla::string("star")),
+                ("colors", vanilla::list(&[vanilla::int(0x00FF_0000)])),
+                ("has_trail", vanilla::boolean(true)),
+            ]);
+            assert_eq!(hash(&explosion), explosion_hash);
+            let fireworks = FireworksImpl {
+                flight_duration: 2,
+                explosions: vec![explosion],
+            };
+            assert_eq!(
+                hash(&fireworks),
+                vanilla::map(&[
+                    ("flight_duration", vanilla::byte(2)),
+                    ("explosions", vanilla::list(&[explosion_hash])),
+                ])
+            );
+        }
+
+        #[test]
+        fn profile_hashes_its_full_codec() {
+            let profile = ProfileImpl {
+                name: Some("Steve".to_owned()),
+                id: Some([1, 2, 3, 4]),
+                properties: vec![ProfileProperty {
+                    name: "textures".to_owned(),
+                    value: "abc".to_owned(),
+                    signature: None,
+                }],
+                texture: Some("entity/player/wide/steve".to_owned()),
+                cape: None,
+                elytra: None,
+                model: Some("slim".to_owned()),
+            };
+            assert_eq!(
+                hash(&profile),
+                vanilla::map(&[
+                    ("name", vanilla::string("Steve")),
+                    ("id", vanilla::int_array(&[1, 2, 3, 4])),
+                    (
+                        "properties",
+                        vanilla::list(&[vanilla::map(&[
+                            ("name", vanilla::string("textures")),
+                            ("value", vanilla::string("abc")),
+                        ])]),
+                    ),
+                    (
+                        "texture",
+                        vanilla::string("minecraft:entity/player/wide/steve"),
+                    ),
+                    ("model", vanilla::string("slim")),
+                ])
+            );
+        }
+
+        #[test]
+        fn break_sound_and_block_state_hash_like_their_codecs() {
+            let sound = BreakSoundImpl {
+                sound: IdOr::Id(Sound::ItemShieldBreak),
+            };
+            assert_eq!(hash(&sound), vanilla::string("minecraft:item.shield.break"));
+            let state = BlockStateImpl {
+                properties: Cow::Owned(vec![
+                    (Cow::Borrowed("half"), Cow::Borrowed("upper")),
+                    (Cow::Borrowed("open"), Cow::Borrowed("true")),
+                ]),
+            };
+            assert_eq!(
+                hash(&state),
+                vanilla::map(&[
+                    ("half", vanilla::string("upper")),
+                    ("open", vanilla::string("true")),
+                ])
+            );
+        }
+
+        /// `ComponentSerialization.CODEC` writes plain text as a string and styled text through
+        /// its fuzzy map codec, with no `type` field.
+        #[test]
+        fn lore_hashes_plain_and_styled_text() {
+            let lore = LoreImpl {
+                lines: vec![
+                    TextComponent::text("plain"),
+                    TextComponent::text("red")
+                        .color_named(NamedColor::Red)
+                        .italic(),
+                ],
+            };
+            assert_eq!(
+                hash(&lore),
+                vanilla::list(&[
+                    vanilla::string("plain"),
+                    vanilla::map(&[
+                        ("text", vanilla::string("red")),
+                        ("color", vanilla::string("red")),
+                        ("italic", vanilla::boolean(true)),
+                    ]),
+                ])
+            );
+        }
     }
 }
