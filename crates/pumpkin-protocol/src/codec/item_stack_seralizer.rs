@@ -976,3 +976,63 @@ impl From<Option<ItemStack>> for ItemStackOptionalTemplateSerializer<'_> {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin_data::data_component_impl::PotDecorationsImpl;
+
+    /// `HashOps.createString`: the tag, the UTF-16 length and the UTF-16 code units.
+    fn string_hash(value: &str) -> u32 {
+        let mut bytes = vec![12];
+        bytes.extend((value.encode_utf16().count() as i32).to_le_bytes());
+        bytes.extend(value.encode_utf16().flat_map(u16::to_le_bytes));
+        crc32c::crc32c(&bytes)
+    }
+
+    /// `HashOps.createMap` of one entry.
+    fn map_hash(key: &str, value: u32) -> u32 {
+        let mut bytes = vec![2];
+        bytes.extend(string_hash(key).to_le_bytes());
+        bytes.extend(value.to_le_bytes());
+        bytes.push(3);
+        crc32c::crc32c(&bytes)
+    }
+
+    /// The bytes of `HashedStack.STREAM_CODEC` for a stack with one added component.
+    fn client_hash(item: &Item, component: DataComponent, hash: i32) -> OptionalItemStackHash {
+        let mut bytes = vec![1];
+        bytes.write_var_int(&VarInt(i32::from(item.id))).unwrap();
+        bytes.write_var_int(&VarInt(1)).unwrap();
+        bytes.write_var_int(&VarInt(1)).unwrap();
+        bytes
+            .write_var_int(&VarInt(i32::from(component.to_id())))
+            .unwrap();
+        bytes.extend(hash.to_be_bytes());
+        bytes.write_var_int(&VarInt(0)).unwrap();
+        OptionalItemStackHash::read(&mut bytes.as_slice()).unwrap()
+    }
+
+    #[test]
+    fn client_hash_of_decorated_pot_matches() {
+        let pot = PotDecorationsImpl {
+            back: Some(ItemStack::new(1, &Item::BRICK)),
+            left: None,
+            right: None,
+            front: None,
+        };
+        let stack = ItemStack::new_with_component(
+            1,
+            &Item::DECORATED_POT,
+            vec![(DataComponent::PotDecorations, Some(pot.to_dyn()))],
+        );
+        // `PotDecorations.CODEC` with one side, an `ItemStackTemplate.CODEC` map with its id.
+        let expected = map_hash("back", map_hash("id", string_hash("minecraft:brick"))) as i32;
+        let pot = DataComponent::PotDecorations;
+        assert!(client_hash(&Item::DECORATED_POT, pot, expected).hash_equals(&stack));
+        assert!(!client_hash(&Item::DECORATED_POT, pot, expected ^ 1).hash_equals(&stack));
+        // The same number of components with another type does not match.
+        let other = DataComponent::Damage;
+        assert!(!client_hash(&Item::DECORATED_POT, other, expected).hash_equals(&stack));
+    }
+}
