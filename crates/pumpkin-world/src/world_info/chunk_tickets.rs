@@ -112,7 +112,8 @@ fn with_forced_chunks<S>(
 
 /// Writes `forced` as the forced tickets of the dimension and keeps the rest of the file.
 ///
-/// Writes nothing when there is no file and no forced chunk.
+/// Writes nothing when there is no file and no forced chunk. Writers of one dimension must not
+/// overlap: they share one temporary file.
 pub fn write_forced_chunks<S: BuildHasher>(
     dimension_folder: &Path,
     forced: &HashSet<Vector2<i32>, S>,
@@ -141,7 +142,7 @@ pub fn write_forced_chunks<S: BuildHasher>(
     let root = with_forced_chunks(existing, forced);
     let bytes = pumpkin_nbt::nbt_compress::write_gzip_compound_tag_to_bytes(root)
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))?;
-    write_file_atomically(&path, &bytes, false)?;
+    write_file_atomically(&path, &bytes, true)?;
     Ok(())
 }
 

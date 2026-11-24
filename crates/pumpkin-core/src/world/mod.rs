@@ -296,6 +296,8 @@ pub struct World {
     tick_spawns: std::sync::Mutex<Vec<(u64, i32)>>,
     active_chunk_tracker: std::sync::Mutex<ActiveChunkTracker>,
     pub forced_chunks: std::sync::Mutex<FxHashSet<Vector2<i32>>>,
+    /// Serializes the writes of `chunk_tickets.dat`, which share one temporary file.
+    forced_chunks_write: std::sync::Mutex<()>,
     /// Block entities indexed by chunk, so ticking only visits the currently
     /// active chunks instead of scanning every loaded block entity each tick.
     pub block_entities: DashMap<Vector2<i32>, FxHashMap<BlockPos, Arc<dyn BlockEntity>>>,
@@ -465,6 +467,7 @@ impl World {
             tick_spawns: std::sync::Mutex::new(Vec::new()),
             active_chunk_tracker: std::sync::Mutex::new(ActiveChunkTracker::default()),
             forced_chunks: std::sync::Mutex::new(forced_chunks),
+            forced_chunks_write: std::sync::Mutex::new(()),
             server,
             block_entities: DashMap::new(),
             pending_block_entity_migrations: crossbeam::queue::SegQueue::new(),
@@ -728,18 +731,21 @@ impl World {
         loading.send_change();
     }
 
-    fn save_forced_chunks(&self) {
+    /// Writes the forced chunks to `chunk_tickets.dat`.
+    pub fn save_forced_chunks(&self) -> Result<(), pumpkin_world::world_info::WorldInfoError> {
+        let _write = self
+            .forced_chunks_write
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let forced = self
             .forced_chunks
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone();
-        if let Err(e) = pumpkin_world::world_info::chunk_tickets::write_forced_chunks(
+        pumpkin_world::world_info::chunk_tickets::write_forced_chunks(
             &self.level.level_folder.dim_folder,
             &forced,
-        ) {
-            error!("Failed to save the forced chunks: {e}");
-        }
+        )
     }
 
     pub async fn shutdown(&self) {
@@ -756,7 +762,9 @@ impl World {
             self.save_block_entities(chunk_pos);
         }
         crate::plugin::attachments::save_level(self);
-        self.save_forced_chunks();
+        if let Err(e) = self.save_forced_chunks() {
+            error!("Failed to save the forced chunks: {e}");
+        }
 
         // Save portal POI to disk
         let save_result = self
@@ -8170,7 +8178,9 @@ impl World {
             let _ = portal_poi.save_all();
         }
         crate::plugin::attachments::save_level(self);
-        self.save_forced_chunks();
+        if let Err(e) = self.save_forced_chunks() {
+            error!("Failed to save the forced chunks: {e}");
+        }
 
         {
             let custom_data = self

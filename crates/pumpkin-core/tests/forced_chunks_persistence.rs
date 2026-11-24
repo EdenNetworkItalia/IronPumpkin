@@ -66,3 +66,31 @@ fn a_forced_chunk_of_the_save_gets_loaded() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 }
+
+#[test]
+fn overlapping_saves_of_the_forced_chunks_all_succeed() {
+    let _serial = support::serial();
+    let world = support::world();
+    world
+        .forced_chunks
+        .lock()
+        .unwrap()
+        .insert(Vector2::new(50, 50));
+
+    std::thread::scope(|scope| {
+        for offset in 0..4 {
+            let world = &world;
+            scope.spawn(move || {
+                for step in 0..100 {
+                    let pos = Vector2::new(60 + offset, 60 + step % 3);
+                    world.forced_chunks.lock().unwrap().insert(pos);
+                    world.save_forced_chunks().unwrap();
+                }
+            });
+        }
+    });
+
+    world.save_forced_chunks().unwrap();
+    let saved = reload(&world).forced_chunks.lock().unwrap().clone();
+    assert_eq!(saved, *world.forced_chunks.lock().unwrap());
+}
