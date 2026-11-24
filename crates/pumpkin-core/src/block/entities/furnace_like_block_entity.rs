@@ -1,4 +1,5 @@
-use pumpkin_data::{item_stack::ItemStack, recipes::CookingRecipe};
+use pumpkin_data::item_stack::ItemStack;
+use pumpkin_inventory::recipe_index::CookingEntry;
 
 use crate::block::entities::{BlockEntity, PropertyDelegate};
 pub use pumpkin_inventory::ExperienceContainer;
@@ -14,8 +15,7 @@ pub trait CookingBlockEntityBase:
     fn get_lit_total_time(&self) -> u16;
 
     /// Track that a recipe was used (for XP calculation on extraction)
-    /// Uses the result item ID as the recipe identifier
-    fn add_recipe_used(&self, recipe: &CookingRecipe);
+    fn add_recipe_used(&self, recipe: &CookingEntry);
     /// Extract and reset accumulated experience, returning the total as an integer
     /// Calculates XP from tracked recipes and clears the `recipes_used` map
     fn extract_experience_from_recipes(&self) -> i32;
@@ -30,8 +30,8 @@ pub trait CookingBlockEntityBase:
     fn set_lit_total_time(&self, total_time: u16);
 
     fn is_burning(&self) -> bool;
-    fn can_accept_recipe_output(&self, recipe: Option<&CookingRecipe>, max_count: u8) -> bool;
-    fn craft_recipe(&self, recipe: Option<&CookingRecipe>) -> bool;
+    fn can_accept_recipe_output(&self, recipe: Option<&CookingEntry>, max_count: u8) -> bool;
+    fn craft_recipe(&self, recipe: Option<&CookingEntry>) -> bool;
 }
 
 #[macro_export]
@@ -99,9 +99,9 @@ macro_rules! impl_cooking_block_entity_base {
                 self.get_lit_time_remaining() > 0
             }
 
-            fn add_recipe_used(&self, recipe: &pumpkin_data::recipes::CookingRecipe) {
+            fn add_recipe_used(&self, recipe: &pumpkin_inventory::recipe_index::CookingEntry) {
                 // Track recipe usage by recipe ID for XP calculation
-                let recipe_id = recipe.recipe_id.to_string();
+                let recipe_id = recipe.recipe_id.clone();
                 let mut recipes = self
                     .recipes_used
                     .lock()
@@ -115,10 +115,10 @@ macro_rules! impl_cooking_block_entity_base {
                     .recipes_used
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let index = pumpkin_inventory::recipe_index::current();
                 let mut total_xp: f32 = 0.0;
                 for (recipe_id, count) in recipes.iter() {
-                    // Look up the recipe's XP value
-                    if let Some(xp) = pumpkin_data::recipes::get_recipe_experience(recipe_id) {
+                    if let Some(xp) = index.cooking_experience(recipe_id) {
                         total_xp += xp * (*count as f32);
                     }
                 }
@@ -128,7 +128,7 @@ macro_rules! impl_cooking_block_entity_base {
 
             fn can_accept_recipe_output(
                 &self,
-                recipe: Option<&pumpkin_data::recipes::CookingRecipe>,
+                recipe: Option<&pumpkin_inventory::recipe_index::CookingEntry>,
                 max_count: u8,
             ) -> bool {
                 let Some(recipe) = recipe else { return false };
@@ -143,13 +143,8 @@ macro_rules! impl_cooking_block_entity_base {
                     return !is_top_items_empty;
                 }
 
-                if let Some(recipe_output_item) = pumpkin_data::item::Item::from_registry_key(
-                    recipe
-                        .result
-                        .id
-                        .strip_prefix("minecraft:")
-                        .unwrap_or(&recipe.result.id),
-                ) && !is_top_items_empty
+                if let Some(recipe_output_item) = recipe.result.item()
+                    && !is_top_items_empty
                     && recipe_output_item.id == side_item_stack.item.id
                     && side_item_stack.item_count < max_count
                     && side_item_stack.item_count < side_item_stack.get_max_stack_size()
@@ -158,7 +153,10 @@ macro_rules! impl_cooking_block_entity_base {
                 }
                 false
             }
-            fn craft_recipe(&self, recipe: Option<&pumpkin_data::recipes::CookingRecipe>) -> bool {
+            fn craft_recipe(
+                &self,
+                recipe: Option<&pumpkin_inventory::recipe_index::CookingEntry>,
+            ) -> bool {
                 let can_accept_output =
                     self.can_accept_recipe_output(recipe, self.get_max_count_per_stack());
                 if let Some(recipe) = recipe {
@@ -166,16 +164,10 @@ macro_rules! impl_cooking_block_entity_base {
                         let Ok(mut items) = self.items.try_write() else {
                             return false;
                         };
-                        let Some(output_item) = pumpkin_data::item::Item::from_registry_key(
-                            recipe
-                                .result
-                                .id
-                                .strip_prefix("minecraft:")
-                                .unwrap_or(&recipe.result.id),
-                        ) else {
+                        let output_item_stack = recipe.result.assemble();
+                        if output_item_stack.is_empty() {
                             return false;
-                        };
-                        let output_item_stack = ItemStack::new(recipe.result.count, output_item);
+                        }
 
                         if items[2].are_equal(ItemStack::EMPTY) {
                             items[2] = output_item_stack;
@@ -409,11 +401,10 @@ macro_rules! impl_inventory_for_cooking {
             /// Vanilla `AbstractFurnaceBlockEntity.setItem`: a different input item restarts cooking.
             fn on_stack_set(&self, slot: usize, is_same_item: bool, stack: &ItemStack) {
                 if slot == 0 && !is_same_item {
-                    if let Some(recipe) = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
-                        stack.item,
-                        $recipe_kind,
-                    ) {
-                        self.set_cooking_total_time(recipe.cookingtime as u16);
+                    if let Some(recipe) = pumpkin_inventory::recipe_index::current()
+                        .cooking_recipe(stack.item, &$recipe_kind)
+                    {
+                        self.set_cooking_total_time(recipe.cooking_time as u16);
                     } else {
                         self.set_cooking_total_time(0);
                     }
@@ -447,10 +438,8 @@ macro_rules! impl_block_entity_for_cooking {
 
                 let is_top_items_empty = top_item.is_empty();
 
-                let furnace_recipe = pumpkin_data::recipes::get_cooking_recipe_with_ingredient(
-                    top_item.item,
-                    $recipe_kind,
-                );
+                let recipe_index = pumpkin_inventory::recipe_index::current();
+                let furnace_recipe = recipe_index.cooking_recipe(top_item.item, &$recipe_kind);
 
                 let can_accept_output = self
                     .can_accept_recipe_output(furnace_recipe, self.get_max_count_per_stack());
@@ -541,7 +530,7 @@ macro_rules! impl_block_entity_for_cooking {
                             if self.get_cooking_time_spent() == self.get_cooking_total_time() {
                                 self.set_cooking_time_spent(0);
                                 if let Some(cooking_recipe) = furnace_recipe {
-                                    let cooking_total_time = cooking_recipe.cookingtime;
+                                    let cooking_total_time = cooking_recipe.cooking_time;
                                     self.set_cooking_total_time(cooking_total_time as u16);
 
                                     let mut smelt_cancelled = false;
@@ -549,7 +538,7 @@ macro_rules! impl_block_entity_for_cooking {
                                         let mut smelt_event = $crate::plugin::api::events::inventory::furnace_smelt::FurnaceSmeltEvent::new(
                                             self.position,
                                             top_item.item.registry_key.to_string(),
-                                            cooking_recipe.result.id.to_string(),
+                                            cooking_recipe.result.item_id.clone(),
                                         );
                                         server.plugin_manager.fire_blocking(&server, &mut smelt_event);
                                         if smelt_event.cancelled {

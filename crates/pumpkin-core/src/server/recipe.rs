@@ -1,8 +1,10 @@
 use std::sync::RwLock;
 
 use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
+use pumpkin_inventory::recipe_index;
 pub use pumpkin_protocol::codec::recipe::DynamicRecipe;
 
+/// The data pack and plugin recipes. Each change rebuilds the [`recipe_index`].
 pub struct RecipeManager {
     dynamic_recipes: RwLock<Vec<DynamicRecipe>>,
 }
@@ -27,6 +29,7 @@ impl RecipeManager {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         recipes.push(recipe);
+        recipe_index::install(&recipes);
     }
 
     pub fn add_recipes(&self, new_recipes: impl IntoIterator<Item = DynamicRecipe>) {
@@ -35,6 +38,7 @@ impl RecipeManager {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         recipes.extend(new_recipes);
+        recipe_index::install(&recipes);
     }
 
     pub fn set_recipes(&self, new_recipes: Vec<DynamicRecipe>) {
@@ -43,6 +47,7 @@ impl RecipeManager {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *recipes = new_recipes;
+        recipe_index::install(&recipes);
     }
 
     pub fn clear(&self) {
@@ -51,6 +56,7 @@ impl RecipeManager {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         recipes.clear();
+        recipe_index::install(&recipes);
     }
 
     pub fn get_dynamic_recipes_internal(&self) -> Vec<DynamicRecipe> {
