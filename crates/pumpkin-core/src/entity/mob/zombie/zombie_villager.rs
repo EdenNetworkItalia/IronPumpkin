@@ -352,14 +352,7 @@ impl ZombieVillagerEntity {
 }
 
 fn prevents_armor_change(stack: &ItemStack) -> bool {
-    stack
-        .get_data_component::<pumpkin_data::data_component_impl::EnchantmentsImpl>()
-        .is_some_and(|enchantments| {
-            enchantments
-                .enchantment
-                .iter()
-                .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_armor_change)
-        })
+    stack.has_prevent_armor_change()
 }
 
 impl CustomSound for ZombieVillagerEntity {

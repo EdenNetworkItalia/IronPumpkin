@@ -184,6 +184,16 @@ Rejected alternatives:
 - A sync row for a registry with `sync(true)` (research option C): the scan does not show a mod that needs it.
 - A generic registry in `pumpkin-data`: a change in a crate that every upstream merge touches, for registries that only mods read.
 
+### Data pack tags
+
+Vanilla loads the tags of every static registry from the data packs (`TagLoader`), in pack order: each file adds its entries to the tag, `replace` clears the entries of the earlier packs, an entry `{"id": .., "required": false}` is optional, and a tag that names a missing required entry does not load and is logged (`TagLoader.java:104-114`). NeoForge adds the `remove` list (`TagFile.java:7`, `TagLoader.java:68`). The bound tags answer every tag check, and the server sends them in the tags packet at the join and after a `/reload` (`PlayerList.java:881`). Pumpkin loads the tag files into `DatapackManager` (`data/datapack/tag_loader.rs`), but `Taggable::has_tag` reads the generated tags and the tags that mods register in code, and the tags packet sends the same (`update_tags.rs`). Only the item tags reach the recipes (`dynamic::set_data_pack_item_tags`, #191). So a data pack, or the data folder of a mod, that adds a block to `minecraft:mineable/pickaxe` changes nothing.
+
+At each data pack load and reload, `pumpkin-data` builds one effective tag table for each static registry, in the vanilla order: the generated tags (the vanilla pack), the mod tags registered in code (the mod packs sit after the vanilla pack, as NeoForge places `mod_data`), then the tag files of the enabled packs with the vanilla merge rules and the NeoForge `remove` list. The table holds the tags that a data pack changed or added, and every generated tag that reaches one of them through `#` references, rebuilt in dependency order as `TagLoader.build` does; the codegen emits the direct `#` references of each generated tag for this, because the generated members are flattened. The table swaps in one atomic step. `Taggable::has_tag` keeps the generated lookup when the table has no entry for the tag, so a server whose packs change no tag pays one load of an atomic pointer per check. The tags packet sends the effective members to a `Real` connection and the vanilla ids of the same tags to a `Display` connection, by the policy for vanilla clients. `TagsUpdatedEvent.ServerDataLoad` fires after the swap. Tags of the dynamic registries (biomes, structures and the other worldgen rows) load at startup with their registry, as in vanilla.
+
+Rejected alternatives:
+- Runtime maps for every generated tag: every tag check pays a hash lookup, and every upstream call site of the generated statics changes.
+- Data pack tags for items only (today): blocks, entity types, fluids and the other registries ignore the packs.
+
 ### Data conditions
 
 One module evaluates `neoforge:conditions` (`research/recipes-conditions.md` section 2.4, option A). Each loader for which NeoForge evaluates conditions calls it once after the JSON parse. The loaders run in two passes: tags first, so `tag_empty` sees the tags of every pack. The condition types are the NeoForge 26.3 set: `always`, `never`, `registered`, `mod_loaded`, `tag_empty`, `feature_flags_enabled`, `and`, `or`, `not`. `mod_loaded` reads the native mod list (`crates/pumpkin-core/src/plugin/startup.rs:46`) and does not see Wasm plugins, because the NeoForge `ModList` holds mods only. `registered` answers from the Pumpkin lookup of the named registry; for a registry without a lookup it is false, with a warning. `feature_flags_enabled` reads the enabled feature flags of the server in every loader, because Pumpkin has one fixed flag set. A file whose condition fails does not load. The data map and loot modifier loaders call the same function. A mod condition type registers in a decoder registry.
@@ -287,6 +297,7 @@ The table lists upstream files unless it marks a file as IronPumpkin. The resear
 | Mod menu types | the screen handler behaviour of `pumpkin-inventory`, `sync_handler.rs`, `player.rs` (`open_handled_screen`, `enqueue_property_packet`), `menus/mod.rs` (IronPumpkin) |
 | Item abilities, plantables, farmland water | `world/loot.rs`, `world/loot/generation.rs`, `entity/mod.rs`, `entity/player.rs`, `tripwire.rs`, `campfire.rs`, `ignition.rs`, `shears.rs`, `beehive.rs`, `pumpkin.rs`, `armadillo.rs`, `harvest_farmland.rs`, `villager/mod.rs`, `farmland.rs` |
 | Mod-defined registries and holder sets | the tag reader |
+| Data pack tags | `data/datapack/tag_loader.rs`, `data/datapack/mod.rs`, the `Taggable` codegen template of `tag.rs`, `dynamic.rs` (IronPumpkin), `update_tags.rs` (config and play) |
 | Data conditions | the loaders under `data/datapack/` and `dynamic_registry_loader.rs` |
 | Recipes | `server/recipe.rs`, `recipe_loader.rs` |
 | Game rules | `data_files.rs`, the `gamerule` command, the game rule packet, `game_rule.rs` of the events, the v0.2 host conversion |

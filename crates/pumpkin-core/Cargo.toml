@@ -118,5 +118,9 @@ tokio = { workspace = true, features = ["test-util"] }
 name = "event_dispatch"
 harness = false
 
+[[bench]]
+name = "chunk_tick"
+harness = false
+
 [lints]
 workspace = true

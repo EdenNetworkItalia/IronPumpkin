@@ -12,6 +12,8 @@ use std::sync::Arc;
 use pumpkin_core::plugin::{
     Context, EventPriority, Payload, PluginManager, PluginMetadata,
     enchantment::PlayerEnchantItemEvent,
+    enchantment::{EnchantedBlockLootEvent, EnchantedEntityLootEvent, GetEnchantmentLevelEvent},
+    inventory::{ItemAttributeModifierEvent, ItemStackedOnOtherEvent, PlayerBrewedPotionEvent},
     inventory::{
         grindstone_take::GrindstoneEventOnTakeItem, potion_brew_post::PotionBrewEventPost,
     },
@@ -67,6 +69,7 @@ use pumpkin_wasm_host_v0_2::{
     events::{
         WasmPluginEventHandler, neoforge::register_neoforge_event,
         neoforge_entity::register_neoforge_entity_event,
+        neoforge_item::register_neoforge_item_event,
         neoforge_living::register_neoforge_living_event,
         neoforge_player::register_neoforge_player_event,
         neoforge_server::register_neoforge_server_event,
@@ -484,6 +487,43 @@ fn each_server_event_type_registers_its_own_event() {
         "v0.2-server-routing-plugin",
         &cases,
         register_neoforge_server_event,
+    );
+}
+
+/// The item, enchantment, loot level, slot stacking and brewing events route through
+/// `register_neoforge_item_event` the same way.
+#[test]
+fn each_item_event_type_registers_its_own_event() {
+    let cases: [(EventType, Listens); 6] = [
+        (
+            EventType::ItemAttributeModifierEvent,
+            listens::<ItemAttributeModifierEvent>,
+        ),
+        (
+            EventType::ItemStackedOnOtherEvent,
+            listens::<ItemStackedOnOtherEvent>,
+        ),
+        (
+            EventType::GetEnchantmentLevelEvent,
+            listens::<GetEnchantmentLevelEvent>,
+        ),
+        (
+            EventType::EnchantedBlockLootEvent,
+            listens::<EnchantedBlockLootEvent>,
+        ),
+        (
+            EventType::EnchantedEntityLootEvent,
+            listens::<EnchantedEntityLootEvent>,
+        ),
+        (
+            EventType::PlayerBrewedPotionEvent,
+            listens::<PlayerBrewedPotionEvent>,
+        ),
+    ];
+    assert_each_registers_its_own_event(
+        "v0.2-item-routing-plugin",
+        &cases,
+        register_neoforge_item_event,
     );
 }
 

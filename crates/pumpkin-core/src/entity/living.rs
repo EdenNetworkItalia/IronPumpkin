@@ -42,8 +42,8 @@ use pumpkin_data::block_properties::{LadderLikeProperties, OakTrapdoorLikeProper
 use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeAnimation, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
-    AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl, GliderImpl, UseRemainderImpl,
+    BlocksAttacksImpl, DeathProtectionImpl, EquipmentSlot, EquippableImpl, FoodImpl, GliderImpl,
+    UseRemainderImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
@@ -756,12 +756,13 @@ impl LivingEntity {
     /// the client never sees the reduced attack speed and does not show the
     /// crosshair attack indicator.
     fn update_weapon_attributes(&self, stack: &ItemStack) {
-        let component = stack.get_data_component::<AttributeModifiersImpl>();
+        let component = stack.get_attribute_modifiers();
 
         // Single pass over the item's modifiers, split by attribute.
         let mut speed_modifiers: Vec<Modifier> = Vec::new();
         let mut damage_modifiers: Vec<Modifier> = Vec::new();
         for modifier in component
+            .as_deref()
             .into_iter()
             .flat_map(|c| c.attribute_modifiers.iter())
         {
@@ -877,8 +878,9 @@ impl LivingEntity {
         }
 
         let mut applied = Vec::new();
-        let item_modifiers = stack
-            .get_data_component::<AttributeModifiersImpl>()
+        let item_component = stack.get_attribute_modifiers();
+        let item_modifiers = item_component
+            .as_deref()
             .into_iter()
             .flat_map(|modifiers| modifiers.attribute_modifiers.iter());
         for item_mod in item_modifiers {
@@ -3030,7 +3032,19 @@ impl LivingEntity {
             self.entity.pose.store(EntityPose::Dying);
 
             if should_drop_loot {
-                self.drop_equipment(looting_level);
+                // Vanilla `processEquipmentDropChance` asks `getEntityLootEnchantmentLevel` for
+                // the level of each equipment drop effect of the attacker.
+                let equipment_looting = if looting_level > 0 {
+                    crate::plugin::item_events::entity_loot_enchantment_level(
+                        &params,
+                        &Enchantment::LOOTING,
+                        looting_level.cast_signed(),
+                    )
+                    .cast_unsigned()
+                } else {
+                    0
+                };
+                self.drop_equipment(equipment_looting);
             }
             if perished && let Some(mob) = dyn_self.get_mob() {
                 mob.drop_inventory();
@@ -3064,10 +3078,13 @@ impl LivingEntity {
         let world = self.entity.world.load();
         let block_pos = self.entity.block_pos.load();
 
+        // `prevents_equipment_drop` fires `GetEnchantmentLevelEvent`: a handler may set a drop
+        // chance, so the loop reads a copy.
         let drop_chances = self
             .equipment_drop_chances
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
 
         let slots_to_drop: Vec<EquipmentSlot> = {
             let mut slots: Vec<_> = self.equipment_slots.values().cloned().collect();
@@ -3263,12 +3280,10 @@ impl LivingEntity {
             });
         let world = self.entity.world.load();
         if let Some(loot_table) = world.get_loot_table(&key) {
-            let seed = mob
-                .map(|mob| mob.death_loot_table_seed.load(Relaxed))
-                .filter(|seed| *seed != 0)
-                .unwrap_or_else(rand::random);
+            // `LivingEntity.getLootTableSeed`: 0 is no seed, so the roll draws from the sequence.
+            let seed = mob.map_or(0, |mob| mob.death_loot_table_seed.load(Relaxed));
             let pos = self.entity.block_pos.load();
-            for stack in crate::world::loot::generate_loot_from_handle(&loot_table, seed, params) {
+            for stack in crate::world::loot::roll_loot(&loot_table, seed, params) {
                 world.drop_stack(&pos, stack);
             }
         }
@@ -3539,15 +3554,22 @@ impl LivingEntity {
                     }
                 }
             } else if durability_damage > 0 {
-                let mut equipment_guard = self
+                // The unbreaking read of `damage_item` fires `GetEnchantmentLevelEvent`, so no
+                // equipment lock is held while the stack takes the damage.
+                let mut shield = self
                     .entity_equipment
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(stack) = equipment_guard.equipment.get_mut(&slot) {
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .equipment
+                    .get(&slot)
+                    .cloned();
+                if let Some(stack) = shield.as_mut() {
                     let break_sound = stack
                         .get_data_component::<pumpkin_data::data_component_impl::BreakSoundImpl>()
                         .map(|bs| bs.sound.clone());
-                    if stack.damage_item(durability_damage) == DamageResult::Broken {
+                    let result = stack.damage_item(durability_damage);
+                    let broken = result == DamageResult::Broken;
+                    if broken {
                         if let Some(ref sound) = break_sound {
                             world.play_sound_event(sound, SoundCategory::Neutral, &player_pos);
                         }
@@ -3557,10 +3579,15 @@ impl LivingEntity {
                             ActorEventID::None,
                         );
                         *stack = ItemStack::EMPTY.clone();
-                        let broken_stack = stack.clone();
-                        drop(equipment_guard);
-
-                        self.send_equipment_changes(&[(slot, broken_stack)]);
+                    }
+                    if result != DamageResult::Untouched {
+                        self.entity_equipment
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .put(&slot, stack.clone());
+                    }
+                    if broken {
+                        self.send_equipment_changes(&[(slot, stack.clone())]);
                         self.clear_active_hand();
                     }
                 }
@@ -4147,24 +4174,28 @@ impl LivingEntity {
         }
 
         let mut epf = 0.0f32;
-        {
+        // `get_all_enchantments` fires `GetEnchantmentLevelEvent`: read it with no lock held.
+        let armor: Vec<ItemStack> = {
             let equipment_lock = self
                 .entity_equipment
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            for slot in [
+            [
                 EquipmentSlot::HEAD,
                 EquipmentSlot::CHEST,
                 EquipmentSlot::LEGS,
                 EquipmentSlot::FEET,
-            ] {
-                if let Some(stack) = equipment_lock.equipment.get(&slot)
-                    && !stack.is_empty()
-                    && let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>()
-                {
-                    for (enchantment, level) in enchantments.enchantment.iter() {
-                        enchantment.modify_damage_protection_against(*level, damage_type, &mut epf);
-                    }
+            ]
+            .iter()
+            .filter_map(|slot| equipment_lock.equipment.get(slot))
+            .filter(|stack| !stack.is_empty())
+            .cloned()
+            .collect()
+        };
+        for stack in &armor {
+            if let Some(enchantments) = stack.get_all_enchantments() {
+                for (enchantment, level) in enchantments.enchantment.iter() {
+                    enchantment.modify_damage_protection_against(*level, damage_type, &mut epf);
                 }
             }
         }
@@ -5639,24 +5670,21 @@ pub(crate) const fn bypasses_armor_durability(damage_type: &DamageType) -> bool 
 }
 
 pub(crate) fn prevents_armor_change(stack: &ItemStack) -> bool {
-    stack
-        .get_data_component::<EnchantmentsImpl>()
-        .is_some_and(|enchantments| {
-            enchantments
-                .enchantment
-                .iter()
-                .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_armor_change)
-        })
+    stack.get_all_enchantments().is_some_and(|enchantments| {
+        enchantments
+            .enchantment
+            .iter()
+            .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_armor_change)
+    })
 }
 
 pub(crate) fn prevents_equipment_drop(stack: &ItemStack) -> bool {
-    stack
-        .get_data_component::<EnchantmentsImpl>()
-        .is_some_and(|enchantments| {
-            enchantments.enchantment.iter().any(|(enchantment, level)| {
-                *level > 0 && enchantment.effects.prevent_equipment_drop
-            })
-        })
+    stack.get_all_enchantments().is_some_and(|enchantments| {
+        enchantments
+            .enchantment
+            .iter()
+            .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_equipment_drop)
+    })
 }
 
 #[cfg(test)]

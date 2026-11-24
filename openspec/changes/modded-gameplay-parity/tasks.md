@@ -96,8 +96,18 @@ Rules for every task:
 
 ### Wave 2: conditions, recipes, registries, game rules, chunk tickets
 
+- [ ] 6.41 Data pack tags
+  - Needs: 6.2.
+  - Build the effective tag table of each static registry at each data pack load and reload: the generated tags, the mod tags registered in code, then the tag files of the enabled packs in pack order, with `replace`, optional entries, nested tags and the NeoForge `remove` list.
+  - Emit the direct `#` references of each generated tag from the codegen. Rebuild every generated tag that reaches a changed tag, in dependency order.
+  - Skip a tag with a missing required entry, with the vanilla log line. Skip a tag in a reference cycle.
+  - Let `Taggable::has_tag` and the tag value lookups read the table, with the generated lookup when the table has no entry for the tag.
+  - Send the effective members in the tags packet at the join and after a reload: mod ids to a `Real` connection, vanilla ids to a `Display` connection.
+  - Fold `dynamic::set_data_pack_item_tags` of #191 into the table.
+  - Verify: requirements "Data pack tags apply to tag checks", "Merge rules", "Missing references", "The tags packet" and "Cost of tag checks" of `neoforge-data-tags`.
+  - Verify: a `has_tag` bench with and without a changed tag, on master and the branch.
 - [ ] 6.9 Data conditions
-  - Needs: 6.2, 6.3.
+  - Needs: 6.2, 6.3, 6.41.
   - Add one module that evaluates `neoforge:conditions` after the JSON parse of each covered loader.
   - Run the loaders in two passes, tags first.
   - Read the mod list from `plugin/startup.rs`. Answer `registered` from the Pumpkin lookups, false with a warning when none exists.
@@ -140,6 +150,7 @@ Rules for every task:
   - Give each `pumpkin-util` arm a type-erased value with a manual `PartialEq`, and the parser a decode hook from `pumpkin-core`.
   - Cover `trigger_type`, `loot_function_type`, `loot_pool_entry_type`, `loot_condition_type`, `data_component_predicate_type` and `entity_sub_predicate_type`.
   - Expose a trigger fire call to mods.
+  - Let the data pack loaders of #201 accept the mod types: the advancement loader checks a trigger against the vanilla names and `TRIGGER_TYPES`; the loot table, predicate, item modifier and slot source loaders check a `type` against the vanilla names and the decoder registry of the type.
   - Verify: requirement "Use sites call the decoded behaviour" of `neoforge-static-registries`.
 - [ ] 6.15 Mod game rules
   - Needs: 6.1.
