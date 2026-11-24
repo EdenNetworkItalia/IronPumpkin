@@ -1,7 +1,6 @@
 use crate::{entity::EntityBase, world::World};
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient};
@@ -99,7 +98,7 @@ fn direct_attacker_weapon_has_enchantment(params: &LootContextParameters, tag: &
     params
         .direct_attacker_weapon
         .as_ref()
-        .and_then(|weapon| weapon.get_data_component::<EnchantmentsImpl>())
+        .and_then(ItemStack::get_all_enchantments)
         .is_some_and(|enchantments| {
             enchantments
                 .enchantment

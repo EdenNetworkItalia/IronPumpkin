@@ -639,3 +639,43 @@ fn item_stacked_on_other_event_fires_for_a_drag_over_one_slot() {
             .is_empty()
     );
 }
+
+const SMELT_TABLE: &str = r##"{"pools":[{"entries":[{"type":"minecraft:item","name":"minecraft:beef","modifier":[{"type":"minecraft:furnace_smelt","conditions":[{"condition":"minecraft:entity_properties","entity":"direct_attacker","predicate":{"equipment":{"mainhand":{"predicates":{"minecraft:enchantments":[{"enchantments":"#minecraft:smelts_loot"}]}}}}}]}]}]}]}"##;
+
+const SILK_TABLE: &str = r#"{"pools":[{"entries":[{"type":"minecraft:item","name":"minecraft:diamond","conditions":[{"condition":"minecraft:match_tool","predicate":{"items":"minecraft:golden_pickaxe","predicates":{"minecraft:enchantments":[{"enchantments":"minecraft:silk_touch","levels":{"min":1}}]}}}]}]}]}"#;
+
+/// NeoForge reads `getAllEnchantments` in the `smelts_loot` weapon check and in the
+/// `minecraft:enchantments` item predicate: a handler that adds an enchantment to a stack changes
+/// what the loot sees.
+#[test]
+fn loot_checks_read_the_enchantments_that_a_handler_adds() {
+    let _serial = support::serial();
+    let smelt = parse_loot_table(SMELT_TABLE).unwrap();
+    let silk = parse_loot_table(SILK_TABLE).unwrap();
+    let sword = ItemStack::new(1, &Item::GOLDEN_SWORD);
+    let pickaxe = ItemStack::new(1, &Item::GOLDEN_PICKAXE);
+    let kill = LootContextParameters {
+        direct_attacker_weapon: Some(sword),
+        ..Default::default()
+    };
+    let mine = LootContextParameters {
+        tool: Some(pickaxe),
+        ..Default::default()
+    };
+    let item_names = |table, params: &LootContextParameters<'_>| {
+        generate_dynamic_loot_with_context(table, 1, params)
+            .iter()
+            .map(|stack| stack.item.registry_key)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(item_names(&smelt, &kill), ["beef"]);
+    assert!(item_names(&silk, &mine).is_empty());
+    on::<GetEnchantmentLevelEvent, _>(|event| match event.stack.item.registry_key {
+        "golden_sword" => event.set_level(&Enchantment::FIRE_ASPECT, 1),
+        "golden_pickaxe" => event.set_level(&Enchantment::SILK_TOUCH, 1),
+        _ => {}
+    });
+
+    assert_eq!(item_names(&smelt, &kill), ["cooked_beef"]);
+    assert_eq!(item_names(&silk, &mine), ["diamond"]);
+}
