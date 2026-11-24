@@ -1,4 +1,5 @@
 pub mod advancement_loader;
+pub mod context_provider_eval;
 pub mod context_provider_loader;
 pub mod damage_type_loader;
 pub mod dynamic_registry_loader;

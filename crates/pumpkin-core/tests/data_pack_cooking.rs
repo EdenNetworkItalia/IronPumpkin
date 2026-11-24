@@ -553,3 +553,38 @@ fn a_blast_furnace_halves_the_cook_time_of_a_vanilla_recipe() {
     assert_eq!(furnace.get_cooking_total_time(), 100);
     assert_eq!(furnace.get_speed_multiplier(), 2.0);
 }
+
+/// A data pack provider with the id `minecraft:cooking/speed_default` replaces the built-in one,
+/// as vanilla `ResolvableFloat` reads the provider of the registry.
+#[test]
+fn a_provider_that_a_pack_overrides_changes_the_fuel_speed() {
+    let _serial = support::serial();
+    let mut recipe = cooking("test:slow_dirt", "minecraft:dirt", "minecraft:diamond");
+    recipe.cooking_time = 10;
+    let server = support::server();
+    server
+        .recipe_manager
+        .set_recipes(vec![DynamicRecipe::Cooking(
+            OwnedCookingRecipeType::Smelting(recipe),
+        )]);
+    let id = "minecraft:cooking/speed_default";
+    let built_in = server.datapack_manager.get_context_float_provider(id);
+    server
+        .datapack_manager
+        .insert_context_float_provider(id.to_string(), pumpkin_nbt::tag::NbtTag::Double(4.0));
+
+    let world = support::world();
+    let furnace = furnace_with(&world, 24);
+    furnace.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    furnace.tick(&world);
+    assert_eq!(furnace.get_speed_multiplier(), 4.0);
+    // 10 ticks at 4 times the speed, rounded up.
+    assert_eq!(furnace.get_cooking_total_time(), 3);
+
+    if let Some(built_in) = built_in {
+        server
+            .datapack_manager
+            .insert_context_float_provider(id.to_string(), built_in);
+    }
+}

@@ -43,6 +43,45 @@ pub trait CookingBlockEntityBase:
     fn craft_recipe(&self, recipe: Option<&CookingEntry>) -> bool;
 }
 
+/// The burn time and the speed multiplier of `fuel` in the furnace `block`.
+///
+/// Vanilla `getBurnDuration` and `getSpeedMultiplier` read them from the provider of the fuel,
+/// which a data pack can define. Without a server, or for a provider that has no value here,
+/// the built-in value of the fuel applies.
+#[must_use]
+pub fn resolve_fuel(
+    server: Option<&crate::server::Server>,
+    block: &pumpkin_data::Block,
+    fuel: &pumpkin_data::data_component_impl::CookingFuelImpl,
+    is_fast: bool,
+) -> (u16, f32) {
+    use pumpkin_data::data_component_impl::{FloatProvider, IntProvider};
+
+    let context =
+        server.map(
+            |server| crate::data::datapack::context_provider_eval::ProviderContext {
+                datapacks: &server.datapack_manager,
+                block,
+            },
+        );
+    let burn_time = match (&fuel.burn_time, &context) {
+        (IntProvider::Inline(time), _) => Some(*time),
+        (IntProvider::Id(id), Some(context)) => context.int_by_id(id),
+        (IntProvider::Id(_), None) => None,
+    }
+    .map_or_else(
+        || fuel.get_burn_ticks(is_fast),
+        |time| u16::try_from(time.max(0)).unwrap_or(u16::MAX),
+    );
+    let speed = match (&fuel.speed_multiplier, &context) {
+        (FloatProvider::Inline(speed), _) => Some(*speed),
+        (FloatProvider::Id(id), Some(context)) => context.float_by_id(id),
+        (FloatProvider::Id(_), None) => None,
+    }
+    .unwrap_or_else(|| fuel.get_speed_multiplier(is_fast));
+    (burn_time, speed)
+}
+
 /// The speed multiplier of a furnace that no fuel has lit, as vanilla `DEFAULT_SPEED_MULTIPLIER`.
 pub const DEFAULT_SPEED_MULTIPLIER: f32 = 1.0;
 
@@ -565,11 +604,16 @@ macro_rules! impl_block_entity_for_cooking {
                         );
                         let fuel_component = bottom_item
                             .get_data_component::<pumpkin_data::data_component_impl::CookingFuelImpl>();
-                        let adjusted_fuel_ticks = fuel_component
-                            .map_or(0, |fuel| fuel.get_burn_ticks(is_fast));
-                        let new_speed_multiplier = fuel_component.map_or(
-                            $crate::block::entities::furnace_like_block_entity::DEFAULT_SPEED_MULTIPLIER,
-                            |fuel| fuel.get_speed_multiplier(is_fast),
+                        let (adjusted_fuel_ticks, new_speed_multiplier) = fuel_component.map_or(
+                            (0, $crate::block::entities::furnace_like_block_entity::DEFAULT_SPEED_MULTIPLIER),
+                            |fuel| {
+                                $crate::block::entities::furnace_like_block_entity::resolve_fuel(
+                                    world.server.upgrade().as_deref(),
+                                    world.get_block(&self.position),
+                                    fuel,
+                                    is_fast,
+                                )
+                            },
                         );
 
                         let mut burn_ticks = adjusted_fuel_ticks;
@@ -736,7 +780,7 @@ macro_rules! impl_block_entity_for_cooking {
                         .map_or(0, |lit_time_remaining| lit_time_remaining as u16),
                 );
                 let speed_multiplier = AtomicU32::new(
-                    nbt.get_float("speed_multiplier")
+                    nbt.get_numeric_float("speed_multiplier")
                         .unwrap_or($crate::block::entities::furnace_like_block_entity::DEFAULT_SPEED_MULTIPLIER)
                         .to_bits(),
                 );
