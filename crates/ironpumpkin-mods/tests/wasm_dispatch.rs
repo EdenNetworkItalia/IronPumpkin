@@ -2323,3 +2323,58 @@ fn a_plugin_takes_a_record_while_a_wasm_handler_listens_to_the_game_event() {
     assert!(native_fires.load(std::sync::atomic::Ordering::SeqCst) > 0);
     assert!(guest_log(GUEST, "GenericGameEvent").is_empty());
 }
+
+/// `living-entity.clear-equipment` returns while a Wasm handler listens to
+/// `ItemAttributeModifierEvent`: the host clears the equipment after the guest call, and the
+/// read of the attribute modifiers of the empty main hand fires the event then.
+#[test]
+fn a_plugin_clears_equipment_while_a_wasm_handler_listens_to_the_attribute_modifier_event() {
+    let _serial = setup();
+    let id: i32 = ipc(GUEST, "equip 1702.5 120 0.5").parse().unwrap();
+    let entity = support::world().get_entity_by_id(id).unwrap();
+    let living = entity.get_living_entity().unwrap();
+    let main_hand_empty = || {
+        living
+            .entity_equipment
+            .lock()
+            .unwrap()
+            .get(&pumpkin_data::data_component_impl::EquipmentSlot::MAIN_HAND)
+            .is_empty()
+    };
+    assert!(!main_hand_empty());
+    guest_log(GUEST, "ItemAttributeModifierEvent");
+
+    let seen = import_fires(
+        &format!("clear-equipment {id}"),
+        "ItemAttributeModifierEvent",
+        1,
+    );
+
+    assert!(seen.iter().all(|entry| entry.ends_with("- -")), "{seen:?}");
+    assert!(main_hand_empty());
+}
+
+/// `java-player.send-raw-packet` fires no `PacketSentEvent`, but between two deferred sends of one
+/// guest call it goes to the same queue: the client gets the three packets in call order.
+#[test]
+fn a_raw_packet_between_two_deferred_sends_keeps_its_place() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "RawOrderPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+    let (chat, _) = message_ids();
+    let raw = 0x7e;
+
+    ipc(GUEST, "arm");
+    assert_eq!(
+        ipc_returns(&format!("import raw-between RawOrderPlayer {raw}")),
+        ""
+    );
+
+    let seen = arrived(peer, 3, |id, payload| {
+        id == chat || (id == raw && payload == [9])
+    });
+    assert_eq!(seen, [chat, raw, chat]);
+}

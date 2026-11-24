@@ -588,6 +588,14 @@ fn import(words: &[&str]) -> Result<String, String> {
             player.show_title(TextComponent::text("two"));
             player.send_system_message(TextComponent::text("three"), false);
         }
+        // A raw packet with the id `id` between two messages, in one guest call.
+        ["raw-between", name, id] => {
+            let player = player(name)?;
+            let java = player.as_java().ok_or("not a java player")?;
+            player.send_system_message(TextComponent::text("one"), false);
+            java.send_raw_packet(number(id)?, &[9]);
+            player.send_system_message(TextComponent::text("three"), false);
+        }
         ["harvest", name, x, y, z] => {
             let pos = BlockPos {
                 x: number(x)?,
@@ -618,6 +626,12 @@ fn import(words: &[&str]) -> Result<String, String> {
             let removed = jukebox.get_container().remove_stack(0);
             return Ok(if removed.is_some() { "some" } else { "none" }.to_owned());
         }
+        ["clear-equipment", id] => world
+            .get_entity_by_id(number(id)?)
+            .ok_or("no entity")?
+            .as_living()
+            .ok_or("not living")?
+            .clear_equipment(),
         ["velocity", name] => player(name)?.set_velocity((0.0, 0.5, 0.0)),
         ["knockback", name] => player(name)?.apply_knockback(0.4, 1.0, 0.0),
         ["links", name] => player(name)?.set_server_links(links()),
