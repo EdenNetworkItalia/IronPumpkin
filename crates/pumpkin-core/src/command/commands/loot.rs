@@ -413,7 +413,18 @@ impl CommandExecutor for LootExecutor {
                 });
                 let params = LootContextParameters {
                     world: Some(context.world()),
-                    killed_by_player: Some(killer.is_some()),
+                    last_damage_player: killer
+                        .as_ref()
+                        .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                    damage_source: Some(crate::world::loot::LootDamageSource {
+                        damage_type: pumpkin_data::damage::DamageType::MAGIC,
+                        attacker: killer
+                            .as_ref()
+                            .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                        direct: killer
+                            .as_ref()
+                            .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                    }),
                     tool: killer_tool,
                     position: killer.as_ref().map(|p| p.position()),
                     ..Default::default()

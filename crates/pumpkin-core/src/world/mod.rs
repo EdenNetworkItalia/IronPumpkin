@@ -6138,7 +6138,6 @@ impl World {
                 tool: tool.clone().filter(|item| !item.is_empty()),
                 block_state: Some(broken_block_state),
                 position: Some(position.to_f64()),
-                killed_by_player: Some(cause.is_some()),
                 ..Default::default()
             };
             crate::block::drop_loot(self, broken_block, position, exp.is_none(), &params);

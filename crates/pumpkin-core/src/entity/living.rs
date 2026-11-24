@@ -2971,8 +2971,8 @@ impl LivingEntity {
                 .then(|| self.get_last_hurt_by_player())
                 .flatten();
 
+            // `LivingEntity.dropFromLootTable`: a player kill sets the player and its luck.
             let params = LootContextParameters {
-                killed_by_player: Some(has_player_kill),
                 last_damage_player: last_damage_player
                     .as_deref()
                     .map(|player| player as &dyn EntityBase),
@@ -3012,7 +3012,7 @@ impl LivingEntity {
 
             // Award experience
             if perished
-                && params.killed_by_player.unwrap_or(false)
+                && has_player_kill
                 && world.level_info.load().game_rules.mob_drops
                 && dyn_self.should_drop_experience()
             {

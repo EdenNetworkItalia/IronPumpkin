@@ -41,7 +41,6 @@ pub struct LootContextParameters<'a> {
     pub world: Option<&'a World>,
     pub explosion_radius: Option<f32>,
     pub block_state: Option<&'static BlockState>,
-    pub killed_by_player: Option<bool>,
     pub luck: f32,
     pub this_entity: Option<&'a dyn EntityBase>,
     pub killer_entity: Option<&'a dyn EntityBase>,
@@ -57,7 +56,8 @@ pub struct LootContextParameters<'a> {
     pub is_on_fire: Option<bool>,
     pub direct_attacker_weapon: Option<ItemStack>,
     pub enchantment_level: Option<i32>,
-    /// `LAST_DAMAGE_PLAYER`: the player that last damaged the killed entity.
+    /// `LAST_DAMAGE_PLAYER`: the player that last damaged the killed entity. The condition
+    /// `killed_by_player` tests this field only.
     pub last_damage_player: Option<&'a dyn EntityBase>,
     /// `DAMAGE_SOURCE`.
     pub damage_source: Option<LootDamageSource<'a>>,
@@ -76,11 +76,6 @@ impl LootContextParameters<'_> {
     fn resolved_damage_type(&self) -> Option<DamageType> {
         self.damage_type
             .or_else(|| self.damage_source.map(|source| source.damage_type))
-    }
-
-    /// `KilledByPlayer`: the flag, or a player of the last damage.
-    fn killed_by_player(&self) -> bool {
-        self.killed_by_player.unwrap_or(false) || self.last_damage_player.is_some()
     }
 }
 
@@ -218,7 +213,7 @@ fn check_dynamic_condition(
         DynamicLootCondition::Shears => has_shears,
         DynamicLootCondition::SilkTouchOrShears => has_silk_touch || has_shears,
         DynamicLootCondition::NoSilkTouchOrShears => !has_silk_touch && !has_shears,
-        DynamicLootCondition::KilledByPlayer => params.killed_by_player(),
+        DynamicLootCondition::KilledByPlayer => params.last_damage_player.is_some(),
         DynamicLootCondition::SurvivesExplosion => params
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),
@@ -322,7 +317,7 @@ fn check_condition(
         LootCondition::Shears => has_shears,
         LootCondition::SilkTouchOrShears => has_silk_touch || has_shears,
         LootCondition::NoSilkTouchOrShears => !has_silk_touch && !has_shears,
-        LootCondition::KilledByPlayer => params.killed_by_player(),
+        LootCondition::KilledByPlayer => params.last_damage_player.is_some(),
         LootCondition::SurvivesExplosion => params
             .explosion_radius
             .is_none_or(|radius| radius <= 1.0 || rng.next_f32() <= 1.0 / radius),

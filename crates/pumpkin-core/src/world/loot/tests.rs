@@ -1090,10 +1090,10 @@ fn fill_places_with_the_random_source_of_the_roll() {
 /// that `LOOT_PARITY_DUMP` names. Diff the files of two builds to prove that a change to the loot
 /// context leaves the loot of the vanilla tables alone:
 /// `LOOT_PARITY_DUMP=target/scratch/parity.txt tools/cargo-slot.sh nextest run -p pumpkin-core --lib --run-ignored only vanilla_tables_dump`.
-#[test]
+#[tokio::test]
 #[ignore = "writes the dump that LOOT_PARITY_DUMP names"]
 #[allow(clippy::too_many_lines)]
-fn vanilla_tables_dump() {
+async fn vanilla_tables_dump() {
     use std::fmt::Write as _;
 
     let path = std::env::var("LOOT_PARITY_DUMP").expect("LOOT_PARITY_DUMP names the dump file");
@@ -1116,8 +1116,11 @@ fn vanilla_tables_dump() {
     keys.sort();
     assert!(keys.len() > 1400, "{} tables", keys.len());
 
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let player = chicken(&world);
     let tool = |item: &'static Item| ItemStack::new(1, item);
-    let contexts: Vec<(&str, LootContextParameters<'static>)> = vec![
+    let contexts: Vec<(&str, LootContextParameters<'_>)> = vec![
         ("default", LootContextParameters::default()),
         (
             "pickaxe",
@@ -1152,7 +1155,7 @@ fn vanilla_tables_dump() {
         (
             "player_kill",
             LootContextParameters {
-                killed_by_player: Some(true),
+                last_damage_player: Some(player.as_ref()),
                 damage_type: Some(DamageType::PLAYER_ATTACK),
                 direct_attacker_weapon: Some(tool(&Item::DIAMOND_SWORD)),
                 ..Default::default()
@@ -1228,13 +1231,6 @@ async fn killed_by_player_passes_for_a_last_damage_player() {
     let player = chicken(&world);
     let condition = r#"{"condition":"minecraft:killed_by_player"}"#;
     assert!(!passes(condition, &LootContextParameters::default()));
-    assert!(passes(
-        condition,
-        &LootContextParameters {
-            killed_by_player: Some(true),
-            ..Default::default()
-        }
-    ));
     assert!(passes(
         condition,
         &LootContextParameters {
