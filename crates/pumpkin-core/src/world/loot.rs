@@ -4,7 +4,7 @@ use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient};
+use pumpkin_data::recipes::CookingRecipeKind;
 use pumpkin_data::tag::Taggable;
 pub use pumpkin_util::loot_table::{
     DynamicLootCondition, DynamicLootEntry, DynamicLootEntryKind, DynamicLootFunction,
@@ -98,15 +98,9 @@ fn direct_attacker_weapon_has_enchantment(params: &LootContextParameters, tag: &
 }
 
 fn smelt(item: &'static Item, count: i32) -> (&'static Item, i32) {
-    let result =
-        get_cooking_recipe_with_ingredient(item, CookingRecipeKind::Smelting).and_then(|recipe| {
-            let id = recipe
-                .result
-                .id
-                .strip_prefix("minecraft:")
-                .unwrap_or(recipe.result.id);
-            Item::from_registry_key(id).map(|item| (item, recipe.result.count))
-        });
+    let result = pumpkin_inventory::recipe_index::current()
+        .cooking_recipe(item, &CookingRecipeKind::Smelting)
+        .and_then(|recipe| recipe.result.item().map(|item| (item, recipe.result.count)));
     let Some((result, multiplier)) = result else {
         tracing::warn!(
             "Couldn't smelt {} because there is no smelting recipe",
