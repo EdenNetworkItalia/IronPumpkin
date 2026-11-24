@@ -99,6 +99,42 @@ impl Xoroshiro {
         Self::new(lo, hi)
     }
 
+    /// Creates a generator from its 128-bit state, as vanilla `new XoroshiroRandomSource(lo, hi)`
+    /// does. The state is used as it is: no mixing.
+    #[must_use]
+    pub const fn from_state(lo: u64, hi: u64) -> Self {
+        Self::new(lo, hi)
+    }
+
+    /// The 128-bit state `(lo, hi)`, which vanilla saves for a random sequence.
+    #[must_use]
+    pub const fn state(&self) -> (u64, u64) {
+        (self.lo, self.hi)
+    }
+
+    /// Vanilla `RandomSupport.upgradeSeedTo128bitUnmixed`: the state `(lo, hi)` of a 64-bit seed
+    /// before the Stafford 13 mix.
+    #[must_use]
+    pub const fn upgrade_seed_to_128bit_unmixed(seed: u64) -> (u64, u64) {
+        Self::mix_u64(seed)
+    }
+
+    /// Vanilla `RandomSupport.seedFromHashOf`: the MD5 of `input` as a state `(lo, hi)`.
+    #[must_use]
+    pub fn seed_from_hash_of(input: &str) -> (u64, u64) {
+        let bytes = md5::compute(input.as_bytes());
+        (
+            u64::from_be_bytes(bytes[0..8].try_into().unwrap_or([0; 8])),
+            u64::from_be_bytes(bytes[8..16].try_into().unwrap_or([0; 8])),
+        )
+    }
+
+    /// Vanilla `RandomSupport.mixStafford13`.
+    #[must_use]
+    pub const fn mix_stafford_13(z: u64) -> u64 {
+        mix_stafford_13(z)
+    }
+
     /// Generates a random value with the specified number of bits.
     ///
     /// # Arguments
