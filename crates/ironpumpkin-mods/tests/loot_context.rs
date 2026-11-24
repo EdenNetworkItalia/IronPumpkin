@@ -48,7 +48,9 @@ use ironpumpkin_mods::{
     },
     pumpkin_data::{
         Block, BlockDirection, BlockStateId,
+        attributes::Attributes,
         block_properties::{SuspiciousSandLikeProperties, VaultLikeProperties, VaultState},
+        damage::DamageType,
         entity::EntityType,
         item::Item,
     },
@@ -62,7 +64,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_world::world::BlockFlags;
 
 /// What a roll got, in values that compare.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 struct Roll {
     table: String,
     origin: Option<[f64; 3]>,
@@ -72,6 +74,10 @@ struct Roll {
     luck: f32,
     this_entity: Option<i32>,
     interacting_entity: Option<i32>,
+    target_entity: Option<i32>,
+    attacking_entity: Option<i32>,
+    last_damage_player: Option<i32>,
+    damage_type: Option<&'static str>,
 }
 
 static ROLLS: Mutex<Vec<Roll>> = Mutex::new(Vec::new());
@@ -93,6 +99,12 @@ impl GlobalLootModifier for Capture {
             luck: params.luck,
             this_entity: entity_id(params.this_entity),
             interacting_entity: entity_id(params.interacting_entity),
+            target_entity: entity_id(params.target_entity),
+            attacking_entity: entity_id(params.killer_entity),
+            last_damage_player: entity_id(params.last_damage_player),
+            damage_type: params
+                .damage_source
+                .map(|source| source.damage_type.message_id),
         };
         ROLLS
             .lock()
@@ -251,6 +263,7 @@ fn hoe_rolls_the_block_interact_set() {
             luck: 0.0,
             this_entity: None,
             interacting_entity: Some(entity_id(player.as_ref())),
+            ..Roll::default()
         }]
     );
     // The `entity_properties` condition on `interacting_entity` passes for the player.
@@ -301,6 +314,7 @@ fn brush_rolls_the_archaeology_set() {
             luck: player_luck(&player),
             this_entity: Some(entity_id(player.as_ref())),
             interacting_entity: None,
+            ..Roll::default()
         }]
     );
 }
@@ -329,6 +343,7 @@ fn decorated_pot_rolls_from_the_center_without_a_player() {
             luck: 0.0,
             this_entity: None,
             interacting_entity: None,
+            ..Roll::default()
         }]
     );
 }
@@ -375,6 +390,7 @@ fn vault_rolls_with_the_key_as_the_tool() {
             luck: player_luck(&player),
             this_entity: Some(entity_id(player.as_ref())),
             interacting_entity: None,
+            ..Roll::default()
         }]
     );
 }
@@ -564,4 +580,48 @@ fn a_block_break_roll_has_the_block_entity() {
     });
     assert_eq!(rolls.len(), 1);
     assert_eq!(rolls[0].block_entity, Some(pos));
+}
+
+/// Review 171: `LivingEntity.dropFromLootTable` sets the player of the last damage and its luck.
+#[test]
+fn a_player_kill_rolls_with_the_last_damage_player_and_its_luck() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("killer");
+    player
+        .living_entity
+        .set_attribute_base(&Attributes::LUCK, 3.0);
+    let pos = BlockPos::new(70, 100, 0);
+    set(pos, Block::STONE.default_state.id);
+    let chicken = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::CHICKEN,
+        Vector3::new(70.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(chicken.clone()));
+    let living = chicken.get_living_entity().unwrap();
+    living
+        .last_hurt_by_player
+        .store(Some(player.gameprofile.id));
+    living
+        .last_hurt_by_player_memory_time
+        .store(100, std::sync::atomic::Ordering::Relaxed);
+
+    let rolls = rolls_of("minecraft:entities/chicken", || {
+        living.on_death(
+            DamageType::PLAYER_ATTACK,
+            Some(player.as_ref()),
+            Some(player.as_ref()),
+        );
+    });
+    let player_id = Some(entity_id(player.as_ref()));
+    assert_eq!(rolls.len(), 1);
+    let roll = &rolls[0];
+    assert_eq!(roll.luck, 3.0);
+    assert_eq!(roll.last_damage_player, player_id);
+    assert_eq!(roll.attacking_entity, player_id);
+    assert_eq!(roll.this_entity, Some(entity_id(chicken.as_ref())));
+    assert_eq!(roll.damage_type, Some("player"));
 }

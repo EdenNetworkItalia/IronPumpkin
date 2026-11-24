@@ -34,7 +34,7 @@ use crate::entity::mob::equipment::DEFAULT_EQUIPMENT_DROP_CHANCE;
 use crate::entity::mob::neutral::find_by_uuid;
 use crate::entity::player::statistics::{CustomStatistic, StatisticCategory};
 use crate::server::Server;
-use crate::world::loot::LootContextParameters;
+use crate::world::loot::{LootContextParameters, player_luck};
 use crossbeam::atomic::AtomicCell;
 use pumpkin_data::AttributeModifierSlot;
 use pumpkin_data::attributes::Attributes;
@@ -2973,6 +2973,7 @@ impl LivingEntity {
 
             // `LivingEntity.dropFromLootTable`: a player kill sets the player and its luck.
             let params = LootContextParameters {
+                luck: last_damage_player.as_deref().map_or(0.0, player_luck),
                 last_damage_player: last_damage_player
                     .as_deref()
                     .map(|player| player as &dyn EntityBase),
