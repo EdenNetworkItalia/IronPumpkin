@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use pumpkin_util::identifier::Identifier;
-use pumpkin_util::random::RandomImpl;
 use pumpkin_util::random::xoroshiro128::Xoroshiro;
+use pumpkin_util::random::{RandomGenerator, RandomImpl};
 use pumpkin_world::world_info::data_files::RandomSequencesData;
 
 /// A single random sequence wrapper.
@@ -108,7 +108,7 @@ impl SequenceHandle {
             .unwrap_or_else(|| Xoroshiro::from_seed(0));
         CheckedOutSequence {
             slot: self.0.clone(),
-            rng,
+            rng: RandomGenerator::Xoroshiro(rng),
         }
     }
 }
@@ -116,19 +116,23 @@ impl SequenceHandle {
 /// The state of a random sequence during a roll. It goes back to the sequence when it drops.
 pub struct CheckedOutSequence {
     slot: Arc<SequenceSlot>,
-    rng: Xoroshiro,
+    /// Always the `Xoroshiro` variant: a sequence is a `XoroshiroRandomSource`.
+    rng: RandomGenerator,
 }
 
 impl CheckedOutSequence {
     /// The random source of the sequence.
-    pub const fn rng(&mut self) -> &mut Xoroshiro {
+    pub const fn rng(&mut self) -> &mut RandomGenerator {
         &mut self.rng
     }
 }
 
 impl Drop for CheckedOutSequence {
     fn drop(&mut self) {
-        *self.slot.rng.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.rng.clone());
+        let RandomGenerator::Xoroshiro(rng) = &self.rng else {
+            return;
+        };
+        *self.slot.rng.lock().unwrap_or_else(PoisonError::into_inner) = Some(rng.clone());
         // Every waiter checks the state again: a waiter that only reads the state (`/random`)
         // must not take the wake up of a roll.
         self.slot.returned.notify_all();

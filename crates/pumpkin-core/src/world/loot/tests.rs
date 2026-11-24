@@ -13,6 +13,47 @@ fn alternatives_use_the_first_matching_child() {
     }
 }
 
+/// A seed other than 0 gives `RandomSource.create(seed)`, a `LegacyRandomSource`
+/// (`LootContext.Builder.withOptionalRandomSeed`). The expected values come from a Python
+/// transcription of `LegacyRandomSource`, `BitRandomSource.nextInt`, `LootPool.addRandomItem` and
+/// `Mth.nextInt`, not from this code.
+#[test]
+fn an_explicit_seed_rolls_with_the_legacy_random_source() {
+    let mut source = random_source(12345);
+    assert_eq!(source.next_i64(), 6_674_089_274_190_705_457);
+    assert_eq!(source.next_i64(), -1_236_052_134_575_208_584);
+    assert_eq!(random_source(12345).next_bounded_i32(7), 5);
+
+    let table = crate::data::datapack::loot_table_loader::parse_loot_table(
+        r#"{"pools":[{"rolls":3,"entries":[
+            {"type":"minecraft:item","name":"minecraft:stone","weight":1,"functions":[
+                {"function":"minecraft:set_count","count":{"type":"minecraft:uniform","min":1,"max":10}}]},
+            {"type":"minecraft:item","name":"minecraft:dirt","weight":3,"functions":[
+                {"function":"minecraft:set_count","count":{"type":"minecraft:uniform","min":1,"max":10}}]}
+        ]}]}"#,
+    )
+    .unwrap();
+    let (stone, dirt) = (&Item::STONE, &Item::DIRT);
+    let expected: [(i64, [(&Item, u8); 3]); 4] = [
+        (1, [(dirt, 9), (dirt, 4), (stone, 5)]),
+        (2, [(dirt, 3), (dirt, 8), (dirt, 1)]),
+        (12345, [(dirt, 1), (dirt, 9), (dirt, 5)]),
+        (987_654_321, [(dirt, 8), (dirt, 2), (stone, 2)]),
+    ];
+    for (seed, items) in expected {
+        let drops = generate_dynamic_loot(&table, seed);
+        let drops: Vec<_> = drops
+            .iter()
+            .map(|stack| (stack.item.id, stack.item_count))
+            .collect();
+        let items: Vec<_> = items
+            .iter()
+            .map(|(item, count)| (item.id, *count))
+            .collect();
+        assert_eq!(drops, items, "seed {seed}");
+    }
+}
+
 #[test]
 fn entity_predicates_do_not_match_a_missing_entity() {
     for key in [
@@ -41,6 +82,7 @@ use pumpkin_data::{
 };
 use pumpkin_util::loot_table::parser::parse_loot_table;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::xoroshiro128::Xoroshiro;
 
 fn assert_drops(
     key: &str,
@@ -551,7 +593,10 @@ async fn enchanted_count_uses_the_attackers_allowed_equipment_and_float_rounding
     };
     let table = parse_loot_table(r#"{"pools":[{"entries":[{"type":"minecraft:item","name":"minecraft:diamond","modifier":[{"type":"minecraft:set_count","count":0},{"type":"minecraft:enchanted_count_increase","enchantment":"minecraft:looting","count":{"type":"minecraft:uniform","min":0.0,"max":1.0}}]}]}]}"#).unwrap();
     let mut bins = [0; 4];
-    for seed in 0..4096 {
+    for index in 0..4096 {
+        // The first draws of a legacy random source follow the seed: consecutive seeds give
+        // nearly equal floats. Mixed seeds give an even spread, as the seeds of containers do.
+        let seed = Xoroshiro::from_seed(index).next_i64();
         let drops = generate_dynamic_loot_with_context(&table, seed, &params);
         let count = drops
             .first()
@@ -722,7 +767,7 @@ async fn double_plants_keep_their_adjacent_half_location_checks() {
 #[test]
 fn negative_uniform_bonus_multiplier_keeps_the_base_count() {
     for seed in 0..32 {
-        let mut rng = Xoroshiro::from_seed(seed);
+        let mut rng = random_source(seed);
         assert_eq!(
             apply_bonus_formula(2, LootBonusFormula::UniformBonusCount(-3), 3, &mut rng),
             2
@@ -998,7 +1043,7 @@ fn loot_fill_skips_occupied_slots() {
     place_items_in_slots(
         &mut slots,
         vec![ItemStack::new(1, &Item::STONE)],
-        &mut Xoroshiro::from_seed(1),
+        &mut random_source(1),
     );
     assert_eq!(slots[0].item.id, Item::DIAMOND.id);
     assert_eq!(slots[0].item_count, 8);
@@ -1056,7 +1101,7 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
 }
 
 /// The slot that receives one stone in 27 empty slots, placed with `rng`.
-fn stone_slot(rng: &mut Xoroshiro) -> usize {
+fn stone_slot(rng: &mut RandomGenerator) -> usize {
     let mut slots = vec![ItemStack::EMPTY.clone(); 27];
     place_items_in_slots(&mut slots, vec![ItemStack::new(1, &Item::STONE)], rng);
     slots.iter().position(|stack| !stack.is_empty()).unwrap()
@@ -1085,15 +1130,15 @@ fn fill_places_with_the_random_source_of_the_roll() {
             .position(|stack| !stack.is_empty())
             .unwrap();
 
-        let mut after_roll = Xoroshiro::from_seed(seed as u64);
+        let mut after_roll = random_source(seed);
         after_roll.next_i64();
         assert_eq!(placed, stone_slot(&mut after_roll), "seed {seed}");
-        moved |= placed != stone_slot(&mut Xoroshiro::from_seed(seed as u64));
+        moved |= placed != stone_slot(&mut random_source(seed));
     }
     assert!(moved, "no seed tells the two random sources apart");
 }
 
-/// Rolls every vanilla table with 15 seeds in 9 contexts and writes one line per roll to the file
+/// Rolls every vanilla table with the seeds 1 to 15 in 9 contexts, through `roll_loot`, and writes one line per roll to the file
 /// that `LOOT_PARITY_DUMP` names. Diff the files of two builds to prove that a change to the loot
 /// context leaves the loot of the vanilla tables alone:
 /// `LOOT_PARITY_DUMP=target/scratch/parity.txt tools/cargo-slot.sh nextest run -p pumpkin-core --lib --run-ignored only vanilla_tables_dump`.
@@ -1258,9 +1303,11 @@ async fn vanilla_tables_dump() {
     for key in &keys {
         let handle = get_loot_table(key).unwrap_or_else(|| panic!("no table {key}"));
         for (name, params) in &contexts {
-            for seed in 0..15 {
+            // The seed 0 is no seed: a roll with it draws from a random sequence, which a test
+            // world without a server does not have.
+            for seed in 1..16 {
                 write!(dump, "{key} {name} {seed}:").unwrap();
-                for stack in generate_loot_from_handle(&handle, seed, params) {
+                for stack in roll_loot(&handle, seed, params) {
                     write!(dump, " {}*{}", stack.item.registry_key, stack.item_count).unwrap();
                 }
                 dump.push('\n');
