@@ -35,7 +35,11 @@ use super::{
 /// The built-in types hold their values in statics, and the server tables are a static too.
 pub(super) static SERIAL: Mutex<()> = Mutex::new(());
 
-struct Everything;
+/// Every entry of the vanilla registries, and the block tags of a data pack.
+#[derive(Default)]
+struct Everything {
+    block_tags: Vec<(&'static str, Vec<&'static str>)>,
+}
 
 impl Lookup for Everything {
     fn contains(&self, registry: &Identifier, entry: &Identifier) -> bool {
@@ -55,6 +59,14 @@ impl Lookup for Everything {
     }
 
     fn tag(&self, registry: &Identifier, tag: &Identifier) -> Vec<Identifier> {
+        if registry.path() == "block"
+            && let Some((_, blocks)) = self
+                .block_tags
+                .iter()
+                .find(|(name, _)| tag.to_string() == *name)
+        {
+            return blocks.iter().map(|block| id(block)).collect();
+        }
         let kind = match registry.path() {
             "block" => ContentKind::Block,
             "item" => ContentKind::Item,
@@ -77,6 +89,10 @@ fn write(root: &std::path::Path, folder: &str, map: &str, json: &Value) {
 /// Loads the built-in types from the defaults of the server and a data pack with `files`
 /// (`folder`, `map`, file), and returns what the server consumers get.
 fn load(files: &[(&str, &str, Value)]) -> BuiltinDataMaps {
+    load_with(files, &Everything::default())
+}
+
+fn load_with(files: &[(&str, &str, Value)], lookup: &Everything) -> BuiltinDataMaps {
     let dir = tempfile::tempdir().unwrap();
     for (folder, map, json) in files {
         write(dir.path(), folder, map, json);
@@ -92,8 +108,8 @@ fn load(files: &[(&str, &str, Value)]) -> BuiltinDataMaps {
             memory: Vec::new(),
         },
     ];
-    loader::load(&registered, &packs, &Everything);
-    collect()
+    loader::load(&registered, &packs, lookup);
+    collect(lookup)
 }
 
 /// The built-in types hold no value before a load: other tests of the module read them empty.
@@ -492,7 +508,7 @@ fn a_pack_gives_a_block_a_transform_and_drops_what_the_entry_cannot_hold() {
                             "block_state_provider": {
                                 "type": "minecraft:rule_based",
                                 "rules": [{
-                                    "if_true": { "type": "minecraft:true" },
+                                    "if_true": { "type": "minecraft:matching_fluids" },
                                     "then": { "id": "minecraft:stone" },
                                 }],
                             },
@@ -510,4 +526,118 @@ fn a_pack_gives_a_block_a_transform_and_drops_what_the_entry_cannot_hold() {
             );
         },
     );
+}
+
+fn transformables(value: Value) -> Vec<(&'static str, &'static str, Value)> {
+    vec![("block", "transformables", value)]
+}
+
+fn dirt_with(provider: &Value) -> Value {
+    json!({
+        "values": {
+            "minecraft:dirt": {
+                "transformer": "minecraft:axe",
+                "transform_data": { "block_state_provider": provider },
+            },
+        },
+    })
+}
+
+#[test]
+fn the_true_predicate_matches_every_block() {
+    let provider = json!({
+        "type": "minecraft:rule_based",
+        "rules": [{
+            "if_true": { "type": "minecraft:true" },
+            "then": { "id": "minecraft:stone" },
+        }],
+    });
+    with_pack(&transformables(dirt_with(&provider)), |maps| {
+        assert_eq!(maps.transformables["minecraft:axe"].len(), 1);
+        assert_eq!(
+            axe_transform(&Block::GRAVEL, BlockDirection::Up),
+            Some(BlockId::STONE)
+        );
+    });
+}
+
+#[test]
+fn a_state_with_properties_or_a_provider_reference_drops_the_transform() {
+    let furnace = json!({
+        "type": "minecraft:rule_based",
+        "rules": [{
+            "if_true": { "type": "minecraft:matching_blocks", "blocks": "minecraft:dirt" },
+            "then": { "id": "minecraft:furnace", "properties": { "lit": "true" } },
+        }],
+    });
+    let reference = json!({
+        "type": "minecraft:rule_based",
+        "rules": [{
+            "if_true": { "type": "minecraft:matching_blocks", "blocks": "minecraft:dirt" },
+            "then": { "type": "minecraft:copy_properties", "source": "mymod:provider" },
+        }],
+    });
+    for provider in [furnace, reference] {
+        with_pack(&transformables(dirt_with(&provider)), |maps| {
+            assert!(!maps.transformables.contains_key("minecraft:axe"));
+        });
+    }
+}
+
+#[test]
+fn a_predicate_tag_resolves_through_the_lookup_of_the_server() {
+    let provider = json!({
+        "type": "minecraft:rule_based",
+        "rules": [{
+            "if_true": { "type": "minecraft:matching_block_tag", "tag": "mypack:rocks" },
+            "then": { "id": "minecraft:stone" },
+        }],
+    });
+    let lookup = Everything {
+        block_tags: vec![("mypack:rocks", vec!["minecraft:gravel"])],
+    };
+    let files = transformables(dirt_with(&provider));
+    let _serial = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    let maps = load_with(&files, &lookup);
+    set_builtin(maps);
+    assert_eq!(
+        axe_transform(&Block::GRAVEL, BlockDirection::Up),
+        Some(BlockId::STONE)
+    );
+    assert_eq!(axe_transform(&Block::DIRT, BlockDirection::Up), None);
+    set_builtin(BuiltinDataMaps::vanilla());
+    clear_builtin_values();
+}
+
+#[test]
+fn a_reload_with_the_same_data_gives_the_same_transforms() {
+    let files = [
+        (
+            "block",
+            "oxidizables",
+            json!({ "values": { "minecraft:stone": { "next_oxidation_stage": "minecraft:cobblestone" } } }),
+        ),
+        (
+            "block_transformer",
+            "block_transform_appenders",
+            json!({ "values": { "minecraft:axe": [dirt_to_stone()] } }),
+        ),
+    ];
+    let _serial = SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+    let first = load(&files);
+    set_builtin(first.clone());
+    let axe = BlockTransformerImpl {
+        transformer: "axe".into(),
+    };
+    let first_transformer = consumer::block_transformer(&axe).unwrap();
+    let second = load(&files);
+    set_builtin(second.clone());
+    let second_transformer = consumer::block_transformer(&axe).unwrap();
+    assert!(std::ptr::eq(
+        first.transform_appenders["minecraft:axe"][0],
+        second.transform_appenders["minecraft:axe"][0]
+    ));
+    assert!(std::ptr::eq(first_transformer, second_transformer));
+    set_builtin(BuiltinDataMaps::vanilla());
+    clear_builtin_values();
 }

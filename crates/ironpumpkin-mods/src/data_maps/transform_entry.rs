@@ -3,11 +3,19 @@
 //! The entry has the form of the generated transformers of `pumpkin-data`, so the transform
 //! runs through the code of the vanilla axe, hoe and shovel. It reads these parts of the value:
 //! a `rule_based` state provider (or one simple or `copy_properties` provider), whose rules have
-//! a `matching_blocks`, `matching_block_tag` or `all_of` predicate, a vanilla sound, the
+//! a `true`, `matching_blocks`, `matching_block_tag` or `all_of` predicate, a vanilla sound, the
 //! particle, the disallowed faces, the loot table, the drop strategy, the transform type, the
-//! update from neighbors and the item damage. A block state keeps its block and loses its
-//! properties, as the generated transformers do. A part that the entry cannot hold makes the
-//! transform unavailable, and the loader logs it.
+//! update from neighbors and the item damage. A block state keeps its block: a state with
+//! properties, a provider reference, another provider or predicate, and a sound of a mod make the
+//! transform unavailable, and the loader logs it. `consume_on_use` has no effect.
+//!
+//! A value that compiles to the same entry gives the same `&'static` entry, so a `/reload` with
+//! the same data allocates nothing.
+
+use std::{
+    collections::HashMap,
+    sync::{LazyLock, Mutex, PoisonError},
+};
 
 use pumpkin_data::{
     BlockDirection, BlockId,
@@ -23,9 +31,45 @@ use pumpkin_util::identifier::Identifier;
 use serde_json::{Map, Value};
 use tracing::warn;
 
-use super::builtin::BlockTransformData;
+use super::{builtin::BlockTransformData, registries::Lookup};
 
 type Compiled<T> = Result<T, String>;
+
+/// A block predicate before it is leaked.
+#[derive(Debug)]
+enum Predicate {
+    Blocks {
+        blocks: Vec<BlockId>,
+        offset: (i8, i8, i8),
+    },
+    AllOf(Vec<Self>),
+}
+
+/// A state provider before it is leaked.
+#[derive(Debug, Clone, Copy)]
+enum Provider {
+    Simple(BlockId),
+    CopyProperties(BlockId),
+}
+
+/// An entry before it is leaked: its `Debug` text is the key of the entry.
+#[derive(Debug)]
+struct Entry {
+    rules: Vec<(Predicate, Provider)>,
+    disallowed_faces: Vec<BlockDirection>,
+    item_damage_per_use: u16,
+    sound: Option<Sound>,
+    particle: Option<WorldEvent>,
+    loot: Option<String>,
+    drop_strategy: Option<DropStrategy>,
+    transform_type: Option<TransformType>,
+    update_from_neighbors: bool,
+}
+
+/// What the compiler reads besides the value.
+struct Context<'a> {
+    lookup: &'a dyn Lookup,
+}
 
 fn leak<T>(values: Vec<T>) -> &'static [T] {
     Box::leak(values.into_boxed_slice())
@@ -38,6 +82,10 @@ fn field_str<'a>(fields: &'a Map<String, Value>, name: &str) -> Compiled<&'a str
         .ok_or_else(|| format!("no string {name}"))
 }
 
+fn path(kind: &str) -> &str {
+    kind.strip_prefix("minecraft:").unwrap_or(kind)
+}
+
 fn block_id(name: &str) -> Compiled<BlockId> {
     let id = Identifier::parse(name).map_err(|error| format!("{name}: {error}"))?;
     crate::registry::id_of(ContentKind::Block, &id.to_string())
@@ -45,37 +93,55 @@ fn block_id(name: &str) -> Compiled<BlockId> {
         .ok_or_else(|| format!("unknown block {id}"))
 }
 
-/// A block state: a block id, or an object with an `id`.
-fn state_block(json: &Value) -> Compiled<BlockId> {
+/// A block state: a block id, or an object with an `id`. A state with properties is refused unless
+/// `properties_allowed` is set: the entry holds the default state of a block.
+fn state_block(json: &Value, properties_allowed: bool) -> Compiled<BlockId> {
     match json {
         Value::String(name) => block_id(name),
-        Value::Object(fields) => block_id(field_str(fields, "id")?),
+        Value::Object(fields) => {
+            let has_properties = fields
+                .get("properties")
+                .and_then(Value::as_object)
+                .is_some_and(|properties| !properties.is_empty());
+            if has_properties && !properties_allowed {
+                return Err(format!("block state properties: {json}"));
+            }
+            block_id(field_str(fields, "id")?)
+        }
         _ => Err(format!("not a block state: {json}")),
     }
 }
 
 /// `BlockStateProvider` of the `simple` and `copy_properties` forms.
-fn state_provider(json: &Value) -> Compiled<BlockTransformerStateProvider> {
+fn state_provider(json: &Value) -> Compiled<Provider> {
+    if json.is_string() {
+        return Err(format!("a block state provider reference: {json}"));
+    }
     let Some(fields) = json.as_object() else {
         return Err(format!("a provider that is not an object: {json}"));
     };
     let Some(kind) = fields.get("type").and_then(Value::as_str) else {
         // `BlockState.FULL_CODEC`.
-        return block_id(field_str(fields, "id")?).map(BlockTransformerStateProvider::SimpleState);
+        return state_block(json, false).map(Provider::Simple);
     };
-    match kind.strip_prefix("minecraft:").unwrap_or(kind) {
-        "simple" => state_block(fields.get("state").ok_or("no state")?)
-            .map(BlockTransformerStateProvider::SimpleState),
+    match path(kind) {
+        "simple" => {
+            state_block(fields.get("state").ok_or("no state")?, false).map(Provider::Simple)
+        }
         "copy_properties" => {
             let source = fields.get("source").ok_or("no source")?;
+            if source.is_string() {
+                return Err(format!("a block state provider reference: {source}"));
+            }
+            // The properties of the source are defaults: the block that is there overrides them.
             let block = match source.get("type").and_then(Value::as_str) {
-                Some(kind) if kind.strip_prefix("minecraft:").unwrap_or(kind) == "simple" => {
-                    state_block(source.get("state").ok_or("no state")?)?
+                Some(kind) if path(kind) == "simple" => {
+                    state_block(source.get("state").ok_or("no state")?, true)?
                 }
                 Some(kind) => return Err(format!("the source provider {kind}")),
-                None => state_block(source)?,
+                None => state_block(source, true)?,
             };
-            Ok(BlockTransformerStateProvider::CopyProperties(block))
+            Ok(Provider::CopyProperties(block))
         }
         other => Err(format!("the state provider {other}")),
     }
@@ -96,9 +162,9 @@ fn offset(fields: &Map<String, Value>) -> Compiled<(i8, i8, i8)> {
 }
 
 /// The ids of the blocks that a `HolderSet` names: a tag, one id or a list of ids.
-fn block_set(json: &Value) -> Compiled<Vec<BlockId>> {
+fn block_set(json: &Value, cx: &Context) -> Compiled<Vec<BlockId>> {
     match json {
-        Value::String(text) if text.starts_with('#') => tag_blocks(&text[1..]),
+        Value::String(text) if text.starts_with('#') => tag_blocks(&text[1..], cx),
         Value::String(text) => Ok(vec![block_id(text)?]),
         Value::Array(list) => list
             .iter()
@@ -108,57 +174,57 @@ fn block_set(json: &Value) -> Compiled<Vec<BlockId>> {
     }
 }
 
-fn tag_blocks(tag: &str) -> Compiled<Vec<BlockId>> {
+/// The blocks of a tag as the server resolves it: the built-in tags, the tags of mods and the
+/// tags of the enabled data packs.
+fn tag_blocks(tag: &str, cx: &Context) -> Compiled<Vec<BlockId>> {
     let id = Identifier::parse(tag).map_err(|error| format!("{tag}: {error}"))?;
-    let entries = crate::registry::tag_entries(ContentKind::Block, &id.to_string())
-        .ok_or_else(|| format!("unknown block tag {id}"))?;
-    Ok(entries
+    Ok(cx
+        .lookup
+        .tag(&Identifier::vanilla_static("block"), &id)
         .iter()
         .filter_map(|entry| crate::registry::id_of(ContentKind::Block, &entry.to_string()))
         .filter_map(BlockId::new)
         .collect())
 }
 
-fn predicate(json: &Value) -> Compiled<BlockPredicate> {
+fn predicate(json: &Value, cx: &Context) -> Compiled<Predicate> {
     let fields = json
         .as_object()
         .ok_or("a predicate that is not an object")?;
     let kind = field_str(fields, "type")?;
-    match kind.strip_prefix("minecraft:").unwrap_or(kind) {
-        "matching_blocks" => Ok(BlockPredicate::MatchingBlocks {
-            blocks: leak(block_set(fields.get("blocks").ok_or("no blocks")?)?),
+    match path(kind) {
+        "true" => Ok(Predicate::AllOf(Vec::new())),
+        "matching_blocks" => Ok(Predicate::Blocks {
+            blocks: block_set(fields.get("blocks").ok_or("no blocks")?, cx)?,
             offset: offset(fields)?,
         }),
-        "matching_block_tag" => Ok(BlockPredicate::MatchingBlocks {
-            blocks: leak(tag_blocks(field_str(fields, "tag")?)?),
+        "matching_block_tag" => Ok(Predicate::Blocks {
+            blocks: tag_blocks(field_str(fields, "tag")?, cx)?,
             offset: offset(fields)?,
         }),
-        "all_of" => Ok(BlockPredicate::AllOf(leak(
+        "all_of" => Ok(Predicate::AllOf(
             fields
                 .get("predicates")
                 .and_then(Value::as_array)
                 .ok_or("no predicates")?
                 .iter()
-                .map(predicate)
+                .map(|json| predicate(json, cx))
                 .collect::<Compiled<Vec<_>>>()?,
-        ))),
+        )),
         other => Err(format!("the block predicate {other}")),
     }
 }
 
-/// A predicate that matches every block: the rule of a provider with no condition.
-const ALWAYS: BlockPredicate = BlockPredicate::AllOf(&[]);
-
-fn rules(provider: &Value) -> Compiled<Vec<BlockTransformerRule>> {
+fn rules(provider: &Value, cx: &Context) -> Compiled<Vec<(Predicate, Provider)>> {
     let is_rule_based = provider
         .get("type")
         .and_then(Value::as_str)
-        .is_some_and(|kind| kind.strip_prefix("minecraft:").unwrap_or(kind) == "rule_based");
+        .is_some_and(|kind| path(kind) == "rule_based");
     if !is_rule_based {
-        return Ok(vec![BlockTransformerRule {
-            predicate: ALWAYS,
-            provider: state_provider(provider)?,
-        }]);
+        return Ok(vec![(
+            Predicate::AllOf(Vec::new()),
+            state_provider(provider)?,
+        )]);
     }
     let mut rules = provider
         .get("rules")
@@ -166,17 +232,14 @@ fn rules(provider: &Value) -> Compiled<Vec<BlockTransformerRule>> {
         .ok_or("no rules")?
         .iter()
         .map(|rule| {
-            Ok(BlockTransformerRule {
-                predicate: predicate(rule.get("if_true").ok_or("no if_true")?)?,
-                provider: state_provider(rule.get("then").ok_or("no then")?)?,
-            })
+            Ok((
+                predicate(rule.get("if_true").ok_or("no if_true")?, cx)?,
+                state_provider(rule.get("then").ok_or("no then")?)?,
+            ))
         })
         .collect::<Compiled<Vec<_>>>()?;
     if let Some(fallback) = provider.get("fallback") {
-        rules.push(BlockTransformerRule {
-            predicate: ALWAYS,
-            provider: state_provider(fallback)?,
-        });
+        rules.push((Predicate::AllOf(Vec::new()), state_provider(fallback)?));
     }
     Ok(rules)
 }
@@ -212,9 +275,9 @@ fn direction(name: &str) -> Compiled<BlockDirection> {
 }
 
 /// The entry of a `BlockTransformData` value, or the reason the entry cannot hold it.
-fn entry(data: &BlockTransformData) -> Compiled<BlockTransformerEntry> {
+fn compile_entry(data: &BlockTransformData, cx: &Context) -> Compiled<Entry> {
     let fields = &data.0;
-    let rules = rules(fields.get("block_state_provider").ok_or("no provider")?)?;
+    let rules = rules(fields.get("block_state_provider").ok_or("no provider")?, cx)?;
     let particle = match fields.get("particle").and_then(Value::as_str) {
         Some("scrape") => Some(WorldEvent::ParticlesScrape),
         Some("wax_off") => Some(WorldEvent::ParticlesWaxOff),
@@ -237,21 +300,13 @@ fn entry(data: &BlockTransformData) -> Compiled<BlockTransformerEntry> {
         .and_then(Value::as_str)
         .map(|loot| {
             Identifier::parse(loot)
-                .map(|id| &*Box::leak(id.to_string().into_boxed_str()))
+                .map(|id| id.to_string())
                 .map_err(|error| format!("{loot}: {error}"))
         })
         .transpose()?;
-    let drop_strategy = match fields.get("drop_strategy").and_then(Value::as_str) {
-        Some("clicked_face") => Some(DropStrategy::ClickedFace),
-        _ => None,
-    };
-    let transform_type = match fields.get("transform_type").and_then(Value::as_str) {
-        Some("copper_chest") => Some(TransformType::CopperChest),
-        _ => None,
-    };
-    Ok(BlockTransformerEntry {
-        rules: leak(rules),
-        disallowed_faces: leak(disallowed_faces),
+    Ok(Entry {
+        rules,
+        disallowed_faces,
         item_damage_per_use: fields
             .get("item_damage_per_use")
             .and_then(Value::as_u64)
@@ -259,8 +314,14 @@ fn entry(data: &BlockTransformData) -> Compiled<BlockTransformerEntry> {
         sound: sound(fields.get("sound"))?,
         particle,
         loot,
-        drop_strategy,
-        transform_type,
+        drop_strategy: match fields.get("drop_strategy").and_then(Value::as_str) {
+            Some("clicked_face") => Some(DropStrategy::ClickedFace),
+            _ => None,
+        },
+        transform_type: match fields.get("transform_type").and_then(Value::as_str) {
+            Some("copper_chest") => Some(TransformType::CopperChest),
+            _ => None,
+        },
         update_from_neighbors: fields
             .get("update_from_neighbors")
             .and_then(Value::as_bool)
@@ -268,14 +329,70 @@ fn entry(data: &BlockTransformData) -> Compiled<BlockTransformerEntry> {
     })
 }
 
+fn leak_predicate(predicate: &Predicate) -> BlockPredicate {
+    match predicate {
+        Predicate::Blocks { blocks, offset } => BlockPredicate::MatchingBlocks {
+            blocks: leak(blocks.clone()),
+            offset: *offset,
+        },
+        Predicate::AllOf(predicates) => {
+            BlockPredicate::AllOf(leak(predicates.iter().map(leak_predicate).collect()))
+        }
+    }
+}
+
+fn leak_entry(entry: &Entry) -> &'static BlockTransformerEntry {
+    let rules = entry
+        .rules
+        .iter()
+        .map(|(predicate, provider)| BlockTransformerRule {
+            predicate: leak_predicate(predicate),
+            provider: match provider {
+                Provider::Simple(block) => BlockTransformerStateProvider::SimpleState(*block),
+                Provider::CopyProperties(block) => {
+                    BlockTransformerStateProvider::CopyProperties(*block)
+                }
+            },
+        })
+        .collect();
+    Box::leak(Box::new(BlockTransformerEntry {
+        rules: leak(rules),
+        disallowed_faces: leak(entry.disallowed_faces.clone()),
+        item_damage_per_use: entry.item_damage_per_use,
+        sound: entry.sound,
+        particle: entry.particle,
+        loot: entry
+            .loot
+            .as_deref()
+            .map(|loot| &*Box::leak(loot.to_owned().into_boxed_str())),
+        drop_strategy: entry.drop_strategy,
+        transform_type: entry.transform_type,
+        update_from_neighbors: entry.update_from_neighbors,
+    }))
+}
+
+/// The entries that the server holds, by the `Debug` text of the compiled entry.
+static ENTRIES: LazyLock<Mutex<HashMap<String, &'static BlockTransformerEntry>>> =
+    LazyLock::new(Mutex::default);
+
 /// The entry of a value, or `None` with a warning when the entry cannot hold it. `source` names
 /// the data map and the key of the value.
 pub(super) fn compile(
     data: &BlockTransformData,
     source: &str,
+    lookup: &dyn Lookup,
 ) -> Option<&'static BlockTransformerEntry> {
-    match entry(data) {
-        Ok(entry) => Some(Box::leak(Box::new(entry))),
+    if data.0.get("consume_on_use").and_then(Value::as_bool) == Some(false) {
+        warn!("The block transform of {source} has consume_on_use false: IronPumpkin ignores it");
+    }
+    match compile_entry(data, &Context { lookup }) {
+        Ok(entry) => Some(
+            *ENTRIES
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(format!("{entry:?}"))
+                .or_insert_with(|| leak_entry(&entry)),
+        ),
         Err(reason) => {
             warn!("Ignored a block transform of {source}: IronPumpkin does not support {reason}");
             None

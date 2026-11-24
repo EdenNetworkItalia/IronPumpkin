@@ -5,8 +5,6 @@
 //! loader reads the values of vanilla first: the server gives them as a pack in memory, so they
 //! have the lowest priority.
 
-use std::path::PathBuf;
-
 use pumpkin_core::plugin::data_maps::builtin::{
     BlockStage, BuiltinDataMaps, default_files, set_builtin,
 };
@@ -29,6 +27,7 @@ use super::{
         VILLAGER_COMPOSTABLES, VILLAGER_TYPES, WAXABLES,
     },
     loader::{MemoryFile, Pack},
+    registries::Lookup,
     transform_entry,
 };
 
@@ -37,7 +36,7 @@ use super::{
 pub(super) fn default_pack() -> Pack {
     Pack {
         id: "ironpumpkin/builtin".to_owned(),
-        root: None::<PathBuf>,
+        root: None,
         memory: default_files()
             .into_iter()
             .filter_map(|file| {
@@ -67,7 +66,7 @@ fn sorted<T: super::DataMapValue>(map: &DataMapType<T>) -> Vec<(Identifier, T)> 
 }
 
 /// The values of the built-in data maps, as the server consumers read them.
-pub(super) fn collect() -> BuiltinDataMaps {
+pub(super) fn collect(lookup: &dyn Lookup) -> BuiltinDataMaps {
     let mut maps = BuiltinDataMaps::default();
 
     for (entry, value) in sorted(&ACCEPTABLE_VILLAGER_DISTANCES) {
@@ -144,6 +143,12 @@ pub(super) fn collect() -> BuiltinDataMaps {
                 .insert(entry.path().to_owned(), villager_type);
         }
     }
+    collect_transforms(&mut maps, lookup);
+    maps
+}
+
+/// The transforms of `BLOCK_TRANSFORM_APPENDERS` and `TRANSFORMABLES`.
+fn collect_transforms(maps: &mut BuiltinDataMaps, lookup: &dyn Lookup) {
     for (transformer, value) in sorted(&BLOCK_TRANSFORM_APPENDERS) {
         let entries = value
             .entries
@@ -152,6 +157,7 @@ pub(super) fn collect() -> BuiltinDataMaps {
                 transform_entry::compile(
                     data,
                     &format!("{} for {transformer}", BLOCK_TRANSFORM_APPENDERS.id()),
+                    lookup,
                 )
             })
             .collect::<Vec<_>>();
@@ -164,9 +170,11 @@ pub(super) fn collect() -> BuiltinDataMaps {
     }
     for (block, value) in sorted(&TRANSFORMABLES) {
         for (transformer, data) in &value.transformers {
-            if let Some(entry) =
-                transform_entry::compile(data, &format!("{} for {block}", TRANSFORMABLES.id()))
-            {
+            if let Some(entry) = transform_entry::compile(
+                data,
+                &format!("{} for {block}", TRANSFORMABLES.id()),
+                lookup,
+            ) {
                 maps.transformables
                     .entry(transformer.to_string())
                     .or_default()
@@ -174,7 +182,6 @@ pub(super) fn collect() -> BuiltinDataMaps {
             }
         }
     }
-    maps
 }
 
 /// The block ids of an entry and the block that it leads to.
@@ -185,6 +192,6 @@ fn block_pair(entry: &Identifier, target: &Identifier) -> Option<(BlockId, Block
 }
 
 /// Gives the values of the built-in maps to the server.
-pub(super) fn publish() {
-    set_builtin(collect());
+pub(super) fn publish(lookup: &dyn Lookup) {
+    set_builtin(collect(lookup));
 }

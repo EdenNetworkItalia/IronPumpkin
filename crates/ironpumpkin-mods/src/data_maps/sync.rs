@@ -43,7 +43,7 @@ impl DataMapHost for Host {
                 }),
         );
         let updated = loader::load(&registered(), &packs, &ServerLookup { server });
-        consumers::publish();
+        consumers::publish(&ServerLookup { server });
         for registry in updated {
             let mut event = DataMapsUpdatedEvent::new(registry, UpdateCause::ServerReload);
             server.plugin_manager.fire_blocking(server, &mut event);
