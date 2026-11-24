@@ -89,7 +89,7 @@ use crate::net::{
     decrement_pending_bytes, java::neoforge::NegotiatedState,
 };
 use crate::plugin::api::events::world::chunk_send::ChunkSend;
-use crate::plugin::guest_call;
+use crate::plugin::guest_call::{self, GuestCall};
 use crate::plugin::player::player_custom_payload::PlayerCustomPayloadEvent;
 use crate::plugin::server::packet::PacketSentEvent;
 use crate::{error::PumpkinError, server::Server};
@@ -632,21 +632,26 @@ impl JavaClient {
             .then_some((player, server))
     }
 
+    /// The guest call that defers a send of this connection, and the player of the connection.
+    /// `None`, and the send runs now, outside a guest call or when the send fires no
+    /// `PacketSentEvent` that a Wasm plugin handles. A Wasm handler waits for the root permit that
+    /// the guest call holds, so the event and the send run after the guest call.
+    fn deferring_guest_call(&self, observe: bool) -> Option<(Arc<dyn GuestCall>, Arc<Player>)> {
+        let call = guest_call::current()?;
+        let (player, server) = self.packet_sent_target(observe)?;
+        server
+            .plugin_manager
+            .has_wasm_handlers::<PacketSentEvent>()
+            .then_some((call, player))
+    }
+
     /// Moves the send to the deferred queue of the guest call that runs on this thread, and
-    /// returns `true`. A Wasm handler of `PacketSentEvent` waits for the root permit that the
-    /// guest call holds, so the event and the send run after the guest call. The queue keeps the
-    /// order of the sends. Returns `false`, and defers nothing, outside a guest call or when no
-    /// Wasm plugin handles `PacketSentEvent`.
+    /// returns `true`. The queue keeps the order of the sends. Returns `false`, and defers
+    /// nothing, when [`Self::deferring_guest_call`] finds no guest call.
     fn defer_in_guest_call(&self, packet_data: &Bytes, observe: bool) -> bool {
-        let Some(call) = guest_call::current() else {
+        let Some((call, player)) = self.deferring_guest_call(observe) else {
             return false;
         };
-        let Some((player, server)) = self.packet_sent_target(observe) else {
-            return false;
-        };
-        if !server.plugin_manager.has_wasm_handlers::<PacketSentEvent>() {
-            return false;
-        }
         let packet_data = packet_data.clone();
         call.defer(
             "packet send",
@@ -703,8 +708,22 @@ impl JavaClient {
     }
 
     /// Queues an already-formatted raw Java packet (`packet_id` + client-version `payload`)
-    /// directly onto the wire queue without firing `PacketSentEvent`.
+    /// directly onto the wire queue without firing `PacketSentEvent`. In a guest call that defers
+    /// the sends of this connection, the packet goes to the same queue, so that it keeps its place
+    /// between the deferred sends. `true` also when the guest call deferred it.
     pub fn try_enqueue_raw_packet_direct(&self, packet_id: i32, payload: &[u8]) -> bool {
+        if let Some((call, player)) = self.deferring_guest_call(true) {
+            let payload = payload.to_vec();
+            call.defer(
+                "raw packet send",
+                Box::new(move || {
+                    if let ClientPlatform::Java(java) = player.client.as_ref() {
+                        java.try_enqueue_raw_packet_direct(packet_id, &payload);
+                    }
+                }),
+            );
+            return true;
+        }
         if self.close_token.is_cancelled() {
             return false;
         }
@@ -786,7 +805,21 @@ impl JavaClient {
         }
     }
 
+    /// Sends the disconnect packet and closes the connection. In a guest call that defers the
+    /// sends of this connection, the packet and the close run after the guest call.
     pub fn try_kick(&self, reason: &TextComponent) {
+        if let Some((call, player)) = self.deferring_guest_call(false) {
+            let reason = reason.clone();
+            call.defer(
+                "kick",
+                Box::new(move || {
+                    if let ClientPlatform::Java(java) = player.client.as_ref() {
+                        java.try_kick(&reason);
+                    }
+                }),
+            );
+            return;
+        }
         if let Some(data) = self
             .serialize_disconnect(reason)
             .and_then(|data| self.translate_outgoing(data, false).0)
@@ -816,7 +849,24 @@ impl JavaClient {
         self.kick_explicit(&reason, true).await;
     }
 
+    /// Sends the disconnect packet when `send_packet`, then closes the connection. In a guest call
+    /// that defers the sends of this connection, the packet and the close run after the guest
+    /// call, so that the close does not drop the deferred packet. This call then returns before
+    /// the connection closes.
     pub async fn kick_explicit(&self, reason: &TextComponent, send_packet: bool) {
+        if send_packet && let Some((call, player)) = self.deferring_guest_call(true) {
+            let reason = reason.clone();
+            let runtime = tokio::runtime::Handle::current();
+            call.defer(
+                "kick",
+                Box::new(move || {
+                    if let ClientPlatform::Java(java) = player.client.as_ref() {
+                        runtime.block_on(java.kick_explicit(&reason, true));
+                    }
+                }),
+            );
+            return;
+        }
         if send_packet && let Some(data) = self.serialize_disconnect(reason) {
             // Stalled peer: never flushes -> Close anyway.
             let _ = tokio::time::timeout(
@@ -837,19 +887,23 @@ impl JavaClient {
     /// Enqueue on the per-connection FIFO and wait until the writer has
     /// `write_frame`d into the `BufWriter`. Never waits for a TCP flush.
     /// `false` when the packet was dropped instead (cancelled, closed, buffer full).
+    /// In a guest call that defers the sends of this connection, the packet goes to the deferred
+    /// queue with the normal priority, and this call returns `true` without waiting for the write.
     pub async fn send_packet_now_data(&self, packet: Bytes) -> bool {
         self.send_and_wait(packet, OutgoingPacket::high_priority)
             .await
     }
 
     /// Enqueue and wait for the writer's completion, `Framed` or `Flushed` per `make`.
-    /// `false` when the packet was dropped instead of queued.
+    /// `false` when the packet was dropped instead of queued. In a guest call that defers the
+    /// sends of this connection, the packet goes to the deferred queue with the normal priority,
+    /// and this call returns `true` without waiting for the write: see
+    /// [`Self::deferring_guest_call`].
     async fn send_and_wait(
         &self,
         packet: Bytes,
         make: fn(Bytes, oneshot::Sender<()>) -> OutgoingPacket,
     ) -> bool {
-        // A deferred send goes out with the normal priority, and this call does not wait for it.
         if self.defer_in_guest_call(&packet, true) {
             return true;
         }
