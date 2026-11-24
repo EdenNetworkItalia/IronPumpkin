@@ -16,6 +16,12 @@ call when a Wasm plugin handles the sent event of the send, so the scan treats t
 functions (the `SENDS` set of the script) as safe. The scan cannot see the native-only runtime
 check, so `sync_fires.tsv` records those imports.
 
+The scan also lists the async imports (`impl Host*WithStore<PluginHostState>`) that reach a
+blocking fire outside `run_blocking` and `in_active_context`. wasmtime polls the future of an
+async import outside the re-entry context of the guest call, so such a fire hangs too. The scan
+blanks the arguments of `run_blocking` and `in_active_context` and every `async` block, so an
+async block that does not run through them is a miss. These rows start with `async `.
+
 `sync_fires.tsv` records each import that the scan finds and its disposition. The check fails when
 the scan finds an import that the list does not have, or when the list has an import that the scan
 no longer finds.

@@ -81,6 +81,13 @@ KEYWORDS = {
 FN = re.compile(r"\b(async\s+)?(?:unsafe\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")
 CALL = re.compile(r"\b([a-z_][a-z0-9_]*)\s*(?:::\s*<[^()]*?>\s*)?\(")
 IMPL = re.compile(r"\bimpl\s+([A-Za-z0-9_:<>, ]+?)\s+for\s+PluginHostState\s*\{")
+# The async imports. wasmtime polls their futures outside the re-entry context of the guest call,
+# so a blocking fire in them hangs like one in a synchronous import, unless the work runs through
+# `run_blocking` or `in_active_context`.
+ASYNC_IMPL = re.compile(
+    r"\bimpl\s+([A-Za-z0-9_:]+?)WithStore<PluginHostState>\s+for\s+HasSelf<PluginHostState>\s*\{"
+)
+IN_CONTEXT = [re.compile(r"\brun_blocking\s*\("), re.compile(r"\bin_active_context\s*\(")]
 # Code that runs after the import returns, on another task: deferred work, spawned work and
 # async blocks.
 LATER = [
@@ -164,9 +171,9 @@ def closing(text, start):
     return len(text)
 
 
-def blank_later(body):
+def blank_later(body, patterns=LATER):
     """`body` with the code that runs after the import returns blanked."""
-    for pattern in LATER:
+    for pattern in patterns:
         while True:
             match = pattern.search(body)
             if not match:
@@ -193,8 +200,11 @@ def functions(src):
             yield match.group(2), bool(match.group(1)), match.start(), src[i : closing(src, i) + 1]
 
 
-def calls(body):
-    return set(CALL.findall(blank_later(body))) - KEYWORDS
+def calls(body, extra=()):
+    body = blank_later(body)
+    if extra:
+        body = blank_later(body, extra)
+    return set(CALL.findall(body)) - KEYWORDS
 
 
 def rust_files(root, directory):
@@ -249,21 +259,27 @@ def scan(root):
     for path in rust_files(root, HOST):
         with open(path, encoding="utf-8") as file:
             src = strip(file.read())
-        for impl in IMPL.finditer(src):
-            start = impl.end() - 1
-            block = src[start : closing(src, start) + 1]
-            trait = re.sub(r"<.*", "", impl.group(1)).split("::")[-1]
-            for name, is_async, offset, body in functions(block):
-                if is_async:
-                    continue
-                hits = sorted(c for c in calls(body) if c in next_name and c not in ignored)
-                if hits:
-                    line = src.count("\n", 0, start + offset) + 1
-                    found[f"{trait}.{name}"] = (
-                        os.path.relpath(path, root),
-                        line,
-                        [chain(next_name, hit) for hit in hits],
+        for pattern, wanted_async, prefix, extra in (
+            (IMPL, False, "", ()),
+            (ASYNC_IMPL, True, "async ", IN_CONTEXT),
+        ):
+            for impl in pattern.finditer(src):
+                start = impl.end() - 1
+                block = src[start : closing(src, start) + 1]
+                trait = re.sub(r"<.*", "", impl.group(1)).split("::")[-1]
+                for name, is_async, offset, body in functions(block):
+                    if is_async != wanted_async:
+                        continue
+                    hits = sorted(
+                        c for c in calls(body, extra) if c in next_name and c not in ignored
                     )
+                    if hits:
+                        line = src.count("\n", 0, start + offset) + 1
+                        found[f"{prefix}{trait}.{name}"] = (
+                            os.path.relpath(path, root),
+                            line,
+                            [chain(next_name, hit) for hit in hits],
+                        )
     return found
 
 
@@ -293,7 +309,7 @@ def main():
             print(f"{name}\t{mark}\t{path}:{line}\t{' -> '.join(names)}")
     for name in gone:
         print(f"{name}\tgone: in the list, but the scan does not find it")
-    print(f"{len(found)} synchronous imports reach a fire, {len(new)} new, {len(gone)} gone")
+    print(f"{len(found)} imports reach a blocking fire, {len(new)} new, {len(gone)} gone")
     if args.check and (new or gone):
         sys.exit(1)
 

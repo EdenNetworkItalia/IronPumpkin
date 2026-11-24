@@ -68,6 +68,23 @@ class ScanTest(unittest.TestCase):
         ) + "\npub fn try_enqueue_packet_data(d: u8) {\n    fire_blocking();\n}\n"
         self.assertEqual(self.scan(HOST_SOURCE, core), {})
 
+    def test_an_async_import_outside_run_blocking_is_a_path(self):
+        host = HOST_SOURCE + """
+impl HostPlayerWithStore<PluginHostState> for HasSelf<PluginHostState> {
+    async fn direct(accessor: &Accessor) -> wasmtime::Result<()> {
+        open_sign("");
+        Ok(())
+    }
+
+    async fn wrapped(accessor: &Accessor) -> wasmtime::Result<()> {
+        run_blocking(accessor, move || open_sign("")).await
+    }
+}
+"""
+        found = self.scan(host, CORE_SOURCE)
+        self.assertIn("async HostPlayer.direct", found)
+        self.assertNotIn("async HostPlayer.wrapped", found)
+
     def test_an_async_function_is_no_path(self):
         found = self.scan(HOST_SOURCE.replace("open_sign(text)", "later()"), CORE_SOURCE)
         self.assertEqual(found, {})
