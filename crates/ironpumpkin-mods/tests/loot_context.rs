@@ -926,3 +926,98 @@ fn a_container_minecart_rolls_itself_as_the_attacking_entity() {
     );
     assert_eq!(rolls[0].this_entity, None);
 }
+
+/// Runs `command` as `player` standing at `position`.
+fn run_command(
+    player: &Arc<ironpumpkin_mods::pumpkin_core::entity::player::Player>,
+    position: Vector3<f64>,
+    command: &str,
+) {
+    use ironpumpkin_mods::pumpkin_core::command::{CommandSender, CommandSource};
+    player
+        .permission_lvl
+        .store(ironpumpkin_mods::pumpkin_util::permission::PermissionLvl::Four);
+    let server = support::server();
+    let source = CommandSource::new(
+        CommandSender::Player(player.clone()),
+        support::world(),
+        Some(player.clone() as Arc<dyn EntityBase>),
+        position,
+        ironpumpkin_mods::pumpkin_util::math::vector2::Vector2::new(0.0, 0.0),
+        player.gameprofile.name.clone(),
+        ironpumpkin_mods::pumpkin_util::text::TextComponent::text(player.gameprofile.name.clone()),
+        server.clone(),
+    );
+    server
+        .command_dispatcher
+        .load()
+        .handle_command(&source, command);
+}
+
+/// Review 171: `LootCommand.dropKillLoot` rolls the `entity` set with a magic damage source, the
+/// killing player, and the position of the command source for every target.
+#[test]
+fn loot_kill_rolls_the_command_source_position_and_a_magic_damage_source() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("loot_killer");
+    set(BlockPos::new(175, 100, 0), Block::STONE.default_state.id);
+    let chicken = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::CHICKEN,
+        Vector3::new(175.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(chicken.clone()));
+    let source_position = Vector3::new(170.5, 101.0, 0.5);
+
+    let rolls = rolls_of("minecraft:entities/chicken", || {
+        run_command(
+            &player,
+            source_position,
+            &format!(
+                "loot give {} kill {}",
+                player.gameprofile.name,
+                chicken.get_entity().entity_uuid
+            ),
+        );
+    });
+    assert_eq!(rolls.len(), 1);
+    let roll = &rolls[0];
+    assert_eq!(roll.origin, Some([170.5, 101.0, 0.5]));
+    assert_eq!(roll.this_entity, Some(entity_id(chicken.as_ref())));
+    assert_eq!(roll.last_damage_player, Some(entity_id(player.as_ref())));
+    assert_eq!(roll.attacking_entity, Some(entity_id(player.as_ref())));
+    assert_eq!(roll.damage_type, Some("magic"));
+}
+
+/// Review 171: `LootCommand.dropBlockLoot` sets the block entity and the command entity.
+#[test]
+fn loot_mine_rolls_the_block_entity_and_the_command_entity() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("loot_miner");
+    let pos = BlockPos::new(190, 100, 0);
+    let state = Block::DECORATED_POT.default_state.id;
+    set(pos, state);
+    world.add_block_entity(Arc::new(DecoratedPotBlockEntity::new(pos)));
+
+    let rolls = rolls_of("minecraft:blocks/decorated_pot", || {
+        run_command(
+            &player,
+            Vector3::new(0.5, 101.0, 0.5),
+            &format!(
+                "loot give {} mine {} {} {}",
+                player.gameprofile.name, pos.0.x, pos.0.y, pos.0.z
+            ),
+        );
+    });
+    assert_eq!(rolls.len(), 1);
+    let roll = &rolls[0];
+    assert_eq!(roll.origin, Some(center(&pos)));
+    assert_eq!(roll.block_state, Some(state));
+    assert_eq!(roll.block_entity, Some(pos));
+    assert_eq!(roll.this_entity, Some(entity_id(player.as_ref())));
+}
