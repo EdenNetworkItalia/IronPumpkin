@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use crate::codec::item_stack_seralizer::{
     DecodedPatch, component_id, custom_component_type, item_component_counts,
-    read_custom_component, write_custom_components,
+    read_custom_component, read_id, write_custom_components,
 };
 use crate::codec::var_int::VarInt;
 use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
@@ -330,7 +330,7 @@ impl DataComponentCodec<Self> for EnchantmentsImpl {
         }
         let mut enc = Vec::with_capacity(len);
         for _ in 0..len {
-            let id = seq.get_var_int()?.0 as u8;
+            let id: u8 = read_id(seq)?;
             let level = seq.get_var_int()?.0;
             if !(1..=MAX_ENCHANTMENT_LEVEL).contains(&level) {
                 return Err(ReadingError::Message(format!(
@@ -970,7 +970,7 @@ impl DataComponentCodec<Self> for StoredEnchantmentsImpl {
 
         let mut stored_enchantments = Vec::with_capacity(len);
         for _ in 0..len {
-            let id = seq.get_var_int()?.0 as u8;
+            let id: u8 = read_id(seq)?;
             let level = seq.get_var_int()?.0;
             if !(1..=MAX_ENCHANTMENT_LEVEL).contains(&level) {
                 return Err(ReadingError::Message(format!(
@@ -1404,7 +1404,7 @@ fn deserialize_item_stack_template(
     const MAX_COMPONENTS: i32 = 256;
 
     let _nesting = crate::codec::item_stack_seralizer::enter_item_nesting()?;
-    let item_id = seq.get_var_int()?.0 as u16;
+    let item_id: u16 = read_id(seq)?;
     let item = pumpkin_data::item::Item::from_id(item_id)
         .ok_or_else(|| ReadingError::Message(format!("Unknown item ID: {item_id}")))?;
     if item == &pumpkin_data::item::Item::AIR {
@@ -1756,7 +1756,7 @@ impl DataComponentCodec<Self> for DamageTypeImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let id = seq.get_var_int()?.0 as u8;
+        let id: u8 = read_id(seq)?;
         let damage_type = pumpkin_data::damage::DamageType::from_id(id)
             .ok_or_else(|| ReadingError::Message(format!("Invalid DamageType id {id}")))?;
         Ok(Self { damage_type })
@@ -1828,7 +1828,7 @@ fn deserialize_adventure_predicate(seq: &mut impl NetworkReadExt) -> Result<NbtT
         }
         let exact_len = seq.get_var_int()?.0;
         for _ in 0..exact_len {
-            let comp_id = seq.get_var_int()?.0 as u8;
+            let comp_id: u8 = read_id(seq)?;
             if let Some(comp) = DataComponent::try_from_id(comp_id) {
                 let _ = deserialize(comp, seq)?;
             }
@@ -3235,7 +3235,7 @@ impl DataComponentCodec<Self> for BannerPatternsImpl {
         let mut layers = Vec::with_capacity(len.min(MAX_INITIAL_COLLECTION_SIZE));
         for _ in 0..len {
             let _pattern = seq.get_var_int()?.0;
-            let color_id = seq.get_var_int()?.0 as u8;
+            let color_id: u8 = read_id(seq)?;
             let color = pumpkin_data::dye_color::DyeColor::by_id(color_id).unwrap_or_default();
             layers.push(pumpkin_data::data_component_impl::BannerPatternLayer {
                 pattern: String::new(),
@@ -3254,7 +3254,7 @@ impl DataComponentCodec<Self> for BaseColorImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let id = seq.get_var_int()?.0 as u8;
+        let id: u8 = read_id(seq)?;
         let color = pumpkin_data::dye_color::DyeColor::by_id(id)
             .map_or("white", |c| c.name())
             .to_string();

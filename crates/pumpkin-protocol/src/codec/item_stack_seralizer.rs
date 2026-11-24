@@ -268,6 +268,12 @@ fn serialize_item_cost_with_id(
     write_custom_components(stack, version.content_ids(), false, write)
 }
 
+/// Reads a registry id, and fails on a value outside the id type instead of truncating it.
+pub(crate) fn read_id<T: TryFrom<i32>>(read: &mut impl NetworkReadExt) -> Result<T, ReadingError> {
+    let id = read.get_var_int()?.0;
+    T::try_from(id).map_err(|_| ReadingError::Message(format!("Invalid id: {id}")))
+}
+
 /// Enters one level of item stack nesting, or fails the decode of a value nested too deep.
 pub(crate) fn enter_item_nesting() -> Result<NestingGuard, ReadingError> {
     NestingGuard::enter().ok_or_else(|| ReadingError::Message("Item stacks nested too deep".into()))
@@ -421,8 +427,7 @@ impl ItemStackSerializer<'_> {
                 patch.put_custom(entry.id, read_custom_component(read)?);
                 continue;
             }
-            let id = DataComponent::try_from_id(id_val as u8)
-                .ok_or_else(|| ReadingError::Message(format!("Unknown component ID: {id_val}")))?;
+            let id = component_id(id_val)?;
 
             let component_impl = if id == DataComponent::CustomData {
                 CustomDataImpl::deserialize(read)?.to_dyn()
@@ -438,8 +443,7 @@ impl ItemStackSerializer<'_> {
                 patch.remove_custom(entry.id);
                 continue;
             }
-            let id = DataComponent::try_from_id(id_val as u8)
-                .ok_or_else(|| ReadingError::Message("Unknown component ID".into()))?;
+            let id = component_id(id_val)?;
             patch.put(id, None);
         }
 
@@ -448,10 +452,9 @@ impl ItemStackSerializer<'_> {
             .try_into()
             .map_err(|_| ReadingError::Message("Invalid item id!".into()))?;
 
-        let stack = patch.into_stack(
-            item_count.0 as u8,
-            Item::from_id(item_id_u16).unwrap_or(&Item::AIR),
-        );
+        let item_count = u8::try_from(item_count.0)
+            .map_err(|_| ReadingError::Message("Invalid item count!".into()))?;
+        let stack = patch.into_stack(item_count, Item::from_id(item_id_u16).unwrap_or(&Item::AIR));
         Ok(ItemStackSerializer(Cow::Owned(stack)))
     }
 
@@ -473,7 +476,7 @@ impl ItemStackSerializer<'_> {
             if !present {
                 return Ok(ItemStackSerializer(Cow::Borrowed(ItemStack::EMPTY)));
             }
-            let raw_item_id = read.get_var_int()?.0 as u16;
+            let raw_item_id: u16 = read_id(read)?;
             let count = read.get_i8()? as u8;
             let nbt_type = read.get_u8()?;
             if nbt_type != 0 {
@@ -584,8 +587,7 @@ impl ItemStackSerializer<'_> {
                 patch.put_custom(entry.id, read_custom_component(read)?);
                 continue;
             }
-            let id = DataComponent::try_from_id(id_val as u8)
-                .ok_or_else(|| ReadingError::Message(format!("Unknown component ID: {id_val}")))?;
+            let id = component_id(id_val)?;
 
             let component_impl = if id == DataComponent::CustomData {
                 CustomDataImpl::deserialize(read)?.to_dyn()
@@ -601,8 +603,7 @@ impl ItemStackSerializer<'_> {
                 patch.remove_custom(entry.id);
                 continue;
             }
-            let id = DataComponent::try_from_id(id_val as u8)
-                .ok_or_else(|| ReadingError::Message("Unknown component ID".into()))?;
+            let id = component_id(id_val)?;
             patch.put(id, None);
         }
 
@@ -1269,5 +1270,24 @@ mod tests {
             .unwrap();
         let stack = ItemStack::read_item_stack(&decoded.projectiles[0]).unwrap();
         assert_eq!(stack.item, &Item::ARROW);
+    }
+
+    /// A var int id above the id type is an error, not a truncated id of another entry.
+    #[test]
+    fn out_of_range_ids_fail_to_decode() {
+        let unbreakable = i32::from(DataComponent::Unbreakable.to_id());
+        let sword = i32::from(Item::DIAMOND_SWORD.id);
+        // A non-length-prefixed stack with the component id `unbreakable + 256`.
+        let bytes = var_ints(&[1, sword, 1, 0, unbreakable + 256]);
+        assert!(ItemStackSerializer::read(&mut bytes.as_slice()).is_err());
+        // A bundle template with the item id `diamond + 65536`.
+        let bytes = var_ints(&[1, i32::from(Item::DIAMOND.id) + 65_536, 1, 0, 0]);
+        assert!(
+            crate::codec::data_component::deserialize(
+                DataComponent::BundleContents,
+                &mut bytes.as_slice()
+            )
+            .is_err()
+        );
     }
 }
