@@ -149,41 +149,51 @@ impl Behavior for HarvestFarmland {
             }
 
             if state.is_air() && is_villager_farmland(block_below) && villager.has_farm_seeds() {
-                let mut inventory = villager
-                    .inventory
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                for slot in inventory.iter_mut() {
-                    let ok = if !slot.is_empty()
-                        && slot
-                            .item
-                            .has_tag(&tag::Item::MINECRAFT_VILLAGER_PLANTABLE_SEEDS)
-                        && let Some(place_block) = Block::from_item_id(slot.item.id)
+                // The block change, the game event and the sound run mod handlers, so the
+                // inventory lock is free while they run. The seed is found first and taken
+                // after them, as vanilla, when the slot still holds it.
+                let candidate = {
+                    let inventory = villager
+                        .inventory
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    inventory.iter().enumerate().find_map(|(index, slot)| {
+                        if slot.is_empty()
+                            || !slot
+                                .item
+                                .has_tag(&tag::Item::MINECRAFT_VILLAGER_PLANTABLE_SEEDS)
+                        {
+                            return None;
+                        }
+                        let place_block = Block::from_item_id(slot.item.id)?;
+                        Some((index, slot.item.id, place_block.default_state))
+                    })
+                };
+                if let Some((index, item_id, place)) = candidate {
+                    tick.world
+                        .set_block_state(&farmland_pos, place.id, BlockFlags::NOTIFY_ALL);
+                    tick.world.emit_game_event_with_context(
+                        GameEvent::BlockPlace.name(),
+                        farmland_pos.to_centered_f64(),
+                        &GameEventContext::of_entity_state(Some(source), place.id),
+                    );
+                    tick.world.play_sound(
+                        Sound::ItemCropPlant,
+                        SoundCategory::Blocks,
+                        &farmland_pos.to_f64(),
+                    );
+                    let mut inventory = villager
+                        .inventory
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if let Some(slot) = inventory.get_mut(index)
+                        && !slot.is_empty()
+                        && slot.item.id == item_id
                     {
-                        let place = place_block.default_state;
-                        tick.world
-                            .set_block_state(&farmland_pos, place.id, BlockFlags::NOTIFY_ALL);
-                        tick.world.emit_game_event_with_context(
-                            GameEvent::BlockPlace.name(),
-                            farmland_pos.to_centered_f64(),
-                            &GameEventContext::of_entity_state(Some(source), place.id),
-                        );
-                        true
-                    } else {
-                        false
-                    };
-
-                    if ok {
-                        tick.world.play_sound(
-                            Sound::ItemCropPlant,
-                            SoundCategory::Blocks,
-                            &farmland_pos.to_f64(),
-                        );
                         slot.decrement(1);
                         if slot.item_count == 0 {
                             slot.clear();
                         }
-                        break;
                     }
                 }
             }

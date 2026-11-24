@@ -28,12 +28,13 @@ impl BlockBehaviour for DaylightDetectorBlock {
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
-        let player_abilities = args
+        let allow_modify_world = args
             .player
             .abilities
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !player_abilities.allow_modify_world {
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .allow_modify_world;
+        if !allow_modify_world {
             return BlockActionResult::Pass;
         }
 

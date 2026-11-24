@@ -37,6 +37,7 @@ pub(crate) use entity_index::EntityIndex;
 pub mod cat_spawner;
 pub mod entity_islands;
 pub mod explosion;
+pub mod fire_deferral;
 pub mod game_event;
 pub mod generation_cache;
 pub mod loot;
@@ -8203,6 +8204,35 @@ impl World {
         context: &game_event::GameEventContext<'_>,
     ) {
         let event_key = event_key.as_ref();
+        if fire_deferral::is_active()
+            && let Some(world) = self.arc_self()
+        {
+            let cause = context.owner().cloned().or_else(|| {
+                context
+                    .source_entity
+                    .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id))
+            });
+            let (key, state) = (event_key.to_owned(), context.affected_state);
+            if let Some(fire) = fire_deferral::defer(move || {
+                let context = cause.as_ref().map_or(
+                    game_event::GameEventContext::NONE,
+                    game_event::GameEventContext::of_owner,
+                );
+                world.emit_game_event_now(&key, position, &context.with_state(state));
+            }) {
+                fire();
+            }
+            return;
+        }
+        self.emit_game_event_now(event_key, position, context);
+    }
+
+    fn emit_game_event_now(
+        &self,
+        event_key: &str,
+        position: Vector3<f64>,
+        context: &game_event::GameEventContext<'_>,
+    ) {
         let kind = pumpkin_data::game_event::GameEvent::from_name(event_key);
         if self
             .plugin_event_in_world(|world| {

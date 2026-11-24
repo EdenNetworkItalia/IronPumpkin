@@ -3540,30 +3540,38 @@ impl LivingEntity {
                     }
                 }
             } else if durability_damage > 0 {
-                let mut equipment_guard = self
-                    .entity_equipment
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(stack) = equipment_guard.equipment.get_mut(&slot) {
-                    let break_sound = stack
-                        .get_data_component::<pumpkin_data::data_component_impl::BreakSoundImpl>()
-                        .map(|bs| bs.sound.clone());
-                    if stack.damage_item(durability_damage) == DamageResult::Broken {
-                        if let Some(ref sound) = break_sound {
-                            world.play_sound_event(sound, SoundCategory::Neutral, &player_pos);
-                        }
-                        world.send_entity_status(
-                            &self.entity,
-                            crate::entity::equipment_break_status(&slot),
-                            ActorEventID::None,
-                        );
-                        *stack = ItemStack::EMPTY.clone();
-                        let broken_stack = stack.clone();
-                        drop(equipment_guard);
-
-                        self.send_equipment_changes(&[(slot, broken_stack)]);
-                        self.clear_active_hand();
+                // The sound event runs mod handlers, so it plays after the equipment lock is gone.
+                let broken = {
+                    let mut equipment_guard = self
+                        .entity_equipment
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    equipment_guard
+                        .equipment
+                        .get_mut(&slot)
+                        .and_then(|stack| {
+                            let break_sound = stack
+                                .get_data_component::<pumpkin_data::data_component_impl::BreakSoundImpl>()
+                                .map(|bs| bs.sound.clone());
+                            (stack.damage_item(durability_damage) == DamageResult::Broken).then(
+                                || {
+                                    *stack = ItemStack::EMPTY.clone();
+                                    break_sound
+                                },
+                            )
+                        })
+                };
+                if let Some(break_sound) = broken {
+                    if let Some(ref sound) = break_sound {
+                        world.play_sound_event(sound, SoundCategory::Neutral, &player_pos);
                     }
+                    world.send_entity_status(
+                        &self.entity,
+                        crate::entity::equipment_break_status(&slot),
+                        ActorEventID::None,
+                    );
+                    self.send_equipment_changes(&[(slot, ItemStack::EMPTY.clone())]);
+                    self.clear_active_hand();
                 }
             }
 

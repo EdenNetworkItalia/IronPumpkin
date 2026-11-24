@@ -39,6 +39,8 @@ impl JavaClient {
             && (item_stack.is_empty() || item_stack.item_count <= item_stack.get_max_stack_size());
 
         if valid_slot && is_legal {
+            // The equip sound waits for the screen handler lock.
+            let _deferral = crate::plugin::player_events::Deferral::start();
             let mut player_screen_handler = player
                 .player_screen_handler
                 .lock()

@@ -9532,11 +9532,14 @@ impl InventoryPlayer for Player {
             .send_equipment_changes(&[(slot.clone(), stack.clone())]);
 
         if let Some(equippable) = stack.get_data_component::<EquippableImpl>() {
-            self.world().play_sound_event(
-                &equippable.equip_sound,
-                SoundCategory::Players,
-                &self.position(),
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            let sound = equippable.equip_sound.clone();
+            let position = self.position();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_event(&sound, SoundCategory::Players, &position);
+            });
         }
     }
 
@@ -9557,13 +9560,18 @@ impl InventoryPlayer for Player {
 
     fn play_block_sound(&self, sound: Sound, pitch: f32) {
         if let Some(pos) = self.open_container_pos.load() {
-            self.world().play_sound_fine(
-                sound,
-                SoundCategory::Blocks,
-                &pos.to_centered_f64(),
-                1.0,
-                pitch,
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_fine(
+                    sound,
+                    SoundCategory::Blocks,
+                    &pos.to_centered_f64(),
+                    1.0,
+                    pitch,
+                );
+            });
         }
     }
 
