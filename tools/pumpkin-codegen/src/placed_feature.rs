@@ -180,8 +180,8 @@ fn value_to_feature(v: &Value) -> TokenStream {
 /// - `v` – JSON object with a `"type"` discriminant and modifier-specific fields.
 ///
 /// # Returns
-/// A `PlacementModifier` variant token stream, or `compile_error!` for unknown types.
-fn value_to_placement_modifier(v: &Value) -> TokenStream {
+/// A `PlacementModifier` variant token stream; panics on unknown types.
+pub fn value_to_placement_modifier(v: &Value) -> TokenStream {
     let type_str = v["type"].as_str().unwrap_or("");
     match type_str {
         "minecraft:biome" => quote! { PlacementModifier::Biome(BiomePlacementModifier) },
@@ -344,10 +344,42 @@ fn value_to_placement_modifier(v: &Value) -> TokenStream {
                 })
             }
         }
-        other => {
-            let msg = format!("unknown placement modifier: {other}");
-            quote! { compile_error!(#msg) }
+        "minecraft:random_chance" => {
+            let chance = v["chance"].as_f64().unwrap() as f32;
+            quote! {
+                PlacementModifier::RandomChance(RandomChancePlacementModifier {
+                    chance: #chance,
+                })
+            }
         }
+        "minecraft:cuboid" => {
+            let xz_size = value_to_int_provider(&v["xz_size"]);
+            let y_size = value_to_int_provider(&v["y_size"]);
+            let include_edges = v["include_edges"].as_bool().unwrap_or(true);
+            let include_interior = v["include_interior"].as_bool().unwrap_or(true);
+            quote! {
+                PlacementModifier::Cuboid(CuboidPlacementModifier {
+                    xz_size: #xz_size,
+                    y_size: #y_size,
+                    include_edges: #include_edges,
+                    include_interior: #include_interior,
+                })
+            }
+        }
+        "minecraft:randomly_selected" => {
+            let placements: Vec<TokenStream> = v["placements"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(value_to_placement_modifier)
+                .collect();
+            quote! {
+                PlacementModifier::RandomlySelected(RandomlySelectedPlacementModifier {
+                    placements: vec![#(#placements),*],
+                })
+            }
+        }
+        other => panic!("Unknown placement modifier type: {other}"),
     }
 }
 
