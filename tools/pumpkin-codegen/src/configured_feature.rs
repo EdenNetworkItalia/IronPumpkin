@@ -1203,7 +1203,9 @@ fn value_to_template_feature(config: &Value) -> TokenStream {
             let weight = weighted["weight"]
                 .as_i64()
                 .and_then(|w| i32::try_from(w).ok())
-                .filter(|w| *w > 0)
+                // Vanilla `Weighted.CODEC` takes any non-negative weight. A weight of 0 is never
+                // picked.
+                .filter(|w| *w >= 0)
                 .unwrap_or_else(|| panic!("invalid template weight: {weighted}"));
             let data = &weighted["data"];
             let id = data["id"]
@@ -2071,5 +2073,33 @@ fn value_to_feature_ref(v: &Value) -> TokenStream {
             quote! { Feature::Inlined(Box::new(#cf)) }
         }
         other => panic!("feature reference is neither a name nor an object: {other}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::value_to_template_feature;
+
+    #[test]
+    fn template_accepts_weight_zero() {
+        // Vanilla `Weighted.CODEC` reads the weight as `NON_NEGATIVE_INT`.
+        let config = serde_json::json!({
+            "templates": [
+                { "weight": 0, "data": { "id": "minecraft:a" } },
+                { "weight": 2, "data": { "id": "minecraft:b", "rotations": ["none"] } }
+            ]
+        });
+        let tokens = value_to_template_feature(&config).to_string();
+        assert!(tokens.contains("weight : 0i32"), "{tokens}");
+        assert!(tokens.contains("weight : 2i32"), "{tokens}");
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid template weight")]
+    fn template_rejects_negative_weight() {
+        let config = serde_json::json!({
+            "templates": [{ "weight": -1, "data": { "id": "minecraft:a" } }]
+        });
+        let _ = value_to_template_feature(&config);
     }
 }
