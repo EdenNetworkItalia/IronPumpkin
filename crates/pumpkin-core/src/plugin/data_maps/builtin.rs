@@ -13,7 +13,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
 use arc_swap::{ArcSwap, Guard};
@@ -43,9 +43,9 @@ use crate::entity::{
     passive::{parrot, villager::breeding},
 };
 
-/// The key of `BlockTransformers.AXE`: the transformer that the generated scrape and wax off
-/// transforms join.
-const AXE: &str = "minecraft:axe";
+/// The path of the key of `BlockTransformers.AXE` (`minecraft:axe`): the transformer that the
+/// generated scrape and wax off transforms join.
+const AXE: &str = "axe";
 
 /// `Oxidizable` and `Waxable`: the block that follows, and whether the axe gets a transform that
 /// undoes the step.
@@ -89,8 +89,8 @@ pub struct BuiltinDataMaps {
 struct Derived {
     /// `DataMapHooks.INVERSE_OXIDIZABLES_DATAMAP`.
     inverse_oxidizables: HashMap<BlockId, BlockId>,
-    /// The block transformers that data maps extend, by key. A transformer without an addition
-    /// is the static one of `pumpkin-data`.
+    /// The block transformers that data maps extend, by the path of the key (`axe`). A
+    /// transformer without an addition is the static one of `pumpkin-data`.
     transformers: HashMap<String, &'static BlockTransformer>,
 }
 
@@ -107,7 +107,7 @@ impl BuiltinDataMaps {
         maps.monster_room_mobs =
             pumpkin_world::generation::feature::features::monster_room::vanilla_monster_room_mobs();
         for index in 0..BlockId::COUNT {
-            let Some(id) = u16::try_from(index).ok().and_then(BlockId::new) else {
+            let Some(id) = BlockId::new(index) else {
                 continue;
             };
             let stage = |target: BlockId| BlockStage {
@@ -173,10 +173,11 @@ impl BuiltinDataMaps {
         }
 
         let generated = self.generated_axe_entries();
-        let mut keys: BTreeSet<&str> = self
-            .transform_appenders
+        let appenders = by_transformer(&self.transform_appenders);
+        let transformables = by_transformer(&self.transformables);
+        let mut keys: BTreeSet<&str> = appenders
             .keys()
-            .chain(self.transformables.keys())
+            .chain(transformables.keys())
             .map(String::as_str)
             .collect();
         if !generated.is_empty() {
@@ -187,30 +188,15 @@ impl BuiltinDataMaps {
                 continue;
             };
             // `Iterables.concat(toolTransformers, appenders, DATAMAP_BLOCK_TRANSFORMERS)`.
-            let mut entries: Vec<BlockTransformerEntry> = base.entries.to_vec();
-            entries.extend(
-                self.transform_appenders
-                    .get(key)
-                    .into_iter()
-                    .flatten()
-                    .map(|entry| **entry),
-            );
+            let mut added: Vec<&'static BlockTransformerEntry> =
+                appenders.get(key).cloned().unwrap_or_default();
             if key == AXE {
-                entries.extend(generated.iter().copied());
+                added.extend(generated.iter().copied());
             }
-            entries.extend(
-                self.transformables
-                    .get(key)
-                    .into_iter()
-                    .flatten()
-                    .map(|entry| **entry),
-            );
-            // The transformer lives as long as the server. A load that adds no transform leaks
-            // nothing.
-            let entries: &'static [BlockTransformerEntry] = Box::leak(entries.into_boxed_slice());
-            let transformer: &'static BlockTransformer =
-                Box::leak(Box::new(BlockTransformer { entries }));
-            derived.transformers.insert(normalize(key), transformer);
+            added.extend(transformables.get(key).cloned().unwrap_or_default());
+            derived
+                .transformers
+                .insert(key.to_owned(), extended_transformer(key, base, &added));
         }
         self.derived = derived;
         self
@@ -218,60 +204,116 @@ impl BuiltinDataMaps {
 
     /// The transforms that `DataMapHooks.onDataMapsUpdated` builds for an oxidizable or a waxable
     /// with `generate_block_transform`.
-    fn generated_axe_entries(&self) -> Vec<BlockTransformerEntry> {
-        let entry = |block: BlockId, stage: &BlockStage, sound: Sound, particle: WorldEvent| {
-            let rules: &'static [BlockTransformerRule] =
-                Box::leak(Box::new([BlockTransformerRule {
-                    predicate: BlockPredicate::MatchingBlocks {
-                        blocks: Box::leak(Box::new([stage.target])),
-                        offset: (0, 0, 0),
-                    },
-                    provider: BlockTransformerStateProvider::SimpleState(block),
-                }]));
-            BlockTransformerEntry {
-                rules,
-                disallowed_faces: &[],
-                item_damage_per_use: 1,
-                sound: Some(sound),
-                particle: Some(particle),
-                loot: None,
-                drop_strategy: None,
-                transform_type: None,
-                update_from_neighbors: true,
-            }
-        };
+    fn generated_axe_entries(&self) -> Vec<&'static BlockTransformerEntry> {
         let mut entries = Vec::new();
         for (block, stage) in &self.oxidizables {
             if stage.generate_block_transform {
-                entries.push(entry(
-                    *block,
-                    stage,
-                    Sound::ItemAxeScrape,
-                    WorldEvent::ParticlesScrape,
-                ));
+                entries.push(generated_entry(*block, stage.target, false));
             }
         }
         for (block, stage) in &self.waxables {
             if stage.generate_block_transform {
-                entries.push(entry(
-                    *block,
-                    stage,
-                    Sound::ItemAxeWaxOff,
-                    WorldEvent::ParticlesWaxOff,
-                ));
+                entries.push(generated_entry(*block, stage.target, true));
             }
         }
         entries
     }
 }
 
-/// A transformer key with its namespace: `axe` is `minecraft:axe`.
-fn normalize(key: &str) -> String {
-    if key.contains(':') {
-        key.to_owned()
-    } else {
-        format!("minecraft:{key}")
+/// The transforms of a map by the path of the transformer: `axe` and `minecraft:axe` name the
+/// same transformer, and their transforms join in key order.
+fn by_transformer(
+    map: &BTreeMap<String, Vec<&'static BlockTransformerEntry>>,
+) -> BTreeMap<String, Vec<&'static BlockTransformerEntry>> {
+    let mut merged: BTreeMap<String, Vec<&'static BlockTransformerEntry>> = BTreeMap::new();
+    for (key, entries) in map {
+        merged
+            .entry(transformer_path(key).to_owned())
+            .or_default()
+            .extend(entries);
     }
+    merged
+}
+
+/// Leaks a value for the life of the server, once for each `key`: a load with the same data
+/// finds the value of the load before.
+fn interned<K: std::hash::Hash + Eq, V: Copy>(
+    table: &LazyLock<Mutex<HashMap<K, V>>>,
+    key: K,
+    make: impl FnOnce() -> V,
+) -> V {
+    *table
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry(key)
+        .or_insert_with(make)
+}
+
+type Interned<K, V> = LazyLock<Mutex<HashMap<K, V>>>;
+
+/// The generated entries by block, target and kind (`false` scrapes, `true` waxes off).
+static GENERATED: Interned<(BlockId, BlockId, bool), &'static BlockTransformerEntry> =
+    LazyLock::new(Mutex::default);
+
+/// The extended transformers by key and the addresses of their added entries.
+static TRANSFORMERS: Interned<(String, Vec<usize>), &'static BlockTransformer> =
+    LazyLock::new(Mutex::default);
+
+/// The transform that `DataMapHooks.onDataMapsUpdated` builds for a step from `block` to `target`:
+/// the axe turns `target` into `block`.
+fn generated_entry(
+    block: BlockId,
+    target: BlockId,
+    wax_off: bool,
+) -> &'static BlockTransformerEntry {
+    interned(&GENERATED, (block, target, wax_off), || {
+        let rules: &'static [BlockTransformerRule] = Box::leak(Box::new([BlockTransformerRule {
+            predicate: BlockPredicate::MatchingBlocks {
+                blocks: Box::leak(Box::new([target])),
+                offset: (0, 0, 0),
+            },
+            provider: BlockTransformerStateProvider::SimpleState(block),
+        }]));
+        let (sound, particle) = if wax_off {
+            (Sound::ItemAxeWaxOff, WorldEvent::ParticlesWaxOff)
+        } else {
+            (Sound::ItemAxeScrape, WorldEvent::ParticlesScrape)
+        };
+        Box::leak(Box::new(BlockTransformerEntry {
+            rules,
+            disallowed_faces: &[],
+            item_damage_per_use: 1,
+            sound: Some(sound),
+            particle: Some(particle),
+            loot: None,
+            drop_strategy: None,
+            transform_type: None,
+            update_from_neighbors: true,
+        }))
+    })
+}
+
+/// The transformer `base` with the `added` entries after its own.
+fn extended_transformer(
+    key: &str,
+    base: &BlockTransformer,
+    added: &[&'static BlockTransformerEntry],
+) -> &'static BlockTransformer {
+    let addresses = added
+        .iter()
+        .map(|entry| std::ptr::from_ref::<BlockTransformerEntry>(entry) as usize)
+        .collect();
+    interned(&TRANSFORMERS, (key.to_owned(), addresses), || {
+        let mut entries: Vec<BlockTransformerEntry> = base.entries.to_vec();
+        entries.extend(added.iter().map(|entry| **entry));
+        let entries: &'static [BlockTransformerEntry] = Box::leak(entries.into_boxed_slice());
+        Box::leak(Box::new(BlockTransformer { entries }))
+    })
+}
+
+/// The path of a transformer key: `axe` for `axe` and `minecraft:axe`.
+fn transformer_path(key: &str) -> &str {
+    key.strip_prefix("minecraft:").unwrap_or(key)
 }
 
 static BUILTIN: LazyLock<ArcSwap<BuiltinDataMaps>> =
@@ -318,6 +360,25 @@ pub fn previous_oxidized_stage(block: &Block) -> Option<BlockId> {
         .inverse_oxidizables
         .get(&block.id)
         .copied()
+}
+
+/// The most stages that [`first_oxidized_stage`] walks back: a data pack can make a cycle.
+const MAX_OXIDATION_STEPS: usize = 64;
+
+/// `WeatheringCopper.getFirst`: the block that the previous stages lead back to, or the block.
+///
+/// The walk stops after [`MAX_OXIDATION_STEPS`] steps, so a cyclic map cannot hang the tick.
+#[must_use]
+pub fn first_oxidized_stage(block: &Block) -> BlockId {
+    let maps = builtin();
+    let mut first = block.id;
+    for _ in 0..MAX_OXIDATION_STEPS {
+        match maps.derived.inverse_oxidizables.get(&first) {
+            Some(previous) => first = *previous,
+            None => break,
+        }
+    }
+    first
 }
 
 /// `DataMapHooks.getBlockWaxed`.
@@ -387,12 +448,16 @@ pub fn villager_type_of_biome(registry_id: &str) -> Option<VillagerType> {
 /// (`DataMapHooks.appendDatamapTransformers`).
 #[must_use]
 pub fn block_transformer(component: &BlockTransformerImpl) -> Option<&'static BlockTransformer> {
-    builtin()
-        .derived
-        .transformers
-        .get(&normalize(&component.transformer))
-        .copied()
-        .or_else(|| component.get_transformer())
+    let maps = builtin();
+    if !maps.derived.transformers.is_empty()
+        && let Some(extended) = maps
+            .derived
+            .transformers
+            .get(transformer_path(&component.transformer))
+    {
+        return Some(extended);
+    }
+    component.get_transformer()
 }
 
 /// A data map file that the server gives to the loader before the files of the data packs.
@@ -414,7 +479,7 @@ fn block_name(id: BlockId) -> String {
     namespaced(id.to_block().name)
 }
 
-fn file(folder: &'static str, map: &'static str, values: Map<String, Value>) -> DefaultFile {
+fn file(folder: &'static str, map: &'static str, values: &Map<String, Value>) -> DefaultFile {
     DefaultFile {
         folder,
         map,
@@ -422,58 +487,77 @@ fn file(folder: &'static str, map: &'static str, values: Map<String, Value>) -> 
     }
 }
 
-/// The `NeoForge` files of `data/neoforge/data_maps`, built from [`BuiltinDataMaps::vanilla`].
-/// Their order is the order of the files of a data pack.
-#[must_use]
-pub fn default_files() -> Vec<DefaultFile> {
-    let vanilla = BuiltinDataMaps::vanilla();
-    let entity =
-        |id: u16| EntityType::from_raw(id).map(|entity_type| namespaced(entity_type.resource_name));
-    let stages = |stages: &BTreeMap<BlockId, BlockStage>, field: &str| {
-        stages
-            .iter()
-            .map(|(block, stage)| {
-                (
-                    block_name(*block),
-                    json!({
-                        field: block_name(stage.target),
-                        "generate_block_transform": stage.generate_block_transform,
-                    }),
-                )
-            })
-            .collect::<Map<_, _>>()
-    };
-    let by_id = |ids: &mut Vec<(String, Value)>| {
-        ids.sort_by(|a, b| a.0.cmp(&b.0));
-        ids.iter().cloned().collect::<Map<_, _>>()
-    };
+/// The entries of a map as a JSON object in the order of their ids.
+fn by_id(mut entries: Vec<(String, Value)>) -> Map<String, Value> {
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.into_iter().collect()
+}
 
-    let mut distances: Vec<_> = vanilla
+fn entity_name(id: u16) -> Option<String> {
+    EntityType::from_raw(id).map(|entity_type| namespaced(entity_type.resource_name))
+}
+
+/// `OXIDIZABLES` and `WAXABLES`: the block that follows is in the field `field`.
+fn stages_json(stages: &BTreeMap<BlockId, BlockStage>, field: &str) -> Map<String, Value> {
+    stages
+        .iter()
+        .map(|(block, stage)| {
+            (
+                block_name(*block),
+                json!({
+                    field: block_name(stage.target),
+                    "generate_block_transform": stage.generate_block_transform,
+                }),
+            )
+        })
+        .collect()
+}
+
+/// The files of the entity type maps.
+fn entity_type_files(vanilla: &BuiltinDataMaps) -> [DefaultFile; 3] {
+    let distances = vanilla
         .acceptable_villager_distances
         .iter()
         .filter_map(|(id, distance)| {
             Some((
-                entity(*id)?,
+                entity_name(*id)?,
                 json!({ "acceptable_villager_distance": distance }),
             ))
         })
         .collect();
-    let mut mobs: Vec<_> = vanilla
+    let mobs = vanilla
         .monster_room_mobs
         .iter()
         .map(|(name, weight)| (name.clone(), json!({ "weight": weight })))
         .collect();
-    let mut imitations: Vec<_> = vanilla
+    let imitations = vanilla
         .parrot_imitations
         .iter()
         .filter_map(|(id, sound)| {
             Some((
-                entity(*id)?,
+                entity_name(*id)?,
                 json!({ "sound": namespaced(sound.to_name()) }),
             ))
         })
         .collect();
-    let mut gifts: Vec<_> = vanilla
+    [
+        file(
+            "entity_type",
+            "neoforge:acceptable_villager_distances",
+            &by_id(distances),
+        ),
+        file("entity_type", "neoforge:monster_room_mobs", &by_id(mobs)),
+        file(
+            "entity_type",
+            "neoforge:parrot_imitations",
+            &by_id(imitations),
+        ),
+    ]
+}
+
+/// The files of the maps of the other registries.
+fn other_files(vanilla: &BuiltinDataMaps) -> [DefaultFile; 4] {
+    let gifts = vanilla
         .raid_hero_gifts
         .iter()
         .map(|(profession, table)| {
@@ -483,12 +567,12 @@ pub fn default_files() -> Vec<DefaultFile> {
             )
         })
         .collect();
-    let mut frequencies: Vec<_> = vanilla
+    let frequencies = vanilla
         .vibration_frequencies
         .iter()
         .map(|(event, frequency)| (namespaced(event.name()), json!({ "frequency": frequency })))
         .collect();
-    let mut compostables: Vec<_> = vanilla
+    let compostables = vanilla
         .villager_compostables
         .iter()
         .filter_map(|id| {
@@ -498,7 +582,7 @@ pub fn default_files() -> Vec<DefaultFile> {
             ))
         })
         .collect();
-    let mut types: Vec<_> = vanilla
+    let types = vanilla
         .villager_types
         .iter()
         .map(|(biome, villager_type)| {
@@ -508,54 +592,46 @@ pub fn default_files() -> Vec<DefaultFile> {
             )
         })
         .collect();
-
-    vec![
-        file(
-            "block",
-            "neoforge:oxidizables",
-            stages(&vanilla.oxidizables, "next_oxidation_stage"),
-        ),
-        file(
-            "block",
-            "neoforge:waxables",
-            stages(&vanilla.waxables, "waxed"),
-        ),
-        file(
-            "entity_type",
-            "neoforge:acceptable_villager_distances",
-            by_id(&mut distances),
-        ),
-        file(
-            "entity_type",
-            "neoforge:monster_room_mobs",
-            by_id(&mut mobs),
-        ),
-        file(
-            "entity_type",
-            "neoforge:parrot_imitations",
-            by_id(&mut imitations),
-        ),
+    [
         file(
             "game_event",
             "neoforge:vibration_frequencies",
-            by_id(&mut frequencies),
+            &by_id(frequencies),
         ),
         file(
             "item",
             "neoforge:villager_compostables",
-            by_id(&mut compostables),
+            &by_id(compostables),
         ),
         file(
             "villager_profession",
             "neoforge:raid_hero_gifts",
-            by_id(&mut gifts),
+            &by_id(gifts),
+        ),
+        file("worldgen/biome", "neoforge:villager_types", &by_id(types)),
+    ]
+}
+
+/// The `NeoForge` files of `data/neoforge/data_maps`, built from [`BuiltinDataMaps::vanilla`].
+/// Their order is the order of the files of a data pack.
+#[must_use]
+pub fn default_files() -> Vec<DefaultFile> {
+    let vanilla = BuiltinDataMaps::vanilla();
+    let mut files = vec![
+        file(
+            "block",
+            "neoforge:oxidizables",
+            &stages_json(&vanilla.oxidizables, "next_oxidation_stage"),
         ),
         file(
-            "worldgen/biome",
-            "neoforge:villager_types",
-            by_id(&mut types),
+            "block",
+            "neoforge:waxables",
+            &stages_json(&vanilla.waxables, "waxed"),
         ),
-    ]
+    ];
+    files.extend(entity_type_files(&vanilla));
+    files.extend(other_files(&vanilla));
+    files
 }
 
 #[cfg(test)]
@@ -564,19 +640,27 @@ pub(crate) mod test_support {
 
     use super::{BuiltinDataMaps, set_builtin};
 
-    /// The data maps are a process-wide static: a test that sets them holds this guard, and the
-    /// maps return to vanilla when it drops.
-    pub(crate) struct Installed(
+    /// The data maps are a process-wide static: a test that reads or sets them holds this guard,
+    /// and the maps return to vanilla when it drops.
+    pub struct Installed(
         #[expect(dead_code, reason = "the guard serializes the tests")] MutexGuard<'static, ()>,
     );
 
     static LOCK: Mutex<()> = Mutex::new(());
 
-    /// Installs `maps` until the guard drops.
-    pub(crate) fn install(maps: BuiltinDataMaps) -> Installed {
+    /// Takes the lock and installs `maps` until the guard drops.
+    pub fn install(maps: BuiltinDataMaps) -> Installed {
         let guard = LOCK.lock().unwrap_or_else(PoisonError::into_inner);
         set_builtin(maps);
         Installed(guard)
+    }
+
+    impl Installed {
+        /// Installs other maps under the same lock.
+        #[expect(clippy::unused_self, reason = "the guard proves that the lock is held")]
+        pub fn replace(&self, maps: BuiltinDataMaps) {
+            set_builtin(maps);
+        }
     }
 
     impl Drop for Installed {
@@ -633,6 +717,7 @@ mod tests {
 
     #[test]
     fn a_data_map_oxidizable_changes_the_next_and_previous_stage() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(next_oxidized_stage(&Block::STONE), None);
         let mut maps = BuiltinDataMaps::vanilla();
         maps.oxidizables.insert(
@@ -642,7 +727,7 @@ mod tests {
                 generate_block_transform: false,
             },
         );
-        let _installed = install(maps);
+        installed.replace(maps);
         assert_eq!(
             next_oxidized_stage(&Block::STONE),
             Some(BlockId::COBBLESTONE)
@@ -678,6 +763,7 @@ mod tests {
 
     #[test]
     fn a_waxable_with_generate_block_transform_gives_the_axe_a_wax_off() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(waxed_block(&Block::STONE), None);
         let mut maps = BuiltinDataMaps::vanilla();
         maps.waxables.insert(
@@ -687,7 +773,7 @@ mod tests {
                 generate_block_transform: true,
             },
         );
-        let _installed = install(maps);
+        installed.replace(maps);
         assert_eq!(waxed_block(&Block::STONE), Some(BlockId::COBBLESTONE));
         let result = axe_result(&Block::COBBLESTONE).expect("the wax off transform");
         assert_eq!(result.target_block.id, BlockId::STONE);
@@ -718,12 +804,13 @@ mod tests {
 
     #[test]
     fn a_data_map_frequency_sets_the_vibration_and_a_missing_event_has_none() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(game_event_frequency(GameEvent::BlockPlace), 13);
         assert_eq!(game_event_frequency(GameEvent::Shriek), 0);
         let mut maps = BuiltinDataMaps::vanilla();
         maps.vibration_frequencies.insert(GameEvent::Shriek, 5);
         maps.vibration_frequencies.remove(&GameEvent::BlockPlace);
-        let _installed = install(maps);
+        installed.replace(maps);
         assert_eq!(game_event_frequency(GameEvent::Shriek), 5);
         // `NeoForge` has no fallback for a missing event.
         assert_eq!(game_event_frequency(GameEvent::BlockPlace), 0);
@@ -731,18 +818,20 @@ mod tests {
 
     #[test]
     fn a_data_map_item_is_compostable_by_villagers_and_vanilla_has_no_fallback() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert!(villager_can_compost(&Item::WHEAT_SEEDS));
         assert!(!villager_can_compost(&Item::BEETROOT));
         let mut maps = BuiltinDataMaps::vanilla();
         maps.villager_compostables.insert(Item::BEETROOT.id);
         maps.villager_compostables.remove(&Item::WHEAT_SEEDS.id);
-        let _installed = install(maps);
+        installed.replace(maps);
         assert!(villager_can_compost(&Item::BEETROOT));
         assert!(!villager_can_compost(&Item::WHEAT_SEEDS));
     }
 
     #[test]
     fn oxidizables_give_the_next_stage_of_copper() {
+        let _installed = install(BuiltinDataMaps::vanilla());
         let maps = BuiltinDataMaps::vanilla();
         assert_eq!(
             maps.oxidizables
@@ -822,6 +911,134 @@ mod tests {
         assert_eq!(
             find("neoforge:villager_types").as_object().map(Map::len),
             Some(29)
+        );
+    }
+
+    fn weathering_state(
+        block: &Block,
+    ) -> Option<crate::block::blocks::weathering_copper::WeatherState> {
+        crate::block::blocks::weathering_copper::get_weather_state(block)
+    }
+
+    fn stage(target: BlockId) -> BlockStage {
+        BlockStage {
+            target,
+            generate_block_transform: false,
+        }
+    }
+
+    #[test]
+    fn a_cyclic_oxidizables_map_cannot_hang_the_walks() {
+        use crate::block::blocks::weathering_copper::{WeatherState, get_first, get_next};
+        use crate::entity::lightning::get_first_stage_copper;
+
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.oxidizables
+            .insert(BlockId::OXIDIZED_COPPER, stage(BlockId::COPPER_BLOCK));
+        let _installed = install(maps);
+        // The age belongs to the class: it follows the vanilla chain and ends.
+        assert_eq!(
+            weathering_state(&Block::OXIDIZED_COPPER),
+            Some(WeatherState::Oxidized)
+        );
+        // `getFirst` walks the map: the walk has a cap.
+        assert!(get_first(&Block::OXIDIZED_COPPER).is_some());
+        assert!(get_first_stage_copper(BlockId::OXIDIZED_COPPER).is_some());
+        assert!(first_oxidized_stage(&Block::EXPOSED_COPPER).as_u16() < BlockId::COUNT);
+        assert_eq!(
+            get_next(&Block::OXIDIZED_COPPER),
+            Some(&Block::COPPER_BLOCK)
+        );
+    }
+
+    #[test]
+    fn a_non_copper_entry_does_not_make_a_block_weathering_copper() {
+        use crate::block::blocks::weathering_copper::{get_first, get_next, get_weather_state};
+        use crate::entity::lightning::{get_first_stage_copper, is_weathering_copper};
+
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.oxidizables
+            .insert(BlockId::STONE, stage(BlockId::COBBLESTONE));
+        let _installed = install(maps);
+        // `get_next` reads the map, and the class gates read the vanilla copper family.
+        assert_eq!(get_next(&Block::STONE), Some(&Block::COBBLESTONE));
+        assert!(!is_weathering_copper(BlockId::STONE));
+        assert!(!is_weathering_copper(BlockId::COBBLESTONE));
+        assert_eq!(get_weather_state(&Block::STONE), None);
+        assert_eq!(get_weather_state(&Block::COBBLESTONE), None);
+        assert!(get_first(&Block::COBBLESTONE).is_none());
+        assert_eq!(get_first_stage_copper(BlockId::COBBLESTONE), None);
+    }
+
+    #[test]
+    fn a_pack_that_removes_the_first_link_keeps_the_age_of_the_next_block() {
+        use crate::block::blocks::weathering_copper::WeatherState;
+
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.oxidizables.remove(&BlockId::COPPER_BLOCK);
+        let _installed = install(maps);
+        assert_eq!(
+            weathering_state(&Block::EXPOSED_COPPER),
+            Some(WeatherState::Exposed)
+        );
+        assert_eq!(
+            weathering_state(&Block::COPPER_BLOCK),
+            Some(WeatherState::Unaffected)
+        );
+        // The inverse map lost the link, so `getFirst` stops at the exposed block.
+        assert_eq!(
+            first_oxidized_stage(&Block::EXPOSED_COPPER),
+            BlockId::EXPOSED_COPPER
+        );
+    }
+
+    #[test]
+    fn a_load_with_the_same_data_finds_the_transformers_of_the_load_before() {
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.transform_appenders.insert(
+            "minecraft:axe".to_owned(),
+            vec![transform(BlockId::DIRT, BlockId::STONE)],
+        );
+        maps.oxidizables.insert(
+            BlockId::STONE,
+            BlockStage {
+                target: BlockId::COBBLESTONE,
+                generate_block_transform: true,
+            },
+        );
+        let installed = install(maps.clone());
+        let axe = BlockTransformerImpl {
+            transformer: Cow::Borrowed("axe"),
+        };
+        let first = block_transformer(&axe).expect("the extended transformer");
+        installed.replace(maps);
+        let second = block_transformer(&axe).expect("the extended transformer");
+        assert!(std::ptr::eq(first, second));
+        assert!(std::ptr::eq(
+            generated_entry(BlockId::STONE, BlockId::COBBLESTONE, false),
+            generated_entry(BlockId::STONE, BlockId::COBBLESTONE, false),
+        ));
+    }
+
+    #[test]
+    fn axe_and_minecraft_axe_name_the_same_transformer() {
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.transform_appenders.insert(
+            "axe".to_owned(),
+            vec![transform(BlockId::DIRT, BlockId::STONE)],
+        );
+        maps.transform_appenders.insert(
+            "minecraft:axe".to_owned(),
+            vec![transform(BlockId::GRAVEL, BlockId::SAND)],
+        );
+        let _installed = install(maps);
+        assert_eq!(
+            axe_result(&Block::DIRT).map(|result| result.target_block.id),
+            Some(BlockId::STONE)
+        );
+        assert_eq!(
+            axe_result(&Block::GRAVEL).map(|result| result.target_block.id),
+            Some(BlockId::SAND)
         );
     }
 }

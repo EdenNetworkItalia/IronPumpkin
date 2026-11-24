@@ -71,6 +71,7 @@ mod tests {
 
     #[test]
     fn hostile_distance_is_inclusive_and_ignores_other_types() {
+        let _installed = install(BuiltinDataMaps::vanilla());
         assert!(is_matching_entity(&EntityType::ZOMBIE, 64.0));
         assert!(!is_matching_entity(&EntityType::ZOMBIE, 64.000_001));
         assert!(!is_matching_entity(&EntityType::COW, 0.0));

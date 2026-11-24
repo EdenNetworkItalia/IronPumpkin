@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use crate::plugin::data_maps::builtin::{next_oxidized_stage, previous_oxidized_stage};
+use crate::plugin::data_maps::builtin::{
+    first_oxidized_stage, next_oxidized_stage, previous_oxidized_stage,
+};
 use pumpkin_data::block_properties::{
     ChestLikeProperties, ChestType, CopperGolemPose, CopperGolemStatueLikeProperties,
     DoubleBlockHalf, EnumVariants, HorizontalFacing, MangroveRootsLikeProperties,
     OakDoorLikeProperties,
 };
+use pumpkin_data::block_transformer::get_previous_weathering;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::fluid::Fluid;
 use pumpkin_data::item::Item;
@@ -148,39 +151,46 @@ pub trait WeatheringCopper: ChangeOverTimeBlock<WeatherState> {
 }
 
 /// Returns the next oxidized block in sequence, or `None` if already oxidized or not a weathering copper block.
+///
+/// `NeoForge`: `WeatheringCopper.getNext` reads the `oxidizables` data map.
 #[must_use]
 pub fn get_next(block: &Block) -> Option<&'static Block> {
     next_oxidized_stage(block).map(BlockId::to_block)
 }
 
 /// Returns the previous deoxidized block in sequence, or `None` if unaffected or not a weathering copper block.
+///
+/// `NeoForge`: `WeatheringCopper.getPrevious` reads the inverse of the `oxidizables` data map.
 #[must_use]
 pub fn get_previous(block: &Block) -> Option<&'static Block> {
     previous_oxidized_stage(block).map(BlockId::to_block)
 }
 
+/// Whether the block is a weathering copper block, as `instanceof WeatheringCopper` decides: the
+/// vanilla copper family, whatever the `oxidizables` data map holds.
+#[must_use]
+pub const fn is_weathering_copper_block(block: &Block) -> bool {
+    crate::entity::lightning::is_weathering_copper(block.id)
+}
+
 /// Returns the first unaffected block in this copper family, or `None` if not a weathering copper block.
 #[must_use]
 pub fn get_first(block: &Block) -> Option<&'static Block> {
-    if get_previous(block).is_none() && get_next(block).is_none() {
-        return None;
-    }
-    let mut first = Block::from_id(block.id);
-    while let Some(prev) = get_previous(first) {
-        first = prev;
-    }
-    Some(first)
+    is_weathering_copper_block(block).then(|| first_oxidized_stage(block).to_block())
 }
 
 /// Returns the `WeatherState` of the given block, or `None` if it is not an unwaxed weathering copper block.
+///
+/// The age of a block belongs to its class, so it follows the vanilla copper family and not the
+/// data map.
 #[must_use]
-pub fn get_weather_state(block: &Block) -> Option<WeatherState> {
-    if get_previous(block).is_none() && get_next(block).is_none() {
+pub const fn get_weather_state(block: &Block) -> Option<WeatherState> {
+    if !is_weathering_copper_block(block) {
         return None;
     }
     let mut steps = 0usize;
-    let mut cur = block;
-    while let Some(prev) = get_previous(cur) {
+    let mut cur = block.id;
+    while let Some(prev) = get_previous_weathering(cur) {
         cur = prev;
         steps += 1;
     }

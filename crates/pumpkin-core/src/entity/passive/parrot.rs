@@ -513,13 +513,14 @@ mod tests {
 
     #[test]
     fn a_data_map_entry_adds_a_type_and_sets_its_sound() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert!(!can_imitate(&EntityType::CHICKEN));
         assert!(can_imitate(&EntityType::CREEPER));
         let mut maps = BuiltinDataMaps::vanilla();
         maps.parrot_imitations
             .insert(EntityType::CHICKEN.id, Sound::EntityParrotImitateBlaze);
         maps.parrot_imitations.remove(&EntityType::ZOMBIE.id);
-        let _installed = install(maps);
+        installed.replace(maps);
         assert!(can_imitate(&EntityType::CHICKEN));
         assert_eq!(
             parrot_imitation(&EntityType::CHICKEN),

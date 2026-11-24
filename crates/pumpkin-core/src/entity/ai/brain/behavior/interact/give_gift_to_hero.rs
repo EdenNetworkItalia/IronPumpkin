@@ -228,6 +228,7 @@ mod tests {
 
     #[test]
     fn gift_loot_table_follows_baby_profession_and_default_rules() {
+        let _installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(
             loot_table_to_throw(true, VillagerProfession::Farmer),
             "minecraft:gameplay/hero_of_the_village/baby_gift"

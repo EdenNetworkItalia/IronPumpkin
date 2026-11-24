@@ -126,13 +126,14 @@ mod tests {
 
     #[test]
     fn a_data_map_type_replaces_the_vanilla_type_of_a_biome() {
+        let installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(villager_type_for_biome("desert"), VillagerType::Desert);
         assert_eq!(villager_type_for_biome("plains"), VillagerType::Plains);
         let mut maps = BuiltinDataMaps::vanilla();
         maps.villager_types
             .insert("plains".to_owned(), VillagerType::Swamp);
         maps.villager_types.remove("desert");
-        let _installed = install(maps);
+        installed.replace(maps);
         assert_eq!(villager_type_for_biome("plains"), VillagerType::Swamp);
         // `desert` has no value in the map: the vanilla table answers.
         assert_eq!(villager_type_for_biome("desert"), VillagerType::Desert);
