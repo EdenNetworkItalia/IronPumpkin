@@ -181,7 +181,7 @@ impl DataComponentImpl for ItemModelImpl {
         NbtTag::String(self.id.clone().into_owned().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(self.id.as_ref()) as i32
+        hash_ops::id(&self.id) as i32
     }
     default_impl!(ItemModel);
 }
@@ -513,7 +513,7 @@ impl DataComponentImpl for TooltipStyleImpl {
         NbtTag::String(self.id.clone().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.id) as i32
+        hash_ops::id(&self.id) as i32
     }
     default_impl!(TooltipStyle);
 }
@@ -534,7 +534,7 @@ impl DataComponentImpl for NoteBlockSoundImpl {
         NbtTag::String(self.sound.clone().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.sound) as i32
+        hash_ops::id(&self.sound) as i32
     }
     default_impl!(NoteBlockSound);
 }
@@ -581,7 +581,7 @@ impl DataComponentImpl for InstrumentImpl {
         NbtTag::String(self.instrument.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.instrument) as i32
+        hash_ops::id(&self.instrument) as i32
     }
     default_impl!(Instrument);
 }
@@ -602,7 +602,7 @@ impl DataComponentImpl for ProvidesTrimMaterialImpl {
         NbtTag::String(self.material.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.material) as i32
+        hash_ops::id(&self.material) as i32
     }
     default_impl!(ProvidesTrimMaterial);
 }
@@ -644,7 +644,7 @@ impl DataComponentImpl for ProvidesPotteryPatternImpl {
         NbtTag::String(self.pattern.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.pattern) as i32
+        hash_ops::id(&self.pattern) as i32
     }
     default_impl!(ProvidesPotteryPattern);
 }

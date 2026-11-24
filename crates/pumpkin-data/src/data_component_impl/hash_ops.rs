@@ -1173,5 +1173,54 @@ mod tests {
                 Some(DamageType::CAMPFIRE.id)
             );
         }
+
+        /// `Identifier.CODEC` and registry holders encode the full id, so a value saved without
+        /// a namespace hashes as `minecraft:` plus the path.
+        #[test]
+        fn id_components_hash_the_namespaced_id() {
+            use crate::data_component_impl::{
+                BlockTransformerImpl, CatVariantImpl, FoxVariantImpl, InstrumentImpl,
+                ItemModelImpl, NoteBlockSoundImpl, ProvidesPotteryPatternImpl,
+                ProvidesTrimMaterialImpl, TooltipStyleImpl,
+            };
+            let id = |path: &str| vanilla::string(&format!("minecraft:{path}"));
+            let model = ItemModelImpl {
+                id: Cow::Borrowed("stick"),
+            };
+            assert_eq!(hash(&model), id("stick"));
+            let style = TooltipStyleImpl {
+                id: "custom:fancy".to_owned(),
+            };
+            assert_eq!(hash(&style), vanilla::string("custom:fancy"));
+            let note = NoteBlockSoundImpl {
+                sound: "block.note_block.bell".to_owned(),
+            };
+            assert_eq!(hash(&note), id("block.note_block.bell"));
+            let instrument = InstrumentImpl {
+                instrument: Cow::Borrowed("ponder_goat_horn"),
+            };
+            assert_eq!(hash(&instrument), id("ponder_goat_horn"));
+            let trim = ProvidesTrimMaterialImpl {
+                material: Cow::Borrowed("gold"),
+            };
+            assert_eq!(hash(&trim), id("gold"));
+            let pottery = ProvidesPotteryPatternImpl {
+                pattern: Cow::Borrowed("archer"),
+            };
+            assert_eq!(hash(&pottery), id("archer"));
+            let transformer = BlockTransformerImpl {
+                transformer: Cow::Borrowed("waxing"),
+            };
+            assert_eq!(hash(&transformer), id("waxing"));
+            // A registry holder variant hashes its id, a `StringRepresentable` variant its name.
+            let cat = CatVariantImpl {
+                value: Cow::Borrowed("tabby"),
+            };
+            assert_eq!(hash(&cat), id("tabby"));
+            let fox = FoxVariantImpl {
+                value: Cow::Borrowed("snow"),
+            };
+            assert_eq!(hash(&fox), vanilla::string("snow"));
+        }
     }
 }

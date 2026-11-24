@@ -317,7 +317,7 @@ impl DataComponentImpl for BlockTransformerImpl {
         NbtTag::String(self.transformer.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.transformer) as i32
+        hash_ops::id(&self.transformer) as i32
     }
     default_impl!(BlockTransformer);
 }
