@@ -234,7 +234,6 @@ impl World {
         if drop {
             let params = crate::world::loot::LootContextParameters {
                 block_state: Some(state),
-                position: Some(position.to_f64()),
                 this_entity: breaker,
                 ..Default::default()
             };

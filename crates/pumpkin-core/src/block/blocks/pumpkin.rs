@@ -19,6 +19,8 @@ impl crate::block::BlockBehaviour for PumpkinBlock {
         if args.item_stack.item != &Item::SHEARS {
             return BlockActionResult::PassToDefaultBlockAction;
         }
+        // The roll sees the pumpkin, not the carved pumpkin.
+        let old_state = args.world.get_block_state(args.position);
         let mut props = WallTorchLikeProperties::default(&Block::CARVED_PUMPKIN);
         props.facing = args.hit.face.to_horizontal_facing().unwrap_or_else(|| {
             args.player
@@ -44,13 +46,15 @@ impl crate::block::BlockBehaviour for PumpkinBlock {
             .map_or_else(
                 || vec![ItemStack::new(4, &Item::PUMPKIN_SEEDS)],
                 |handle| {
-                    let params = crate::world::loot::LootContextParameters {
-                        world: Some(args.world),
-                        position: Some(drop_pos),
-                        this_entity: Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
-                        tool: Some(args.item_stack.clone()),
-                        ..Default::default()
-                    };
+                    let block_entity = args.world.get_block_entity(args.position);
+                    let params = crate::world::loot::LootContextParameters::block_interact(
+                        args.world,
+                        args.position,
+                        old_state,
+                        block_entity.as_deref(),
+                        Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                        Some(args.item_stack.clone()),
+                    );
                     crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
                 },
             );

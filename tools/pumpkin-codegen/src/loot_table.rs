@@ -175,6 +175,13 @@ impl Generator {
                     LootEntityTarget::This => quote! { LootEntityTarget::This },
                     LootEntityTarget::Attacker => quote! { LootEntityTarget::Attacker },
                     LootEntityTarget::DirectAttacker => quote! { LootEntityTarget::DirectAttacker },
+                    LootEntityTarget::AttackingPlayer => {
+                        quote! { LootEntityTarget::AttackingPlayer }
+                    }
+                    LootEntityTarget::TargetEntity => quote! { LootEntityTarget::TargetEntity },
+                    LootEntityTarget::InteractingEntity => {
+                        quote! { LootEntityTarget::InteractingEntity }
+                    }
                 };
                 let predicate = self.predicate(predicate);
                 quote! { LootCondition::EntityProperties { target: #target, predicate: #predicate } }

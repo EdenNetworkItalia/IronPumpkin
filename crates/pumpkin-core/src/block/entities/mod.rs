@@ -85,10 +85,7 @@ pub trait BlockEntity: Any + Send + Sync {
     // crafters and decorated pots hold loot tables too. Only chests implement this.
     fn unpack_loot_table_with(
         &self,
-        _generate: &mut dyn FnMut(
-            String,
-            &mut pumpkin_util::random::xoroshiro128::Xoroshiro,
-        ) -> Vec<ItemStack>,
+        _generate: &mut dyn FnMut(String, i64) -> (Vec<ItemStack>, crate::world::loot::RollRandom),
     ) {
     }
 

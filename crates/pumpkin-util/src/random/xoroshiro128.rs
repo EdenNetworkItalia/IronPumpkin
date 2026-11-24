@@ -13,6 +13,7 @@ use super::{
 ///
 /// The generator maintains 128 bits of state split into two 64-bit words (`lo` and `hi`)
 /// and uses XOR, rotation, and shift operations to produce high-quality random numbers.
+#[derive(Clone)]
 pub struct Xoroshiro {
     /// Lower 64 bits of the generator state.
     lo: u64,

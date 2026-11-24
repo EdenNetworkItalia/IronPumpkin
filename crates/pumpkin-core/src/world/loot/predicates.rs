@@ -25,8 +25,11 @@ pub(super) fn matches_entity(
 ) -> bool {
     let entity = match target {
         LootEntityTarget::This => params.this_entity,
-        LootEntityTarget::Attacker => params.killer_entity,
-        LootEntityTarget::DirectAttacker => params.direct_killer_entity,
+        LootEntityTarget::Attacker => params.attacker(),
+        LootEntityTarget::DirectAttacker => params.direct_attacker(),
+        LootEntityTarget::AttackingPlayer => params.last_damage_player,
+        LootEntityTarget::TargetEntity => params.target_entity,
+        LootEntityTarget::InteractingEntity => params.interacting_entity,
     };
     entity.is_some_and(|entity| entity_matches(entity, predicate, params))
 }
@@ -875,10 +878,14 @@ pub(super) fn matches_location(
     )
 }
 
+/// `DamageSourceCondition.test`: it fails without a damage source or an origin.
 pub(super) fn matches_damage_source(predicate: &Value, params: &LootContextParameters<'_>) -> bool {
     let Some(predicate) = predicate.as_object() else {
         return false;
     };
+    if params.damage_source.is_none() || params.position.is_none() {
+        return false;
+    }
     predicate.iter().all(
         |(key, expected)| match key.strip_prefix("minecraft:").unwrap_or(key) {
             "source_entity" => matches_entity(LootEntityTarget::Attacker, expected, params),
@@ -891,41 +898,42 @@ pub(super) fn matches_damage_source(predicate: &Value, params: &LootContextParam
                     let exp = tag.get("expected").and_then(Value::as_bool).unwrap_or(true);
                     let clean_tag = name.trim_start_matches('#');
                     params
-                        .damage_type
+                        .resolved_damage_type()
                         .is_some_and(|dt| dt.is_tagged_with(clean_tag) == Some(exp))
                 })
             }),
             "is_projectile" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_projectile") == Some(exp))
             }),
             "is_explosion" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_explosion") == Some(exp))
             }),
             "is_fire" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_fire") == Some(exp))
             }),
             "is_lightning" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_lightning") == Some(exp))
             }),
             "is_fall" => expected.as_bool().is_some_and(|exp| {
                 params
-                    .damage_type
+                    .resolved_damage_type()
                     .is_some_and(|dt| dt.is_tagged_with("minecraft:is_fall") == Some(exp))
             }),
             "is_direct" => expected.as_bool().is_some_and(|exp| {
-                let is_direct = match (params.direct_killer_entity, params.killer_entity) {
+                // `DamageSource.isDirect`: the causing entity is the direct entity.
+                let is_direct = match (params.direct_attacker(), params.attacker()) {
                     (Some(direct), Some(killer)) => {
                         direct.get_entity().entity_id == killer.get_entity().entity_id
                     }
-                    (None, _) => true,
+                    (None, None) => true,
                     _ => false,
                 };
                 is_direct == exp

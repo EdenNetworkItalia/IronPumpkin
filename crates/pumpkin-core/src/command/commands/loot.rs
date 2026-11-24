@@ -141,25 +141,24 @@ fn distribute_to_container(inventory: &dyn Inventory, mut stack: ItemStack) -> b
     changed
 }
 
+/// `LootCommand.getSourceHandItem`: the held item of the entity of the source, which must be a
+/// living entity.
 fn get_hand_item(
     context: &CommandContext,
     is_mainhand: bool,
 ) -> Result<Option<ItemStack>, CommandSyntaxError> {
-    context.source.as_player().map_or_else(
-        || {
-            let display_name = TextComponent::text("Server");
-            Err(ERROR_NO_HELD_ITEMS.create_without_context(display_name))
-        },
-        |player| {
-            let stack = if is_mainhand {
-                let slot = player.inventory().get_selected_slot() as usize;
-                player.inventory().get_stack(slot)
-            } else {
-                player.inventory().get_stack(40)
-            };
-            Ok(Some(stack))
-        },
-    )
+    let Some(entity) = context.source.entity.as_deref() else {
+        let display_name = TextComponent::text("Server");
+        return Err(ERROR_NO_HELD_ITEMS.create_without_context(display_name));
+    };
+    let Some(living) = entity.get_living_entity() else {
+        return Err(ERROR_NO_HELD_ITEMS.create_without_context(entity.get_display_name()));
+    };
+    Ok(Some(if is_mainhand {
+        living.held_item(entity)
+    } else {
+        living.off_hand_item(entity)
+    }))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -366,6 +365,8 @@ impl CommandExecutor for LootExecutor {
                             .create_without_context(TextComponent::text(loot_table_str.to_string()))
                     })?;
 
+                // `LootCommand.dropFishingLoot`: the command entity is the `this_entity`.
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
                     position: Some(Vector3::new(
@@ -373,6 +374,7 @@ impl CommandExecutor for LootExecutor {
                         f64::from(pos.0.y) + 0.5,
                         f64::from(pos.0.z) + 0.5,
                     )),
+                    this_entity: source_entity.as_deref(),
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
                     ..Default::default()
                 };
@@ -396,9 +398,13 @@ impl CommandExecutor for LootExecutor {
                             .create_without_context(TextComponent::text(loot_table_str.to_string()))
                     })?;
 
+                // `LootCommand.dropChestLoot`: the command entity and the source position, for
+                // every kind of source.
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
-                    position: context.source.as_player().map(|p| p.position()),
+                    position: Some(context.source.position),
+                    this_entity: source_entity.as_deref(),
                     ..Default::default()
                 };
                 let seed: i64 = rand::random();
@@ -406,16 +412,23 @@ impl CommandExecutor for LootExecutor {
             }
             Source::Kill => {
                 let target_entities = EntityArgumentType::get_entities(context, "target")?;
-                let killer = context.source.as_player();
-                let killer_tool = killer.as_ref().map(|p| {
-                    p.inventory()
-                        .get_stack(p.inventory().get_selected_slot() as usize)
-                });
+                // `source.getEntity()`: any entity. Only a player is the last damage player.
+                let killer = context.source.entity.clone();
                 let params = LootContextParameters {
                     world: Some(context.world()),
-                    killed_by_player: Some(killer.is_some()),
-                    tool: killer_tool,
-                    position: killer.as_ref().map(|p| p.position()),
+                    last_damage_player: killer
+                        .as_deref()
+                        .and_then(crate::entity::EntityBase::get_player)
+                        .map(|player| player as &dyn crate::entity::EntityBase),
+                    // `target.damageSources().magic()` has no causing or direct entity. The
+                    // killer is the attacking and direct attacking entity of the roll.
+                    damage_source: Some(crate::world::loot::LootDamageSource {
+                        damage_type: pumpkin_data::damage::DamageType::MAGIC,
+                        attacker: None,
+                        direct: None,
+                    }),
+                    // `source.getPosition()`, for every target. The `entity` set has no tool.
+                    position: Some(context.source.position),
                     ..Default::default()
                 };
 
@@ -427,13 +440,8 @@ impl CommandExecutor for LootExecutor {
                     {
                         let params = LootContextParameters {
                             this_entity: Some(entity.as_ref()),
-                            killer_entity: killer
-                                .as_ref()
-                                .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
-                            direct_killer_entity: killer
-                                .as_ref()
-                                .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
-                            position: Some(entity.get_entity().pos.load()),
+                            killer_entity: killer.as_deref(),
+                            direct_killer_entity: killer.as_deref(),
                             is_on_fire: Some(
                                 entity
                                     .get_entity()
@@ -472,14 +480,15 @@ impl CommandExecutor for LootExecutor {
                         .create_without_context(TextComponent::text(block.name.to_string()))
                 })?;
 
-                let loot_table = context
+                if context
                     .server()
                     .datapack_manager
                     .get_loot_table(key)
-                    .ok_or_else(|| {
-                        ERROR_NO_BLOCK_LOOT_TABLE
-                            .create_without_context(TextComponent::text(block.name.to_string()))
-                    })?;
+                    .is_none()
+                {
+                    return Err(ERROR_NO_BLOCK_LOOT_TABLE
+                        .create_without_context(TextComponent::text(block.name.to_string())));
+                }
 
                 let tool_stack = match tool {
                     ToolSource::None => None,
@@ -488,19 +497,16 @@ impl CommandExecutor for LootExecutor {
                     ToolSource::OffHand => get_hand_item(context, false)?,
                 };
 
+                // `LootCommand.dropBlockLoot`: the block state, the center of the block, the block
+                // entity, the command entity and the tool, as `BlockState.getDrops` rolls them.
+                let source_entity = context.source.entity.clone();
                 let params = LootContextParameters {
-                    world: Some(context.world()),
                     block_state: Some(block_state),
+                    this_entity: source_entity.as_deref(),
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
-                    position: Some(Vector3::new(
-                        f64::from(pos.0.x) + 0.5,
-                        f64::from(pos.0.y) + 0.5,
-                        f64::from(pos.0.z) + 0.5,
-                    )),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::block::block_drops(world, block, &pos, &params);
                 table_id_for_callback = Some(key.to_string());
             }
         }

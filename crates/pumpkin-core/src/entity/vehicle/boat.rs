@@ -87,7 +87,7 @@ impl BoatEntity {
             bedrock_key,
             [],
         );
-        let opened = container::open(&self.vehicle.entity, player, inventory, title, false);
+        let opened = container::open(&self.vehicle.entity, player, inventory, title, false, None);
         if opened {
             let world = self.vehicle.entity.world.load();
             world.emit_game_event_with_context(

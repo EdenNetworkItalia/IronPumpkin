@@ -73,14 +73,15 @@ impl BeehiveBlock {
             .map_or_else(
                 || vec![ItemStack::new(3, &Item::HONEYCOMB)],
                 |handle| {
-                    let params = crate::world::loot::LootContextParameters {
-                        world: Some(args.world),
-                        position: Some(drop_pos),
-                        block_state: Some(BlockState::from_id(state_id)),
-                        this_entity: Some(args.player.as_ref() as &dyn EntityBase),
-                        tool: Some(args.item_stack.clone()),
-                        ..Default::default()
-                    };
+                    let block_entity = args.world.get_block_entity(args.position);
+                    let params = crate::world::loot::LootContextParameters::block_interact(
+                        args.world,
+                        args.position,
+                        BlockState::from_id(state_id),
+                        block_entity.as_deref(),
+                        Some(args.player.as_ref() as &dyn EntityBase),
+                        Some(args.item_stack.clone()),
+                    );
                     crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
                 },
             );

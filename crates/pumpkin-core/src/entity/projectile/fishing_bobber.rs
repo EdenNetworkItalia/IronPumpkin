@@ -97,6 +97,8 @@ impl FishingBobberEntity {
                 position: Some(bobber_pos),
                 tool: Some(rod.clone()),
                 this_entity: Some(self),
+                // `FishingHook.retrieve`: the owner is the attacking entity.
+                killer_entity: Some(player),
                 world: Some(&world),
                 luck,
                 ..Default::default()

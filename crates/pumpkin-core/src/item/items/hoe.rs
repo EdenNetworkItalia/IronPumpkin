@@ -1,4 +1,5 @@
 use crate::block::registry::BlockActionResult;
+use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::plugin::data_maps::builtin::block_transformer;
@@ -50,6 +51,10 @@ impl ItemBehaviour for HoeItem {
         if let Some(result) =
             transformer.transform(block, world.get_block_state_id(&location), face, &get_block)
         {
+            // `BlockTransformer.transformBlock` rolls the loot with the block as it was.
+            let old_state = world.get_block_state(&location);
+            let block_entity = world.get_block_entity(&location);
+            let tool = item.clone();
             if let Some(sound) = result.entry.sound {
                 world.play_sound(sound, SoundCategory::Blocks, &location.to_f64());
             }
@@ -66,10 +71,15 @@ impl ItemBehaviour for HoeItem {
                 let seed = rand::random::<i64>();
                 let drops = loot_table.generate_loot_with_context(
                     seed,
-                    &crate::world::loot::LootContextParameters {
-                        world: Some(&world),
-                        ..Default::default()
-                    },
+                    // `Block.dropFromBlockInteractLootTable`: the `block_interact` parameter set.
+                    &crate::world::loot::LootContextParameters::block_interact(
+                        &world,
+                        &location,
+                        old_state,
+                        block_entity.as_deref(),
+                        Some(player as &dyn EntityBase),
+                        Some(tool),
+                    ),
                 );
                 for drop_stack in drops {
                     if result.entry.drop_strategy == Some(DropStrategy::ClickedFace) {

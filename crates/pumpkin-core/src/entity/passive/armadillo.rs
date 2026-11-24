@@ -231,7 +231,7 @@ impl ArmadilloEntity {
 
     pub fn brush_off_scute(
         &self,
-        _interacting_entity: Option<&dyn EntityBase>,
+        interacting_entity: Option<&dyn EntityBase>,
         tool: &ItemStack,
     ) -> bool {
         if self.is_baby() || !self.get_entity().is_alive() {
@@ -241,13 +241,12 @@ impl ArmadilloEntity {
         let world = entity.world.load();
         let pos = entity.pos.load();
         if let Some(table) = world.get_loot_table(ARMADILLO_BRUSH_LOOT_TABLE) {
-            let params = crate::world::loot::LootContextParameters {
-                world: Some(&world),
-                position: Some(pos),
-                this_entity: Some(self),
-                tool: Some(tool.clone()),
-                ..Default::default()
-            };
+            let params = crate::world::loot::LootContextParameters::entity_interact(
+                &world,
+                self,
+                interacting_entity,
+                tool.clone(),
+            );
             for drop_stack in crate::world::loot::generate_loot_from_handle(
                 &table,
                 self.get_random().random(),

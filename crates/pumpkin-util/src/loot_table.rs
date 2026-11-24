@@ -76,6 +76,10 @@ pub enum LootEntityTarget {
     This,
     Attacker,
     DirectAttacker,
+    /// `LootContext.EntityTarget.ATTACKING_PLAYER`: the player of the last damage.
+    AttackingPlayer,
+    TargetEntity,
+    InteractingEntity,
 }
 
 /// Bonus count formulas when tools have fortune or looting enchantments.
@@ -440,6 +444,9 @@ impl From<LootPool> for DynamicLootPool {
 pub struct DynamicLootTable {
     pub pools: Vec<DynamicLootPool>,
     pub functions: Vec<DynamicLootFunction>,
+    /// The `random_sequence` of the table file: the id of the server random sequence that a roll
+    /// without a seed draws from.
+    pub random_sequence: Option<String>,
 }
 
 impl From<&LootTable> for DynamicLootTable {
@@ -457,6 +464,7 @@ impl From<&LootTable> for DynamicLootTable {
                 .cloned()
                 .map(DynamicLootFunction::from)
                 .collect(),
+            random_sequence: None,
         }
     }
 }
