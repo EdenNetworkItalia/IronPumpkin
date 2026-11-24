@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 
 use crate::codec::item_stack_seralizer::{
-    component_id, custom_component_type, custom_components, read_custom_component,
-    write_custom_components,
+    DecodedPatch, component_id, custom_component_type, item_component_counts,
+    read_custom_component, write_custom_components,
 };
 use crate::codec::var_int::VarInt;
 use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
@@ -1440,32 +1440,29 @@ fn deserialize_item_stack_template(
         ));
     }
 
-    let mut patch = Vec::with_capacity((num_to_add + num_to_remove) as usize);
-    let mut custom = Vec::new();
+    let mut patch = DecodedPatch::default();
 
     // `DataComponentPatch.STREAM_CODEC`: the values have no length prefix.
     for _ in 0..num_to_add {
         let id_val = seq.get_var_int()?.0;
-        if custom_component_type(id_val).is_some() {
-            custom.push((id_val as u16, read_custom_component(seq)?));
+        if let Some(entry) = custom_component_type(id_val) {
+            patch.put_custom(entry.id, read_custom_component(seq)?);
             continue;
         }
         let id = component_id(id_val)?;
         let component_impl = deserialize(id, seq)?;
-        patch.push((id, Some(component_impl)));
+        patch.put(id, Some(component_impl));
     }
 
     for _ in 0..num_to_remove {
         let id_val = seq.get_var_int()?.0;
-        // A mod component type has no default on the item, so there is nothing to remove.
-        if custom_component_type(id_val).is_none() {
-            patch.push((component_id(id_val)?, None));
+        match custom_component_type(id_val) {
+            Some(entry) => patch.remove_custom(entry.id),
+            None => patch.put(component_id(id_val)?, None),
         }
     }
 
-    let mut stack = pumpkin_data::item_stack::ItemStack::new_with_component(count, item, patch);
-    stack.custom_components = custom;
-    Ok(stack)
+    Ok(patch.into_stack(count, item))
 }
 
 fn serialize_item_stack_template(
@@ -1476,18 +1473,9 @@ fn serialize_item_stack_template(
     seq.write_var_int(&VarInt::from(stack.item.to_java_network_id(ids)))?;
     seq.write_var_int(&VarInt::from(stack.item_count))?;
 
-    let mut to_add = custom_components(stack, ids).len() as u8;
-    let mut to_remove = 0u8;
-    for (_id, data) in &stack.patch {
-        if data.is_none() {
-            to_remove += 1;
-        } else {
-            to_add += 1;
-        }
-    }
-
-    seq.write_var_int(&VarInt::from(to_add))?;
-    seq.write_var_int(&VarInt::from(to_remove))?;
+    let (to_add, to_remove) = item_component_counts(stack, ids)?;
+    seq.write_var_int(&to_add)?;
+    seq.write_var_int(&to_remove)?;
 
     for (id, data) in &stack.patch {
         if let Some(data) = data {

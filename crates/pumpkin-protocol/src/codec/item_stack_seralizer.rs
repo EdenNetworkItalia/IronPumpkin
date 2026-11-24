@@ -20,19 +20,58 @@ use std::io::Cursor;
 #[derive(Clone)]
 pub struct ItemStackSerializer<'a>(pub Cow<'a, ItemStack>);
 
-fn item_component_counts(stack: &ItemStack, ids: ContentIds) -> (u8, u8) {
-    let mut to_add = custom_components(stack, ids).len() as u8;
-    let mut to_remove = 0u8;
+/// The added and removed entry counts of a `DataComponentPatch`.
+pub(crate) fn item_component_counts(
+    stack: &ItemStack,
+    ids: ContentIds,
+) -> Result<(VarInt, VarInt), WritingError> {
+    let removed = stack
+        .patch
+        .iter()
+        .filter(|(_, data)| data.is_none())
+        .count();
+    let added = stack.patch.len() - removed + custom_components(stack, ids).len();
+    let count = |count: usize| {
+        i32::try_from(count)
+            .map(VarInt)
+            .map_err(|_| WritingError::Message("Too many item components".into()))
+    };
+    Ok((count(added)?, count(removed)?))
+}
 
-    for (_, data) in &stack.patch {
-        if data.is_none() {
-            to_remove += 1;
-        } else {
-            to_add += 1;
+/// The entries of a decoded `DataComponentPatch`. Vanilla decodes a patch into a map, so a
+/// later entry for a type replaces an earlier one, and a removal replaces a value.
+#[derive(Default)]
+pub(crate) struct DecodedPatch {
+    patch: Vec<(DataComponent, Option<Box<dyn DataComponentImpl>>)>,
+    custom: Vec<(u16, NbtTag)>,
+}
+
+impl DecodedPatch {
+    pub(crate) fn put(&mut self, id: DataComponent, value: Option<Box<dyn DataComponentImpl>>) {
+        match self.patch.iter_mut().find(|(entry, _)| *entry == id) {
+            Some(entry) => entry.1 = value,
+            None => self.patch.push((id, value)),
         }
     }
 
-    (to_add, to_remove)
+    pub(crate) fn put_custom(&mut self, id: u16, value: NbtTag) {
+        match self.custom.iter_mut().find(|(entry, _)| *entry == id) {
+            Some(entry) => entry.1 = value,
+            None => self.custom.push((id, value)),
+        }
+    }
+
+    /// A mod component type has no default on the item, so a removal only drops a value.
+    pub(crate) fn remove_custom(&mut self, id: u16) {
+        self.custom.retain(|(entry, _)| *entry != id);
+    }
+
+    pub(crate) fn into_stack(self, count: u8, item: &'static Item) -> ItemStack {
+        let mut stack = ItemStack::new_with_component(count, item, self.patch);
+        stack.custom_components = self.custom;
+        stack
+    }
 }
 
 /// The mod component values that a client gets. Only a client that synced the registries knows
@@ -106,11 +145,11 @@ fn serialize_item_stack_with_id(
         if stack.is_empty() {
             write.put_var_int(&VarInt(0))
         } else {
-            let (to_add, to_remove) = item_component_counts(stack, version.content_ids());
+            let (to_add, to_remove) = item_component_counts(stack, version.content_ids())?;
             write.put_var_int(&VarInt::from(stack.item_count))?;
             write.put_var_int(&VarInt::from(item_id))?;
-            write.put_var_int(&VarInt::from(to_add))?;
-            write.put_var_int(&VarInt::from(to_remove))?;
+            write.put_var_int(&to_add)?;
+            write.put_var_int(&to_remove)?;
 
             for (id, data) in &stack.patch {
                 if let Some(data) = data {
@@ -172,11 +211,11 @@ fn serialize_length_prefixed_item_stack_with_id(
         if stack.is_empty() {
             write.put_var_int(&VarInt(0))
         } else {
-            let (to_add, to_remove) = item_component_counts(stack, version.content_ids());
+            let (to_add, to_remove) = item_component_counts(stack, version.content_ids())?;
             write.put_var_int(&VarInt::from(stack.item_count))?;
             write.put_var_int(&VarInt::from(item_id))?;
-            write.put_var_int(&VarInt::from(to_add))?;
-            write.put_var_int(&VarInt::from(to_remove))?;
+            write.put_var_int(&to_add)?;
+            write.put_var_int(&to_remove)?;
 
             for (id, data) in &stack.patch {
                 if let Some(data) = data {
@@ -375,13 +414,11 @@ impl ItemStackSerializer<'_> {
             ));
         }
 
-        let mut patch = Vec::with_capacity((num_to_add + num_to_remove) as usize);
-
-        let mut custom = Vec::new();
+        let mut patch = DecodedPatch::default();
         for _ in 0..num_to_add {
             let id_val = read.get_var_int()?.0;
             if let Some(entry) = custom_component_type(id_val) {
-                custom.push((entry.id, read_custom_component(read)?));
+                patch.put_custom(entry.id, read_custom_component(read)?);
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
@@ -392,18 +429,18 @@ impl ItemStackSerializer<'_> {
             } else {
                 deserialize(id, read)?
             };
-            patch.push((id, Some(component_impl)));
+            patch.put(id, Some(component_impl));
         }
 
         for _ in 0..num_to_remove {
             let id_val = read.get_var_int()?.0;
-            // A mod component type has no default on the item, so there is nothing to remove.
-            if custom_component_type(id_val).is_some() {
+            if let Some(entry) = custom_component_type(id_val) {
+                patch.remove_custom(entry.id);
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
                 .ok_or_else(|| ReadingError::Message("Unknown component ID".into()))?;
-            patch.push((id, None));
+            patch.put(id, None);
         }
 
         let item_id_u16: u16 = item_id
@@ -411,12 +448,10 @@ impl ItemStackSerializer<'_> {
             .try_into()
             .map_err(|_| ReadingError::Message("Invalid item id!".into()))?;
 
-        let mut stack = ItemStack::new_with_component(
+        let stack = patch.into_stack(
             item_count.0 as u8,
             Item::from_id(item_id_u16).unwrap_or(&Item::AIR),
-            patch,
         );
-        stack.custom_components = custom;
         Ok(ItemStackSerializer(Cow::Owned(stack)))
     }
 
@@ -542,13 +577,11 @@ impl ItemStackSerializer<'_> {
             ));
         }
 
-        let mut patch = Vec::with_capacity(total_components as usize);
-
-        let mut custom = Vec::new();
+        let mut patch = DecodedPatch::default();
         for _ in 0..num_to_add {
             let id_val = read.get_var_int()?.0;
             if let Some(entry) = custom_component_type(id_val) {
-                custom.push((entry.id, read_custom_component(read)?));
+                patch.put_custom(entry.id, read_custom_component(read)?);
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
@@ -559,18 +592,18 @@ impl ItemStackSerializer<'_> {
             } else {
                 deserialize(id, read)?
             };
-            patch.push((id, Some(component_impl)));
+            patch.put(id, Some(component_impl));
         }
 
         for _ in 0..num_to_remove {
             let id_val = read.get_var_int()?.0;
-            // A mod component type has no default on the item, so there is nothing to remove.
-            if custom_component_type(id_val).is_some() {
+            if let Some(entry) = custom_component_type(id_val) {
+                patch.remove_custom(entry.id);
                 continue;
             }
             let id = DataComponent::try_from_id(id_val as u8)
                 .ok_or_else(|| ReadingError::Message("Unknown component ID".into()))?;
-            patch.push((id, None));
+            patch.put(id, None);
         }
 
         let item_count_u8: u8 = item_count
@@ -578,8 +611,7 @@ impl ItemStackSerializer<'_> {
             .try_into()
             .map_err(|_| ReadingError::Message("Invalid item count!".into()))?;
 
-        let mut stack = ItemStack::new_with_component(item_count_u8, item, patch);
-        stack.custom_components = custom;
+        let stack = patch.into_stack(item_count_u8, item);
         if stack.is_empty() {
             return Err(ReadingError::Message(
                 "Can't read empty item stack template".into(),
@@ -626,21 +658,19 @@ impl ItemStackSerializer<'_> {
             ));
         }
 
-        let mut patch = Vec::with_capacity(total_components as usize);
-
-        let mut custom = Vec::new();
+        let mut patch = DecodedPatch::default();
         for _ in 0..num_to_add {
             match read_length_prefixed_component(read)? {
-                PatchEntry::Vanilla(id, component_impl) => patch.push((id, Some(component_impl))),
-                PatchEntry::Custom(id, value) => custom.push((id, value)),
+                PatchEntry::Vanilla(id, component_impl) => patch.put(id, Some(component_impl)),
+                PatchEntry::Custom(id, value) => patch.put_custom(id, value),
             }
         }
 
         for _ in 0..num_to_remove {
             let id_val = read.get_var_int()?.0;
-            // A mod component type has no default on the item, so there is nothing to remove.
-            if custom_component_type(id_val).is_none() {
-                patch.push((component_id(id_val)?, None));
+            match custom_component_type(id_val) {
+                Some(entry) => patch.remove_custom(entry.id),
+                None => patch.put(component_id(id_val)?, None),
             }
         }
 
@@ -649,12 +679,10 @@ impl ItemStackSerializer<'_> {
             .try_into()
             .map_err(|_| ReadingError::Message("Invalid item id!".into()))?;
 
-        let mut stack = ItemStack::new_with_component(
+        let stack = patch.into_stack(
             item_count_u8,
             Item::from_id(item_id_u16).unwrap_or(&Item::AIR),
-            patch,
         );
-        stack.custom_components = custom;
         Ok(ItemStackSerializer(Cow::Owned(stack)))
     }
 
@@ -746,13 +774,13 @@ impl ItemStackSerializer<'_> {
                 "Can't write empty item stack template".into(),
             ));
         }
-        let (to_add, to_remove) = item_component_counts(self.0.as_ref(), version.content_ids());
+        let (to_add, to_remove) = item_component_counts(self.0.as_ref(), version.content_ids())?;
         write.put_var_int(&VarInt::from(
             self.0.item.to_java_network_id(version.content_ids()),
         ))?;
         write.put_var_int(&VarInt::from(self.0.item_count))?;
-        write.put_var_int(&VarInt::from(to_add))?;
-        write.put_var_int(&VarInt::from(to_remove))?;
+        write.put_var_int(&to_add)?;
+        write.put_var_int(&to_remove)?;
 
         for (id, data) in &self.0.patch {
             if let Some(data) = data {
@@ -1106,5 +1134,77 @@ mod tests {
         assert!(read_creative_stack(&bytes).is_err());
         // The failed decode releases every level.
         assert!(read_creative_stack(&nested_bundles(2)).is_ok());
+    }
+
+    fn var_ints(values: &[i32]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for value in values {
+            bytes.write_var_int(&VarInt(*value)).unwrap();
+        }
+        bytes
+    }
+
+    /// `DataComponentPatch.STREAM_CODEC` decodes into a map: a later entry for the same type
+    /// replaces an earlier one.
+    #[test]
+    fn duplicate_components_decode_into_one_entry() {
+        let unbreakable = i32::from(DataComponent::Unbreakable.to_id());
+        let sword = i32::from(Item::DIAMOND_SWORD.id);
+        let mut bytes = var_ints(&[1, sword, 256, 0]);
+        for _ in 0..256 {
+            // The type, then the length of its empty `Unit` value.
+            bytes.extend(var_ints(&[unbreakable, 0]));
+        }
+        let stack = read_creative_stack(&bytes).unwrap().to_stack();
+        let entries = |stack: &ItemStack| {
+            stack
+                .patch
+                .iter()
+                .filter(|(id, _)| *id == DataComponent::Unbreakable)
+                .count()
+        };
+        assert_eq!(entries(&stack), 1);
+
+        let mut written = Vec::new();
+        ItemStackSerializer::from(stack.clone())
+            .write_length_prefixed_with_version(&mut written, &JavaMinecraftVersion::V_26_3.into())
+            .unwrap();
+        assert_eq!(
+            written,
+            [var_ints(&[1, sword, 1, 0]), var_ints(&[unbreakable, 0])].concat()
+        );
+    }
+
+    #[test]
+    fn a_later_template_entry_replaces_an_earlier_one() {
+        use crate::codec::data_component::deserialize;
+        use pumpkin_data::data_component_impl::{BundleContentsImpl, DamageImpl};
+        let damage = i32::from(DataComponent::Damage.to_id());
+        let sword = i32::from(Item::DIAMOND_SWORD.id);
+        // One template: two `damage` values, then `damage` removed; a second template: two
+        // `damage` values.
+        let bytes = [
+            var_ints(&[2]),
+            var_ints(&[sword, 1, 2, 1, damage, 5, damage, 7, damage]),
+            var_ints(&[sword, 1, 2, 0, damage, 5, damage, 7]),
+        ]
+        .concat();
+        let bundle = deserialize(DataComponent::BundleContents, &mut bytes.as_slice()).unwrap();
+        let bundle = bundle
+            .as_any()
+            .downcast_ref::<BundleContentsImpl>()
+            .unwrap();
+        let [removed, replaced] = bundle.items.as_slice() else {
+            panic!("two templates expected");
+        };
+        assert_eq!(removed.patch.len(), 1);
+        assert!(matches!(removed.patch[0], (DataComponent::Damage, None)));
+        assert_eq!(replaced.patch.len(), 1);
+        assert_eq!(
+            replaced
+                .get_data_component::<DamageImpl>()
+                .map(|d| d.damage),
+            Some(7)
+        );
     }
 }
