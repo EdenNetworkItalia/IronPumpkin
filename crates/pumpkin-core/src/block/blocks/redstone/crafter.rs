@@ -4,7 +4,7 @@ use std::sync::Mutex;
 
 use crate::block::blocks::redstone::block_receives_redstone_power;
 use crate::block::entities::crafter::CrafterBlockEntity;
-use crate::block::entities::hopper::HopperBlockEntity;
+use crate::block::entities::hopper::{ContainerOrHandler, HopperBlockEntity};
 use crate::block::registry::BlockActionResult;
 use crate::block::{
     BlockBehaviour, GetComparatorOutputArgs, GetScreenHandlerFactoryArgs, NormalUseArgs,
@@ -229,7 +229,27 @@ impl CrafterBlock {
         let opposite_dir = direction.opposite();
         let target_pos = pos.offset(direction.to_offset());
 
-        if let Some(target_inv) = HopperBlockEntity::get_container_at(world, &target_pos) {
+        let target_state = world.get_block_and_state(&target_pos);
+        let center = target_pos.to_centered_f64();
+        let found = HopperBlockEntity::container_or_handler_at(
+            world,
+            &target_pos,
+            opposite_dir,
+            target_state,
+            center.x,
+            center.y,
+            center.z,
+        );
+        if let Some(ContainerOrHandler::Handler(handler)) = &found {
+            // `CrafterBlock.dispenseItem` with `ItemUtil.insertItemReturnRemaining`.
+            while !stack.is_empty() {
+                let inserted = handler.insert(stack);
+                if inserted == 0 {
+                    break;
+                }
+                stack.item_count -= inserted.min(stack.item_count);
+            }
+        } else if let Some(ContainerOrHandler::Container(target_inv)) = found {
             let max_stack = target_inv
                 .get_max_count_per_stack()
                 .min(stack.get_max_stack_size());

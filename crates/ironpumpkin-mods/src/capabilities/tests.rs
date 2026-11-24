@@ -897,3 +897,42 @@ fn a_hopper_pulls_from_the_block_capability_before_a_chest_minecart() {
     assert_eq!(hopper.get_stack(0).item.id, Item::EMERALD.id);
     assert_eq!(cart.get_stack(0).item_count, 5);
 }
+
+/// `CrafterBlock.dispenseItem` uses `getContainerOrHandlerAt`: a crafter facing a block with an
+/// item capability puts the result into it.
+#[test]
+fn a_crafter_dispenses_into_the_item_capability_of_a_block() {
+    use pumpkin_core::block::entities::crafter::CrafterBlockEntity;
+
+    let test = TestWorld::new();
+    let at = pos(4, 64, 6);
+    // The default orientation of a crafter faces north.
+    let target = at.north();
+    test.place(target, Block::DRIED_KELP_BLOCK.default_state.id);
+    let handler = plain_block(target, None);
+    test.place(at, Block::CRAFTER.default_state.id);
+    let crafter = Arc::new(CrafterBlockEntity::new(at));
+    crafter.set_stack(0, ItemStack::new(1, &Item::DIAMOND_BLOCK));
+    test.world.add_block_entity(crafter.clone());
+    let items_before = items_in(&test);
+    let Some(behaviour) = test
+        .world
+        .block_registry
+        .get_pumpkin_block(Block::CRAFTER.id)
+    else {
+        panic!("the crafter has no behaviour");
+    };
+    behaviour.on_scheduled_tick(OnScheduledTickArgs {
+        world: &test.world,
+        block: &Block::CRAFTER,
+        position: &at,
+    });
+    // One diamond block crafts nine diamonds.
+    assert_eq!(handler.get_amount_as_long(0), 9);
+    assert!(crafter.get_stack(0).is_empty());
+    assert_eq!(
+        items_in(&test),
+        items_before,
+        "an item dropped into the world"
+    );
+}
