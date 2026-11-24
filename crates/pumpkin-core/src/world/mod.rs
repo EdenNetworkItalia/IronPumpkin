@@ -675,14 +675,7 @@ impl World {
         self.save_entities_by_chunk(&entities, self.level.live_entity_chunk_positions())
             .await;
 
-        let chunks: Vec<Vector2<i32>> = self
-            .block_entities
-            .iter()
-            .map(|chunk_block_entities| *chunk_block_entities.key())
-            .collect();
-        for chunk_pos in chunks {
-            self.save_block_entities(chunk_pos);
-        }
+        self.save_live_block_entities();
         crate::plugin::attachments::save_level(self);
 
         // Save portal POI to disk
@@ -743,6 +736,17 @@ impl World {
             merge_entity_records(&mut data, live, records);
             drop(data);
             chunk.mark_dirty(true);
+        }
+    }
+
+    fn save_live_block_entities(&self) {
+        let chunks: Vec<Vector2<i32>> = self
+            .block_entities
+            .iter()
+            .map(|chunk_block_entities| *chunk_block_entities.key())
+            .collect();
+        for chunk_pos in chunks {
+            self.save_block_entities(chunk_pos);
         }
     }
 
@@ -2181,7 +2185,7 @@ impl World {
     }
 
     pub fn tick_environment(self: &Arc<Self>) {
-        let (is_night, time_of_day) = {
+        let (is_night, time_of_day, autosave_now) = {
             let mut level_time = self
                 .level_time
                 .lock()
@@ -2215,15 +2219,18 @@ impl World {
                     }
                 }
             }
-            if self.level.autosave_ticks > 0 && self.level.save_enabled.load(Relaxed) {
-                let autosave = self.level.autosave_ticks as i64;
-                if autosave > 0 && level_time.world_age % autosave == 0 {
-                    self.level.should_save.store(true, Relaxed);
-                    self.level.level_channel.notify();
-                }
-            }
-            (level_time.is_night(), level_time.time_of_day)
+            let autosave = self.level.autosave_ticks as i64;
+            let autosave_now = autosave > 0
+                && self.level.save_enabled.load(Relaxed)
+                && level_time.world_age % autosave == 0;
+            (level_time.is_night(), level_time.time_of_day, autosave_now)
         };
+        if autosave_now {
+            // The chunk writer reads the saved block entity data, not the live block entities.
+            self.save_live_block_entities();
+            self.level.should_save.store(true, Relaxed);
+            self.level.level_channel.notify();
+        }
 
         let (should_reset_weather, weather_cycle_enabled) = {
             let mut weather = self
@@ -8084,14 +8091,7 @@ impl World {
         self.save_entities_by_chunk(&entities, self.level.live_entity_chunk_positions())
             .await;
 
-        let chunks: Vec<Vector2<i32>> = self
-            .block_entities
-            .iter()
-            .map(|chunk_block_entities| *chunk_block_entities.key())
-            .collect();
-        for chunk_pos in chunks {
-            self.save_block_entities(chunk_pos);
-        }
+        self.save_live_block_entities();
 
         if let Ok(mut portal_poi) = self.portal_poi.try_lock() {
             let _ = portal_poi.save_all();
