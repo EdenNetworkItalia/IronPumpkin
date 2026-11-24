@@ -67884,6 +67884,13 @@ pub fn get_loot_table(key: &str) -> Option<&'static LootTable> {
         .ok()
         .map(|index| LOOT_TABLES_BY_KEY[index].1)
 }
+#[doc = r" Every compiled loot table once, with its `minecraft:` id, sorted by id."]
+pub fn all_loot_tables() -> impl Iterator<Item = (&'static str, &'static LootTable)> {
+    LOOT_TABLES_BY_KEY
+        .iter()
+        .copied()
+        .filter(|(key, _)| key.starts_with("minecraft:"))
+}
 #[must_use]
 pub fn get_loot_predicate(key: &str) -> Option<&'static LootPredicateValue> {
     match key {

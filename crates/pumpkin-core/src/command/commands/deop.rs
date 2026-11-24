@@ -11,6 +11,7 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::data::SaveJSONConfiguration;
+use crate::plugin::server_events::permission_change_cancelled;
 
 const DESCRIPTION: &str = "Revokes operator status from a player.";
 const PERMISSION: &str = "minecraft:command.deop";
@@ -26,15 +27,24 @@ impl CommandExecutor for DeopExecutor {
     fn execute(&self, context: &CommandContext) -> CommandExecutorResult {
         let targets = GameProfileArgumentType::get(context, "targets")?;
         let server = context.source.server();
-        let mut config = server.data.operator_config.write().unwrap();
 
         let mut succeeded_deops: i32 = 0;
         for profile in &targets {
+            // Vanilla `PlayerList.deop` returns when a handler cancels, and the command still
+            // counts the player and sends the success message.
+            let cancelled = permission_change_cancelled(server, profile.id, PermissionLvl::Zero);
+
+            let mut config = server.data.operator_config.write().unwrap();
             if let Some(op_index) = config.ops.iter().position(|o| o.uuid == profile.id) {
-                config.ops.remove(op_index);
+                if !cancelled {
+                    config.ops.remove(op_index);
+                    config.save();
+                }
+                drop(config);
                 succeeded_deops += 1;
 
-                if let Some(player) = server.get_player_by_uuid(profile.id)
+                if !cancelled
+                    && let Some(player) = server.get_player_by_uuid(profile.id)
                     && let Some(server_arc) = player.world().server.upgrade()
                 {
                     let command_dispatcher = server_arc.command_dispatcher.load();
@@ -57,9 +67,6 @@ impl CommandExecutor for DeopExecutor {
         if succeeded_deops == 0 {
             Err(ERROR_DEOP_FAILED.create_without_context())
         } else {
-            config.save();
-            drop(config);
-
             crate::command::commands::whitelist::kick_non_whitelisted_players(server);
 
             Ok(succeeded_deops)

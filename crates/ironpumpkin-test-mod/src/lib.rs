@@ -43,8 +43,8 @@ use ironpumpkin_mods::{
         BoxFuture, EventHandler, EventPriority, Payload,
         player::player_join::PlayerJoinEvent,
         server::{
-            ServerAboutToStartEvent, ServerLoadEvent, ServerStartingEvent, ServerStoppedEvent,
-            ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
+            GameShuttingDownEvent, ServerAboutToStartEvent, ServerLoadEvent, ServerStartingEvent,
+            ServerStoppedEvent, ServerStoppingEvent, ServerTickEndEvent, ServerTickStartEvent,
         },
         world::{LevelTickEventPost, LevelTickEventPre},
     },
@@ -377,6 +377,7 @@ fn register_events(cx: &mut ModInit) {
     log_once::<ServerTickEndEvent>(cx, "ServerTickEventPost");
     log_once::<LevelTickEventPre>(cx, "LevelTickEventPre");
     log_once::<LevelTickEventPost>(cx, "LevelTickEventPost");
+    log_once::<GameShuttingDownEvent>(cx, "GameShuttingDownEvent");
     log_once::<ServerStoppingEvent>(cx, "ServerStoppingEvent");
     log_once::<ServerStoppedEvent>(cx, "ServerStoppedEvent");
     cx.register_event::<RegisterPayloadHandlersEvent, _>(

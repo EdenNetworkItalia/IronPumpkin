@@ -33,8 +33,9 @@ use crate::{
     event::registries::RegisterEvent,
     imc::{ImcQueue, InterModEnqueue, InterModProcess},
     mod_list::ModList,
-    registration::RegistrationEvent,
+    registration::{AddPackFindersEvent, RegistrationEvent},
 };
+use pumpkin_core::data::datapack::mod_packs::ModDataPack;
 
 /// The registries that `RegisterEvent` fires for, in the order of
 /// `GameData.getRegistrationOrder`: `minecraft:attribute` and `minecraft:data_component_type`
@@ -54,7 +55,7 @@ pub(crate) const REGISTRIES: [ContentKind; 7] = [
 /// for each of [`REGISTRIES`] through `fire_register`, which returns the event after its
 /// handlers or `None` when no handler listens, then the registration events and the lifecycle
 /// steps, with the local configs loaded before common setup, and the payload registration step
-/// `register_payload_handlers` last.
+/// `register_payload_handlers` last. It returns the data packs that `AddPackFindersEvent` added.
 ///
 /// # Errors
 ///
@@ -66,7 +67,7 @@ pub(crate) fn run(
     configs: &[Arc<ModConfig>],
     mut fire_register: impl FnMut(ContentKind) -> Option<RegisterEvent>,
     register_payload_handlers: impl FnOnce(),
-) -> Result<(), String> {
+) -> Result<Vec<ModDataPack>, String> {
     let mut register_error = None;
     for registry in REGISTRIES {
         if let Some(error) = fire_register(registry).and_then(|mut event| event.take_error()) {
@@ -125,7 +126,44 @@ pub(crate) fn run(
         loaded.native_mod.load_complete();
     }
     register_payload_handlers();
-    Ok(())
+    add_pack_finders(mods)
+}
+
+/// Posts `AddPackFindersEvent` to every mod in load order and returns the packs that the mods
+/// added, in the order of the calls.
+fn add_pack_finders(mods: &[LoadedMod<'_>]) -> Result<Vec<ModDataPack>, String> {
+    let mut first_error = None;
+    let mut packs: Vec<ModDataPack> = Vec::new();
+    for loaded in mods {
+        let mut event = AddPackFindersEvent::new();
+        loaded.native_mod.add_pack_finders(&mut event);
+        if let Some(error) = event.take_error() {
+            first_error.get_or_insert_with(|| {
+                format!(
+                    "the {} of mod {}: {error}",
+                    AddPackFindersEvent::NAME,
+                    loaded.mod_id
+                )
+            });
+        }
+        for pack in event.take_packs() {
+            let taken = mods.iter().any(|other| other.mod_id == pack.mod_id)
+                || packs.iter().any(|other| other.mod_id == pack.mod_id);
+            if taken {
+                first_error.get_or_insert_with(|| {
+                    format!(
+                        "the {} of mod {}: the pack id \"{}\" is a mod id or another pack",
+                        AddPackFindersEvent::NAME,
+                        loaded.mod_id,
+                        pack.mod_id
+                    )
+                });
+            } else {
+                packs.push(pack);
+            }
+        }
+    }
+    first_error.map_or(Ok(packs), Err)
 }
 
 /// Calls the method of a registration event on every mod in load order, as `ModLoader.postEvent`
@@ -164,7 +202,7 @@ mod tests {
         mod_list::{ModList, system_mods},
         mods_toml::parse,
         registration::{
-            BlockEntityTypeAddBlocksEvent, EntityAttributeCreationEvent,
+            AddPackFindersEvent, BlockEntityTypeAddBlocksEvent, EntityAttributeCreationEvent,
             EntityAttributeModificationEvent, ExtendPoiTypesEvent, RegisterSpawnPlacementsEvent,
         },
     };
@@ -262,6 +300,14 @@ mod tests {
             record(format!("ExtendPoiTypesEvent {}", self.0));
         }
 
+        fn add_pack_finders(&self, event: &mut AddPackFindersEvent) {
+            record(format!(
+                "AddPackFindersEvent {} {:?}",
+                self.0,
+                event.pack_type()
+            ));
+        }
+
         fn register_data_map_types(
             &self,
             _event: &mut crate::data_maps::RegisterDataMapTypesEvent,
@@ -332,6 +378,8 @@ mod tests {
                 "load_complete alpha",
                 "load_complete beta",
                 "RegisterPayloadHandlersEvent",
+                "AddPackFindersEvent alpha ServerData",
+                "AddPackFindersEvent beta ServerData",
             ]
         );
     }
@@ -490,6 +538,74 @@ mod tests {
              registry is frozen"
         );
         assert!(!SETUP_RAN.load(Ordering::Relaxed));
+    }
+
+    const MCMETA: &[u8] = b"{}";
+    const PACK_FILES: crate::data_pack::PackFiles = &[("pack.mcmeta", MCMETA)];
+
+    /// Adds data packs: `packmod` adds `extra` and `extra.two`, and a mod that names its own
+    /// id or an invalid id as a pack id fails the step.
+    struct PackMod(&'static str, &'static [&'static str]);
+
+    impl NativeMod for PackMod {
+        fn id(&self) -> &'static str {
+            self.0
+        }
+
+        fn display_name(&self) -> &'static str {
+            self.0
+        }
+
+        fn version(&self) -> &'static str {
+            "1.0"
+        }
+
+        fn init(&self, _cx: &mut ModInit) {}
+
+        fn add_pack_finders(&self, event: &mut AddPackFindersEvent) {
+            for id in self.1 {
+                let _ = event.add_pack(id, PACK_FILES);
+            }
+        }
+    }
+
+    static PACK_MOD: PackMod = PackMod("packmod", &["extra", "extra.two"]);
+    static OWN_ID_MOD: PackMod = PackMod("ownid", &["ownid"]);
+    static BAD_ID_MOD: PackMod = PackMod("badid", &["Bad Id"]);
+
+    /// `AddPackFindersEvent` returns the added packs in the order of the calls, and rejects a pack
+    /// id that is a mod id, an invalid id and a duplicate.
+    #[test]
+    fn add_pack_finders_collects_the_added_packs_and_rejects_bad_ids() {
+        let packs = |native_mod: &'static PackMod, mod_id| {
+            let mod_list = mod_list(&[mod_id]);
+            run(
+                &[LoadedMod { native_mod, mod_id }],
+                &mod_list,
+                &[],
+                no_handler,
+                || {},
+            )
+        };
+
+        let added = packs(&PACK_MOD, "packmod").unwrap();
+        assert_eq!(
+            added
+                .iter()
+                .map(|pack| pack.mod_id.as_str())
+                .collect::<Vec<_>>(),
+            ["extra", "extra.two"]
+        );
+        assert_eq!(added[0].files, PACK_FILES);
+        assert_eq!(
+            packs(&OWN_ID_MOD, "ownid").unwrap_err(),
+            "the AddPackFindersEvent of mod ownid: the pack id \"ownid\" is a mod id or another pack"
+        );
+        assert!(
+            packs(&BAD_ID_MOD, "badid")
+                .unwrap_err()
+                .starts_with("the AddPackFindersEvent of mod badid: pack id \"Bad Id\" must have")
+        );
     }
 
     static POI_NEXT_STEP_RAN: AtomicBool = AtomicBool::new(false);

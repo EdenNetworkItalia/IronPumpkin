@@ -73,6 +73,8 @@ interface event {
         grindstone-event-on-take-item-data,
         level-tick-event-pre-data,
         level-tick-event-post-data,
+        command-event-data, permissions-changed-event-data, on-datapack-sync-event-data,
+        loot-table-load-event-data,
     };
 
     variant serverbound-packet {
@@ -2462,6 +2464,12 @@ interface event {
         grindstone-event-on-take-item,
         level-tick-event-pre,
         level-tick-event-post,
+        command-event,
+        permissions-changed-event,
+        tags-updated-event-server-data-load,
+        on-datapack-sync-event,
+        loot-table-load-event,
+        game-shutting-down-event,
     }
 
     variant event {
@@ -2816,5 +2824,11 @@ interface event {
         grindstone-event-on-take-item(grindstone-event-on-take-item-data),
         level-tick-event-pre(level-tick-event-pre-data),
         level-tick-event-post(level-tick-event-post-data),
+        command-event(command-event-data),
+        permissions-changed-event(permissions-changed-event-data),
+        tags-updated-event-server-data-load,
+        on-datapack-sync-event(on-datapack-sync-event-data),
+        loot-table-load-event(loot-table-load-event-data),
+        game-shutting-down-event,
     }
 }

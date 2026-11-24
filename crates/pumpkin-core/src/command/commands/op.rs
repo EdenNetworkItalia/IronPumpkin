@@ -7,6 +7,7 @@ use crate::command::node::{CommandExecutor, CommandExecutorResult};
 use crate::command::suggestion::provider::{SuggestionProvider, SuggestionProviderResult};
 use crate::command::suggestion::suggestions::SuggestionsBuilder;
 use crate::data::SaveJSONConfiguration;
+use crate::plugin::server_events::permission_change_cancelled;
 use pumpkin_config::op::Op;
 use pumpkin_data::translation;
 use pumpkin_util::PermissionLvl;
@@ -29,11 +30,15 @@ impl CommandExecutor for OpCommandExecutor {
         let server = context.server();
         let profiles = GameProfileArgumentType::get(context, ARG_TARGETS)?;
 
-        let mut config = server.data.operator_config.write().unwrap();
         let mut successes: i32 = 0;
         let new_level = server.basic_config.op_permission_level;
 
         for profile in profiles {
+            // Vanilla `PlayerList.op` returns when a handler cancels, and the command still counts
+            // the player and sends the success message.
+            let cancelled = permission_change_cancelled(server, profile.id, new_level);
+
+            let mut config = server.data.operator_config.write().unwrap();
             let maybe_existing_entry = config.ops.iter_mut().find(|o| o.uuid == profile.id);
 
             if let Some(op) = maybe_existing_entry {
@@ -41,14 +46,20 @@ impl CommandExecutor for OpCommandExecutor {
                     continue;
                 }
 
-                op.level = new_level;
-                op.name.clone_from(&profile.name);
-            } else {
+                if !cancelled {
+                    op.level = new_level;
+                    op.name.clone_from(&profile.name);
+                }
+            } else if !cancelled {
                 let op_entry = Op::new(profile.id, profile.name.clone(), new_level, false);
                 config.ops.push(op_entry);
             }
+            if !cancelled {
+                config.save();
+            }
+            drop(config);
 
-            if let Some(player) = server.get_player_by_uuid(profile.id) {
+            if !cancelled && let Some(player) = server.get_player_by_uuid(profile.id) {
                 let command_dispatcher = server.command_dispatcher.load();
                 player.set_permission_lvl(server, new_level, &command_dispatcher);
             }
@@ -63,10 +74,6 @@ impl CommandExecutor for OpCommandExecutor {
             );
 
             successes += 1;
-        }
-
-        if successes > 0 {
-            config.save();
         }
 
         if successes == 0 {

@@ -181,18 +181,24 @@ fn refusal(mandatory: &[String]) -> Option<TextComponent> {
     )
 }
 
-/// Loads the data maps after a data pack load. After a `/reload`, the players in play get the
-/// new values, as `PlayerList.reloadResources` posts `OnDatapackSyncEvent`.
-pub(crate) fn after_load(server: &Arc<Server>, reload: bool) {
+/// Loads the data maps after a data pack load, before the tags event: `NeoForge` loads them in
+/// its own handler of `TagsUpdatedEvent.ServerDataLoad`, so a handler of that event and of
+/// `OnDatapackSyncEvent` sees the new values.
+pub(crate) fn load(server: &Arc<Server>) {
+    if let Some(host) = HOST.get() {
+        host.load(server);
+    }
+}
+
+/// After a `/reload`, the players in play get the new values, as `NeoForge` sends them in its
+/// handler of `OnDatapackSyncEvent`.
+pub(crate) fn sync_after_reload(server: &Arc<Server>) {
     let Some(host) = HOST.get() else {
         return;
     };
-    host.load(server);
-    if reload {
-        for player in server.get_all_players() {
-            if player.negotiated_state().data_maps_joined.is_set() {
-                send_sync(*host, &player);
-            }
+    for player in server.get_all_players() {
+        if player.negotiated_state().data_maps_joined.is_set() {
+            send_sync(*host, &player);
         }
     }
 }

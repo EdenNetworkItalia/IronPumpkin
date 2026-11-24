@@ -42,6 +42,20 @@ pub struct ParsingResult<'a, S: CommandSource = DummySource> {
     pub reader: StringReader<'static>,
 }
 
+/// What a [`CommandInterceptor`] decides for a command.
+pub enum Interception {
+    /// Run the command as it is.
+    Run,
+    /// Run this command in place of the input.
+    Replace(String),
+    /// Do not run the command.
+    Cancel,
+}
+
+/// Runs in [`CommandDispatcher::handle_command`] after the input is normalized and before it is
+/// parsed.
+pub type CommandInterceptor<S> = dyn Fn(&S, &str) -> Interception + Send + Sync;
+
 /// Structs implementing this trait are able to execute upon command completion.
 pub trait ResultConsumer<S: CommandSource = DummySource>: Sync + Send {
     fn on_command_completion(&self, context: &CommandContext<S>, result: ReturnValue);
@@ -71,6 +85,9 @@ impl<S: CommandSource> ResultConsumer<S> for ResultDeferrer {
 pub struct CommandDispatcher<S: CommandSource = DummySource> {
     pub tree: Tree<S>,
     pub consumer: Arc<dyn ResultConsumer<S>>,
+
+    /// Decides for each command of [`Self::handle_command`] before it is parsed.
+    interceptor: Option<Arc<CommandInterceptor<S>>>,
 
     /// Primary names of commands that have been turned off through the server
     /// configuration. A disabled command behaves as if it does not exist: it
@@ -102,9 +119,15 @@ impl<S: CommandSource> CommandDispatcher<S> {
         Self {
             tree,
             consumer: Arc::new(ResultDeferrer),
+            interceptor: None,
             disabled: FxHashSet::default(),
             inactive_plugin_commands: FxHashSet::default(),
         }
+    }
+
+    /// Sets the interceptor that [`Self::handle_command`] asks before it runs a command.
+    pub fn set_interceptor(&mut self, interceptor: Arc<CommandInterceptor<S>>) {
+        self.interceptor = Some(interceptor);
     }
 
     fn normalize_command_name(name: &str) -> String {
@@ -511,8 +534,19 @@ impl<S: CommandSource> CommandDispatcher<S> {
     /// returning appropriate error messages to it if necessary.
     ///
     /// If the input starts with one slash (`/`), it is removed
-    /// inside the call itself.
-    pub fn handle_command<'a>(&'a self, source: &S, mut input: &'a str) {
+    /// inside the call itself. The interceptor, if any, decides for the command after that.
+    pub fn handle_command<'a>(&'a self, source: &S, input: &'a str) {
+        self.handle(source, input, true);
+    }
+
+    /// [`Self::handle_command`] without the interceptor, for the commands of a function: a
+    /// function line is not a command that the sender performs.
+    pub fn handle_function_command<'a>(&'a self, source: &S, input: &'a str) {
+        self.handle(source, input, false);
+    }
+
+    fn handle(&self, source: &S, input: &str, intercept: bool) {
+        let mut input = input;
         // If input starts with '/', but the command with that leading slash is NOT
         // registered, while the stripped command IS registered (or if it's an unknown command
         // starting with a single slash, e.g. from console input), strip one leading slash.
@@ -535,6 +569,18 @@ impl<S: CommandSource> CommandDispatcher<S> {
             let reader = StringReader::new(input);
             Self::send_error_to_source(source, Self::unknown_command_error(&reader), input);
             return;
+        }
+
+        let replaced;
+        if intercept && let Some(interceptor) = &self.interceptor {
+            match interceptor(source, input) {
+                Interception::Run => {}
+                Interception::Replace(command) => {
+                    replaced = command;
+                    input = &replaced;
+                }
+                Interception::Cancel => return,
+            }
         }
 
         let output = self.execute_input(input, source);

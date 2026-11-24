@@ -108,6 +108,9 @@ pub fn default_dispatcher(
     register_permissions(registry);
 
     let mut dispatcher = CommandDispatcher::new();
+    dispatcher.set_interceptor(std::sync::Arc::new(
+        crate::plugin::server_events::command_interceptor,
+    ));
 
     say::register(&mut dispatcher, registry);
     banlist::register(&mut dispatcher, registry);

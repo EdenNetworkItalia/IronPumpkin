@@ -30,9 +30,11 @@ interface server {
         get-permission-level: func(id: uuid) -> permission-level;
 
         /// Grants operator status to a player (online or offline) with the specified level and bypass setting.
+        /// Returns normally and changes nothing when a handler of the permissions changed event cancels the op.
         op-player: func(name: string, id: uuid, level: permission-level, bypasses-player-limit: bool);
 
         /// Revokes operator status from a player (online or offline). Returns true if the player was previously op.
+        /// Returns false and changes nothing when a handler of the permissions changed event cancels the deop, so the player stays op.
         deop-player: func(id: uuid) -> bool;
 
         /// Returns a list of all operator entries on the server.

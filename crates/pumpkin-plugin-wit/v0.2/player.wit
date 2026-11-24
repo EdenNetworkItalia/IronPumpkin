@@ -868,6 +868,7 @@ interface player {
         /// Returns the player's permission level (0-4).
         get-permission-level: func () -> permission-level;
         /// Sets the player's permission level.
+        /// Returns normally and keeps the level when a handler of the permissions changed event cancels the change.
         set-permission-level: async func (level: permission-level);
         /// Grants or denies a specific permission node for the player.
         set-permission: func(node: string, value: bool);

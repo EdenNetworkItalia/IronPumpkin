@@ -1682,3 +1682,24 @@ fn mutators_without_an_event_reach_no_handler() {
     assert_eq!(ipc(GUEST, "log"), "");
     assert_eq!(ipc(PEER, "log"), "");
 }
+
+/// A plugin that performs a command while a Wasm handler listens to `CommandEvent` does not
+/// deadlock: the dispatch runs outside the store of the caller, so the event reaches the handlers
+/// of both plugins and the call returns.
+#[test]
+fn a_plugin_performs_a_command_while_wasm_handlers_listen_to_the_command_event() {
+    let _serial = setup();
+    let _player = support::player("PerformPlayer");
+
+    let reply = ipc(GUEST, "perform PerformPlayer seed");
+
+    assert_eq!(reply, "true");
+    assert_eq!(
+        guest_log(GUEST, "CommandEvent"),
+        ["W1 - false", "W2 - false"]
+    );
+    assert_eq!(
+        guest_log(PEER, "CommandEvent"),
+        ["W1 - false", "W2 - false"]
+    );
+}

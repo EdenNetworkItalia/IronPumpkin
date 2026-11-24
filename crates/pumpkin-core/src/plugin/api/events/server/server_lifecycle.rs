@@ -37,3 +37,11 @@ pub struct ServerStoppingEvent;
 /// plugins are unloaded before it, so only native mods receive it.
 #[derive(Event, Clone, Copy, Default)]
 pub struct ServerStoppedEvent;
+
+/// Fires once when the server starts to shut down, before [`ServerStoppingEvent`] and before the
+/// mods and the plugins unload.
+///
+/// `NeoForge`: `net.neoforged.neoforge.event.GameShuttingDownEvent`, fired by
+/// `DedicatedServer.stopServer` before `MinecraftServer.stopServer`.
+#[derive(Event, Clone, Copy, Default)]
+pub struct GameShuttingDownEvent;

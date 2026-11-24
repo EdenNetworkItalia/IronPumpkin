@@ -20,8 +20,8 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 483 | 483 | 0 | 0 | 0 | 398 | 95 |
-| Inventory, planned | 465 | 460 | 3 | 2 | 0 | 305 | 17 |
+| Inventory, supported | 492 | 492 | 0 | 0 | 0 | 405 | 95 |
+| Inventory, planned | 455 | 450 | 3 | 2 | 0 | 298 | 17 |
 | Inventory, not supported | 224 | 0 | 0 | 1 | 223 | 100 | 14 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
@@ -52,7 +52,7 @@ How to read it:
 | `ServerTickEvent.Post` | 43 | event class | `pumpkin_core::plugin::server::ServerTickEndEvent` | supported |
 | `ModConfigEvent.Loading` | 43 | event class | `NativeMod::config_loading` (Startup inside `ModInit::register_config`, Local before `NativeMod::common_setup`, Synced after `NativeMod::load_complete`) | supported |
 | `LevelEvent` | 42 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | planned |
+| `AddServerReloadListenersEvent` | 41 (21.1 `AddReloadListenerEvent`) | event class | `event-bus.event::add-server-reload-listeners-event` (resource `lifecycle.add-server-reload-listeners-event`) | supported |
 | `ServerStartedEvent` | 40 | event class | `pumpkin_core::plugin::server::ServerLoadEvent` | supported |
 | `LevelTickEvent` | 40 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `LivingDamageEvent` | 38 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
@@ -64,7 +64,7 @@ How to read it:
 | `InterModEnqueueEvent` | 31 | event class | `NativeMod::inter_mod_enqueue` (`imc::InterModEnqueue::send`) | supported |
 | `NewRegistryEvent` | 31 | event class | `event-bus` doc, not supported | planned |
 | `LevelEvent.Unload` | 30 | event class | `event-bus.event::level-event-unload` | supported |
-| `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | planned |
+| `OnDatapackSyncEvent` | 29 | event class | `event-bus.event::on-datapack-sync-event` | supported |
 | `EntityAttributeCreationEvent` | 29 | event class | `NativeMod::entity_attribute_creation` with `registration::EntityAttributeCreationEvent` | supported |
 | `ItemTooltipEvent` | 28 | event class | `event-bus` doc, not supported | not supported |
 | `PlayerEvent.PlayerLoggedOutEvent` | 28 | event class | `event-bus.event::player-event-player-logged-out-event` | supported |
@@ -86,7 +86,7 @@ How to read it:
 | `EntityTeleportEvent` | 22 | event class | `event-bus.event::entity-teleport-event` | supported |
 | `LivingEvent` | 22 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
 | `ItemEntityPickupEvent` | 20 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
-| `TagsUpdatedEvent` | 19 | event class | `event-bus.event::tags-updated-event` | planned |
+| `TagsUpdatedEvent` | 19 | event class | `event-bus.event::tags-updated-event` | supported |
 | `LevelTickEvent.Pre` | 19 | event class | `pumpkin_core::plugin::world::LevelTickEventPre` (fires while the game is frozen too; the worlds tick in parallel) | supported |
 | `PlayerEvent.BreakSpeed` | 18 | event class | `pumpkin_core::plugin::player::PlayerEventBreakSpeed` | supported |
 | `EntityTickEvent.Post` | 18 | event class | `pumpkin_core::plugin::level::EntityTickEventPost` | supported |
@@ -106,7 +106,7 @@ How to read it:
 | `ChunkEvent.Unload` | 15 | event class | `pumpkin_core::plugin::world::ChunkUnloadEvent` | supported |
 | `LivingChangeTargetEvent` | 14 | event class | `event-bus.event::living-change-target-event` | supported |
 | `LivingFallEvent` | 14 | event class | `pumpkin_core::plugin::living::LivingFallEvent` | supported |
-| `AddPackFindersEvent` | 13 | event class | `event-bus.event::add-pack-finders-event` (resource `lifecycle.add-pack-finders-event`) | planned |
+| `AddPackFindersEvent` | 13 | event class | `event-bus.event::add-pack-finders-event` (resource `lifecycle.add-pack-finders-event`) | supported |
 | `LivingExperienceDropEvent` | 13 | event class | `pumpkin_core::plugin::living::LivingExperienceDropEvent` | supported |
 | `LivingHealEvent` | 13 | event class | `event-bus.event::living-heal-event` | supported |
 | `MobEffectEvent` | 13 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
@@ -138,7 +138,7 @@ How to read it:
 | `ItemTossEvent` | 8 | event class | `event-bus.event::item-toss-event` | supported |
 | `LivingShieldBlockEvent` | 8 | event class | `pumpkin_core::plugin::living::LivingShieldBlockEvent` | supported |
 | `MobEffectEvent.Added` | 8 | event class | `event-bus.event::mob-effect-event-added` | supported |
-| `LootTableLoadEvent` | 7 | event class | `event-bus.event::loot-table-load-event` | planned |
+| `LootTableLoadEvent` | 7 | event class | `event-bus.event::loot-table-load-event` | supported |
 | `MobEffectEvent.Applicable` | 7 | event class | `pumpkin_core::plugin::living::MobEffectEventApplicable` | supported |
 | `MobSpawnEvent.PositionCheck` | 7 | event class | `pumpkin_core::plugin::level::MobSpawnEventPositionCheck` | supported |
 | `AdvancementEvent` | 7 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
@@ -159,7 +159,7 @@ How to read it:
 | `ModConfigEvent.Unloading` | 6 | event class | `NativeMod::config_unloading` | supported |
 | `PermissionGatherEvent` | 6 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `PermissionGatherEvent.Nodes` | 6 | event class | `event-bus.event::permission-gather-event-nodes` | supported |
-| `CommandEvent` | 5 | event class | `event-bus.event::command-event` | planned |
+| `CommandEvent` | 5 | event class | `event-bus.event::command-event` | supported |
 | `EntityTeleportEvent.EnderEntity` | 5 | event class | `event-bus.event::entity-teleport-event-ender-entity` | supported |
 | `EntityTeleportEvent.EnderPearl` | 5 | event class | `event-bus.event::entity-teleport-event-ender-pearl` | supported |
 | `LivingBreatheEvent` | 5 | event class | `event-bus.event::living-breathe-event` | supported |
@@ -187,7 +187,7 @@ How to read it:
 | `ChunkDataEvent.Save` | 4 | event class | `event-bus.event::chunk-data-event-save` | planned |
 | `FMLConstructModEvent` | 4 | event class | `NativeMod::init` (`ModInit`) | supported |
 | `DataMapsUpdatedEvent` | 4 | event class | `pumpkin_core::plugin::data_maps::DataMapsUpdatedEvent` (re-exported by `ironpumpkin_mods::data_maps`) | supported |
-| `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | planned |
+| `GameShuttingDownEvent` | 3 | event class | `event-bus.event::game-shutting-down-event` | supported |
 | `GrindstoneEvent` | 3 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
 | `GrindstoneEvent.OnPlaceItem` | 3 | event class | `pumpkin_core::plugin::inventory::PrepareGrindstoneEvent` (fires outside the screen lock on every result update; applies if the inputs did not change) | supported |
 | `GrindstoneEvent.OnTakeItem` | 3 | event class | `pumpkin_core::plugin::inventory::GrindstoneEventOnTakeItem` (fires outside the screen lock on every take; a cancel gives no experience and puts the inputs back) | supported |
@@ -257,7 +257,6 @@ How to read it:
 | `RegisterCauldronFluidContentEvent` | 1 | event class | `event-bus` doc, not supported | planned |
 | `AddAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `DefaultDataComponentsBoundEvent` | 0 | event class | `event-bus` doc, not supported | planned |
-| `DifficultyChangeEvent` | 0 | event class | `event-bus.event::difficulty-change-event` | planned |
 | `GatherSkippedAttributeTooltipsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `ModMismatchEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `RegisterCauldronInteractionEvent` | 0 | event class | `event-bus` doc, not supported | planned |
@@ -268,7 +267,7 @@ How to read it:
 | `RegisterStructureConversionsEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `RegisterTooltipAppendersEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
 | `SortedReloadListenerEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | planned |
-| `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | planned |
+| `TagsUpdatedEvent.ServerDataLoad` | 0 | event class | `event-bus.event::tags-updated-event-server-data-load` | supported |
 | `VanillaGameEvent` | 0 | event class | `pumpkin_core::plugin::world::GenericGameEvent` (8 of the 61 vanilla game events from 10 sites, no vibration dispatch: gap) | planned |
 | `PlayerBrewedPotionEvent` | 0 | event class | `event-bus.event::player-brewed-potion-event` | planned |
 | `PotionBrewEvent` | 0 | event class | no case (abstract); fields in each subclass record of `event-bus` | supported |
@@ -287,7 +286,7 @@ How to read it:
 | `ClientInformationUpdatedEvent` | 0 | event class | `pumpkin_core::plugin::player::ClientInformationUpdatedEvent` | supported |
 | `CustomClickActionEvent` | 0 | event class | `event-bus.event::custom-click-action-event` | supported |
 | `FluidTooltipEvent` | 0 | event class | `event-bus` doc, not supported | not supported |
-| `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | planned |
+| `PermissionsChangedEvent` | 0 | event class | `event-bus.event::permissions-changed-event` | supported |
 | `PlayerEnchantItemEvent` | 0 | event class | `pumpkin_core::plugin::enchantment::PlayerEnchantItemEvent` (fires before the lapis is consumed; `enchanted_item` is written back; fires outside the screen lock) | supported |
 | `PlayerEvent.ItemSmithedEvent` | 0 | event class | `pumpkin_core::plugin::inventory::SmithItemEvent` (the recipe id only; a handler can cancel it) | planned |
 | `PlayerEvent.PlayerChangeGameModeEvent` | 0 | event class | `event-bus.event::player-event-player-change-game-mode-event` | supported |

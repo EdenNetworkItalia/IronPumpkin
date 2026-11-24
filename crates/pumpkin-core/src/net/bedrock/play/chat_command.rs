@@ -13,12 +13,17 @@ impl BedrockClient {
             return;
         }
         let command = packet.command.strip_prefix('/').unwrap_or(&packet.command);
+        let Some(command) =
+            crate::plugin::server_events::preprocess_command(server, player, command).await
+        else {
+            return;
+        };
 
         send_cancellable! {{
             server;
             PlayerCommandSendEvent {
                 player: player.clone(),
-                command: command.to_string(),
+                command,
                 cancelled: false
             };
 

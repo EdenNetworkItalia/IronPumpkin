@@ -72,7 +72,8 @@ pub(crate) fn of_mods(mods: &[LoadedMod<'_>]) -> Vec<ModDataPack> {
         .collect()
 }
 
-/// The data packs of the linked mods in load order, as the server loads them.
+/// The data packs of the linked mods in load order, as the server loads them. The packs that
+/// `AddPackFindersEvent` adds come after them and are not in the list.
 ///
 /// # Errors
 ///
