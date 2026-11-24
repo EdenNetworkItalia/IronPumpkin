@@ -1,6 +1,6 @@
 use super::AccessorExt;
-use crate::LockIgnorePoison;
 use crate::pumpkin::plugin::block_entity::HostContainerBlockEntityWithStore;
+use crate::{DeferHost, LockIgnorePoison};
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -474,8 +474,8 @@ impl HostJukeboxBlockEntity for PluginHostState {
     }
 
     fn stop_playing(&mut self, res: Resource<JukeboxBlockEntity>) -> wasmtime::Result<()> {
-        self.get(&res)?.stop_playing();
-        Ok(())
+        let jukebox = self.get(&res)?.clone();
+        self.defer("jukebox stop-playing", move || jukebox.stop_playing())
     }
 
     fn start_playing(

@@ -1,6 +1,6 @@
 use super::{AccessorExt, run_blocking};
 use crate::pumpkin::plugin::world::HostLivingEntityWithStore;
-use crate::{LockIgnorePoison, RwLockIgnorePoison};
+use crate::{DeferHost, LockIgnorePoison, RwLockIgnorePoison};
 
 use std::sync::Arc;
 use wasmtime::component::{Accessor, HasSelf, Resource};
@@ -387,11 +387,12 @@ impl HostLivingEntity for PluginHostState {
     }
 
     fn reset_all_attributes(&mut self, this: Resource<WitLivingEntity>) -> wasmtime::Result<()> {
-        let entity = self.get(&this)?;
-        if let Some(living) = entity.get_living_entity() {
-            living.reset_effects_and_attributes();
-        }
-        Ok(())
+        let entity = self.get(&this)?.clone();
+        self.defer("living-entity reset-all-attributes", move || {
+            if let Some(living) = entity.get_living_entity() {
+                living.reset_effects_and_attributes();
+            }
+        })
     }
 
     fn get_equipment(

@@ -771,7 +771,10 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         let world_ref = self.get(&world)?.clone();
         let pos = pumpkin_util::math::vector2::Vector2::new(x, z);
         if world_ref.set_chunk_forced(pos, forced) {
-            world_ref.update_active_chunks();
+            // The update fires `ChunkEvent.Load` for the chunks that it loads.
+            self.defer("world set-chunk-force-loaded", move || {
+                world_ref.update_active_chunks();
+            })?;
         }
         Ok(())
     }
@@ -1493,11 +1496,12 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         rule: WitGameRule,
         value: WitGameRuleValue,
     ) -> wasmtime::Result<()> {
-        let world_res = self.get(&world)?;
+        let world_res = self.get(&world)?.clone();
         let internal_rule = from_wit_game_rule(rule);
         let internal_value = from_wit_game_rule_value(value);
-        world_res.set_game_rule(&internal_rule, internal_value);
-        Ok(())
+        self.defer("world set-game-rule", move || {
+            world_res.set_game_rule(&internal_rule, internal_value);
+        })
     }
 
     fn drop(&mut self, rep: Resource<World>) -> wasmtime::Result<()> {
@@ -1939,7 +1943,9 @@ impl pumpkin::plugin::world::HostChunk for PluginHostState {
         };
         let pos = pumpkin_util::math::vector2::Vector2::new(chunk_data.x, chunk_data.z);
         if world.set_chunk_forced(pos, forced) {
-            world.update_active_chunks();
+            self.defer("chunk set-force-loaded", move || {
+                world.update_active_chunks();
+            })?;
         }
         Ok(())
     }
