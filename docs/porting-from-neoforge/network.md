@@ -190,22 +190,22 @@ Each group helper returns how many players got the payload. It skips a player wh
 | `send_to_players_near` | The players of the world closer than `radius` to the position, except the excluded player. A player at exactly `radius` does not get it. |
 | `send_to_players_tracking_entity` | The players who see the entity. The entity itself does not get it. An entity that the world does not track has no viewers. |
 | `send_to_players_tracking_entity_and_self` | The players who see the entity, and the entity when it is a player. An entity that the world does not track gets nothing. |
-| `send_to_players_tracking_chunk` | The players who have the chunk in their view and hold it: the server sent it and the client received it. |
+| `send_to_players_tracking_chunk` | The players who have the chunk in their view and for whom the server sent it. |
 
 ```rust
 use ironpumpkin_mods::{
     entity::EntityBase,
-    network::{send_to_players_near, send_to_players_tracking_entity_and_self},
+    network::send_to_players_near,
     world::World,
 };
 
 const LEVEL_CHANGED: &str = "examplemod:level_changed";
 
-/// Tells the players within 32 blocks of `entity` about its new level, and the entity itself.
+/// Tells the players within 32 blocks of `entity` about its new level. The entity is one of them
+/// when it is a player.
 fn announce(world: &World, entity: &dyn EntityBase, level: u8) {
     let position = entity.get_entity().pos.load();
     send_to_players_near(world, None, &position, 32.0, LEVEL_CHANGED, &[level]);
-    send_to_players_tracking_entity_and_self(entity, LEVEL_CHANGED, &[level]);
 }
 ```
 
@@ -213,8 +213,10 @@ fn announce(world: &World, entity: &dyn EntityBase, level: u8) {
 
 A handler on `HandlerThread::Network` runs on the connection task, at the same time as the world tick. It calls `PayloadContext::enqueue_work` to run a closure on the world tick of the player. The tick runs the closure in order with the other packets of that player, and the returned `PayloadWork` gives the result. Read it with `try_get` after the tick, or `await` it.
 
-- The result is `None` when the closure panics (the server logs it) and when the player leaves before the tick.
-- In a handler on `HandlerThread::Main`, and in the configuration phase, the closure runs at once.
+- The result is `None` when the closure panics and when the player leaves before the tick. The server logs a panic and keeps running, as NeoForge does.
+- The path follows the thread that the channel registered. A handler on `HandlerThread::Main` already runs on the tick, so the closure runs at once. In the configuration phase NeoForge schedules the closure on the server thread. IronPumpkin runs it at once on the connection task, because no world tick exists.
+- A closure counts as a packet in the cap of 64 inbound packets per player and tick. Vanilla has no cap; the cap protects the server.
+- A closure that holds the `Arc<Player>` is dropped when the player leaves, so it does not keep the player alive.
 
 ```rust
 use ironpumpkin_mods::network::PayloadContext;
