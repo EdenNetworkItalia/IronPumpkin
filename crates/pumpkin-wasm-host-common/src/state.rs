@@ -134,6 +134,10 @@ pub struct PluginHostState {
     pub permissions: Vec<String>,
     pub name: Option<String>,
     pub marketplace_metadata: Option<crate::signature::PumpkinMetadata>,
+    /// How many handlers of an event that the item stack reads fire (`ItemAttributeModifierEvent`,
+    /// `GetEnchantmentLevelEvent`) run in this store now. Host work that a handler starts reads
+    /// the item stacks with those events off, so the handler does not fire itself again.
+    pub item_hook_handlers: u32,
 }
 
 impl Default for PluginHostState {
@@ -160,6 +164,7 @@ impl PluginHostState {
             permissions: Vec::new(),
             name: None,
             marketplace_metadata: None,
+            item_hook_handlers: 0,
         }
     }
 

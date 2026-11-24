@@ -60,6 +60,21 @@ impl Drop for HandlerScope {
     }
 }
 
+/// Whether the event named `event_name` fires from the reads of an item stack.
+#[must_use]
+pub fn is_hooked_event(event_name: &str) -> bool {
+    event_name == GetEnchantmentLevelEvent::get_name_static()
+        || event_name == ItemAttributeModifierEvent::get_name_static()
+}
+
+/// Runs `operation` with the item stack reads of this thread firing no event. The Wasm host runs
+/// the host work of a handler of a hooked event this way: the handler follows the event chain
+/// onto a pool thread, where the thread-local guard of the fire is not set.
+pub fn without_item_hooks<R>(operation: impl FnOnce() -> R) -> R {
+    let _scope = HandlerScope::enter();
+    operation()
+}
+
 /// Records `server`, so the hooks of the item stack reads can fire events on it. Runs in each
 /// [`Server::new`].
 pub fn track(server: &Arc<Server>) {

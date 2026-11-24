@@ -12,7 +12,7 @@ use wasmtime::component::Resource;
 use crate::pumpkin;
 use pumpkin_core::{
     entity::player::Player,
-    plugin::{BoxFuture, EventHandler, Payload},
+    plugin::{BoxFuture, EventHandler, Payload, is_hooked_event},
     server::Server,
     world::World,
 };
@@ -328,6 +328,7 @@ impl WasmPluginEventHandler {
         &self,
         server: Arc<Server>,
         event: Box<dyn PendingWasmEvent>,
+        item_hook_event: bool,
     ) -> wasmtime::Result<Box<dyn Any + Send>> {
         let handler_id = self.handler_id;
         let function = self.plugin.instance::<crate::Plugin>().func_handle_event();
@@ -348,9 +349,16 @@ impl WasmPluginEventHandler {
                     let dispatched_case = std::mem::discriminant(&wasm_event);
                     // The guest owns the input resources once lowered
                     // Only a successful return transfers the returned event's resources back to the host
-                    let (returned_event,) = guest
+                    if item_hook_event {
+                        guest.with(|mut store| store.data_mut().item_hook_handlers += 1);
+                    }
+                    let returned = guest
                         .call(function, (handler_id, server_res, wasm_event))
-                        .await?;
+                        .await;
+                    if item_hook_event {
+                        guest.with(|mut store| store.data_mut().item_hook_handlers -= 1);
+                    }
+                    let (returned_event,) = returned?;
                     guest.with(|mut store| {
                         event.from_wasm(returned_event, dispatched_case, store.data_mut())
                     })
@@ -364,7 +372,14 @@ impl<E: Payload + ToFromWasmEvent + Clone + 'static> EventHandler<E> for WasmPlu
     fn handle<'a>(&'a self, server: &'a Arc<Server>, event: &'a E) -> BoxFuture<'a, ()> {
         Box::pin(async {
             let pending = Box::new(NotifiedEvent(event.clone()));
-            if let Err(error) = self.dispatch(server.clone(), pending).await {
+            if let Err(error) = self
+                .dispatch(
+                    server.clone(),
+                    pending,
+                    is_hooked_event(E::get_name_static()),
+                )
+                .await
+            {
                 tracing::error!(handler_id = self.handler_id, %error, "Wasm event handler failed");
             }
         })
@@ -377,7 +392,14 @@ impl<E: Payload + ToFromWasmEvent + Clone + 'static> EventHandler<E> for WasmPlu
     ) -> BoxFuture<'a, ()> {
         Box::pin(async {
             let pending = Box::new(BlockingEvent(event.clone()));
-            match self.dispatch(server.clone(), pending).await {
+            match self
+                .dispatch(
+                    server.clone(),
+                    pending,
+                    is_hooked_event(E::get_name_static()),
+                )
+                .await
+            {
                 Ok(updated_event) => {
                     if let Ok(updated_event) = updated_event.downcast::<E>() {
                         *event = *updated_event;

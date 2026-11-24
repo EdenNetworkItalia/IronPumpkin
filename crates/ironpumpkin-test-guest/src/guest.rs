@@ -37,7 +37,7 @@ use bindings::pumpkin::plugin::{
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
-const EVENTS: [EventType; 30] = [
+const EVENTS: [EventType; 31] = [
     EventType::CommandEvent,
     EventType::BlockBreakEvent,
     EventType::BlockPlaceEvent,
@@ -68,6 +68,7 @@ const EVENTS: [EventType; 30] = [
     EventType::MobEffectEventApplicable,
     EventType::EntityPotionEffectEvent,
     EventType::ItemAttributeModifierEvent,
+    EventType::GetEnchantmentLevelEvent,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -254,6 +255,7 @@ fn view(event: &mut Event) -> Option<View<'_>> {
             Some(&mut data.cancelled),
         ),
         Event::ItemAttributeModifierEvent(_) => ("ItemAttributeModifierEvent", None, None),
+        Event::GetEnchantmentLevelEvent(_) => ("GetEnchantmentLevelEvent", None, None),
         _ => return None,
     })
 }
@@ -264,6 +266,9 @@ struct Action {
     nth: Option<u32>,
     value: Option<String>,
     cancel: Option<bool>,
+    /// Damages a golden sword through the v0.2 `damage-item` import, which reads its enchantment
+    /// levels on the server.
+    damage: bool,
 }
 
 #[derive(Default)]
@@ -279,9 +284,9 @@ thread_local! {
 }
 
 /// Logs what handler `slot` sees, then runs its action.
-fn handle(slot: u32, event: &mut Event) -> Result<(), String> {
+fn handle(slot: u32, event: &mut Event) -> Result<bool, String> {
     let Some((name, mut field, mut cancelled)) = view(event) else {
-        return Ok(());
+        return Ok(false);
     };
     STATE.with_borrow_mut(|state| {
         let key = (name.to_owned(), slot);
@@ -297,10 +302,10 @@ fn handle(slot: u32, event: &mut Event) -> Result<(), String> {
                 .map_or_else(|| "-".to_owned(), ToString::to_string),
         ));
         let Some(action) = state.actions.get(&key) else {
-            return Ok(());
+            return Ok(false);
         };
         if action.nth.is_some_and(|nth| nth != fire) {
-            return Ok(());
+            return Ok(false);
         }
         if let (Some(value), Some(field)) = (&action.value, field.as_mut()) {
             field.assign(value)?;
@@ -308,7 +313,7 @@ fn handle(slot: u32, event: &mut Event) -> Result<(), String> {
         if let (Some(cancel), Some(cancelled)) = (action.cancel, cancelled.as_mut()) {
             **cancelled = cancel;
         }
-        Ok(())
+        Ok(action.damage)
     })
 }
 
@@ -325,6 +330,9 @@ fn configure(words: &[&str]) -> Result<(), String> {
             Some(("value", value)) => action.value = Some(value.to_owned()),
             Some(("cancel", cancel)) => {
                 action.cancel = Some(cancel.parse().map_err(|_| cancel.to_owned())?);
+            }
+            Some(("damage", damage)) => {
+                action.damage = damage.parse().map_err(|_| damage.to_owned())?;
             }
             _ => return Err(format!("not a setting: {setting}")),
         }
@@ -415,8 +423,12 @@ impl Guest for Component {
     }
 
     async fn handle_event(event_id: u32, _server: ServerInstance, mut event: Event) -> Event {
-        if let Err(error) = handle(event_id, &mut event) {
-            STATE.with_borrow_mut(|state| state.log.push(format!("error {error}")));
+        match handle(event_id, &mut event) {
+            Ok(true) => {
+                ItemStack::new("minecraft:golden_sword", 1).damage_item(1).await;
+            }
+            Ok(false) => {}
+            Err(error) => STATE.with_borrow_mut(|state| state.log.push(format!("error {error}"))),
         }
         event
     }

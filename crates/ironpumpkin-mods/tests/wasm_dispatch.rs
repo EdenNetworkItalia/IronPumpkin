@@ -79,7 +79,7 @@ use pumpkin_core::{
     world::ExplosionInteraction,
 };
 use pumpkin_data::{
-    Block, BlockStateId,
+    Block, BlockStateId, Enchantment,
     damage::DamageType,
     effect::StatusEffect,
     entity::EntityType,
@@ -1670,6 +1670,25 @@ fn a_set_equipment_call_reaches_the_handlers_of_the_calling_plugin() {
     assert!(
         !guest_log(GUEST, "ItemAttributeModifierEvent").is_empty(),
         "the handler of the calling plugin ran"
+    );
+}
+
+/// A Wasm handler of `GetEnchantmentLevelEvent` that damages an item (a host call that reads the
+/// enchantment levels) does not fire the event again: the host work of the handler reads the item
+/// stacks with the event off, as the handler runs on another thread than the fire. Before, the read
+/// fired the handler again, down to the depth limit of the chain.
+#[test]
+fn a_wasm_handler_that_damages_an_item_does_not_fire_itself_again() {
+    let _serial = setup();
+    act("W1", "GetEnchantmentLevelEvent", "damage=true");
+    let stack = ItemStack::new(1, &Item::DIAMOND_HOE);
+
+    let level = stack.get_enchantment_level(&Enchantment::FORTUNE);
+
+    assert_eq!(level, 0);
+    assert_eq!(
+        guest_log(GUEST, "GetEnchantmentLevelEvent"),
+        ["W1 - -", "W2 - -"]
     );
 }
 
