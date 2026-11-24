@@ -89,6 +89,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [ ] 2.55 (#193) Random sequences seed and save as in vanilla, and unseeded loot rolls draw from the sequence of their table; verify: the first values of a sequence against the decompiled algorithm, a save and reload test, a two-roll stream test
 - [ ] 2.56 (#198) The block ticking chunks around an entity ticking chunk get random and scheduled ticks with the vanilla level rules, and `/forceload query` replies as vanilla; verify: a crop next to a forced chunk, the edge of the simulation distance, the reply tests, the tick benches
 - [x] 2.57 (#199) Biome generation gives the same result under parallel load; verify: a stress loop of the biome hash tests with zero failures, the generation benches
+- [ ] 2.58 (#200) The panda eating test passes every run: the cause of the missing sit goal is measured and fixed in the engine or the test; verify: 300 of 300 stress runs
 - [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
