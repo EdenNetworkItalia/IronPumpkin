@@ -766,8 +766,31 @@ impl World {
 
         for block_entity in block_entities {
             let nbt = self.block_entity_save_nbt(&block_entity);
-            self.add_block_entity_nbt(block_entity.get_position(), &nbt);
+            self.store_live_block_entity_nbt(&block_entity, &nbt);
         }
+    }
+
+    /// Stores `nbt` as the saved data of `block_entity` only while it is still in the live map.
+    /// The check and the store run under the lock that [`Self::remove_block_entity`] holds, so a
+    /// removal after the copy of the live map does not bring the entity back.
+    fn store_live_block_entity_nbt(&self, block_entity: &Arc<dyn BlockEntity>, nbt: &NbtCompound) {
+        let pos = block_entity.get_position();
+        let chunk_pos = pos.chunk_position();
+        self.level.read_chunk_sync(&chunk_pos, |chunk| {
+            let mut pending = chunk
+                .pending_block_entities
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let live = self.block_entities.get(&chunk_pos).is_some_and(|entities| {
+                entities
+                    .get(&pos)
+                    .is_some_and(|entity| Arc::ptr_eq(entity, block_entity))
+            });
+            if live {
+                pending.insert(pos, nbt.clone());
+                chunk.mark_dirty(true);
+            }
+        });
     }
 
     /// The saved form of `block_entity`, as the chunk writer stores it: vanilla
@@ -7459,28 +7482,31 @@ impl World {
 
     pub fn remove_block_entity(&self, block_pos: &BlockPos) {
         let chunk_pos = block_pos.chunk_position();
-        // The NBT copy also serves lazy loading; leaving it revives removed entities.
-        let removed_pending = self
-            .level
-            .read_chunk_sync(&chunk_pos, |chunk| {
-                let removed = chunk
-                    .pending_block_entities
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .remove(block_pos)
-                    .is_some();
-                if removed {
-                    chunk.mark_dirty(true);
-                }
-                removed
-            })
-            .unwrap_or(false);
-        let removed =
+        let remove_live = || {
             self.block_entities
                 .get_mut(&chunk_pos)
                 .is_some_and(|mut chunk_block_entities| {
                     chunk_block_entities.remove(block_pos).is_some()
-                });
+                })
+        };
+        // The NBT copy also serves lazy loading; leaving it revives removed entities. Both maps
+        // change under the pending lock, which `store_live_block_entity_nbt` also holds.
+        let (removed_pending, removed) = self
+            .level
+            .read_chunk_sync(&chunk_pos, |chunk| {
+                let mut pending = chunk
+                    .pending_block_entities
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                let removed_pending = pending.remove(block_pos).is_some();
+                let removed = remove_live();
+                drop(pending);
+                if removed_pending {
+                    chunk.mark_dirty(true);
+                }
+                (removed_pending, removed)
+            })
+            .unwrap_or_else(|| (false, remove_live()));
         if removed || removed_pending {
             self.custom_block_entity_data.remove(block_pos);
             self.attachments.remove_block_entity(block_pos);
@@ -9226,6 +9252,31 @@ mod tests {
             assert_eq!(saved.get_string("id"), Some("minecraft:chest"));
             assert_eq!(saved.get_list("Items").map(<[_]>::len), Some(1));
         }
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn a_save_after_the_removal_does_not_bring_the_block_entity_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let folder = tempfile::tempdir()?;
+        let world = crate::entity::ai::test_support::world(&folder);
+        world.level.loaded_chunks.insert(
+            Vector2::new(0, 0),
+            pumpkin_world::chunk::ChunkData::empty_sync(0, 0),
+        );
+        let pos = BlockPos::new(1, 64, 1);
+        let chest =
+            crate::block::entities::block_entity_from_nbt(&chest_with_diamonds(pos)).unwrap();
+        world.add_block_entity(chest.clone());
+        let nbt = world.block_entity_save_nbt(&chest);
+        world.remove_block_entity(&pos);
+        world.store_live_block_entity_nbt(&chest, &nbt);
+        let revived = saved_block_entity(&world, pos);
+        let live = world.get_block_entity(&pos);
+        world.level.shutdown().await;
+
+        assert!(revived.is_none());
+        assert!(live.is_none());
         Ok(())
     }
 }
