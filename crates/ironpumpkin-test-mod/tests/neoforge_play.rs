@@ -302,16 +302,11 @@ fn neoforge_client_gets_the_data_maps_on_join_and_reload() {
             )
         });
     assert!(syncs[0].0 > held, "the join sync follows set_held_slot");
-    assert!(
-        syncs[..REGISTRIES]
-            .windows(2)
-            .all(|pair| pair[1].0 == pair[0].0 + 1),
-        "the join sync is one run of payloads: {:?}",
-        play[syncs[0].0..=syncs[REGISTRIES - 1].0]
-            .iter()
-            .map(|entry| &entry.packet)
-            .collect::<Vec<_>>()
-    );
+    // The join sync is not one contiguous run. Vanilla sends it from the server thread, which
+    // cannot tick meanwhile. Here the join runs on the connection task and the tick thread
+    // already serves the player, so a tick packet (`set_entity_data`, a chunk batch) can land
+    // between two payloads. The client handles each payload alone, so only the count, the position
+    // after `set_held_slot` and the bytes matter.
     server.stop();
     let log = server.log();
     assert!(!log.contains("Could not encode"), "{log}");

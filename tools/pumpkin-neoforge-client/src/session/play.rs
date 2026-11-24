@@ -55,6 +55,11 @@ const RELATIVE_PITCH: i32 = 1 << 4;
 /// `ChunkBatchSizeCalculator`.
 const CHUNKS_PER_TICK: f32 = 64.0;
 const TICK: Duration = Duration::from_millis(50);
+/// The longest the client waits for the `block_changed_ack` of a sequenced action after its pong.
+/// The server sends the ack on the tick after it read the action, so a loaded server needs more
+/// than the fixed `wait` of the script. A server that sends none ends the wait here, and the
+/// expectation of the step reports it.
+const ACK_TIMEOUT: Duration = Duration::from_secs(10);
 /// Packets recorded without their body, which only a world model would read.
 const BODY_SKIPPED: [&str; 3] = ["level_chunk_with_light", "light_update", "chunks_biomes"];
 /// The light data that `NeoForge` sends with each chunk, also recorded without its body.
@@ -182,6 +187,8 @@ struct Play<'a> {
     origin: Option<BlockPos>,
     /// The last prediction sequence number, as `BlockStatePredictionHandler` counts.
     sequence: i32,
+    /// The last sequence number that a `block_changed_ack` confirmed, `-1` before the first.
+    acked: i32,
     /// The payload of the last `ping_request` that ended a step.
     barrier: i64,
     /// The payload of the last `pong_response` from the server.
@@ -235,6 +242,7 @@ impl<'a> Play<'a> {
             pitch: 0.0,
             origin: None,
             sequence: 0,
+            acked: -1,
             barrier: 0,
             pong: None,
             payload_channels: HashMap::new(),
@@ -277,6 +285,7 @@ impl<'a> Play<'a> {
         wait: Duration,
     ) -> Result<Option<PlayOutcome>, Error> {
         let origin = self.origin.unwrap_or(BlockPos::new(0, 0, 0));
+        let sequence_before = self.sequence;
         match action {
             Action::Join => {
                 let deadline = Instant::now() + self.options.timeout;
@@ -371,14 +380,23 @@ impl<'a> Play<'a> {
             // Like the vanilla client, which closes the connection without a packet.
             Action::Leave => return Ok(None),
         }
-        self.settle(wait).await
+        // `BlockStatePredictionHandler`: an action that took a sequence number gets its ack.
+        let ack = (self.sequence != sequence_before).then_some(self.sequence);
+        self.settle(wait, ack).await
     }
 
     /// Ends a step. The client sends a `ping_request` and reads until the matching
     /// `pong_response`, so the server has read the action. It then reads for `wait` more, for the
     /// packets that trail the pong: `IronPumpkin` sends the chat echo and the block change ack after
     /// the pong. A server that sends no pong within `options.timeout` fails the run.
-    async fn settle(&mut self, wait: Duration) -> Result<Option<PlayOutcome>, Error> {
+    ///
+    /// An action with a sequence number (`ack`) also waits, up to [`ACK_TIMEOUT`], for the
+    /// `block_changed_ack` that confirms it.
+    async fn settle(
+        &mut self,
+        wait: Duration,
+        ack: Option<i32>,
+    ) -> Result<Option<PlayOutcome>, Error> {
         self.barrier += 1;
         let payload = self.barrier;
         self.send(&SPlayPingRequest { payload }).await?;
@@ -393,6 +411,16 @@ impl<'a> Play<'a> {
                         self.options.timeout
                     )
                     .into());
+                }
+            }
+        }
+        if let Some(sequence) = ack {
+            let deadline = Instant::now() + ACK_TIMEOUT;
+            while self.acked < sequence {
+                match self.read_one(deadline).await? {
+                    Read::Handled => {}
+                    Read::End(outcome) => return Ok(Some(outcome)),
+                    Read::Deadline => break,
                 }
             }
         }
@@ -540,6 +568,8 @@ impl<'a> Play<'a> {
         } else if packet.id == play::PING {
             let id = body.get_i32_be()?;
             self.send(&SPlayPong { id }).await?;
+        } else if packet.id == play::BLOCK_CHANGED_ACK {
+            self.acked = self.acked.max(body.get_var_int()?.0);
         } else if packet.id == play::PONG_RESPONSE {
             self.pong = Some(body.get_i64_be()?);
         } else if packet.id == play::PLAYER_POSITION {
@@ -648,6 +678,9 @@ fn packet_name(direction: Direction, id: i32) -> String {
 mod tests {
     use super::*;
     use pumpkin_data::packet::serverbound;
+    use pumpkin_protocol::java::{
+        packet_decoder::TCPNetworkDecoder, packet_encoder::TCPNetworkEncoder,
+    };
 
     #[test]
     fn names_play_packets_from_the_packet_table() {
@@ -665,6 +698,97 @@ mod tests {
             "player_action"
         );
         assert_eq!(clientbound(1000), "unknown_0x3e8");
+    }
+
+    /// A server that answers the `ping_request` with the pong at once and sends the
+    /// `block_changed_ack` of sequence 1 only after `release`, like a server whose tick is late.
+    /// Returns what `settle` did: the time it took, the last acked sequence, and the packets of
+    /// the step.
+    async fn settle_against_late_ack(
+        ack: Option<i32>,
+        release_after: Duration,
+    ) -> Result<(Duration, i32, Vec<String>), Error> {
+        use pumpkin_protocol::java::client::play::{CAcknowledgeBlockChange, CPingResponse};
+        use tokio::io::{BufReader, BufWriter};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
+        let port = listener.local_addr()?.port();
+        let (release, released) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await?;
+            let (read, write) = stream.into_split();
+            let mut decoder = TCPNetworkDecoder::new(BufReader::new(read));
+            let mut encoder = TCPNetworkEncoder::new(BufWriter::new(write));
+            let ping = decoder.get_raw_packet().await?;
+            assert_eq!(ping.id, serverbound::play::PING_REQUEST);
+            let version = CURRENT_MC_VERSION.into();
+            encoder
+                .write_packet(CPingResponse::new(1).serialize_packet(&version)?)
+                .await?;
+            encoder.flush().await?;
+            let _ = released.await;
+            encoder
+                .write_packet(CAcknowledgeBlockChange::new(1.into()).serialize_packet(&version)?)
+                .await?;
+            encoder.flush().await?;
+            // Keep the connection open until the test aborts the task.
+            std::future::pending::<()>().await;
+            Ok::<_, Error>(())
+        });
+        let options = Options {
+            host: "127.0.0.1".to_owned(),
+            port,
+            username: "probe".to_owned(),
+            brand: "neoforge".to_owned(),
+            channels: None,
+            timeout: Duration::from_secs(30),
+        };
+        let mut sink = |_: &Entry| {};
+        let session = Session::connect(&options, Recorder::new(&mut sink, Some(0))).await?;
+        let mut play = Play::new(session);
+        play.steps.push(StepReport {
+            index: 0,
+            text: "break ~ ~ ~".to_owned(),
+            action: "break",
+            packets: Vec::new(),
+        });
+        play.sequence = 1;
+        let started = Instant::now();
+        let release_later = async {
+            tokio::time::sleep(release_after).await;
+            let _ = release.send(());
+        };
+        let (settled, ()) = if ack.is_some() {
+            tokio::join!(play.settle(Duration::ZERO, ack), release_later)
+        } else {
+            // Without a sequence the settle ends at the pong, so release after it.
+            let settled = play.settle(Duration::ZERO, ack).await;
+            release_later.await;
+            (settled, ())
+        };
+        settled?;
+        let elapsed = started.elapsed();
+        server.abort();
+        Ok((elapsed, play.acked, play.steps[0].packets.clone()))
+    }
+
+    #[tokio::test]
+    async fn settle_waits_for_the_ack_of_a_sequenced_action() -> Result<(), Error> {
+        const LATE: Duration = Duration::from_millis(300);
+        let (elapsed, acked, packets) = settle_against_late_ack(Some(1), LATE).await?;
+        assert!(elapsed >= LATE, "{elapsed:?}");
+        assert_eq!(acked, 1);
+        assert_eq!(packets, ["pong_response", "block_changed_ack"]);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn settle_does_not_wait_for_an_ack_without_a_sequence() -> Result<(), Error> {
+        let (_, acked, packets) = settle_against_late_ack(None, Duration::ZERO).await?;
+        assert_eq!(acked, -1);
+        assert_eq!(packets, ["pong_response"]);
+        Ok(())
     }
 
     #[test]
