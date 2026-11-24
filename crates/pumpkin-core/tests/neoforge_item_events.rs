@@ -650,7 +650,7 @@ const SMELT_TABLE: &str = r##"{"pools":[{"entries":[{"type":"minecraft:item","na
 
 const SILK_TABLE: &str = r#"{"pools":[{"entries":[{"type":"minecraft:item","name":"minecraft:diamond","conditions":[{"condition":"minecraft:match_tool","predicate":{"items":"minecraft:golden_pickaxe","predicates":{"minecraft:enchantments":[{"enchantments":"minecraft:silk_touch","levels":{"min":1}}]}}}]}]}]}"#;
 
-/// NeoForge reads `getAllEnchantments` in the `smelts_loot` weapon check and in the
+/// `NeoForge` reads `getAllEnchantments` in the `smelts_loot` weapon check and in the
 /// `minecraft:enchantments` item predicate: a handler that adds an enchantment to a stack changes
 /// what the loot sees.
 #[test]
@@ -925,7 +925,7 @@ fn an_armor_click_fires_the_attribute_event_with_the_screen_lock_free() {
         let screen = screen.lock().unwrap();
         *screen.get_behaviour().cursor_stack.lock().unwrap() =
             ItemStack::new(1, &Item::GOLDEN_BOOTS);
-    }
+    };
 
     click(&player, FEET as i16);
 
@@ -951,7 +951,7 @@ fn an_armor_pickup_fires_the_enchantment_event_with_the_screen_lock_free() {
         let screen = player.current_screen_handler.lock().unwrap().clone();
         let screen = screen.lock().unwrap();
         screen.get_behaviour().slots[FEET].set_stack(ItemStack::new(1, &Item::IRON_BOOTS));
-    }
+    };
 
     click(&player, FEET as i16);
 
