@@ -56,8 +56,6 @@ pub struct LootContextParameters<'a> {
     pub is_on_fire: Option<bool>,
     pub direct_attacker_weapon: Option<ItemStack>,
     pub enchantment_level: Option<i32>,
-    /// `ENCHANTMENT_ACTIVE`: whether the enchantment of an effect is active.
-    pub enchantment_active: Option<bool>,
     /// `LAST_DAMAGE_PLAYER`: the player that last damaged the killed entity. The condition
     /// `killed_by_player` tests this field only.
     pub last_damage_player: Option<&'a dyn EntityBase>,

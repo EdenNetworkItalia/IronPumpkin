@@ -180,7 +180,7 @@ Every roll of a table by its id runs the modifiers: block drops, entity drops, c
 | `ORIGIN` | `position` |
 | `BLOCK_STATE`, `BLOCK_ENTITY` | `block_state`, `block_entity` |
 | `TOOL` | `tool` |
-| `EXPLOSION_RADIUS`, `ENCHANTMENT_LEVEL`, `ENCHANTMENT_ACTIVE` | `explosion_radius`, `enchantment_level`, `enchantment_active` |
+| `EXPLOSION_RADIUS`, `ENCHANTMENT_LEVEL` | `explosion_radius`, `enchantment_level` |
 
 The luck of the roll is `luck`. The conditions `entity_properties` with `attacking_player`, `target_entity` and `interacting_entity`, and `killed_by_player`, read these fields. Each roll sets the keys of its vanilla parameter set: a hoe on a block sets the block state, the origin, the block entity, the interacting entity and the tool, and a decorated pot sets the origin only, as vanilla passes no player to it.
 

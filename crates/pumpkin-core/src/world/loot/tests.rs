@@ -1126,6 +1126,9 @@ async fn vanilla_tables_dump() {
     let folder = tempfile::tempdir().unwrap();
     let world = world(&folder);
     let player = chicken(&world);
+    let pot = crate::block::entities::decorated_pot::DecoratedPotBlockEntity::new(
+        pumpkin_util::math::position::BlockPos::new(0, 0, 0),
+    );
     let tool = |item: &'static Item| ItemStack::new(1, item);
     let contexts: Vec<(&str, LootContextParameters<'_>)> = vec![
         ("default", LootContextParameters::default()),
@@ -1202,6 +1205,50 @@ async fn vanilla_tables_dump() {
                 is_raining: Some(true),
                 is_thundering: Some(true),
                 world_time: 6000,
+                ..Default::default()
+            },
+        ),
+        // The contexts below hold the parameters that issue 171 added. The dump of a build
+        // without them has no line for these names.
+        (
+            "last_player",
+            LootContextParameters {
+                last_damage_player: Some(player.as_ref()),
+                luck: 1.0,
+                ..Default::default()
+            },
+        ),
+        (
+            "attacker_source",
+            LootContextParameters {
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::PLAYER_ATTACK,
+                    attacker: Some(player.as_ref()),
+                    direct: Some(player.as_ref()),
+                }),
+                last_damage_player: Some(player.as_ref()),
+                ..Default::default()
+            },
+        ),
+        (
+            "fire_source",
+            LootContextParameters {
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::IN_FIRE,
+                    attacker: None,
+                    direct: None,
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "block_entity",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::DECORATED_POT.default_state),
+                block_entity: Some(&pot),
+                tool: Some(tool(&Item::DIAMOND_PICKAXE)),
                 ..Default::default()
             },
         ),
