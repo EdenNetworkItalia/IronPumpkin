@@ -279,6 +279,17 @@ impl RecipeBook {
         i32::try_from(position).ok()
     }
 
+    /// The ids of the generated recipes that have a display id.
+    pub fn generated_recipe_ids(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.slots.iter().filter_map(|slot| match slot {
+            Some(BookSlot::Crafting(index)) => Some(RECIPES_CRAFTING_IDS[*index]),
+            Some(BookSlot::Cooking(index)) => {
+                Some(generated_cooking(&RECIPES_COOKING[*index]).recipe_id)
+            }
+            Some(BookSlot::Dynamic(_)) | None => None,
+        })
+    }
+
     /// The display ids that hold a recipe.
     pub fn display_ids(&self) -> impl Iterator<Item = i32> + '_ {
         self.slots
