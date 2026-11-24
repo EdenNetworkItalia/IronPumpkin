@@ -116,14 +116,15 @@ macro_rules! impl_cooking_block_entity_base {
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let index = pumpkin_inventory::recipe_index::current();
-                let mut total_xp: f32 = 0.0;
-                for (recipe_id, count) in recipes.iter() {
-                    if let Some(xp) = index.cooking_experience(recipe_id) {
-                        total_xp += xp * (*count as f32);
-                    }
-                }
+                let total_xp =
+                    $crate::block::entities::furnace_like_block_entity::recipes_experience(
+                        recipes.iter().filter_map(|(id, count)| {
+                            Some((*count, index.cooking_experience(id)?))
+                        }),
+                        || rand::random::<f32>(),
+                    );
                 recipes.clear();
-                total_xp.floor() as i32
+                total_xp
             }
 
             fn can_accept_recipe_output(
@@ -832,6 +833,30 @@ macro_rules! impl_block_entity_for_cooking {
     };
 }
 
+/// The experience of the used cooking recipes, as `(count, experience)` pairs.
+///
+/// It is vanilla `AbstractFurnaceBlockEntity.createExperience`
+/// (`AbstractFurnaceBlockEntity.java:442-450`) for each used recipe (`:432-436`): the floor of
+/// `count * experience`, plus 1 when `roll` returns less than the fraction.
+pub fn recipes_experience(
+    recipes: impl IntoIterator<Item = (u32, f32)>,
+    mut roll: impl FnMut() -> f32,
+) -> i32 {
+    recipes
+        .into_iter()
+        .map(|(count, experience)| {
+            let total = count as f32 * experience;
+            let fraction = total - total.floor();
+            let reward = total.floor() as i32;
+            if fraction != 0.0 && roll() < fraction {
+                reward + 1
+            } else {
+                reward
+            }
+        })
+        .sum()
+}
+
 /// Builds the Bedrock block-actor NBT for cooking appliances (Furnace, Smoker, `BlastFurnace`).
 #[must_use]
 pub fn build_furnace_actor(
@@ -868,5 +893,35 @@ mod tests {
         assert_eq!(nbt.get_short("BurnDuration"), Some(200));
         assert_eq!(nbt.get_short("StoredXPInt"), Some(5));
         assert_eq!(nbt.get_bool("isMovable"), Some(true));
+    }
+}
+
+#[cfg(test)]
+mod experience_tests {
+    use super::recipes_experience;
+
+    #[test]
+    fn each_recipe_rounds_its_fraction_with_the_roll() {
+        // 3 x 0.7 = 2.1 and 1 x 0.35 = 0.35: floors 2 and 0, fractions 0.1 and 0.35.
+        let used = [(3, 0.7), (1, 0.35)];
+        let mut rolls = [0.05f32, 0.5].into_iter();
+        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 3);
+        let mut rolls = [0.5f32, 0.2].into_iter();
+        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 3);
+        let mut rolls = [0.9f32, 0.9].into_iter();
+        assert_eq!(recipes_experience(used, || rolls.next().unwrap()), 2);
+        // The old total floor gave 2 for 2.45; a roll under both fractions gives 4.
+        assert_eq!(recipes_experience(used, || 0.0), 4);
+    }
+
+    #[test]
+    fn a_whole_reward_takes_no_roll() {
+        let rolled = std::cell::Cell::new(false);
+        let reward = recipes_experience([(4, 0.5)], || {
+            rolled.set(true);
+            0.0
+        });
+        assert_eq!(reward, 2);
+        assert!(!rolled.get());
     }
 }
