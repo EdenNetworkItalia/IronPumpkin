@@ -9,7 +9,7 @@ How to read it:
 - Status is the inventory status: `supported` works today, `planned` has a counterpart and waits for its backing phase, `not supported` has no counterpart and the reason is in the reason column of its inventory row in design.md.
 - "gap" marks a used class or a planned row without a counterpart; the reason follows in the row, and "`x` doc" names the interface of the API that owns the gap. "partial" marks an extension interface whose methods a mod can call through the named counterpart but cannot override yet.
 - **Mods** is the number of the 414 mods of the reference modpack (FTB StoneBlock 4) that have a server-side or mixed class that needs the row, from section 11.5 of `modpack-usage.md`. The scan read NeoForge 21.1 jars and matches rows by simple name, so a row whose 26.3 class has no 21.1 counterpart shows 0. Where section 10.3 or 11.3 of the scan lists the 21.1 name of such a class, the row shows the count of the old name and names it, for example 52 (21.1 `BlockEvent$BreakEvent`). Rows are ordered by Mods, highest first; rows with the same count keep the inventory order.
-- Client-only rows (235 in the inventory) and dev-only classes (data generation and game tests) never run on a dedicated server and are not listed.
+- Client-only rows (236 in the inventory) and dev-only classes (data generation and game tests) never run on a dedicated server and are not listed.
 - A `not supported` row with a "contract only" counterpart: the API defines it so a port compiles against the final shape, and the host rejects the registration until a phase backs it.
 - M2 to M5 are the milestones: M2 Content registry, M3 NeoForge handshake and registry sync, M4 Native API with NeoForge semantics, M5 Modded gameplay parity.
 - Task numbers (task 2.x) are the items of `tasks.md` in this change.
@@ -20,9 +20,9 @@ How to read it:
 
 | Part | Rows | Counterpart | Partial | Contract only | Gap or not supported | Used by 1 or more mods | Used by 50 or more mods |
 |:--|--:|--:|--:|--:|--:|--:|--:|
-| Inventory, supported | 477 | 477 | 0 | 0 | 0 | 391 | 93 |
-| Inventory, planned | 475 | 470 | 3 | 2 | 0 | 293 | 17 |
-| Inventory, not supported | 221 | 0 | 0 | 1 | 220 | 95 | 14 |
+| Inventory, supported | 478 | 478 | 0 | 0 | 0 | 393 | 94 |
+| Inventory, planned | 470 | 465 | 3 | 2 | 0 | 310 | 18 |
+| Inventory, not supported | 224 | 0 | 0 | 1 | 223 | 100 | 14 |
 | Modpack classes outside the inventory, NeoForge | 104 | 94 | 0 | 0 | 10 | 102 | 44 |
 | Modpack classes outside the inventory, Minecraft and Mojang | 314 | 251 | 0 | 0 | 63 | 309 | 174 |
 
@@ -816,29 +816,36 @@ How to read it:
 
 | NeoForge item | Mods | Section | Counterpart | Status |
 |:--|--:|:--|:--|:--|
-| `ILevelExtension#getCapability` | 75 | `ILevelExtension` (Level) | `ironpumpkin_mods::capabilities::BlockCapability::get_capability` | supported |
-| `IItemStackExtension#getCapability` | 68 | `IItemStackExtension` (ItemStack) | `ironpumpkin_mods::capabilities::ItemCapability::get_capability` | supported |
-| `IPlayerExtension#openMenu` | 60 | `IPlayerExtension` (Player) | `ironpumpkin_mods::menus::open_menu` | planned |
-| `IHolderExtension#getKey` | 49 | `IHolderExtension` (Holder) | `ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin) | supported |
-| `IBlockExtension#getCloneItemStack` | 42 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `ILevelExtension#getCapability` | 96 | `ILevelExtension` (Level) | `ironpumpkin_mods::capabilities::BlockCapability::get_capability` | supported |
+| `ICommonPacketListener#send` | 85 | `ICommonPacketListener` | `pumpkin_core` payload send of the connection | planned |
+| `IPlayerExtension#openMenu` | 84 | `IPlayerExtension` (Player) | `ironpumpkin_mods::menus::open_menu` | planned |
+| `IItemStackExtension#getCapability` | 69 | `IItemStackExtension` (ItemStack) | `ironpumpkin_mods::capabilities::ItemCapability::get_capability` | supported |
+| `IHolderExtension#getKey` | 68 | `IHolderExtension` (Holder) | `ironpumpkin_mods::registry::key_of` (a holder is a name in IronPumpkin) | supported |
+| `IEntityExtension#getPersistentData` | 48 | `IEntityExtension` (Entity) | `Entity::attachments` | not supported |
+| `IBlockExtension#getCloneItemStack` | 44 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IFluidExtension#getFluidType` | 44 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
+| `ItemInstanceExtension#getCraftingRemainder` | 37 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IRecipeOutputExtension#withConditions` | 34 | `IRecipeOutputExtension` (RecipeOutput) | - | not supported |
+| `IBlockEntityExtension#onLoad` | 32 | `IBlockEntityExtension` (BlockEntity) | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | planned |
 | `IBlockEntityExtension#invalidateCapabilities` | 32 | `IBlockEntityExtension` (BlockEntity) | `ironpumpkin_mods::capabilities::invalidate_capabilities` | supported |
 | `IItemPropertiesExtensions#component` | 32 | `IItemPropertiesExtensions` (Item.Properties) | `ItemBuilder` component calls | not supported |
-| `IBlockEntityExtension#onLoad` | 30 | `IBlockEntityExtension` (BlockEntity) | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | planned |
 | `IBlockExtension#getLightEmission` | 29 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockEntityExtension#onChunkUnloaded` | 27 | `IBlockEntityExtension` (BlockEntity) | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | planned |
 | `IItemExtension#onItemUseFirst` | 26 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `ItemInstanceExtension#canPerformAction` | 26 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IDataComponentMapBuilderExtensions#set` | 24 | `IDataComponentMapBuilderExtensions` (DataComponentMap.Builder) | `ItemBuilder` component calls | not supported |
 | `IItemExtension#getCreatorModId` | 24 | `IItemExtension` (Item) | - | not supported |
 | `IRecipeOutputExtension#accept` | 24 | `IRecipeOutputExtension` (RecipeOutput) | - | not supported |
+| `IItemExtension#canPerformAction` | 23 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IBlockExtension#getSoundType` | 22 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#getSoundType` | 22 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
-| `IBlockEntityExtension#onChunkUnloaded` | 21 | `IBlockEntityExtension` (BlockEntity) | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | planned |
-| `IItemExtension#canPerformAction` | 20 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IBlockExtension#onDestroyedByPlayer` | 19 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IItemExtension#getMaxDamage` | 19 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IBlockExtension#canEntityDestroy` | 18 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `ILevelExtension#invalidateCapabilities` | 18 | `ILevelExtension` (Level) | `ironpumpkin_mods::capabilities::invalidate_capabilities` and `invalidate_capabilities_in_chunk` | supported |
-| `IServerCommonPacketListenerExtension#send` | 18 | `IServerCommonPacketListenerExtension` (ServerCommonPacketListener) | `ironpumpkin_mods::network` payload send helpers | planned |
+| `ItemInstanceExtension#getEnchantmentLevel` | 22 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
+| `IItemExtension#getMaxDamage` | 20 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `ILevelExtension#invalidateCapabilities` | 20 | `ILevelExtension` (Level) | `ironpumpkin_mods::capabilities::invalidate_capabilities` and `invalidate_capabilities_in_chunk` | supported |
+| `IServerCommonPacketListenerExtension#send` | 20 | `IServerCommonPacketListenerExtension` (ServerCommonPacketListener) | `ironpumpkin_mods::network` payload send helpers | planned |
+| `IBlockExtension#onDestroyedByPlayer` | 19 | `IBlockExtension` (Block) | `BlockBehaviour::broken` | planned |
+| `IBlockExtension#canEntityDestroy` | 19 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IItemExtension#getCraftingRemainder` | 19 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IBlockExtension#onNeighborChange` | 17 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IHolderLookupProviderExtension#holderOrThrow` | 17 | `IHolderLookupProviderExtension` (HolderLookup.Provider) | `registry::contains`, `registry::id_of` | not supported |
 | `IItemExtension#supportsEnchantment` | 17 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
@@ -846,58 +853,67 @@ How to read it:
 | `ILevelReaderExtension#isAreaLoaded` | 16 | `ILevelReaderExtension` (LevelReader) | `World` chunk loading state | planned |
 | `IPacketFlowExtension#isClientbound` | 16 | `IPacketFlowExtension` (PacketFlow) | `ironpumpkin_mods::network::PacketFlow` match | not supported |
 | `IPacketFlowExtension#isServerbound` | 16 | `IPacketFlowExtension` (PacketFlow) | `ironpumpkin_mods::network::PacketFlow` match | not supported |
+| `IBlockExtension#getExplosionResistance` | 15 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockExtension#rotate` | 15 | `IBlockExtension` (Block) | `BlockBehaviour::rotate` | planned |
 | `IBlockExtension#getPistonPushReaction` | 15 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `ICommonPacketListener#hasChannel` | 15 | `ICommonPacketListener` | `NegotiatedChannels::has_channel` (pumpkin-core `plugin/network_events.rs`) | supported |
-| `IBlockExtension#getExplosionResistance` | 14 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IBlockExtension#rotate` | 14 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockExtension#onBlockExploded` | 14 | `IBlockExtension` (Block) | `BlockBehaviour::explode` | planned |
 | `IBlockStateExtension#getLightEmission` | 14 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IItemExtension#getMaxStackSize` | 14 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IBlockExtension#onBlockExploded` | 13 | `IBlockExtension` (Block) | `BlockBehaviour::explode` | planned |
 | `IFluidStateExtension#getFluidType` | 13 | `IFluidStateExtension` (FluidState) | `FluidState` forwarding to `FluidBehaviour`, new hook | planned |
 | `IFriendlyByteBufExtension#writeByte` | 13 | `IFriendlyByteBufExtension` (FriendlyByteBuf) | - | not supported |
-| `IItemExtension#isDamageable` | 12 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IItemExtension#isDamageable` | 13 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `ILevelReaderExtension#holderOrThrow` | 12 | `ILevelReaderExtension` (LevelReader) | `registry::contains`, `registry::id_of` | not supported |
 | `IBlockStateExtension#getToolModifiedState` | 11 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IEntityExtension#isMultipartEntity` | 11 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
+| `IItemExtension#getDefaultAttributeModifiers` | 11 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#doesSneakBypassUse` | 11 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IBlockExtension#canSustainPlant` | 10 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getToolModifiedState` | 10 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#getFriction` | 10 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#canHarvestBlock` | 10 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBucketPickupExtension#getPickupSound` | 10 | `IBucketPickupExtension` (BucketPickup) | bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook | planned |
-| `IItemExtension#getDefaultAttributeModifiers` | 10 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IHolderExtension#getDelegate` | 10 | `IHolderExtension` (Holder) | `registry::key_of`, `registry::id_of` | not supported |
 | `IItemExtension#getDamage` | 10 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemStackExtension#canEquip` | 10 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#getAttributeModifiers` | 10 | `IItemStackExtension` (ItemStack) | `ItemStack` attribute modifier component | planned |
 | `IBlockExtension#getEnchantPowerBonus` | 9 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#onDestroyedByPlayer` | 9 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#rotate` | 9 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
+| `IEntityExtension#onRemovedFromLevel` | 9 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IItemExtension#onLeftClickEntity` | 9 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#onEntityItemUpdate` | 9 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemStackExtension#supportsEnchantment` | 9 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IPacketFlowExtension#getReceptionSide` | 9 | `IPacketFlowExtension` (PacketFlow) | `ironpumpkin_mods::network::PacketFlow` match | not supported |
 | `IBlockGetterExtension#getAuxLightManager` | 8 | `IBlockGetterExtension` (BlockGetter) | `World` light engine | planned |
 | `IBlockStateExtension#isEmpty` | 8 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
+| `ICommonPacketListener#getConnection` | 8 | `ICommonPacketListener` | - | not supported |
+| `IEntityExtension#captureDrops` | 8 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#canRiderInteract` | 8 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
+| `IItemExtension#isCombineRepairable` | 8 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#isPrimaryItemFor` | 8 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `TooltipFlagExtension#hasShiftDown` | 8 | `TooltipFlagExtension` (TooltipFlag) | - | not supported |
+| `IBlockExtension#hasDynamicLightEmission` | 7 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#addLandingEffects` | 7 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#shouldCheckWeakPower` | 7 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getBlockPathType` | 7 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getFlammability` | 7 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#canSustainPlant` | 7 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#canEntityDestroy` | 7 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
-| `IEntityExtension#shouldRiderSit` | 7 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
+| `IDispensibleContainerItemExtension#emptyContents` | 7 | `IDispensibleContainerItemExtension` (DispensibleContainerItem) | bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook | planned |
+| `IEntityExtension#isAddedToLevel` | 7 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#getParts` | 7 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IItemExtension#getEquipmentSlot` | 7 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IPlayerExtension#isFakePlayer` | 7 | `IPlayerExtension` (Player) | `Player` (no fake player type) | planned |
+| `IPlayerExtension#isFakePlayer` | 7 | `IPlayerExtension` (Player) | - | not supported |
 | `IServerConfigurationPacketListenerExtension#finishCurrentTask` | 7 | `IServerConfigurationPacketListenerExtension` (ServerConfigurationPacketListener) | `ironpumpkin_mods::network::PayloadContext::finish_current_task` | supported |
 | `IBlockExtension#getFriction` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#addRunningEffects` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IBlockExtension#getBeaconColorMultiplier` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockExtension#getExpDrop` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockExtension#getBeaconColorMultiplier` | 6 | `IBlockExtension` (Block) | - | not supported |
+| `IBlockExtension#onCaughtFire` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getFireSpreadSpeed` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#isFireSource` | 6 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IHolderExtension#getDelegate` | 6 | `IHolderExtension` (Holder) | `registry::key_of`, `registry::id_of` | not supported |
+| `IEntityExtension#onAddedToLevel` | 6 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IItemExtension#makesPiglinsNeutral` | 6 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#hasCustomEntity` | 6 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#setDamage` | 6 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
@@ -909,31 +925,34 @@ How to read it:
 | `IBlockExtension#isLadder` | 5 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#canHarvestBlock` | 5 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#isFertile` | 5 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IBlockExtension#getExpDrop` | 5 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#isFlammable` | 5 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#getExplosionResistance` | 5 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#getEnchantPowerBonus` | 5 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#onNeighborChange` | 5 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#isFlammable` | 5 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
-| `IDispensibleContainerItemExtension#emptyContents` | 5 | `IDispensibleContainerItemExtension` (DispensibleContainerItem) | bucket `ItemBehaviour` (pumpkin-core `item/items/bucket.rs`), new hook | planned |
 | `IEntityExtension#isPushedByFluid` | 5 | `IEntityExtension` (Entity) | `EntityBase::is_pushed_by_fluids` | planned |
 | `IHolderLookupProviderExtension#holder` | 5 | `IHolderLookupProviderExtension` (HolderLookup.Provider) | `registry::contains`, `registry::id_of` | not supported |
+| `IItemExtension#isGazeDisguise` | 5 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemStackExtension#getXpRepairRatio` | 5 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
+| `IItemStackExtension#isCombineRepairable` | 5 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ITagAppenderExtension#addTags` | 5 | `ITagAppenderExtension` (TagAppender) | - | not supported |
+| `ITagAppenderExtension#remove` | 5 | `ITagAppenderExtension` (TagAppender) | - | not supported |
 | `IAttributeExtension#toValueComponent` | 4 | `IAttributeExtension` (Attribute) | - | not supported |
 | `IBlockExtension#canDropFromExplosion` | 4 | `IBlockExtension` (Block) | `BlockBehaviour::should_drop_items_on_explosion` | planned |
 | `IBlockExtension#collisionExtendsVertically` | 4 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#getExpDrop` | 4 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
+| `ICommonPacketListener#disconnect` | 4 | `ICommonPacketListener` | `JavaClient` kick (pumpkin-core `net/java/mod.rs`) | planned |
+| `IEntityExtension#getFluidTypeHeight` | 4 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IItemExtension#createEntity` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#canEquip` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IItemExtension#onEntitySwing` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#getEnchantmentLevel` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#getAllEnchantments` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#isNotReplaceableByPickAction` | 4 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemStackExtension#getEquipmentSlot` | 4 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ILivingEntityExtension#canDrownInFluidType` | 4 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
-| `ITagAppenderExtension#remove` | 4 | `ITagAppenderExtension` (TagAppender) | - | not supported |
+| `IBaseRailBlockExtension#getRailDirection` | 3 | `IBaseRailBlockExtension` (BaseRailBlock) | rail `BlockBehaviour`, new hook | planned |
 | `IBlockExtension#getAdjacentBlockPathType` | 3 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IBlockExtension#onCaughtFire` | 3 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getMapColor` | 3 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockStateExtension#shouldCheckWeakPower` | 3 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#onCaughtFire` | 3 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
@@ -942,12 +961,14 @@ How to read it:
 | `IEntityExtension#getClassification` | 3 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#isInFluidType` | 3 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#isEyeInFluidType` | 3 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IItemExtension#onEntitySwing` | 3 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IFluidExtension#canConvertToSource` | 3 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IItemExtension#canWalkOnPowderedSnow` | 3 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#canBeHurtBy` | 3 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IItemStackExtension#onItemUseFirst` | 3 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#isPrimaryItemFor` | 3 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ILevelExtension#getDescription` | 3 | `ILevelExtension` (Level) | - | not supported |
-| `IPlayerExtension#mayFly` | 3 | `IPlayerExtension` (Player) | `Player` abilities | planned |
+| `IOwnedSpawner#getOwner` | 3 | `IOwnedSpawner` (BaseSpawner, TrialSpawner) | - | not supported |
+| `IPlayerExtension#mayFly` | 3 | `IPlayerExtension` (Player) | `Player::may_fly` (pumpkin-core `entity/player/ironpumpkin.rs`, public through `ironpumpkin_mods::entity`) | supported |
 | `IAdvancementBuilderExtension#save` | 2 | `IAdvancementBuilderExtension` (Advancement.Builder) | - | not supported |
 | `IBlockExtension#onTreeGrow` | 2 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getWeakChanges` | 2 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
@@ -963,19 +984,20 @@ How to read it:
 | `IBlockStateExtension#isFireSource` | 2 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#canDropFromExplosion` | 2 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#onBlockExploded` | 2 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
+| `IEntityExtension#canTrample` | 2 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IFluidStateExtension#getExplosionResistance` | 2 | `IFluidStateExtension` (FluidState) | `FluidState` forwarding to `FluidBehaviour`, new hook | planned |
 | `IItemExtension#onDroppedByPlayer` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#getXpRepairRatio` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IItemExtension#onStopUsing` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
+| `IItemExtension#onStopUsing` | 2 | `IItemExtension` (Item) | `ItemBehaviour::on_stopped_using` | planned |
 | `IItemExtension#canContinueUsing` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#onDestroyed` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#applyEnchantments` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#canFitInsideContainerItems` | 2 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemStackExtension#doesSneakBypassUse` | 2 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#isPiglinCurrency` | 2 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
+| `IItemStackExtension#isGazeDisguise` | 2 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#canFitInsideContainerItems` | 2 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ILivingEntityExtension#onDamageTaken` | 2 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
-| `IOwnedSpawner#getOwner` | 2 | `IOwnedSpawner` (BaseSpawner, TrialSpawner) | - | not supported |
 | `ITagAppenderExtension#replace` | 2 | `ITagAppenderExtension` (TagAppender) | - | not supported |
 | `ITransformationExtension#blockCenterToCorner` | 2 | `ITransformationExtension` (Transformation) | - | not supported |
 | `ITransformationExtension#applyOrigin` | 2 | `ITransformationExtension` (Transformation) | - | not supported |
@@ -983,8 +1005,8 @@ How to read it:
 | `IAttributeExtension#getBaseId` | 1 | `IAttributeExtension` (Attribute) | - | not supported |
 | `IBaseRailBlockExtension#canMakeSlopes` | 1 | `IBaseRailBlockExtension` (BaseRailBlock) | rail `BlockBehaviour`, new hook | planned |
 | `IBaseRailBlockExtension#isValidRailShape` | 1 | `IBaseRailBlockExtension` (BaseRailBlock) | rail `BlockBehaviour`, new hook | planned |
+| `IBlockEntityExtension#getPersistentData` | 1 | `IBlockEntityExtension` (BlockEntity) | `attachments::block_entity` | not supported |
 | `IBlockExtension#makesOpenTrapdoorAboveClimbable` | 1 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
-| `IBlockExtension#getStateAtViewpoint` | 1 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#canStickTo` | 1 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#onBlockStateChange` | 1 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getBubbleColumnDirection` | 1 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
@@ -992,16 +1014,17 @@ How to read it:
 | `IBlockStateExtension#onDestroyedByPushReaction` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#addLandingEffects` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#addRunningEffects` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
-| `IBlockStateExtension#getBeaconColorMultiplier` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
+| `IBlockStateExtension#getBeaconColorMultiplier` | 1 | `IBlockStateExtension` (BlockState) | - | not supported |
 | `IBlockStateExtension#isStickyBlock` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#getBlockPathType` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#collisionExtendsVertically` | 1 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `ICommandSourceStackExtension#getUnsidedLevel` | 1 | `ICommandSourceStackExtension` (CommandSourceStack) | `CommandSender` world | planned |
-| `ICommonPacketListener#getConnection` | 1 | `ICommonPacketListener` | - | not supported |
+| `ICommonPacketListener#getConnectionType` | 1 | `ICommonPacketListener` | `NegotiatedChannels::connection_type` | supported |
+| `IEntityExtension#revive` | 1 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
+| `IEntityExtension#getMaxHeightFluidType` | 1 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#canFluidExtinguish` | 1 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#sendPairingData` | 1 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IFluidExtension#getExplosionResistance` | 1 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
-| `IFluidExtension#canConvertToSource` | 1 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IFluidExtension#canHydrate` | 1 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IFluidStateExtension#canConvertToSource` | 1 | `IFluidStateExtension` (FluidState) | `FluidState` forwarding to `FluidBehaviour`, new hook | planned |
 | `IFluidStateExtension#canHydrate` | 1 | `IFluidStateExtension` (FluidState) | `FluidState` forwarding to `FluidBehaviour`, new hook | planned |
@@ -1014,6 +1037,7 @@ How to read it:
 | `IItemStackExtension#isNotReplaceableByPickAction` | 1 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#canGrindstoneRepair` | 1 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ILivingEntityExtension#self` | 1 | `ILivingEntityExtension` (LivingEntity) | - | not supported |
+| `ILivingEntityExtension#jumpInFluid` | 1 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
 | `ITagBuilderExtension#removeElement` | 1 | `ITagBuilderExtension` (TagBuilder) | - | not supported |
 | `ITagBuilderExtension#removeTag` | 1 | `ITagBuilderExtension` (TagBuilder) | - | not supported |
 | `ITransformationExtension#transformPosition` | 1 | `ITransformationExtension` (Transformation) | - | not supported |
@@ -1034,8 +1058,6 @@ How to read it:
 | `IAttributeExtension#getMergedStyle` | 0 | `IAttributeExtension` (Attribute) | - | not supported |
 | `IAttributeExtension#isNullOrAddition` | 0 | `IAttributeExtension` (Attribute) | - | not supported |
 | `IBaseRailBlockExtension#isFlexibleRail` | 0 | `IBaseRailBlockExtension` (BaseRailBlock) | rail `BlockBehaviour`, new hook | planned |
-| `IBaseRailBlockExtension#getRailDirection` | 0 | `IBaseRailBlockExtension` (BaseRailBlock) | rail `BlockBehaviour`, new hook | planned |
-| `IBlockEntityExtension#getPersistentData` | 0 | `IBlockEntityExtension` (BlockEntity) | `attachments::block_entity` | not supported |
 | `IBlockEntityExtension#applyStructureRotation` | 0 | `IBlockEntityExtension` (BlockEntity) | `BlockEntity` trait (pumpkin-core `block/entities/mod.rs`), new hook | planned |
 | `IBlockExtension#ignitedByLava` | 0 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#isBurning` | 0 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
@@ -1047,11 +1069,11 @@ How to read it:
 | `IBlockExtension#isEmpty` | 0 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getBounceRestitution` | 0 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
 | `IBlockExtension#getRelocability` | 0 | `IBlockExtension` (Block) | `BlockBehaviour` (pumpkin-core `block/mod.rs`), new hook | planned |
+| `IBlockStateExtension#hasDynamicLightEmission` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#getRespawnPosition` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#playFallSound` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#playStepSound` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#onTreeGrow` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
-| `IBlockStateExtension#getStateAtViewpoint` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#isSlimeBlock` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#isBurning` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
 | `IBlockStateExtension#getAdjacentBlockPathType` | 0 | `IBlockStateExtension` (BlockState) | `BlockState` forwarding to `BlockBehaviour`, new hook | planned |
@@ -1064,21 +1086,9 @@ How to read it:
 | `ICommandSourceStackExtension#getScoreboard` | 0 | `ICommandSourceStackExtension` (CommandSourceStack) | `CommandSender`, scoreboard of the server | planned |
 | `ICommandSourceStackExtension#getAdvancement` | 0 | `ICommandSourceStackExtension` (CommandSourceStack) | `CommandSender`, advancement lookup | planned |
 | `ICommandSourceStackExtension#getSourceProfile` | 0 | `ICommandSourceStackExtension` (CommandSourceStack) | `CommandSender` (pumpkin-core `command/mod.rs`) | planned |
-| `ICommonPacketListener#send` | 0 | `ICommonPacketListener` | `pumpkin_core` payload send of the connection | planned |
-| `ICommonPacketListener#disconnect` | 0 | `ICommonPacketListener` | `JavaClient` kick (pumpkin-core `net/java/mod.rs`) | planned |
 | `ICommonPacketListener#getPacketProcessor` | 0 | `ICommonPacketListener` | - | not supported |
-| `ICommonPacketListener#getConnectionType` | 0 | `ICommonPacketListener` | `NegotiatedChannels::connection_type` | supported |
 | `IEnchantmentExtension` | 0 | `IEnchantmentExtension` | - | not supported |
-| `IEntityExtension#captureDrops` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#getPersistentData` | 0 | `IEntityExtension` (Entity) | `Entity::attachments` | not supported |
 | `IEntityExtension#canBeRiddenUnderFluidType` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#canTrample` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#isAddedToLevel` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#onAddedToLevel` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#onRemovedFromLevel` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#revive` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#getFluidTypeHeight` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
-| `IEntityExtension#getMaxHeightFluidType` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#getFirstEyeInFluidType` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#canStartSwimming` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#getFluidMotionScale` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
@@ -1089,7 +1099,6 @@ How to read it:
 | `IEntityExtension#copyAttachmentsFrom` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IEntityExtension#getBlockBounciness` | 0 | `IEntityExtension` (Entity) | `EntityBase` trait (pumpkin-core `entity/mod.rs`), new hook | planned |
 | `IFallableExtension#fallingTick` | 0 | `IFallableExtension` (Fallable) | falling block `BlockBehaviour`, new hook | planned |
-| `IFluidExtension#getFluidType` | 0 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IFluidExtension#supportsBoating` | 0 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IFluidExtension#getBlockPathType` | 0 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
 | `IFluidExtension#getAdjacentBlockPathType` | 0 | `IFluidExtension` (Fluid) | `FluidBehaviour` (pumpkin-core `block/fluid/mod.rs`), new hook | planned |
@@ -1110,21 +1119,15 @@ How to read it:
 | `IHolderSetExtension#serializationType` | 0 | `IHolderSetExtension` (HolderSet) | `registry::tag_entries` | not supported |
 | `IHolderSetExtension#isImmediatelyResolvable` | 0 | `IHolderSetExtension` (HolderSet) | `registry::tag_entries` | not supported |
 | `IHolderSetExtension.SerializationType` | 0 | `IHolderSetExtension.SerializationType` | - | not supported |
-| `IItemExtension#isCombineRepairable` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IItemExtension#getCraftingRemainder` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#getEntityLifespan` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#onAnimalArmorTick` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IItemExtension#isGazeDisguise` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#canGrindstoneRepair` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
 | `IItemExtension#onGlideDamage` | 0 | `IItemExtension` (Item) | `ItemBehaviour` (pumpkin-core `item/mod.rs`), new hook | planned |
-| `IItemStackExtension#onItemUseFirst` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onEntitySwing` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#getEntityLifespan` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onEntityItemUpdate` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onAnimalArmorTick` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onDroppedByPlayer` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
-| `IItemStackExtension#isCombineRepairable` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
-| `IItemStackExtension#isGazeDisguise` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#getSweepHitBox` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onDestroyed` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `IItemStackExtension#onGlideDamage` | 0 | `IItemStackExtension` (ItemStack) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
@@ -1132,7 +1135,6 @@ How to read it:
 | `ILevelExtension#increaseMaxEntityRadius` | 0 | `ILevelExtension` (Level) | - | not supported |
 | `ILevelExtension#getDescriptionKey` | 0 | `ILevelExtension` (Level) | - | not supported |
 | `ILivingEntityExtension#canSwimInFluidType` | 0 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
-| `ILivingEntityExtension#jumpInFluid` | 0 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
 | `ILivingEntityExtension#sinkInFluid` | 0 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
 | `ILivingEntityExtension#moveInFluid` | 0 | `ILivingEntityExtension` (LivingEntity) | `LivingEntity` (pumpkin-core `entity/living.rs`), new hook | planned |
 | `IMenuProviderExtension#shouldTriggerClientSideContainerClosingOnOpen` | 0 | `IMenuProviderExtension` (MenuProvider) | `menus::MenuDefinition` | planned |
@@ -1149,10 +1151,7 @@ How to read it:
 | `IServerGamePacketListenerExtension#sendBundled` | 0 | `IServerGamePacketListenerExtension` (ServerGamePacketListener) | `ironpumpkin_mods::network` payload send helpers | planned |
 | `ITagAppenderExtension#addOptionalTags` | 0 | `ITagAppenderExtension` (TagAppender) | - | not supported |
 | `ITagAppenderExtension#add` | 0 | `ITagAppenderExtension` (TagAppender) | - | not supported |
-| `ItemInstanceExtension#canPerformAction` | 0 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `ItemInstanceExtension#getTagEnchantments` | 0 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
-| `ItemInstanceExtension#getEnchantmentLevel` | 0 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
-| `ItemInstanceExtension#getCraftingRemainder` | 0 | `ItemInstanceExtension` (ItemInstance) | `ItemStack` forwarding to `ItemBehaviour`, new hook | planned |
 | `LootTableSubProviderContextExtension#withConditions` | 0 | `LootTableSubProviderContextExtension` (LootTableSubProvider.Context) | - | not supported |
 | `PackMetadataResourcesExtension#isHidden` | 0 | `PackMetadataResourcesExtension` (PackMetadataResources) | - | not supported |
 | `PendingTagsExtension#contents` | 0 | `PendingTagsExtension` (Registry.PendingTags) | - | not supported |
