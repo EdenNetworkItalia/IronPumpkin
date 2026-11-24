@@ -481,14 +481,15 @@ impl CommandExecutor for LootExecutor {
                         .create_without_context(TextComponent::text(block.name.to_string()))
                 })?;
 
-                let loot_table = context
+                if context
                     .server()
                     .datapack_manager
                     .get_loot_table(key)
-                    .ok_or_else(|| {
-                        ERROR_NO_BLOCK_LOOT_TABLE
-                            .create_without_context(TextComponent::text(block.name.to_string()))
-                    })?;
+                    .is_none()
+                {
+                    return Err(ERROR_NO_BLOCK_LOOT_TABLE
+                        .create_without_context(TextComponent::text(block.name.to_string())));
+                }
 
                 let tool_stack = match tool {
                     ToolSource::None => None,
@@ -497,19 +498,18 @@ impl CommandExecutor for LootExecutor {
                     ToolSource::OffHand => get_hand_item(context, false)?,
                 };
 
+                // `LootCommand.dropBlockLoot`: the block state, the center of the block, the block
+                // entity, the command entity and the tool, as `BlockState.getDrops` rolls them.
+                let source_player = context.source.as_player();
                 let params = LootContextParameters {
-                    world: Some(context.world()),
                     block_state: Some(block_state),
+                    this_entity: source_player
+                        .as_ref()
+                        .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
                     tool: Some(tool_stack.unwrap_or_else(|| ItemStack::EMPTY.clone())),
-                    position: Some(Vector3::new(
-                        f64::from(pos.0.x) + 0.5,
-                        f64::from(pos.0.y) + 0.5,
-                        f64::from(pos.0.z) + 0.5,
-                    )),
                     ..Default::default()
                 };
-                let seed: i64 = rand::random();
-                drops = crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params);
+                drops = crate::block::block_drops(world, block, &pos, &params);
                 table_id_for_callback = Some(key.to_string());
             }
         }
