@@ -4,7 +4,7 @@ Each task mirrors one GitHub issue of this repository. A task gets its issue num
 
 Milestone: M5 Modded gameplay parity. Task numbers start with 6, the phase number. Each task names the tasks it needs. A task starts when they are done, so tasks of different waves can run at the same time.
 
-#189, #190, #191 and #192 belong to M4 wave 10 (M4 tasks 2.48 to 2.51). A task of this change only checks that the fix has landed.
+#189, #190, #191, #192, #193, #196 and #197 belong to M4 wave 10 (M4 tasks 2.48 to 2.51 and 2.53 to 2.55). A task of this change only checks that the fix has landed.
 
 Rules for every task:
 - Add a test mod entry in `crates/ironpumpkin-test-mod`. Its test registers, uses, saves and reloads the entry.
@@ -22,6 +22,7 @@ Rules for every task:
 - [ ] 6.1 Apply the scope rule to the inventory
   - Needs: M4 closed, including M4 task 2.52 that moves the inventory to `docs/neoforge-inventory/`.
   - Edit the rows of the inventory by hand.
+  - Recount the `M5 engine extension:` rows outside the extension interface tables, and update the row map of design.md to that count and to the decisions of the new rows.
   - Mark each `M5 engine extension:` row without demand `not supported` with the reason "no mod of the reference modpack uses it".
   - Keep `ModifyRegistriesEvent` and the registry callbacks, because mods use them.
   - Count a registration through a helper such as `GameRules.register` as use.
