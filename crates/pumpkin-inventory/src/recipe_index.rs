@@ -19,7 +19,6 @@ use pumpkin_data::recipes::{
     RECIPES_SMITHING_TRANSFORM, RECIPES_SMITHING_TRIM, RECIPES_STONECUTTING, RecipeIngredientTypes,
     RecipeResultStruct,
 };
-use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::EncodingKey;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe,
@@ -54,13 +53,7 @@ impl RecipeOutput {
     /// The output of a data pack or plugin recipe result.
     #[must_use]
     pub fn owned(result: &OwnedRecipeResult) -> Self {
-        let template = result.components.as_ref().and_then(|components| {
-            let mut compound = NbtCompound::new();
-            compound.put_string("id", result.item_id.clone());
-            compound.put_int("count", i32::from(result.count));
-            compound.put_compound("components", components.clone());
-            ItemStack::read_item_stack(&compound)
-        });
+        let template = result.components.as_ref().map(|_| result.to_stack());
         Self {
             item_id: result.item_id.clone(),
             count: result.count,
@@ -463,8 +456,7 @@ impl RecipeIndex {
             .stonecutter_recipes(encoding.content_ids())
             .map(|recipe| StonecutterSync {
                 ingredient: &recipe.ingredient,
-                result_item: &recipe.result.item_id,
-                result_count: recipe.result.count,
+                result: recipe.result.assemble(),
             })
             .collect();
         let body: Arc<[u8]> =
@@ -691,6 +683,7 @@ pub fn install(dynamic: &[DynamicRecipe]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_nbt::compound::NbtCompound;
     use pumpkin_protocol::codec::recipe::OwnedStonecutterRecipe;
 
     fn smelting(id: &str, ingredient: &str, result: &str) -> DynamicRecipe {

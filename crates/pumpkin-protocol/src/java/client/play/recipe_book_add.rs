@@ -83,13 +83,21 @@ pub(super) fn write_item_stack_slot_display(
 ) -> Result<(), WritingError> {
     let static_item = Item::from_id(item.id)
         .ok_or_else(|| WritingError::Message(format!("item id {} must exist", item.id)))?;
-    let stack = ItemStack::new(count, static_item);
+    write_stack_slot_display(write, &ItemStack::new(count, static_item), version)
+}
+
+/// Writes `stack` as an `ItemStackSlotDisplay` with its components, or the empty display.
+pub(super) fn write_stack_slot_display(
+    write: &mut impl Write,
+    stack: &ItemStack,
+    version: EncodingKey,
+) -> Result<(), WritingError> {
     // A result without an `id` lowers to air, which vanilla rejects as an item stack
     if stack.is_empty() {
         return write_empty_slot_display(write, version);
     }
     write.write_var_int(&VarInt(SLOT_DISPLAY_ITEM_STACK as i32))?;
-    ItemStackTemplateSerializer::from(stack).write_with_version(write, &version)
+    ItemStackTemplateSerializer(Cow::Borrowed(stack)).write_with_version(write, &version)
 }
 
 pub(super) fn write_empty_slot_display(
@@ -746,16 +754,7 @@ fn write_dynamic_result_slot_display(
     result: &crate::codec::recipe::OwnedRecipeResult,
     version: EncodingKey,
 ) -> Result<(), WritingError> {
-    let key = result
-        .item_id
-        .strip_prefix("minecraft:")
-        .unwrap_or(&result.item_id);
-    if let Some(item) = Item::from_registry_key(key) {
-        write_item_stack_slot_display(write, item, result.count, version)?;
-    } else {
-        write_empty_slot_display(write, version)?;
-    }
-    Ok(())
+    write_stack_slot_display(write, &result.to_stack(), version)
 }
 
 fn write_dynamic_crafting_entry(

@@ -2,6 +2,7 @@ use pumpkin_data::recipes::RecipeCategoryTypes;
 
 use pumpkin_data::dynamic::{DynamicTaggable, data_pack_item_tag, namespaced_name, tag_ids};
 use pumpkin_data::item::Item;
+use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag::RegistryKey;
 use pumpkin_nbt::compound::NbtCompound;
 
@@ -84,6 +85,27 @@ pub struct OwnedRecipeResult {
     pub count: u8,
     /// The `components` of the `ItemStackTemplate`, in NBT form.
     pub components: Option<NbtCompound>,
+}
+
+impl OwnedRecipeResult {
+    /// The result stack with its components, as vanilla `ItemStackTemplate.create`. It is empty
+    /// when the item does not exist, and has no components when they do not decode.
+    #[must_use]
+    pub fn to_stack(&self) -> ItemStack {
+        if let Some(components) = &self.components {
+            let mut compound = NbtCompound::new();
+            compound.put_string("id", self.item_id.clone());
+            compound.put_int("count", i32::from(self.count));
+            compound.put_compound("components", components.clone());
+            if let Some(stack) = ItemStack::read_item_stack(&compound) {
+                return stack;
+            }
+        }
+        Item::from_registry_key(&self.item_id).map_or_else(
+            || ItemStack::EMPTY.clone(),
+            |item| ItemStack::new(self.count, item),
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -220,8 +242,8 @@ pub struct PropertySetSync<'a> {
 /// A stonecutter recipe to sync.
 pub struct StonecutterSync<'a> {
     pub ingredient: &'a OwnedRecipeIngredient,
-    pub result_item: &'a str,
-    pub result_count: u8,
+    /// The result with its components, which vanilla `ItemStackTemplate.STREAM_CODEC` sends.
+    pub result: ItemStack,
 }
 
 #[cfg(test)]

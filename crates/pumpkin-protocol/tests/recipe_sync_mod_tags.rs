@@ -54,8 +54,7 @@ fn body(ids: ContentIds) -> Vec<u8> {
         }],
         &[StonecutterSync {
             ingredient: &gems[0],
-            result_item: "minecraft:stone",
-            result_count: 1,
+            result: pumpkin_data::item_stack::ItemStack::new(1, &Item::STONE),
         }],
         EncodingKey::new(JavaMinecraftVersion::V_26_3, ids),
     )

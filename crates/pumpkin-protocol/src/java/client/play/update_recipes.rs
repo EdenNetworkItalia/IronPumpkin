@@ -11,8 +11,7 @@ use pumpkin_macros::java_packet;
 use pumpkin_util::version::JavaMinecraftVersion;
 
 use super::recipe_book_add::{
-    synced_item_ids, write_dynamic_ingredient_holderset, write_empty_slot_display,
-    write_item_stack_slot_display,
+    synced_item_ids, write_dynamic_ingredient_holderset, write_stack_slot_display,
 };
 
 #[java_packet(UPDATE_RECIPES)]
@@ -47,12 +46,7 @@ impl<'a> CUpdateRecipes<'a> {
         write.write_var_int(&VarInt(stonecutter.len() as i32))?;
         for entry in stonecutter {
             write_dynamic_ingredient_holderset(&mut write, entry.ingredient, version)?;
-            match Item::from_registry_key(entry.result_item) {
-                Some(item) => {
-                    write_item_stack_slot_display(&mut write, item, entry.result_count, version)?;
-                }
-                None => write_empty_slot_display(&mut write, version)?,
-            }
+            write_stack_slot_display(&mut write, &entry.result, version)?;
         }
         Ok(write)
     }
@@ -89,6 +83,7 @@ impl<'a> ServerPacket<'a> for CUpdateRecipes<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_data::item_stack::ItemStack;
 
     fn var_int(value: i32) -> Vec<u8> {
         let mut bytes = Vec::new();
@@ -122,8 +117,7 @@ mod tests {
             }],
             &[StonecutterSync {
                 ingredient: &stone,
-                result_item: "minecraft:stone_slab",
-                result_count: 2,
+                result: ItemStack::new(2, &Item::STONE_SLAB),
             }],
             version,
         )
@@ -146,6 +140,37 @@ mod tests {
         expected.extend(var_int(0));
         expected.extend(var_int(0));
         assert_eq!(body, expected);
+    }
+
+    /// Vanilla `ItemStackTemplate.STREAM_CODEC` sends the components of the result.
+    #[test]
+    fn a_stonecutter_result_sends_its_components() {
+        let version = EncodingKey::from(JavaMinecraftVersion::V_26_3);
+        let stone = OwnedRecipeIngredient::Simple("minecraft:stone".to_string());
+        let encode = |components: Option<pumpkin_nbt::compound::NbtCompound>| {
+            let result = crate::codec::recipe::OwnedRecipeResult {
+                item_id: "minecraft:stone_slab".to_string(),
+                count: 1,
+                components,
+            };
+            CUpdateRecipes::encode(
+                &[],
+                &[StonecutterSync {
+                    ingredient: &stone,
+                    result: result.to_stack(),
+                }],
+                version,
+            )
+            .unwrap()
+        };
+        let mut components = pumpkin_nbt::compound::NbtCompound::new();
+        components.put_int("minecraft:max_stack_size", 7);
+        let plain = encode(None);
+        let with_components = encode(Some(components));
+        // The plain template ends with an empty patch: no added and no removed component.
+        assert_eq!(plain[plain.len() - 2..], [0, 0]);
+        assert!(with_components.len() > plain.len());
+        assert_ne!(with_components[plain.len() - 2], 0);
     }
 
     #[test]
