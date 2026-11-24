@@ -68,7 +68,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [x] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
 - [x] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
 - [x] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
-- [ ] 2.36 (#179) Sound and vanilla game events through one `World` entry point, and the sound ranges of the wave 4 review; verify: one test per event, the list of direct sound sends that stay, a v0.2 round trip per event
+- [x] 2.36 (#179) Sound and vanilla game events through one `World` entry point, and the sound ranges of the wave 4 review; verify: one test per event, the list of direct sound sends that stay, a v0.2 round trip per event
 - [ ] 2.37 (#180) Item, enchantment and brewing events with their fire sites; verify: one test per event, no extra cost on the enchantment lookup without a handler
 - [ ] 2.38 (#181) Living and player events that need a vanilla code path (equipment diff, wake checks, the experience orb follow, clone, advancement progress, negotiation); verify: one test per event and per ported vanilla path
 - [ ] 2.39 (#182) Farmland trample, entity section, entity constructing and spawn position events; verify: one test per event, the fixed-seed spawn equal to master, the world generation benches
