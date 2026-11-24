@@ -1128,7 +1128,7 @@ mod tests {
         let bytes = nested_bundles(MAX_ITEM_NESTING as usize - 1);
         let decoded = std::thread::Builder::new()
             .stack_size(1024 * 1024)
-            .spawn(move || read_creative_stack(&bytes).map(|stack| stack.to_stack()))
+            .spawn(move || read_creative_stack(&bytes).map(super::ItemStackSerializer::to_stack))
             .unwrap()
             .join()
             .expect("decode does not overflow a 1 MiB stack");
@@ -1174,7 +1174,7 @@ mod tests {
         assert_eq!(entries(&stack), 1);
 
         let mut written = Vec::new();
-        ItemStackSerializer::from(stack.clone())
+        ItemStackSerializer::from(stack)
             .write_length_prefixed_with_version(&mut written, &JavaMinecraftVersion::V_26_3.into())
             .unwrap();
         assert_eq!(
