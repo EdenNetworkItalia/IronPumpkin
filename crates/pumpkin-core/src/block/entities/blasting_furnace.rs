@@ -6,7 +6,7 @@ use std::{
     collections::HashMap,
     sync::{
         Arc, Mutex as StdMutex, RwLock,
-        atomic::{AtomicBool, AtomicU16, Ordering},
+        atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering},
     },
 };
 
@@ -14,7 +14,9 @@ use pumpkin_data::recipes::CookingRecipeKind;
 use pumpkin_util::math::position::BlockPos;
 
 use crate::{
-    block::entities::furnace_like_block_entity::CookingBlockEntityBase,
+    block::entities::furnace_like_block_entity::{
+        CookingBlockEntityBase, DEFAULT_SPEED_MULTIPLIER,
+    },
     impl_block_entity_for_cooking, impl_clearable_for_cooking, impl_cooking_block_entity_base,
     impl_experience_container_for_cooking, impl_inventory_for_cooking,
     impl_property_delegate_for_cooking,
@@ -29,6 +31,8 @@ pub struct BlastingFurnaceBlockEntity {
     pub cooking_total_time: AtomicU16,
     pub lit_time_remaining: AtomicU16,
     pub lit_total_time: AtomicU16,
+    /// The bits of the `f32` speed multiplier of the fuel that lit the furnace.
+    pub speed_multiplier: AtomicU32,
 
     pub items: RwLock<[ItemStack; Self::INVENTORY_SIZE]>,
 
@@ -55,6 +59,7 @@ impl BlastingFurnaceBlockEntity {
             cooking_time_spent: AtomicU16::new(0),
             lit_total_time: AtomicU16::new(0),
             lit_time_remaining: AtomicU16::new(0),
+            speed_multiplier: AtomicU32::new(DEFAULT_SPEED_MULTIPLIER.to_bits()),
             recipes_used: StdMutex::new(HashMap::new()),
             last_recipe: StdMutex::new(None),
             metadata: super::ContainerMetadata::default(),

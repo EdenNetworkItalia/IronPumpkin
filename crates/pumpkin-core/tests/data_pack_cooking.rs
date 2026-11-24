@@ -19,6 +19,7 @@ use pumpkin_core::block::entities::furnace_like_block_entity::CookingBlockEntity
 use pumpkin_core::block::entities::smoker::SmokerBlockEntity;
 use pumpkin_core::world::World;
 use pumpkin_data::Block;
+use pumpkin_data::data_component_impl::{CookingFuelImpl, FloatProvider, IntProvider};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::{CookingRecipeKind, RecipeCategoryTypes};
@@ -481,4 +482,74 @@ fn a_campfire_keeps_its_last_recipe_when_a_reload_adds_an_earlier_one() {
         "{dropped:?}"
     );
     assert!(!dropped.contains(&Item::DIAMOND.id));
+}
+
+/// A coal item with the `cooking_fuel` component of a fuel that burns 100 ticks at `speed`.
+fn fuel_with_speed(speed: f32) -> ItemStack {
+    let mut fuel = ItemStack::new(1, &Item::COAL);
+    fuel.set_data_component(CookingFuelImpl {
+        burn_time: IntProvider::Inline(100),
+        speed_multiplier: FloatProvider::Inline(speed),
+    });
+    fuel
+}
+
+/// Vanilla `getTotalCookTime` divides the cook time by the speed multiplier of the fuel that lit
+/// the furnace. The furnace saves the multiplier as `speed_multiplier`.
+#[test]
+fn a_fuel_with_a_speed_multiplier_of_2_halves_the_cook_time() {
+    let _serial = support::serial();
+    let mut recipe = cooking("test:slow_dirt", "minecraft:dirt", "minecraft:diamond");
+    recipe.cooking_time = 10;
+    support::server()
+        .recipe_manager
+        .set_recipes(vec![DynamicRecipe::Cooking(
+            OwnedCookingRecipeType::Smelting(recipe),
+        )]);
+    let world = support::world();
+    let furnace = furnace_with(&world, 20);
+    furnace.set_stack(0, ItemStack::new(2, &Item::DIRT));
+    assert_eq!(furnace.get_cooking_total_time(), 10);
+    furnace.set_stack(1, fuel_with_speed(2.0));
+    furnace.tick(&world);
+    assert_eq!(furnace.get_speed_multiplier(), 2.0);
+    assert_eq!(furnace.get_cooking_total_time(), 5);
+    for _ in 1..4 {
+        furnace.tick(&world);
+    }
+    assert!(furnace.get_stack(2).is_empty());
+    furnace.tick(&world);
+    assert_eq!(furnace.get_stack(2).item_count, 1);
+    // The next cook time uses the multiplier of the fuel that still burns.
+    assert_eq!(furnace.get_cooking_total_time(), 5);
+
+    // A furnace that loads from its save keeps the multiplier. An old save has none.
+    let mut nbt = pumpkin_nbt::compound::NbtCompound::new();
+    furnace.write_nbt(&mut nbt);
+    assert_eq!(nbt.get_float("speed_multiplier"), Some(2.0));
+    let loaded = FurnaceBlockEntity::from_nbt(&nbt, furnace.get_position());
+    assert_eq!(loaded.get_speed_multiplier(), 2.0);
+    loaded.set_stack(0, ItemStack::new(1, &Item::GRAVEL));
+    loaded.set_stack(0, ItemStack::new(1, &Item::DIRT));
+    assert_eq!(loaded.get_cooking_total_time(), 5);
+    nbt.child_tags.remove("speed_multiplier");
+    let old_save = FurnaceBlockEntity::from_nbt(&nbt, furnace.get_position());
+    assert_eq!(old_save.get_speed_multiplier(), 1.0);
+}
+
+/// The default speed of a fuel is 2 in a blast furnace and a smoker, and the blasting recipe of
+/// vanilla 26.3 takes 200 ticks.
+#[test]
+fn a_blast_furnace_halves_the_cook_time_of_a_vanilla_recipe() {
+    let _serial = support::serial();
+    support::server().recipe_manager.set_recipes(Vec::new());
+    let world = support::world();
+    let furnace = BlastingFurnaceBlockEntity::new(BlockPos::new(22, 100, 4));
+    place(&world, furnace.get_position(), &Block::BLAST_FURNACE);
+    furnace.set_stack(0, ItemStack::new(1, &Item::RAW_IRON));
+    furnace.set_stack(1, ItemStack::new(1, &Item::COAL));
+    assert_eq!(furnace.get_cooking_total_time(), 200);
+    furnace.tick(&world);
+    assert_eq!(furnace.get_cooking_total_time(), 100);
+    assert_eq!(furnace.get_speed_multiplier(), 2.0);
 }
