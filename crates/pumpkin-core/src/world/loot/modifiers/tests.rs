@@ -119,7 +119,7 @@ fn neoforge_conditions_are_ignored() {
         &[(
             "test:conditional",
             json!({
-                "neoforge:conditions": [{"type": "neoforge:false"}],
+                "neoforge:conditions": [{"type": "neoforge:never"}],
                 "type": "test:push",
                 "item": "stone"
             }),

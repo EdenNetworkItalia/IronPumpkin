@@ -594,7 +594,7 @@ fn loader_reads_nested_paths_modded_registries_and_skips_conditional_values() {
         "data/othermod/data_maps/item/fuel/burn.json",
         &json!({ "values": {
             "minecraft:stick": 1,
-            "minecraft:coal": { "neoforge:conditions": [{ "type": "neoforge:true" }], "value": 2 }
+            "minecraft:coal": { "neoforge:conditions": [{ "type": "neoforge:always" }], "value": 2 }
         } }),
     );
     let registered = registered_with(&[&nested]);
