@@ -25,7 +25,7 @@ use bindings::{
 use bindings::pumpkin::plugin::{
     common::BlockPos,
     entity_types::EntityType,
-    event::{EventPriority, EventType},
+    event::{EventPriority, EventType, RawPacket},
     gametest::{
         AsyncTestCallbackId, BlockPermutation, BlockPredicateCallbackId, EntityPredicateCallbackId,
         Test, TestCallbackId, VoidCallbackId,
@@ -37,7 +37,7 @@ use bindings::pumpkin::plugin::{
     statistics::{CustomStatistic, StatisticCategory},
     status_effect::StatusEffectType,
 };
-use bindings::pumpkin::plugin::block_entity::BlockEntityType;
+use bindings::pumpkin::plugin::{block_entity::BlockEntityType, text::TextComponent};
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
@@ -76,7 +76,7 @@ const EVENTS: [EventType; 30] = [
 
 /// The events that synchronous imports fire, through the queue of the host. Only the first
 /// handler listens, and it logs only while the test arms it: other tests also fire these events.
-const IMPORT_EVENTS: [EventType; 9] = [
+const IMPORT_EVENTS: [EventType; 12] = [
     EventType::PlayerOpenSignEvent,
     EventType::PlayerVelocityEvent,
     EventType::EntityKnockbackEvent,
@@ -86,6 +86,9 @@ const IMPORT_EVENTS: [EventType; 9] = [
     EventType::GenericGameEvent,
     EventType::ChunkLoadEvent,
     EventType::EffectParticleModificationEvent,
+    EventType::PacketSentEvent,
+    EventType::PlayerEventHarvestCheck,
+    EventType::PlayerEventTabListNameFormat,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -314,6 +317,13 @@ fn import_view(event: &mut Event) -> Option<View<'_>> {
         Event::GenericGameEvent(data) => ("GenericGameEvent", None, Some(&mut data.cancelled)),
         Event::ChunkLoadEvent(data) => ("ChunkLoadEvent", None, Some(&mut data.cancelled)),
         Event::EffectParticleModificationEvent(_) => ("EffectParticleModificationEvent", None, None),
+        Event::PacketSentEvent(data) => {
+            ("PacketSentEvent", Some(&mut data.packet_id), Some(&mut data.cancelled))
+        }
+        Event::PlayerEventHarvestCheck(data) => {
+            ("PlayerEventHarvestCheck", Some(&mut data.can_harvest), None)
+        }
+        Event::PlayerEventTabListNameFormat(_) => ("PlayerEventTabListNameFormat", None, None),
         _ => return None,
     })
 }
@@ -334,6 +344,9 @@ struct State {
     replay: bool,
     /// Whether the handler of [`IMPORT_EVENTS`] logs.
     armed: bool,
+    /// `(id, extra)`: the handler of `PacketSentEvent` cancels the packets with the id `id` and
+    /// adds a packet with the id `extra` after each.
+    packet_rule: Option<(i32, i32)>,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -344,9 +357,18 @@ thread_local! {
 
 /// Logs what handler `slot` sees, then runs its action.
 fn handle(slot: u32, event: &mut Event) -> Result<(), String> {
-    let armed = STATE.with_borrow(|state| state.armed);
+    let (armed, packet_rule) = STATE.with_borrow(|state| (state.armed, state.packet_rule));
     if !armed && import_view(event).is_some() {
         return Ok(());
+    }
+    if let (Some((id, extra)), Event::PacketSentEvent(data)) = (packet_rule, &mut *event)
+        && data.packet_id == id
+    {
+        data.cancelled = true;
+        data.extra_packets.push(RawPacket {
+            packet_id: extra,
+            payload: vec![7],
+        });
     }
     let Some((name, mut field, mut cancelled)) = view(event) else {
         return Ok(());
@@ -514,6 +536,43 @@ fn import(words: &[&str]) -> Result<String, String> {
             },
             true,
         ),
+        // One guest call sends three packets: a message, a title and a message.
+        ["messages", name] => {
+            let player = player(name)?;
+            player.send_system_message(TextComponent::text("one"), false);
+            player.show_title(TextComponent::text("two"));
+            player.send_system_message(TextComponent::text("three"), false);
+        }
+        ["harvest", name, x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            return Ok(player(name)?.can_harvest_block(pos).to_string());
+        }
+        ["tab-name", name] => {
+            return Ok(player(name)?
+                .get_tab_list_name()
+                .map_or_else(|| "none".to_owned(), |name| name.get_text()));
+        }
+        ["remove-effect", name] => {
+            let living = player(name)?.as_entity().as_living().ok_or("not living")?;
+            return Ok(living.remove_effect(StatusEffectType::Speed).to_string());
+        }
+        ["remove-stack", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            let removed = jukebox.get_container().remove_stack(0);
+            return Ok(if removed.is_some() { "some" } else { "none" }.to_owned());
+        }
         ["velocity", name] => player(name)?.set_velocity((0.0, 0.5, 0.0)),
         ["knockback", name] => player(name)?.apply_knockback(0.4, 1.0, 0.0),
         ["links", name] => player(name)?.set_server_links(links()),
@@ -631,6 +690,7 @@ impl Guest for Component {
                     state.fires.clear();
                     state.log.clear();
                     state.armed = false;
+                    state.packet_rule = None;
                 });
                 String::new()
             }
@@ -646,6 +706,12 @@ impl Guest for Component {
             ["import", rest @ ..] => import(rest)?,
             ["arm"] => {
                 STATE.with_borrow_mut(|state| state.armed = true);
+                String::new()
+            }
+            ["packet-rule", id, extra] => {
+                let parse = |text: &str| text.parse::<i32>().map_err(|_| format!("not a number: {text}"));
+                let rule = (parse(id)?, parse(extra)?);
+                STATE.with_borrow_mut(|state| state.packet_rule = Some(rule));
                 String::new()
             }
             ["replay", flag] => {

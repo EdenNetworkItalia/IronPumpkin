@@ -2007,3 +2007,249 @@ fn a_plugin_removes_effects_while_a_wasm_handler_listens_to_the_effect_particle_
     assert!(!living.has_effect(&StatusEffect::SPEED));
     assert!(!living.has_effect(&StatusEffect::SLOWNESS));
 }
+
+/// A native blocking handler of `E` that the test registers on the server.
+struct OnNative<E, F>(F, std::marker::PhantomData<fn() -> E>);
+
+impl<E, F> EventHandler<E> for OnNative<E, F>
+where
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync,
+{
+    fn handle_blocking<'a>(
+        &'a self,
+        _server: &'a Arc<Server>,
+        event: &'a mut E,
+    ) -> BoxFuture<'a, ()> {
+        (self.0)(event);
+        Box::pin(async {})
+    }
+}
+
+fn on_native<E, F>(handler: F)
+where
+    E: Payload + Send + Sync + 'static,
+    F: Fn(&mut E) + Send + Sync + 'static,
+{
+    support::server().plugin_manager.register::<E, _>(
+        Arc::new(OnNative(handler, std::marker::PhantomData)),
+        EventPriority::Normal,
+        true,
+    );
+}
+
+/// Links the Java connection of `player` to the player and puts it in the play state, as a join
+/// does. `PacketSentEvent` fires there for a client on the current version.
+fn play(player: &Arc<Player>) {
+    player.client.set_player(player.clone());
+    if let pumpkin_core::net::ClientPlatform::Java(java) = player.client.as_ref() {
+        java.connection_state
+            .store(pumpkin_protocol::ConnectionState::Play);
+    }
+}
+
+/// The ids of the packets that arrive at `peer` and that `keep` keeps, until `count` arrived.
+fn arrived(
+    peer: tokio::net::TcpStream,
+    count: usize,
+    keep: impl Fn(i32, &[u8]) -> bool,
+) -> Vec<i32> {
+    let mut peer = pumpkin_protocol::java::packet_decoder::TCPNetworkDecoder::new(
+        tokio::io::BufReader::new(peer),
+    );
+    support::RUNTIME.block_on(async {
+        let mut seen = Vec::new();
+        while seen.len() < count {
+            let packet =
+                tokio::time::timeout(std::time::Duration::from_secs(60), peer.get_raw_packet())
+                    .await
+                    .unwrap()
+                    .unwrap();
+            if keep(packet.id, &packet.payload) {
+                seen.push(packet.id);
+            }
+        }
+        seen
+    })
+}
+
+fn message_ids() -> (i32, i32) {
+    use pumpkin_protocol::{
+        java::client::play::{CSystemChatMessage, CTitleText},
+        packet::MultiVersionJavaPacket,
+    };
+    let version = pumpkin_data::packet::CURRENT_MC_VERSION;
+    (
+        CSystemChatMessage::to_id(version),
+        CTitleText::to_id(version),
+    )
+}
+
+/// `player.send-system-message` and `player.show-title` return while a Wasm handler listens to
+/// `PacketSentEvent`: the host fires the event and sends the packets after the guest call, in
+/// call order.
+#[test]
+fn a_plugin_sends_packets_while_a_wasm_handler_listens_to_the_packet_sent_event() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "PacketImportPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+    let (chat, title) = message_ids();
+
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns("import messages PacketImportPlayer"), "");
+
+    let seen = arrived(peer, 3, |id, _| id == chat || id == title);
+    assert_eq!(seen, [chat, title, chat]);
+    let fired: Vec<String> = guest_log(GUEST, "PacketSentEvent")
+        .into_iter()
+        .filter(|entry| {
+            entry == &format!("W1 {chat} false") || entry == &format!("W1 {title} false")
+        })
+        .collect();
+    assert_eq!(
+        fired,
+        [
+            format!("W1 {chat} false"),
+            format!("W1 {title} false"),
+            format!("W1 {chat} false")
+        ]
+    );
+}
+
+/// The Wasm handler of `PacketSentEvent` still cancels a deferred packet, and the packet that it
+/// adds still goes out in the place of the packet.
+#[test]
+fn a_wasm_handler_cancels_a_deferred_packet_and_adds_an_extra_packet() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "PacketRulePlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+    let (chat, title) = message_ids();
+    let extra = 0x7f;
+
+    ipc(GUEST, "arm");
+    ipc(GUEST, &format!("packet-rule {title} {extra}"));
+    assert_eq!(ipc_returns("import messages PacketRulePlayer"), "");
+
+    let seen = arrived(peer, 3, |id, payload| {
+        id == chat || id == title || (id == extra && payload == [7])
+    });
+    assert_eq!(seen, [chat, extra, chat]);
+}
+
+/// `player.can-harvest-block` returns inside a guest call while a Wasm handler listens to
+/// `PlayerEvent.HarvestCheck`: the Wasm handler does not get the event, and a native handler
+/// still changes the result. Outside a guest call the Wasm handler gets the event.
+#[test]
+fn a_plugin_checks_a_harvest_while_a_wasm_handler_listens_to_the_harvest_check() {
+    let _serial = setup();
+    let player = support::player("HarvestImportPlayer");
+    let pos = spot(503);
+    load(pos);
+    set(pos, &Block::OBSIDIAN);
+    on_native::<pumpkin_core::plugin::player::PlayerEventHarvestCheck, _>(|event| {
+        if event.player.gameprofile.name == "HarvestImportPlayer" {
+            event.can_harvest = true;
+        }
+    });
+
+    ipc(GUEST, "arm");
+    let reply = ipc_returns(&format!(
+        "import harvest HarvestImportPlayer {} {} {}",
+        pos.0.x, pos.0.y, pos.0.z
+    ));
+
+    assert_eq!(reply, "true");
+    assert!(guest_log(GUEST, "PlayerEventHarvestCheck").is_empty());
+    let (block, state) = support::world().get_block_and_state(&pos);
+    assert!(player.can_harvest(state, block, &pos));
+    // W1 has a higher priority than the native handler, so it sees the vanilla value.
+    assert_eq!(guest_log(GUEST, "PlayerEventHarvestCheck"), ["W1 false -"]);
+}
+
+/// `player.get-tab-list-name` returns inside a guest call while a Wasm handler listens to
+/// `PlayerEvent.TabListNameFormat`, and a native handler still sets the name.
+#[test]
+fn a_plugin_reads_a_tab_list_name_while_a_wasm_handler_listens_to_the_name_event() {
+    let _serial = setup();
+    let _player = support::player("TabImportPlayer");
+    on_native::<pumpkin_core::plugin::player::PlayerEventTabListNameFormat, _>(|event| {
+        if event.player.gameprofile.name == "TabImportPlayer" {
+            event.display_name = Some(pumpkin_util::text::TextComponent::text("Native tab"));
+        }
+    });
+
+    ipc(GUEST, "arm");
+    let reply = ipc_returns("import tab-name TabImportPlayer");
+
+    assert_eq!(reply, "Native tab");
+    assert!(guest_log(GUEST, "PlayerEventTabListNameFormat").is_empty());
+}
+
+/// `living-entity.remove-effect` returns inside a guest call while a Wasm handler listens to
+/// `EffectParticleModificationEvent`, and a native handler still gets the event of the effect
+/// that stays.
+#[test]
+fn a_plugin_removes_an_effect_while_a_wasm_handler_listens_to_the_particle_event() {
+    let _serial = setup();
+    let player = support::player("RemoveEffectPlayer");
+    let living = &player.living_entity;
+    living.add_effect(speed());
+    living.add_effect(Effect {
+        effect_type: &StatusEffect::SLOWNESS,
+        ..speed()
+    });
+    let native_fires = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fires = Arc::clone(&native_fires);
+    let id = player.get_entity().entity_id;
+    on_native::<pumpkin_core::plugin::living::EffectParticleModificationEvent, _>(move |event| {
+        if event.entity.get_entity().entity_id == id {
+            fires.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+
+    ipc(GUEST, "arm");
+    let reply = ipc_returns("import remove-effect RemoveEffectPlayer");
+
+    assert_eq!(reply, "true");
+    assert!(!living.has_effect(&StatusEffect::SPEED));
+    assert!(native_fires.load(std::sync::atomic::Ordering::SeqCst) > 0);
+    assert!(guest_log(GUEST, "EffectParticleModificationEvent").is_empty());
+}
+
+/// `container-block-entity.remove-stack` of a jukebox returns the record inside a guest call while
+/// a Wasm handler listens to the game event of the stop, and a native handler still gets it.
+#[test]
+fn a_plugin_takes_a_record_while_a_wasm_handler_listens_to_the_game_event() {
+    let _serial = setup();
+    let pos = spot(504);
+    load(pos);
+    set(pos, &Block::JUKEBOX);
+    let jukebox = Arc::new(pumpkin_core::block::entities::jukebox::JukeboxBlockEntity::new(pos));
+    support::world().add_block_entity(jukebox.clone());
+    jukebox.set_record(ItemStack::new(1, &Item::MUSIC_DISC_CAT));
+    jukebox.start_playing(1000);
+    let native_fires = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fires = Arc::clone(&native_fires);
+    on_native::<pumpkin_core::plugin::world::GenericGameEvent, _>(move |event| {
+        if event.event_key().contains("jukebox_stop_play") {
+            fires.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    });
+
+    ipc(GUEST, "arm");
+    let reply = ipc_returns(&format!(
+        "import remove-stack {} {} {}",
+        pos.0.x, pos.0.y, pos.0.z
+    ));
+
+    assert_eq!(reply, "some");
+    assert!(!jukebox.is_playing());
+    assert!(native_fires.load(std::sync::atomic::Ordering::SeqCst) > 0);
+    assert!(guest_log(GUEST, "GenericGameEvent").is_empty());
+}
