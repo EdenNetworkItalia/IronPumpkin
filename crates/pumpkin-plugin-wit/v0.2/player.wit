@@ -882,9 +882,8 @@ interface player {
         get-display-name: func () -> text-component;
         /// Sets the player's display name.
         set-display-name: func (display-name: text-component);
-        /// Gets the player's custom tab list name.
-        /// Inside a guest call, `player-event-tab-list-name-format` reaches the native handlers
-        /// only: a Wasm handler does not get it.
+        /// Gets the player's custom tab list name. Inside a guest call, every event fired during
+        /// this call reaches native handlers only: a Wasm handler does not get it.
         get-tab-list-name: func () -> option<text-component>;
         /// Sets the player's custom tab list name.
         set-tab-list-name: func (name: option<text-component>);
@@ -1204,11 +1203,13 @@ interface player {
         /// checking game mode and tool restrictions, firing `BlockBreakEvent`, dropping loot with the held tool's
         /// enchantments (Fortune / Silk Touch), damaging the held tool, adding exhaustion, and updating statistics.
         break-block: async func (pos: block-pos) -> bool;
-        /// Returns whether the player can harvest drops from the block at `pos` with their currently held item.
-        /// Inside a guest call, `player-event-harvest-check` reaches the native handlers only: a
-        /// Wasm handler does not get it.
+        /// Returns whether the player can harvest drops from the block at `pos` with their
+        /// currently held item. Inside a guest call, every event fired during this call reaches
+        /// native handlers only: a Wasm handler does not get it.
         can-harvest-block: func (pos: block-pos) -> bool;
-        /// Returns the player's current mining speed against the block at `pos` (accounting for held tool, Efficiency, effects, and water/air state).
+        /// Returns the player's current mining speed against the block at `pos` (accounting for
+        /// held tool, Efficiency, effects, and water/air state). Inside a guest call, every event
+        /// fired during this call reaches native handlers only: a Wasm handler does not get it.
         get-mining-speed: func (pos: block-pos) -> f32;
 
         // Ender Chest Inventory

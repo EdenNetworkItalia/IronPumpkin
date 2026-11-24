@@ -29,9 +29,12 @@ interface block-entity {
         get-stack: func(slot: u32) -> option<item-stack>;
         set-stack: async func(slot: u32, stack: option<item-stack>);
         /// Removes the stack in `slot` and returns it. For a jukebox, the stop of the record fires
-        /// the `generic-game-event` of `jukebox_stop_play`. Inside a guest call, that event reaches
-        /// the native handlers only: a Wasm handler does not get it.
+        /// the `generic-game-event` of `jukebox_stop_play`. Inside a guest call, every event fired
+        /// during this call reaches native handlers only: a Wasm handler does not get it.
         remove-stack: func(slot: u32) -> option<item-stack>;
+        /// Removes every stack. The clear applies after the guest call returns: for a jukebox, a
+        /// handler of the `generic-game-event` of `jukebox_stop_play` can then run. A read in the
+        /// same guest call sees the old value.
         clear: func();
     }
 

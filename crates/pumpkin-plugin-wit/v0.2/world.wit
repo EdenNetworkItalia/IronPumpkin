@@ -515,6 +515,9 @@ interface %world {
         /// Returns whether this entity carries the specified scoreboard tag.
         has-scoreboard-tag: func(tag: string) -> bool;
 
+        /// Removes this entity from its world. The removal applies after the guest call returns, so
+        /// that a handler of `entity-leave-level-event` can run. A read in the same guest call sees
+        /// the old value.
         remove: func();
 
         /// Performs a raycast from the entity's eye position in its looking direction.
@@ -617,8 +620,8 @@ interface %world {
         /// Gives a status effect to this living entity.
         add-effect: async func(effect: status-effect-instance);
         /// Removes a status effect from this living entity. Returns true if an effect was removed.
-        /// Inside a guest call, `effect-particle-modification-event` reaches the native handlers
-        /// only: a Wasm handler does not get it.
+        /// Inside a guest call, every event fired during this call reaches native handlers only: a
+        /// Wasm handler does not get it.
         remove-effect: func(effect: status-effect-type) -> bool;
         /// Checks if this living entity currently has the specified status effect.
         has-effect: func(effect: status-effect-type) -> bool;
@@ -680,8 +683,10 @@ interface %world {
         /// Returns the specialized mob-specific data for this mob.
         get-mob-data: func() -> mob-data;
 
-        /// Sets the specialized mob-specific data for this mob.
-        /// Returns false if the provided data variant is incompatible with this mob.
+        /// Sets the specialized mob-specific data for this mob. Returns false if the provided data
+        /// variant is incompatible with this mob. For a shulker, the change applies after the guest
+        /// call returns, so that a handler of `play-level-sound-event-at-position` for the peek
+        /// sound can run. A read in the same guest call sees the old value.
         set-mob-data: func(data: mob-data) -> bool;
 
         /// Sets the number of freeze ticks on this entity (0 to 140).
