@@ -1038,10 +1038,12 @@ interface %world {
         /// Returns the scoreboard associated with this world.
         get-scoreboard: func() -> scoreboard;
 
-        /// Plays a sound at the specified position for all players in the world.
+        /// Plays a sound at the specified position for the players in range. The sound plays after the
+        /// call returns, so that a handler of the sound event can run.
         play-sound: func(sound: sound, category: sound-category, pos: position, volume: f32, pitch: f32);
 
-        /// Plays a custom resource pack sound identifier at the specified position for all players in the world.
+        /// Plays a custom resource pack sound identifier at the specified position for the players in
+        /// range. The sound plays after the call returns, so that a handler of the sound event can run.
         play-custom-sound: func(sound-name: string, category: sound-category, pos: position, volume: f32, pitch: f32);
 
         /// Spawns particles at the specified position.
