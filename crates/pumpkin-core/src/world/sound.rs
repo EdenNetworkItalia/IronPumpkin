@@ -86,10 +86,11 @@ pub(super) fn is_closer_than(player: &Player, position: &Vector3<f64>, range: f6
         < range * range
 }
 
-/// The position that a player gets for a global level event at `center`, as
-/// `ServerLevel.globalLevelEvent`: the center when the player is in the same world and closer than
-/// 32 blocks, else a point 32 blocks from the player toward the center. A player of another world
-/// gets its own position.
+/// The position that a player gets for a global level event at `center`.
+///
+/// As `ServerLevel.globalLevelEvent`, a player of the same world closer than 32 blocks gets the
+/// center. A farther player gets a point 32 blocks from the player toward the center. A player of
+/// another world gets its own position.
 #[must_use]
 pub fn global_event_position(
     center: Vector3<f64>,
