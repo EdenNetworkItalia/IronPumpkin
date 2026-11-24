@@ -364,6 +364,9 @@ struct State {
     /// Whether the handler of `PacketSentEvent` answers a packet with the text `reply-me` with a
     /// title.
     packet_reply: bool,
+    /// `(on, reply)`: the handler of `PacketSentEvent` answers a packet with the text `on` with a
+    /// message `reply`.
+    relay: Option<(String, String)>,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -374,8 +377,23 @@ thread_local! {
 
 /// Logs what handler `slot` sees, then runs its action.
 fn handle(slot: u32, event: &mut Event) -> Result<(bool, bool), String> {
-    let (armed, packet_rule, packet_reply) =
-        STATE.with_borrow(|state| (state.armed, state.packet_rule, state.packet_reply));
+    let (armed, packet_rule, packet_reply, relay) = STATE.with_borrow(|state| {
+        (
+            state.armed,
+            state.packet_rule,
+            state.packet_reply,
+            state.relay.clone(),
+        )
+    });
+    if let (Some((on, reply)), Event::PacketSentEvent(data)) = (&relay, &*event)
+        && data
+            .raw_payload
+            .windows(on.len())
+            .any(|window| window == on.as_bytes())
+    {
+        data.player
+            .send_system_message(TextComponent::text(reply), false);
+    }
     if !armed && import_view(event).is_some() {
         return Ok((false, false));
     }
@@ -612,6 +630,18 @@ async fn ordered(words: &[&str]) -> Result<String, String> {
                 .ok_or("no world")?;
             world.set_game_rule(GameRule::SpawnPhantoms, GameRuleValue::Bool(value));
         }
+        // `count` messages `bulk-0` to `bulk-<count - 1>`.
+        "bulk" => {
+            let count: u32 = words
+                .get(2)
+                .and_then(|count| count.parse().ok())
+                .ok_or("bulk <name> <count>")?;
+            for index in 0..count {
+                say(&format!("bulk-{index};"));
+            }
+        }
+        // The message `text`.
+        "say" => say(words.get(2).ok_or("say <name> <text>")?),
         // A message that the handler of `PacketSentEvent` answers with a title, after `packet-reply`.
         "reply" => say("reply-me"),
         _ => return Err(format!("not an ordered case: {case}")),
@@ -876,6 +906,7 @@ impl Guest for Component {
                     state.armed = false;
                     state.packet_rule = None;
                     state.packet_reply = false;
+                    state.relay = None;
                 });
                 String::new()
             }
@@ -905,6 +936,15 @@ impl Guest for Component {
             }
             ["equip", rest @ ..] => equip(rest).await?,
             ["ordered", rest @ ..] => ordered(rest).await?,
+            ["relay", on, reply] => {
+                let relay = Some(((*on).to_owned(), (*reply).to_owned()));
+                STATE.with_borrow_mut(|state| state.relay = relay);
+                String::new()
+            }
+            ["relay-off"] => {
+                STATE.with_borrow_mut(|state| state.relay = None);
+                String::new()
+            }
             ["packet-reply"] => {
                 STATE.with_borrow_mut(|state| state.packet_reply = true);
                 String::new()

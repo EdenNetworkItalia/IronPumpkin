@@ -2621,3 +2621,103 @@ fn a_plugin_reads_the_mining_speed_while_a_wasm_handler_listens_to_the_enchantme
 
     assert!(enchanted > plain, "{enchanted} <= {plain}");
 }
+
+/// 200 messages of one guest call all reach the client, in call order.
+#[test]
+fn two_hundred_sends_of_one_guest_call_all_reach_the_client() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "BulkSendPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+    let words: Vec<String> = (0..200).map(|index| format!("bulk-{index};")).collect();
+    let words_ref: Vec<&str> = words.iter().map(String::as_str).collect();
+
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns("ordered bulk BulkSendPlayer 200"), "");
+
+    assert_eq!(marks(peer, &words_ref, 200), words);
+}
+
+/// A writer of the log lines of the process into a buffer.
+struct Capture(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Two plugins whose handlers of `PacketSentEvent` answer each other's messages: each answer has
+/// the depth of the work that caused it plus one, so the chain stops at the depth limit of 64,
+/// with the log line of the drop. The server still ticks after it.
+#[test]
+fn two_plugins_that_answer_each_other_stop_at_the_depth_limit() {
+    let _serial = setup();
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let writer = Arc::clone(&log);
+    tracing::subscriber::set_global_default(
+        tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || Capture(Arc::clone(&writer)))
+            .finish(),
+    )
+    .unwrap();
+    let (player, peer) = support::player_with_peer(
+        "RelayPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+
+    ipc(GUEST, "relay relay-ping relay-pong");
+    ipc(PEER, "relay relay-pong relay-ping");
+    assert_eq!(ipc_returns("ordered say RelayPlayer relay-ping"), "");
+
+    // The chain is over when no message arrives for 5 s.
+    let mut decoder = pumpkin_protocol::java::packet_decoder::TCPNetworkDecoder::new(
+        tokio::io::BufReader::new(peer),
+    );
+    let count = support::RUNTIME.block_on(async {
+        let mut count = 0;
+        let mut last = std::time::Instant::now();
+        while last.elapsed() < std::time::Duration::from_secs(5) {
+            let Ok(packet) =
+                tokio::time::timeout(std::time::Duration::from_secs(1), decoder.get_raw_packet())
+                    .await
+            else {
+                continue;
+            };
+            let payload = packet.unwrap().payload;
+            let has = |word: &[u8]| payload.windows(word.len()).any(|window| window == word);
+            if has(b"relay-ping") || has(b"relay-pong") {
+                count += 1;
+                last = std::time::Instant::now();
+            }
+        }
+        count
+    });
+    ipc(GUEST, "relay-off");
+    ipc(PEER, "relay-off");
+
+    assert_eq!(count, 64);
+    let log = String::from_utf8(log.lock().unwrap().clone()).unwrap();
+    assert!(
+        log.contains("Dropped the deferred host work `packet send`: it exceeds the depth of 64"),
+        "{log}"
+    );
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        support::server().tick();
+        tx.send(()).unwrap();
+    });
+    assert!(
+        rx.recv_timeout(std::time::Duration::from_secs(60)).is_ok(),
+        "the server tick hangs"
+    );
+}
