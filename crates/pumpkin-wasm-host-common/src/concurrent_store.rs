@@ -75,6 +75,7 @@ pub async fn start_legacy_store(
     spawner: Arc<dyn RuntimeSpawner>,
     mode: StoreMode,
 ) -> wasmtime::Result<LegacyStore> {
+    super::deferred::install_depth_hook();
     let spawner: Arc<dyn RuntimeSpawner> = match mode {
         StoreMode::Concurrent => Arc::new(GuestCallSpawner {
             inner: spawner,

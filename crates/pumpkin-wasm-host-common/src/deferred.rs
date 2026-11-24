@@ -10,7 +10,7 @@
 //! The depth of work counts the chain of causes across all stores. Work that a guest call defers
 //! has the depth of that call. A root guest call that deferred work causes, on the drain thread,
 //! has the depth of that work plus one: the root admission reads it from this thread
-//! ([`pumpkin_plugin_runtime::DEFERRED_DEPTH_SOURCE`]). A root call that no deferred work causes
+//! ([`pumpkin_plugin_runtime::ON_ROOT_ADMITTED`]). A root call that no deferred work causes
 //! has depth 0, and a nested call keeps the depth of its root. Thus two plugins that answer each
 //! other's work stop at the limit, and unrelated work does not add depth.
 
@@ -18,7 +18,10 @@ use std::{
     cell::Cell,
     collections::VecDeque,
     panic::{AssertUnwindSafe, catch_unwind},
-    sync::{Arc, Mutex, PoisonError},
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use tracing::error;
@@ -44,10 +47,25 @@ thread_local! {
     static RUNNING_DEPTH: Cell<Option<usize>> = const { Cell::new(None) };
 }
 
+/// The depth of the root guest call that holds the root admission. Only one root call runs at a
+/// time across all stores, and a nested call keeps the depth of its root.
+static ROOT_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
 /// The depth of a root guest call that this thread admits: one more than the deferred work that
 /// runs on this thread, or 0 when no deferred work runs on it.
 fn admitted_depth() -> usize {
     RUNNING_DEPTH.get().map_or(0, |depth| depth + 1)
+}
+
+/// Records the depth of the root call that this thread admits.
+fn on_root_admitted() {
+    ROOT_DEPTH.store(admitted_depth(), Ordering::Release);
+}
+
+/// Installs the hook that records the depth of each root call. Call it before the first store
+/// starts.
+pub fn install_depth_hook() {
+    let _ = pumpkin_plugin_runtime::ON_ROOT_ADMITTED.set(on_root_admitted);
 }
 
 /// See the [module documentation](self).
@@ -65,9 +83,8 @@ impl DeferredQueue {
         label: impl Into<String>,
         run: impl FnOnce() + Send + 'static,
     ) {
-        let _ = pumpkin_plugin_runtime::DEFERRED_DEPTH_SOURCE.set(admitted_depth);
         let label = label.into();
-        let depth = pumpkin_plugin_runtime::root_deferred_depth();
+        let depth = ROOT_DEPTH.load(Ordering::Acquire);
         if depth >= MAX_DEFERRED_DEPTH {
             error!(
                 "Dropped the deferred host work `{label}`: it exceeds the depth of {MAX_DEFERRED_DEPTH}"

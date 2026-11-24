@@ -2,7 +2,7 @@ use std::{
     future::Future,
     sync::{
         Arc, OnceLock,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
     time::Instant,
 };
@@ -13,14 +13,8 @@ pub const MAX_SYNC_REENTRY_DEPTH: usize = 64;
 
 static NEXT_ROOT_ADMISSION_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Reads the deferred depth of a root call on the thread that admits it (an `IronPumpkin` hook).
-pub static DEFERRED_DEPTH_SOURCE: OnceLock<fn() -> usize> = OnceLock::new();
-static ROOT_DEFERRED_DEPTH: AtomicUsize = AtomicUsize::new(0);
-
-/// The deferred depth of the root call that holds the admission. Nested calls share it.
-pub fn root_deferred_depth() -> usize {
-    ROOT_DEFERRED_DEPTH.load(Ordering::Acquire)
-}
+/// Runs on the thread that admits a root call, after the permit (an `IronPumpkin` hook).
+pub static ON_ROOT_ADMITTED: OnceLock<fn()> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub struct RootAdmission {
@@ -77,8 +71,9 @@ impl RootAdmission {
             .await
             .map_err(|_| wasmtime::Error::msg("Wasm plugin root admission is closed"))?;
         let acquired_at = Instant::now();
-        let depth = DEFERRED_DEPTH_SOURCE.get().map_or(0, |source| source());
-        ROOT_DEFERRED_DEPTH.store(depth, Ordering::Release);
+        if let Some(hook) = ON_ROOT_ADMITTED.get() {
+            hook();
+        }
         tracing::trace!(
             wasm_plugin_admission_id = context.admission_id,
             wasm_plugin_chain_id = context.chain_id,
