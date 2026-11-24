@@ -532,6 +532,10 @@ fn a_fuel_with_a_speed_multiplier_of_2_halves_the_cook_time() {
     loaded.set_stack(0, ItemStack::new(1, &Item::GRAVEL));
     loaded.set_stack(0, ItemStack::new(1, &Item::DIRT));
     assert_eq!(loaded.get_cooking_total_time(), 5);
+    // Vanilla `getFloatOr` reads any numeric tag.
+    nbt.put_double("speed_multiplier", 3.0);
+    let doubled = FurnaceBlockEntity::from_nbt(&nbt, furnace.get_position());
+    assert_eq!(doubled.get_speed_multiplier(), 3.0);
     nbt.child_tags.remove("speed_multiplier");
     let old_save = FurnaceBlockEntity::from_nbt(&nbt, furnace.get_position());
     assert_eq!(old_save.get_speed_multiplier(), 1.0);
