@@ -81,8 +81,9 @@ fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
                         return None;
                     }
                     ids.push(normalize_id(s));
-                } else if let Some(obj_item) = item.get("item").and_then(Value::as_str) {
-                    ids.push(normalize_id(obj_item));
+                } else {
+                    // A `{"tag": ..}` object or a value that is no item id fails the recipe.
+                    ids.push(normalize_id(item.get("item").and_then(Value::as_str)?));
                 }
             }
             if ids.is_empty() {
@@ -107,11 +108,17 @@ fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
                 .get("id")
                 .or_else(|| map.get("item"))
                 .and_then(Value::as_str)?;
-            let count = map
-                .get("count")
-                .and_then(Value::as_u64)
-                .unwrap_or(1)
-                .min(99) as u8;
+            // Vanilla `ItemStackTemplate.MAP_CODEC` takes a count from 1 to 99
+            // (`ItemStackTemplate.java:24`) and fails the recipe on any other value.
+            let count = match map.get("count") {
+                None => 1,
+                Some(count) => {
+                    let count = count.as_f64()? as i64;
+                    u8::try_from(count)
+                        .ok()
+                        .filter(|count| (1..=99).contains(count))?
+                }
+            };
             let components = map.get("components").and_then(|components| {
                 match super::dynamic_registry_loader::json_to_nbt_tag(components) {
                     NbtTag::Compound(compound) => Some(compound),
@@ -604,6 +611,46 @@ mod tests {
     }
 
     #[test]
+    fn a_tag_object_or_a_number_in_an_ingredient_list_fails_the_recipe() {
+        for entry in [r#"{ "tag": "minecraft:planks" }"#, "5"] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "ingredient": ["minecraft:stick", {entry}],
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(
+                parse_recipe("test", "bad_entry", &json).is_none(),
+                "{entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_result_count_outside_1_to_99_fails_the_recipe() {
+        let recipe = |count: &str| {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "ingredient": "minecraft:dirt",
+                    "result": {{ "id": "minecraft:diamond", "count": {count} }}
+                }}"#
+            );
+            parse_recipe("test", "count", &json)
+        };
+        assert!(recipe("0").is_none());
+        assert!(recipe("100").is_none());
+        assert!(recipe("-1").is_none());
+        assert!(recipe("\"a\"").is_none());
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) = recipe("99")
+        else {
+            panic!("Expected smelting recipe");
+        };
+        assert_eq!(cooking.result.count, 99);
+    }
+
+    #[test]
     fn a_smithing_transform_can_leave_out_the_template_and_the_addition() {
         let json = r#"{
             "type": "minecraft:smithing_transform",
@@ -662,7 +709,8 @@ mod tests {
         else {
             panic!("Expected smelting recipe");
         };
-        let stack = pumpkin_inventory::recipe_index::RecipeOutput::owned(&cooking.result).assemble();
+        let stack =
+            pumpkin_inventory::recipe_index::RecipeOutput::owned(&cooking.result).assemble();
         assert_eq!(stack.get_max_stack_size(), 7);
         let food = stack
             .get_data_component::<pumpkin_data::data_component_impl::FoodImpl>()
