@@ -9,6 +9,7 @@ use std::path::Path;
 use crate::placed_feature::{
     value_to_block_direction, value_to_block_predicate, value_to_block_state,
     value_to_block_state_codec, value_to_height_provider, value_to_int_provider,
+    value_to_placement_modifier,
 };
 
 fn load_configured_features() -> BTreeMap<String, Value> {
@@ -147,12 +148,12 @@ pub fn build() -> TokenStream {
             use crate::generation::feature::placed_features::{
                 Feature, PlacedFeature, PlacementModifier,
                 BiomePlacementModifier, BlockFilterPlacementModifier,
-                CountOnEveryLayerPlacementModifier, CountPlacementModifier,
+                CountOnEveryLayerPlacementModifier, CountPlacementModifier, CuboidPlacementModifier,
                 EnvironmentScanPlacementModifier, HeightRangePlacementModifier,
                 HeightmapPlacementModifier, NoiseBasedCountPlacementModifier,
                 NoiseThresholdCountPlacementModifier, OffsetPlacementModifier,
-                RandomOffsetPlacementModifier,
-                RarityFilterPlacementModifier, SquarePlacementModifier,
+                RandomChancePlacementModifier, RandomOffsetPlacementModifier,
+                RandomlySelectedPlacementModifier, RarityFilterPlacementModifier, SquarePlacementModifier,
                 SurfaceThresholdFilterPlacementModifier, SurfaceWaterDepthFilterPlacementModifier,
                 PlacedFeatureWrapper,
             };
@@ -421,7 +422,8 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             let variant = match type_str {
                 "minecraft:flower" => quote! { ConfiguredFeature::Flower },
                 "minecraft:no_bonemeal_flower" => quote! { ConfiguredFeature::NoBonemealFlower },
-                _ => quote! { ConfiguredFeature::RandomPatch },
+                "minecraft:random_patch" => quote! { ConfiguredFeature::RandomPatch },
+                other => unreachable!("random patch arm reached with {other}"),
             };
             quote! {
                 #variant(RandomPatchFeature {
@@ -1672,7 +1674,7 @@ fn value_to_trunk_placer(v: &Value) -> TokenStream {
                 })
             }
         }
-        _ => quote! { TrunkType::Straight(StraightTrunkPlacer) },
+        other => panic!("Unknown trunk placer type: {other}"),
     };
     quote! {
         TrunkPlacer {
@@ -1763,10 +1765,7 @@ fn value_to_foliage_placer(v: &Value) -> TokenStream {
                 })
             }
         }
-        _ => {
-            let h = v["height"].as_i64().unwrap_or(3) as i32;
-            quote! { FoliageType::Blob(BlobFoliagePlacer { height: #h }) }
-        }
+        other => panic!("Unknown foliage placer type: {other}"),
     };
     quote! {
         FoliagePlacer { radius: #radius, offset: #offset, r#type: #foliage_type }
@@ -1814,15 +1813,7 @@ fn value_to_feature_size(v: &Value) -> TokenStream {
                 })
             }
         }
-        _ => {
-            quote! {
-                FeatureSizeType::TwoLayersFeatureSize(TwoLayersFeatureSize {
-                    limit: 1,
-                    lower_size: 0,
-                    upper_size: 1,
-                })
-            }
-        }
+        other => panic!("Unknown feature size type: {other}"),
     };
     quote! {
         FeatureSize { min_clipped_height: #min_clipped, r#type: #size_type }
@@ -1950,7 +1941,7 @@ fn value_to_inline_placed_feature(v: &Value) -> TokenStream {
         .unwrap_or(&[]);
     let placement: Vec<TokenStream> = placement_arr
         .iter()
-        .map(value_to_placement_modifier_cf)
+        .map(value_to_placement_modifier)
         .collect();
     quote! {
         PlacedFeature {
@@ -2004,122 +1995,5 @@ fn value_to_feature_ref(v: &Value) -> TokenStream {
             quote! { Feature::Inlined(Box::new(#cf)) }
         }
         _ => quote! { Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::NoOp) },
-    }
-}
-
-// Placement modifier in context of configured_features (same as placed_feature but re-imported)
-/// Converts a placement-modifier JSON object into its `PlacementModifier` token stream within the configured-feature context.
-///
-/// # Arguments
-/// – `v` – a JSON object for one modifier entry, expected to contain a `"type"` field.
-///
-/// # Returns
-/// A `TokenStream` for the appropriate `PlacementModifier` variant; defaults to `PlacementModifier::Biome` for unrecognised types.
-fn value_to_placement_modifier_cf(v: &Value) -> TokenStream {
-    let type_str = v["type"].as_str().unwrap_or("");
-    match type_str {
-        "minecraft:biome" => quote! { PlacementModifier::Biome(BiomePlacementModifier) },
-        "minecraft:in_square" => quote! { PlacementModifier::InSquare(SquarePlacementModifier) },
-        "minecraft:fixed_placement" => {
-            let positions = v["positions"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .map(|p| {
-                            let coords = p.as_array().unwrap();
-                            let x = coords[0].as_i64().unwrap_or(0) as i32;
-                            let y = coords[1].as_i64().unwrap_or(0) as i32;
-                            let z = coords[2].as_i64().unwrap_or(0) as i32;
-                            quote! { BlockPos::new(#x, #y, #z) }
-                        })
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            quote! { PlacementModifier::FixedPlacement(vec![#(#positions),*]) }
-        }
-        "minecraft:heightmap" => {
-            let hm = crate::placed_feature::value_to_height_map(
-                v["heightmap"].as_str().unwrap_or("MOTION_BLOCKING"),
-            );
-            quote! { PlacementModifier::Heightmap(HeightmapPlacementModifier { heightmap: #hm }) }
-        }
-        "minecraft:height_range" => {
-            let h = value_to_height_provider(&v["height"]);
-            quote! { PlacementModifier::HeightRange(HeightRangePlacementModifier { height: #h }) }
-        }
-        "minecraft:count" => {
-            let c = value_to_int_provider(&v["count"]);
-            quote! { PlacementModifier::Count(CountPlacementModifier { count: #c }) }
-        }
-        "minecraft:count_on_every_layer" => {
-            let c = value_to_int_provider(&v["count"]);
-            quote! { PlacementModifier::CountOnEveryLayer(CountOnEveryLayerPlacementModifier { count: #c }) }
-        }
-        "minecraft:rarity_filter" => {
-            let ch = v["chance"].as_u64().unwrap_or(1) as u32;
-            quote! { PlacementModifier::RarityFilter(RarityFilterPlacementModifier { chance: #ch }) }
-        }
-        "minecraft:block_predicate_filter" => {
-            let pred = value_to_block_predicate(&v["predicate"]);
-            quote! { PlacementModifier::BlockPredicateFilter(BlockFilterPlacementModifier { predicate: #pred }) }
-        }
-        "minecraft:surface_relative_threshold_filter" => {
-            let hm = crate::placed_feature::value_to_height_map(
-                v["heightmap"].as_str().unwrap_or("MOTION_BLOCKING"),
-            );
-            let mn = if v["min_inclusive"].is_number() {
-                let x = v["min_inclusive"].as_i64().unwrap() as i32;
-                quote! {Some(#x)}
-            } else {
-                quote! {None}
-            };
-            let mx = if v["max_inclusive"].is_number() {
-                let x = v["max_inclusive"].as_i64().unwrap() as i32;
-                quote! {Some(#x)}
-            } else {
-                quote! {None}
-            };
-            quote! { PlacementModifier::SurfaceRelativeThresholdFilter(SurfaceThresholdFilterPlacementModifier { heightmap: #hm, min_inclusive: #mn, max_inclusive: #mx }) }
-        }
-        "minecraft:surface_water_depth_filter" => {
-            let d = v["max_water_depth"].as_i64().unwrap_or(0) as i32;
-            quote! { PlacementModifier::SurfaceWaterDepthFilter(SurfaceWaterDepthFilterPlacementModifier { max_water_depth: #d }) }
-        }
-        "minecraft:random_offset" => {
-            let xz = value_to_int_provider(&v["xz_spread"]);
-            let y = value_to_int_provider(&v["y_spread"]);
-            quote! { PlacementModifier::Offset(OffsetPlacementModifier { x: #xz, y: #y, z: #xz }) }
-        }
-        "minecraft:offset" => {
-            let x = value_to_int_provider(&v["x"]);
-            let y = value_to_int_provider(&v["y"]);
-            let z = value_to_int_provider(&v["z"]);
-            quote! { PlacementModifier::Offset(OffsetPlacementModifier { x: #x, y: #y, z: #z }) }
-        }
-        "minecraft:noise_based_count" => {
-            let r = v["noise_to_count_ratio"].as_i64().unwrap_or(0) as i32;
-            let f = v["noise_factor"].as_f64().unwrap_or(1.0);
-            let o = v["noise_offset"].as_f64().unwrap_or(0.0);
-            quote! { PlacementModifier::NoiseBasedCount(NoiseBasedCountPlacementModifier { to_count_ratio: #r, factor: #f, offset: #o }) }
-        }
-        "minecraft:noise_threshold_count" => {
-            let l = v["noise_level"].as_f64().unwrap_or(0.0);
-            let b = v["below_noise"].as_i64().unwrap_or(0) as i32;
-            let a = v["above_noise"].as_i64().unwrap_or(0) as i32;
-            quote! { PlacementModifier::NoiseThresholdCount(NoiseThresholdCountPlacementModifier { noise_level: #l, below_noise: #b, above_noise: #a }) }
-        }
-        "minecraft:environment_scan" => {
-            let dir = value_to_block_direction(v["direction_of_search"].as_str().unwrap_or("down"));
-            let tc = value_to_block_predicate(&v["target_condition"]);
-            let asc = if v["allowed_search_condition"].is_object() {
-                let p = value_to_block_predicate(&v["allowed_search_condition"]);
-                quote! { Some(#p) }
-            } else {
-                quote! { None }
-            };
-            let steps = v["max_steps"].as_i64().unwrap_or(1) as i32;
-            quote! { PlacementModifier::EnvironmentScan(EnvironmentScanPlacementModifier { direction_of_search: #dir, target_condition: #tc, allowed_search_condition: #asc, max_steps: #steps }) }
-        }
-        _ => quote! { PlacementModifier::Biome(BiomePlacementModifier) },
     }
 }

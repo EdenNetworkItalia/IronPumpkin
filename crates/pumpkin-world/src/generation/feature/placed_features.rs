@@ -168,6 +168,7 @@ where
 pub enum PlacementModifier {
     BlockPredicateFilter(BlockFilterPlacementModifier),
     RarityFilter(RarityFilterPlacementModifier),
+    RandomChance(RandomChancePlacementModifier),
     SurfaceRelativeThresholdFilter(SurfaceThresholdFilterPlacementModifier),
     SurfaceWaterDepthFilter(SurfaceWaterDepthFilterPlacementModifier),
     Biome(BiomePlacementModifier),
@@ -175,12 +176,14 @@ pub enum PlacementModifier {
     NoiseBasedCount(NoiseBasedCountPlacementModifier),
     NoiseThresholdCount(NoiseThresholdCountPlacementModifier),
     CountOnEveryLayer(CountOnEveryLayerPlacementModifier),
+    Cuboid(CuboidPlacementModifier),
     EnvironmentScan(EnvironmentScanPlacementModifier),
     Heightmap(HeightmapPlacementModifier),
     HeightRange(HeightRangePlacementModifier),
     InSquare(SquarePlacementModifier),
     RandomOffset(RandomOffsetPlacementModifier),
     Offset(OffsetPlacementModifier),
+    RandomlySelected(RandomlySelectedPlacementModifier),
     FixedPlacement(Vec<BlockPos>),
 }
 
@@ -203,6 +206,9 @@ impl PlacementModifier {
             Self::RarityFilter(modifier) => {
                 modifier.get_positions(block_registry, chunk, feature, random, pos)
             }
+            Self::RandomChance(modifier) => {
+                modifier.get_positions(block_registry, chunk, feature, random, pos)
+            }
             Self::SurfaceRelativeThresholdFilter(modifier) => {
                 modifier.get_positions(block_registry, chunk, feature, random, pos)
             }
@@ -216,12 +222,25 @@ impl PlacementModifier {
             Self::NoiseBasedCount(modifier) => Box::new(modifier.get_positions(random, pos)),
             Self::NoiseThresholdCount(modifier) => modifier.get_positions(random, pos),
             Self::CountOnEveryLayer(modifier) => modifier.get_positions(random, chunk, pos),
+            Self::Cuboid(modifier) => modifier.get_positions(random, pos),
             Self::EnvironmentScan(modifier) => modifier.get_positions(chunk, block_registry, pos),
             Self::Heightmap(modifier) => modifier.get_positions(chunk, min_y, height, random, pos),
             Self::HeightRange(modifier) => modifier.get_positions(min_y, height, random, pos),
             Self::InSquare(_) => SquarePlacementModifier::get_positions(random, pos),
             Self::RandomOffset(modifier) => modifier.get_positions(random, pos),
             Self::Offset(modifier) => modifier.get_positions(random, pos),
+            Self::RandomlySelected(modifier) => {
+                let index = random.next_bounded_i32(modifier.placements.len() as i32) as usize;
+                modifier.placements[index].get_positions(
+                    chunk,
+                    block_registry,
+                    min_y,
+                    height,
+                    feature,
+                    random,
+                    pos,
+                )
+            }
             Self::FixedPlacement(positions) => Box::new(positions.clone().into_iter()),
         }
     }
@@ -466,6 +485,61 @@ impl ConditionalPlacementModifier for RarityFilterPlacementModifier {
     }
 }
 
+pub struct RandomChancePlacementModifier {
+    pub chance: f32,
+}
+
+impl ConditionalPlacementModifier for RandomChancePlacementModifier {
+    fn should_place<T: GenerationCache>(
+        &self,
+        _block_registry: &dyn WorldPortalExt,
+        _feature: pumpkin_data::placed_feature::PlacedFeature,
+        _chunk: &T,
+        random: &mut RandomGenerator,
+        _pos: BlockPos,
+    ) -> bool {
+        random.next_f32() < self.chance
+    }
+}
+
+pub struct RandomlySelectedPlacementModifier {
+    pub placements: Vec<PlacementModifier>,
+}
+
+pub struct CuboidPlacementModifier {
+    pub xz_size: IntProvider,
+    pub y_size: IntProvider,
+    pub include_edges: bool,
+    pub include_interior: bool,
+}
+
+impl CuboidPlacementModifier {
+    pub fn get_positions(
+        &self,
+        random: &mut RandomGenerator,
+        origin: BlockPos,
+    ) -> Box<dyn Iterator<Item = BlockPos>> {
+        let height = self.y_size.get(random);
+        let width = self.xz_size.get(random);
+        let length = self.xz_size.get(random);
+        let mut positions = Vec::new();
+        for x in 0..=width {
+            let x_face = u8::from(x == 0 || x == width);
+            for y in 0..=height {
+                let y_face = u8::from(y == 0 || y == height);
+                for z in 0..=length {
+                    let faces = x_face + y_face + u8::from(z == 0 || z == length);
+                    // Two faces meet on an edge or corner, none means interior.
+                    if (self.include_edges || faces < 2) && (self.include_interior || faces > 0) {
+                        positions.push(origin.add(x, y, z));
+                    }
+                }
+            }
+        }
+        Box::new(positions.into_iter())
+    }
+}
+
 pub struct SquarePlacementModifier;
 
 impl SquarePlacementModifier {
@@ -623,9 +697,369 @@ include!("../../../../pumpkin-data/src/generated/placed_features_generated.rs");
 
 #[cfg(test)]
 mod tests {
+    use pumpkin_data::dimension::Dimension;
+    use pumpkin_util::math::int_provider::{NormalIntProvider, UniformIntProvider};
     use pumpkin_util::random::xoroshiro128::Xoroshiro;
+    use pumpkin_util::world_seed::Seed;
 
     use super::*;
+    use crate::ProtoChunk;
+    use crate::generation::generator::{GeneratorInit, VanillaGenerator, WorldGenerator};
+
+    struct TestPortal;
+
+    impl WorldPortalExt for TestPortal {
+        fn can_place_at(
+            &self,
+            _block: &Block,
+            _state: &pumpkin_data::BlockState,
+            _block_accessor: &dyn crate::world::BlockAccessor,
+            _block_pos: &BlockPos,
+        ) -> bool {
+            true
+        }
+
+        fn mirror(
+            &self,
+            block: &Block,
+            state_id: BlockStateId,
+            mirror: pumpkin_data::Mirror,
+        ) -> &'static pumpkin_data::BlockState {
+            block.mirror(state_id, mirror)
+        }
+
+        fn rotate(
+            &self,
+            block: &Block,
+            state_id: BlockStateId,
+            rotation: pumpkin_data::Rotation,
+        ) -> &'static pumpkin_data::BlockState {
+            block.rotate(state_id, rotation)
+        }
+
+        fn spawn_mobs_for_chunk_generation(
+            &self,
+            _cache: &mut dyn GenerationCache,
+            _biome: &'static pumpkin_data::chunk::Biome,
+            _chunk_x: i32,
+            _chunk_z: i32,
+        ) {
+        }
+    }
+
+    const ORIGIN: BlockPos = BlockPos(Vector3::new(0, 64, 0));
+
+    fn empty_chunk() -> ProtoChunk {
+        let world_gen = WorldGenerator::Noise(Box::new(VanillaGenerator::new(
+            Seed(42),
+            Dimension::OVERWORLD,
+        )));
+        ProtoChunk::new(0, 0, &world_gen)
+    }
+
+    fn positions(
+        modifier: &PlacementModifier,
+        random: &mut RandomGenerator,
+        pos: BlockPos,
+    ) -> Vec<(i32, i32, i32)> {
+        let chunk = empty_chunk();
+        modifier
+            .get_positions(
+                &chunk,
+                &TestPortal,
+                -64,
+                384,
+                pumpkin_data::placed_feature::PlacedFeature::WarmOceanVegetation,
+                random,
+                pos,
+            )
+            .map(|p| (p.0.x, p.0.y, p.0.z))
+            .collect()
+    }
+
+    fn uniform(min_inclusive: i32, max_inclusive: i32) -> IntProvider {
+        IntProvider::Object(NormalIntProvider::Uniform(UniformIntProvider {
+            min_inclusive,
+            max_inclusive,
+        }))
+    }
+
+    fn cuboid(include_edges: bool, include_interior: bool) -> PlacementModifier {
+        PlacementModifier::Cuboid(CuboidPlacementModifier {
+            xz_size: uniform(3, 5),
+            y_size: uniform(3, 5),
+            include_edges,
+            include_interior,
+        })
+    }
+
+    // Expected values in these tests come from the vanilla 26.3 classes run on
+    // `new XoroshiroRandomSource(seed)` with origin (0, 64, 0).
+    #[test]
+    fn random_chance_matches_vanilla() {
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(42));
+        let modifier =
+            PlacementModifier::RandomChance(RandomChancePlacementModifier { chance: 0.2 });
+        let placed: Vec<bool> = (0..16)
+            .map(|_| !positions(&modifier, &mut random, ORIGIN).is_empty())
+            .collect();
+        let mut expected = [false; 16];
+        expected[12] = true;
+        expected[13] = true;
+        assert_eq!(placed, expected);
+        assert_eq!(random.next_i32(), 1_596_580_675);
+    }
+
+    const VANILLA_CUBOID_SHELL: [(i32, i32, i32); 64] = [
+        (0, 65, 1),
+        (0, 65, 2),
+        (0, 65, 3),
+        (0, 65, 4),
+        (0, 66, 1),
+        (0, 66, 2),
+        (0, 66, 3),
+        (0, 66, 4),
+        (0, 67, 1),
+        (0, 67, 2),
+        (0, 67, 3),
+        (0, 67, 4),
+        (0, 68, 1),
+        (0, 68, 2),
+        (0, 68, 3),
+        (0, 68, 4),
+        (1, 64, 1),
+        (1, 64, 2),
+        (1, 64, 3),
+        (1, 64, 4),
+        (1, 65, 0),
+        (1, 65, 5),
+        (1, 66, 0),
+        (1, 66, 5),
+        (1, 67, 0),
+        (1, 67, 5),
+        (1, 68, 0),
+        (1, 68, 5),
+        (1, 69, 1),
+        (1, 69, 2),
+        (1, 69, 3),
+        (1, 69, 4),
+        (2, 64, 1),
+        (2, 64, 2),
+        (2, 64, 3),
+        (2, 64, 4),
+        (2, 65, 0),
+        (2, 65, 5),
+        (2, 66, 0),
+        (2, 66, 5),
+        (2, 67, 0),
+        (2, 67, 5),
+        (2, 68, 0),
+        (2, 68, 5),
+        (2, 69, 1),
+        (2, 69, 2),
+        (2, 69, 3),
+        (2, 69, 4),
+        (3, 65, 1),
+        (3, 65, 2),
+        (3, 65, 3),
+        (3, 65, 4),
+        (3, 66, 1),
+        (3, 66, 2),
+        (3, 66, 3),
+        (3, 66, 4),
+        (3, 67, 1),
+        (3, 67, 2),
+        (3, 67, 3),
+        (3, 67, 4),
+        (3, 68, 1),
+        (3, 68, 2),
+        (3, 68, 3),
+        (3, 68, 4),
+    ];
+
+    #[test]
+    fn cuboid_shell_matches_vanilla() {
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(7));
+        let placed = positions(&cuboid(false, false), &mut random, ORIGIN);
+        assert_eq!(placed, VANILLA_CUBOID_SHELL);
+        assert_eq!(random.next_i32(), -800_923_970);
+    }
+
+    #[test]
+    fn cuboid_flags_match_vanilla() {
+        for (include_edges, include_interior, count, last) in [
+            (true, false, 112, (3, 69, 5)),
+            (false, true, 96, (3, 68, 4)),
+        ] {
+            let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(7));
+            let placed = positions(
+                &cuboid(include_edges, include_interior),
+                &mut random,
+                ORIGIN,
+            );
+            assert_eq!(placed.len(), count);
+            assert_eq!(placed.last(), Some(&last));
+            assert_eq!(random.next_i32(), -800_923_970);
+        }
+    }
+
+    #[test]
+    fn randomly_selected_matches_vanilla() {
+        let offset = |x, z| {
+            PlacementModifier::Offset(OffsetPlacementModifier {
+                x: IntProvider::Constant(x),
+                y: IntProvider::Constant(-1),
+                z: IntProvider::Constant(z),
+            })
+        };
+        let modifier = PlacementModifier::RandomlySelected(RandomlySelectedPlacementModifier {
+            placements: vec![
+                offset(0, 0),
+                offset(-1, 0),
+                offset(0, 1),
+                offset(1, 0),
+                offset(0, -1),
+            ],
+        });
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(1234));
+        let placed: Vec<_> = (0..10)
+            .flat_map(|_| positions(&modifier, &mut random, ORIGIN))
+            .collect();
+        assert_eq!(
+            placed,
+            [
+                (0, 63, 0),
+                (0, 63, -1),
+                (0, 63, -1),
+                (0, 63, -1),
+                (0, 63, 1),
+                (0, 63, 1),
+                (0, 63, -1),
+                (1, 63, 0),
+                (0, 63, 0),
+                (-1, 63, 0),
+            ]
+        );
+        assert_eq!(random.next_i32(), 1_790_576_565);
+    }
+
+    // Vanilla 26.3 FeaturePlacer with the four modifiers of warm_ocean_vegetation entry 2 and a
+    // plain tube coral block; coral/block_decoration is left out because the `random_block`
+    // provider is not generated yet.
+    const VANILLA_CORAL_MUSHROOM: [(i32, i32, i32); 58] = [
+        (5, 64, 6),
+        (5, 64, 7),
+        (5, 64, 8),
+        (5, 65, 6),
+        (5, 65, 7),
+        (5, 65, 8),
+        (5, 66, 6),
+        (5, 66, 7),
+        (5, 66, 8),
+        (5, 67, 7),
+        (5, 67, 8),
+        (6, 63, 6),
+        (6, 63, 7),
+        (6, 63, 8),
+        (6, 64, 5),
+        (6, 64, 9),
+        (6, 65, 5),
+        (6, 65, 9),
+        (6, 66, 5),
+        (6, 66, 9),
+        (6, 67, 5),
+        (6, 68, 6),
+        (6, 68, 7),
+        (6, 68, 8),
+        (7, 63, 6),
+        (7, 63, 7),
+        (7, 64, 5),
+        (7, 64, 9),
+        (7, 65, 5),
+        (7, 65, 9),
+        (7, 66, 9),
+        (7, 67, 9),
+        (7, 68, 6),
+        (7, 68, 7),
+        (7, 68, 8),
+        (8, 63, 6),
+        (8, 63, 7),
+        (8, 63, 8),
+        (8, 64, 5),
+        (8, 64, 9),
+        (8, 65, 5),
+        (8, 65, 9),
+        (8, 66, 5),
+        (8, 66, 9),
+        (8, 67, 5),
+        (8, 67, 9),
+        (8, 68, 6),
+        (8, 68, 7),
+        (9, 64, 6),
+        (9, 64, 7),
+        (9, 64, 8),
+        (9, 65, 7),
+        (9, 65, 8),
+        (9, 66, 6),
+        (9, 66, 8),
+        (9, 67, 6),
+        (9, 67, 7),
+        (9, 67, 8),
+    ];
+
+    #[test]
+    fn warm_ocean_coral_mushroom_matches_vanilla() {
+        let mut chunk = empty_chunk();
+        for x in 0..16 {
+            for z in 0..16 {
+                for y in 50..80 {
+                    chunk.set_block_state(x, y, z, Block::WATER.default_state);
+                }
+            }
+        }
+        let Some(ConfiguredFeature::SimpleRandomSelector(selector)) = CONFIGURED_FEATURES
+            .get(&pumpkin_data::configured_feature::ConfiguredFeature::WarmOceanVegetation)
+        else {
+            panic!("warm_ocean_vegetation must be a simple random selector");
+        };
+        let mushroom = &selector.features[2];
+        assert!(matches!(
+            mushroom.feature,
+            Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::CoralTubeBlock)
+        ));
+
+        let placed = std::cell::RefCell::new(Vec::new());
+        let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(3));
+        generate_with_modifiers(
+            &mut chunk,
+            0,
+            mushroom.placement.len(),
+            &mut random,
+            BlockPos::new(5, 64, 5),
+            &|chunk, index, random, pos| {
+                mushroom.placement[index].get_positions(
+                    chunk,
+                    &TestPortal,
+                    -64,
+                    384,
+                    pumpkin_data::placed_feature::PlacedFeature::WarmOceanVegetation,
+                    random,
+                    pos,
+                )
+            },
+            &|chunk, _random, pos| {
+                GenerationCache::set_block_state(
+                    chunk,
+                    &pos.0,
+                    Block::TUBE_CORAL_BLOCK.default_state,
+                );
+                placed.borrow_mut().push((pos.0.x, pos.0.y, pos.0.z));
+                true
+            },
+        );
+        assert_eq!(placed.into_inner(), VANILLA_CORAL_MUSHROOM);
+        assert_eq!(random.next_i32(), 1_801_432_760);
+    }
 
     #[test]
     fn modifier_candidates_interleave_with_feature_rng() {
