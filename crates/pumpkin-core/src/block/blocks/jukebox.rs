@@ -61,6 +61,8 @@ impl JukeboxBlock {
                 // Vanilla: setToDefaultPickupDelay() = 10 ticks
                 let item_entity = Arc::new(ItemEntity::new(entity, record));
                 world.spawn_entity(item_entity);
+                // Vanilla `popOutTheItem` ends with `onSongChanged`.
+                world.update_neighbors(position, None);
             }
         }
     }
@@ -142,15 +144,15 @@ impl BlockBehaviour for JukeboxBlock {
         {
             jukebox_entity.set_world(Arc::downgrade(world));
             jukebox_entity.set_stack(0, record);
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext::of_entity_state(
+                    Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                    old_state,
+                ),
+            );
         }
-        world.emit_game_event_with_context(
-            GameEvent::BlockChange.name(),
-            args.position.to_centered_f64(),
-            &crate::world::game_event::GameEventContext::of_entity_state(
-                Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
-                old_state,
-            ),
-        );
 
         args.player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Custom,
