@@ -13,11 +13,13 @@ impl JavaClient {
             GenericIngredient, compute_biggest_craftable, take_n_ingredient,
         };
         use crate::server::recipe::DynamicRecipe;
-        use pumpkin_data::recipes::{
-            CookingRecipeType, CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING,
-        };
+        use pumpkin_data::recipes::{CookingRecipeType, CraftingRecipeTypes, RECIPES_CRAFTING};
         use pumpkin_data::screen::WindowType;
         use pumpkin_inventory::crafting::recipe_provider::RecipeProvider;
+        use pumpkin_protocol::codec::recipe::OwnedCookingRecipeType;
+        use pumpkin_protocol::java::client::play::{
+            book_cooking_recipes, book_crafting_count, book_dynamic_recipes,
+        };
 
         let target_id = packet.recipe_display_id.0 as usize;
         let use_max = packet.use_max_items;
@@ -34,19 +36,12 @@ impl JavaClient {
             return;
         }
 
-        // Count crafting display IDs.
-        let crafting_display_count = RECIPES_CRAFTING
-            .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial(_)
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                )
-            })
-            .count();
-        let cooking_display_count = RECIPES_COOKING.len();
-        let dynamic_recipes = server.recipe_manager.get_dynamic_recipes();
+        // The display ids of `CRecipeBookAdd`: generated crafting, generated cooking, dynamic.
+        let crafting_display_count = book_crafting_count();
+        let all_dynamic = server.recipe_manager.get_dynamic_recipes();
+        let cooking_recipes = book_cooking_recipes(&all_dynamic);
+        let cooking_display_count = cooking_recipes.len();
+        let dynamic_recipes: Vec<&DynamicRecipe> = book_dynamic_recipes(&all_dynamic).collect();
 
         let (window_type, grid_width, crafting_inv) = {
             let screen_handler_arc = player
@@ -90,19 +85,32 @@ impl JavaClient {
         let mut ingredient_slots: Vec<Option<GenericIngredient<'_>>> = vec![None; grid_size];
 
         if is_cooking_window {
-            if target_id < crafting_display_count
-                || target_id >= crafting_display_count + cooking_display_count
-            {
+            if target_id < crafting_display_count {
                 return;
             }
-            let cooking_recipe = &RECIPES_COOKING[target_id - crafting_display_count];
-            let ingredient = match (window_type, cooking_recipe) {
-                (Some(WindowType::Furnace), CookingRecipeType::Smelting(r))
-                | (Some(WindowType::BlastFurnace), CookingRecipeType::Blasting(r))
-                | (Some(WindowType::Smoker), CookingRecipeType::Smoking(r)) => &r.ingredient,
-                _ => return,
-            };
-            ingredient_slots[0] = Some(GenericIngredient::Vanilla(ingredient));
+            if let Some(cooking_recipe) = cooking_recipes.get(target_id - crafting_display_count) {
+                let ingredient = match (window_type, cooking_recipe) {
+                    (Some(WindowType::Furnace), CookingRecipeType::Smelting(r))
+                    | (Some(WindowType::BlastFurnace), CookingRecipeType::Blasting(r))
+                    | (Some(WindowType::Smoker), CookingRecipeType::Smoking(r)) => &r.ingredient,
+                    _ => return,
+                };
+                ingredient_slots[0] = Some(GenericIngredient::Vanilla(ingredient));
+            } else {
+                let dynamic_id = target_id - crafting_display_count - cooking_display_count;
+                let Some(DynamicRecipe::Cooking(cooking)) = dynamic_recipes.get(dynamic_id) else {
+                    return;
+                };
+                let ingredient = match (window_type, cooking) {
+                    (Some(WindowType::Furnace), OwnedCookingRecipeType::Smelting(r))
+                    | (Some(WindowType::BlastFurnace), OwnedCookingRecipeType::Blasting(r))
+                    | (Some(WindowType::Smoker), OwnedCookingRecipeType::Smoking(r)) => {
+                        &r.ingredient
+                    }
+                    _ => return,
+                };
+                ingredient_slots[0] = Some(GenericIngredient::Dynamic(ingredient));
+            }
         } else if target_id < crafting_display_count {
             // Crafting recipe
             let mut counter = 0usize;

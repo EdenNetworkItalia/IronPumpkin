@@ -8,7 +8,10 @@ use pumpkin_data::recipes::{
 };
 use pumpkin_macros::java_packet;
 use std::borrow::Cow;
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 use crate::codec::item_stack_seralizer::ItemStackTemplateSerializer;
 use crate::codec::recipe::OwnedRecipeIngredient;
@@ -486,6 +489,50 @@ fn write_entry(
     Ok(false)
 }
 
+/// The number of generated crafting recipes in the recipe book, which take the first display
+/// ids. The book leaves out the special and the decorated pot recipes.
+#[must_use]
+pub fn book_crafting_count() -> usize {
+    RECIPES_CRAFTING
+        .iter()
+        .filter(|r| {
+            !matches!(
+                r,
+                CraftingRecipeTypes::CraftingSpecial(_)
+                    | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+            )
+        })
+        .count()
+}
+
+/// The generated cooking recipes in the recipe book, after the crafting recipes. A dynamic
+/// recipe with the same id replaces one, as a data pack recipe does.
+#[must_use]
+pub fn book_cooking_recipes(dynamic: &[DynamicRecipe]) -> Vec<&'static CookingRecipeType> {
+    let replaced: HashSet<&str> = dynamic
+        .iter()
+        .filter_map(DynamicRecipe::recipe_id)
+        .collect();
+    RECIPES_COOKING
+        .iter()
+        .filter(|recipe| {
+            let (CookingRecipeType::Smelting(r)
+            | CookingRecipeType::Blasting(r)
+            | CookingRecipeType::Smoking(r)
+            | CookingRecipeType::CampfireCooking(r)) = recipe;
+            !replaced.contains(r.recipe_id)
+        })
+        .collect()
+}
+
+/// The dynamic recipes in the recipe book, after the generated cooking recipes: the crafting
+/// and the cooking recipes, in the order of `dynamic`.
+pub fn book_dynamic_recipes(dynamic: &[DynamicRecipe]) -> impl Iterator<Item = &DynamicRecipe> {
+    dynamic
+        .iter()
+        .filter(|r| matches!(r, DynamicRecipe::Crafting(_) | DynamicRecipe::Cooking(_)))
+}
+
 #[allow(clippy::too_many_lines)]
 impl ClientPacket for CRecipeBookAdd<'_> {
     fn write_packet_data(
@@ -507,23 +554,10 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         let campfire = Item::from_registry_key("campfire")
             .ok_or_else(|| WritingError::Message("campfire item must exist".into()))?;
 
-        // First pass - count and skip CraftingSpecial and CraftingDecoratedPot entries.
-        let crafting_count: usize = RECIPES_CRAFTING
-            .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial(_)
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                )
-            })
-            .count();
-        let dynamic_count = self
-            .dynamic_recipes
-            .iter()
-            .filter(|r| matches!(r, DynamicRecipe::Crafting(_) | DynamicRecipe::Cooking(_)))
-            .count();
-        let total = crafting_count + RECIPES_COOKING.len() + dynamic_count;
+        let cooking_recipes = book_cooking_recipes(self.dynamic_recipes);
+        let total = book_crafting_count()
+            + cooking_recipes.len()
+            + book_dynamic_recipes(self.dynamic_recipes).count();
 
         // Entry count (VarInt)
         write.write_var_int(&VarInt(total as i32))?;
@@ -570,7 +604,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         }
 
         // Write cooking recipes
-        for recipe in RECIPES_COOKING {
+        for recipe in cooking_recipes {
             let (book_category, group) = match recipe {
                 CookingRecipeType::Smelting(r) => (
                     match r.category {
@@ -614,7 +648,7 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         }
 
         // Write dynamic recipes
-        for recipe in self.dynamic_recipes {
+        for recipe in book_dynamic_recipes(self.dynamic_recipes) {
             match recipe {
                 DynamicRecipe::Crafting(crafting) => {
                     let (group, flags) = match crafting {
@@ -958,5 +992,46 @@ mod tests {
                 .write_packet_data(Vec::new(), &version.into())
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn a_dynamic_recipe_replaces_the_generated_book_entry_with_its_id() {
+        use crate::codec::recipe::{
+            OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient, OwnedRecipeResult,
+            OwnedStonecutterRecipe,
+        };
+        let id = "minecraft:iron_ingot_from_smelting_raw_iron";
+        let result = OwnedRecipeResult {
+            item_id: "minecraft:diamond".to_string(),
+            count: 1,
+            components: None,
+        };
+        let dynamic = [
+            DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+                recipe_id: "test:cut".to_string(),
+                group: None,
+                ingredient: OwnedRecipeIngredient::Simple("minecraft:stone".to_string()),
+                result: result.clone(),
+            }),
+            DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+                recipe_id: id.to_string(),
+                category: RecipeCategoryTypes::Misc,
+                group: None,
+                ingredient: OwnedRecipeIngredient::Simple("minecraft:raw_iron".to_string()),
+                cooking_time: 10,
+                experience: 1.0,
+                result,
+            })),
+        ];
+        assert_eq!(
+            book_cooking_recipes(&dynamic).len(),
+            RECIPES_COOKING.len() - 1
+        );
+        let book: Vec<_> = book_dynamic_recipes(&dynamic).collect();
+        assert_eq!(book.len(), 1);
+        assert_eq!(book[0].recipe_id(), Some(id));
+        CRecipeBookAdd::new(true, &dynamic)
+            .write_packet_data(Vec::new(), &JavaMinecraftVersion::V_26_3.into())
+            .unwrap();
     }
 }
