@@ -80,7 +80,7 @@ fn concurrent_changes_of_one_chunk_keep_the_ticket_and_the_set_in_agreement() {
         .map_or(0, |levels| {
             levels
                 .iter()
-                .filter(|level| **level == ChunkLoading::FULL_CHUNK_LEVEL)
+                .filter(|level| **level == ChunkLoading::FORCED_TICKET_LEVEL)
                 .count()
         });
     assert_eq!(tickets, usize::from(forced));
@@ -131,4 +131,23 @@ fn forceload_rejects_a_huge_area_and_coordinates_outside_the_world() {
     let outside = run("forceload add 30000000 0").unwrap_err();
     assert!(outside.contains("argument.pos.outofworld"), "{outside}");
     assert!(support::world().forced_chunks.lock().unwrap().is_empty());
+}
+
+/// Vanilla `ChunkMap.FORCED_TICKET_LEVEL` is 31, two levels below FULL: the ticket spreads by one
+/// per chunk, so the chunks within two of a forced chunk load at FULL.
+#[test]
+fn the_chunks_within_two_of_a_forced_chunk_load_at_full() {
+    let _serial = support::serial();
+    let world = support::world();
+    let chunk = Vector2::new(70, 70);
+
+    world.set_chunk_forced(chunk, true);
+    for dx in -2..=2 {
+        for dz in -2..=2 {
+            wait_until_loaded(chunk.add_raw(dx, dz));
+        }
+    }
+
+    world.set_chunk_forced(chunk, false);
+    world.update_active_chunks();
 }

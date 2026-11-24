@@ -19,6 +19,9 @@ pub struct ChunkLoading {
 impl ChunkLoading {
     // pub const FULL_CHUNK_LEVEL: i8 = 33;
     pub const FULL_CHUNK_LEVEL: i8 = 43;
+    /// Vanilla `ChunkMap.FORCED_TICKET_LEVEL`: entity ticking, two levels below FULL, so the
+    /// chunks within two of a forced chunk load at FULL.
+    pub const FORCED_TICKET_LEVEL: i8 = Self::FULL_CHUNK_LEVEL - 2;
     pub const MAX_LEVEL: i8 = 49; // level 49 will be unloaded.
     fn debug_check_error(&self) -> bool {
         let mut temp = ChunkLevel::default();
@@ -174,19 +177,35 @@ impl ChunkLoading {
     }
 
     pub fn add_force_ticket(&mut self, pos: ChunkPos) {
-        // debug!("add force ticket at {pos:?}");
-        self.high_priority.push(pos);
-        self.is_priority_dirty = true;
-        self.add_ticket(pos, Self::FULL_CHUNK_LEVEL);
+        self.add_priority_ticket(pos, Self::FULL_CHUNK_LEVEL);
     }
 
     pub fn remove_force_ticket(&mut self, pos: ChunkPos) {
-        // debug!("remove force ticket at {pos:?}");
+        self.remove_priority_ticket(pos, Self::FULL_CHUNK_LEVEL);
+    }
+
+    /// The ticket of a chunk that `/forceload` or `setChunkForced` forces, at
+    /// [`Self::FORCED_TICKET_LEVEL`].
+    pub fn add_forced_chunk_ticket(&mut self, pos: ChunkPos) {
+        self.add_priority_ticket(pos, Self::FORCED_TICKET_LEVEL);
+    }
+
+    pub fn remove_forced_chunk_ticket(&mut self, pos: ChunkPos) {
+        self.remove_priority_ticket(pos, Self::FORCED_TICKET_LEVEL);
+    }
+
+    fn add_priority_ticket(&mut self, pos: ChunkPos, level: i8) {
+        self.high_priority.push(pos);
+        self.is_priority_dirty = true;
+        self.add_ticket(pos, level);
+    }
+
+    fn remove_priority_ticket(&mut self, pos: ChunkPos, level: i8) {
         if let Some(index) = self.high_priority.iter().position(|x| *x == pos) {
             self.high_priority.remove(index);
         }
         self.is_priority_dirty = true;
-        self.remove_ticket(pos, Self::FULL_CHUNK_LEVEL);
+        self.remove_ticket(pos, level);
     }
 
     pub fn add_ticket(&mut self, pos: ChunkPos, level: i8) {

@@ -701,9 +701,9 @@ impl World {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             if forced {
-                loading.add_force_ticket(pos);
+                loading.add_forced_chunk_ticket(pos);
             } else {
-                loading.remove_force_ticket(pos);
+                loading.remove_forced_chunk_ticket(pos);
             }
             loading.send_change();
         }
@@ -728,7 +728,7 @@ impl World {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         for pos in forced {
-            loading.add_force_ticket(pos);
+            loading.add_forced_chunk_ticket(pos);
         }
         loading.send_change();
     }
