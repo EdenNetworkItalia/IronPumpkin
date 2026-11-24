@@ -900,7 +900,9 @@ interface neoforge-events {
     record permissions-changed-event-data {
         player: player,
         new-level: permission-level,
-        /// The level in the op list before the change.
+        /// The level in the op list before the change. For the permission level call of a plugin
+        /// (`set-permission-level`), which leaves the op list alone, it is the level that the
+        /// player has now.
         old-level: permission-level,
         cancelled: bool,
     }
