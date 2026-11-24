@@ -12,7 +12,7 @@ use crate::entity::EntityBase;
 use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::player::Player;
 use crate::plugin::data_maps::builtin::raid_hero_gift;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, roll_loot};
 
 const THROW_GIFT_AT_DISTANCE: i32 = 5;
 const MIN_TIME_BETWEEN_GIFTS: i32 = 600;
@@ -98,7 +98,7 @@ fn throw_gift(tick: &BrainTick<'_>, target: &Arc<dyn EntityBase>) {
         this_entity: Some(tick.mob),
         ..Default::default()
     };
-    for stack in generate_loot_from_handle(&table, tick.mob.get_random().random::<i64>(), &params) {
+    for stack in roll_loot(&table, 0, &params) {
         utils::throw_item(tick.mob, stack, target.get_entity().pos.load());
     }
 }

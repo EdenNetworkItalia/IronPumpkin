@@ -2310,6 +2310,13 @@ impl World {
             self.save_live_block_entities();
             self.level.should_save.store(true, Relaxed);
             self.level.level_channel.notify();
+            // The random sequences belong to the server: the overworld saves them for all worlds.
+            if self.dimension == Dimension::OVERWORLD
+                && let Some(server) = self.server.upgrade()
+                && let Err(err) = server.save_random_sequences()
+            {
+                error!("Failed to save random_sequences.dat: {err}");
+            }
         }
 
         let (should_reset_weather, weather_cycle_enabled) = {

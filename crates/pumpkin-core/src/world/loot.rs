@@ -13,7 +13,7 @@ pub use pumpkin_util::loot_table::{
     LootEntry, LootEntryKind, LootFunction, LootFunctionKind, LootNumberProvider, LootPool,
     LootTable,
 };
-use pumpkin_util::random::{RandomImpl, xoroshiro128::Xoroshiro};
+use pumpkin_util::random::{RandomGenerator, RandomImpl, legacy_rand::LegacyRand};
 
 mod generation;
 pub mod modifiers;
@@ -244,7 +244,7 @@ fn check_dynamic_condition(
     has_silk_touch: bool,
     has_shears: bool,
     params: &LootContextParameters,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> bool {
     match cond {
         DynamicLootCondition::None => true,
@@ -345,7 +345,7 @@ fn check_condition(
     has_silk_touch: bool,
     has_shears: bool,
     params: &LootContextParameters,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> bool {
     match cond {
         LootCondition::None => true,
@@ -453,7 +453,7 @@ pub(crate) fn test_loot_condition(
         .tool
         .as_ref()
         .is_some_and(|tool| tool.item.id == pumpkin_data::item::Item::SHEARS.id);
-    let mut rng = Xoroshiro::from_seed(rand::random());
+    let mut rng = random_source(rand::random());
     check_condition(condition, has_silk_touch, has_shears, params, &mut rng)
 }
 
@@ -461,7 +461,7 @@ fn apply_bonus_formula(
     base_count: i32,
     bonus: LootBonusFormula,
     fortune_level: i32,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) -> i32 {
     match bonus {
         LootBonusFormula::OreDrops => {
@@ -657,7 +657,7 @@ pub fn evaluate_predicate_value(
                 .tool
                 .as_ref()
                 .is_some_and(|tool| tool.item.id == pumpkin_data::item::Item::SHEARS.id);
-            let mut rng = Xoroshiro::from_seed(rand::random());
+            let mut rng = random_source(rand::random());
             check_dynamic_condition(&cond, has_silk_touch, has_shears, params, &mut rng)
         },
     )
@@ -693,20 +693,42 @@ pub fn generate_loot_from_handle(
     seed: i64,
     params: &LootContextParameters,
 ) -> Vec<ItemStack> {
-    generate_loot_from_handle_with_rng(handle, &mut Xoroshiro::from_seed(seed as u64), params)
+    generate_loot_from_handle_with_rng(handle, &mut random_source(seed), params)
 }
 
 /// [`generate_loot_from_handle`] on the random source `rng`, which the caller goes on with.
 #[must_use]
 pub fn generate_loot_from_handle_with_rng(
     handle: &LootTableHandle,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
     params: &LootContextParameters,
 ) -> Vec<ItemStack> {
     if let Some(modifiers) = modifiers::active(params) {
         return modifiers::generate_with_rng(handle, rng, params, &modifiers);
     }
     generation::generate_with_rng(handle.into(), rng, params)
+}
+
+/// Vanilla `RandomSource.create(seed)`: the legacy random source of an explicit seed. The loot
+/// code draws from it where vanilla does, so a roll with a seed gives the vanilla items.
+#[must_use]
+pub const fn random_source(seed: i64) -> RandomGenerator {
+    RandomGenerator::Legacy(LegacyRand::from_seed(seed as u64))
+}
+
+/// Vanilla `LootTable.getRandomItems(params, optionalLootTableSeed)`.
+///
+/// The roll uses the random source of [`RollRandom::new`]. A seed other than 0 gives a source of
+/// its own. The seed 0 gives the random sequence of the table, which goes on where the last roll
+/// of the sequence ended. `getRandomItems(params)` is the seed 0.
+#[must_use]
+pub fn roll_loot(
+    handle: &LootTableHandle,
+    optional_seed: i64,
+    params: &LootContextParameters<'_>,
+) -> Vec<ItemStack> {
+    let mut random = RollRandom::new(params, handle, optional_seed);
+    generate_loot_from_handle_with_rng(handle, random.rng(), params)
 }
 
 /// The random source of a container roll.
@@ -726,7 +748,7 @@ pub struct RollRandom {
 }
 
 enum RollSource {
-    Own(Xoroshiro),
+    Own(RandomGenerator),
     Sequence(CheckedOutSequence),
 }
 
@@ -735,7 +757,7 @@ impl RollRandom {
     #[must_use]
     pub const fn seeded(seed: i64) -> Self {
         Self {
-            source: RollSource::Own(Xoroshiro::from_seed(seed as u64)),
+            source: RollSource::Own(random_source(seed)),
         }
     }
 
@@ -766,7 +788,7 @@ impl RollRandom {
     }
 
     /// The random source of the roll.
-    pub const fn rng(&mut self) -> &mut Xoroshiro {
+    pub const fn rng(&mut self) -> &mut RandomGenerator {
         match &mut self.source {
             RollSource::Own(rng) => rng,
             RollSource::Sequence(sequence) => sequence.rng(),
@@ -779,7 +801,7 @@ impl RollRandom {
 pub fn place_items_in_slots(
     slots: &mut [ItemStack],
     items_to_place: Vec<ItemStack>,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) {
     let empty_slots = slots
         .iter()
@@ -821,7 +843,7 @@ pub fn unpack_loot_into_slots<const N: usize>(
 fn place_items_in_chest(
     inventory: &std::sync::Arc<dyn pumpkin_inventory::Inventory>,
     items_to_place: Vec<ItemStack>,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) {
     let empty_slots = (0..inventory.size())
         .filter(|&slot| inventory.get_stack(slot).is_empty())
@@ -835,7 +857,7 @@ fn place_items_in_chest(
 fn place_items(
     mut empty_slots: Vec<usize>,
     mut items_to_place: Vec<ItemStack>,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
     mut set: impl FnMut(usize, ItemStack),
 ) {
     if items_to_place.is_empty() {
@@ -874,7 +896,7 @@ pub fn fill_chest_inventory(
     table: &LootTable,
     seed: i64,
 ) {
-    let mut rng = Xoroshiro::from_seed(seed as u64);
+    let mut rng = random_source(seed);
     let items_to_place = generation::generate_with_rng(
         generation::Table::Static(table),
         &mut rng,
@@ -886,7 +908,7 @@ pub fn fill_chest_inventory(
 fn shuffle_and_split_items(
     result: &mut Vec<ItemStack>,
     available_slots: usize,
-    rng: &mut Xoroshiro,
+    rng: &mut RandomGenerator,
 ) {
     let mut splittable: Vec<ItemStack> = Vec::new();
     let mut i = 0;

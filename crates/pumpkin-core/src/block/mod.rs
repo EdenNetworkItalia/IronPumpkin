@@ -519,8 +519,6 @@ fn roll_block_loot(
     let Some(loot_table) = block.loot_table.and_then(|key| world.get_loot_table(key)) else {
         return Vec::new();
     };
-    // TODO: vanilla rolls from the loot table's `random_sequence`, which is seeded per world.
-    let seed: i64 = rand::random();
     let params = LootContextParameters {
         world: Some(world),
         position: Some(pos.to_centered_f64()),
@@ -533,7 +531,7 @@ fn roll_block_loot(
         ),
         ..params.clone()
     };
-    crate::world::loot::generate_loot_from_handle(&loot_table, seed, &params)
+    crate::world::loot::roll_loot(&loot_table, 0, &params)
 }
 
 /// Gives each stack of the block itself the components of its block entity.

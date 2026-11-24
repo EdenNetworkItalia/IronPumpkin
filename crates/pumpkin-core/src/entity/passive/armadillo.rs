@@ -247,11 +247,7 @@ impl ArmadilloEntity {
                 interacting_entity,
                 tool.clone(),
             );
-            for drop_stack in crate::world::loot::generate_loot_from_handle(
-                &table,
-                self.get_random().random(),
-                &params,
-            ) {
+            for drop_stack in crate::world::loot::roll_loot(&table, 0, &params) {
                 entity.spawn_at_location(drop_stack);
             }
         }
