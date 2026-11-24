@@ -36,7 +36,7 @@ fn item_component_counts(stack: &ItemStack, ids: ContentIds) -> (u8, u8) {
 
 /// The mod component values that a client gets. Only a client that synced the registries knows
 /// the mod component types.
-fn custom_components(stack: &ItemStack, ids: ContentIds) -> &[(u16, NbtTag)] {
+pub(crate) fn custom_components(stack: &ItemStack, ids: ContentIds) -> &[(u16, NbtTag)] {
     match ids {
         ContentIds::Real => &stack.custom_components,
         ContentIds::Display => &[],
@@ -56,7 +56,7 @@ fn custom_component_bytes(value: &NbtTag) -> Result<Vec<u8>, WritingError> {
 
 /// Writes the id and the value of each mod component that a client with `ids` gets, with a
 /// length prefix if `length_prefixed`.
-fn write_custom_components(
+pub(crate) fn write_custom_components(
     stack: &ItemStack,
     ids: ContentIds,
     length_prefixed: bool,
@@ -74,7 +74,7 @@ fn write_custom_components(
 }
 
 /// The mod component type of a network component id, or `None` for a vanilla id.
-fn custom_component_type(id: i32) -> Option<&'static DataComponentTypeEntry> {
+pub(crate) fn custom_component_type(id: i32) -> Option<&'static DataComponentTypeEntry> {
     u16::try_from(id)
         .ok()
         .filter(|&id| id >= DataComponent::COUNT)
@@ -88,7 +88,9 @@ fn decode_custom_component(component_data: &[u8]) -> Result<NbtTag, ReadingError
         .map_err(|err| ReadingError::Message(format!("Failed to decode mod component NBT: {err}")))
 }
 
-fn read_custom_component(read: &mut impl NetworkReadExt) -> Result<NbtTag, ReadingError> {
+pub(crate) fn read_custom_component(
+    read: &mut impl NetworkReadExt,
+) -> Result<NbtTag, ReadingError> {
     read.get_nbt_with_version(&JavaMinecraftVersion::V_26_3)?
         .ok_or_else(|| ReadingError::Message("Missing mod component value".into()))
 }
@@ -226,7 +228,7 @@ fn serialize_item_cost_with_id(
     write_custom_components(stack, version.content_ids(), false, write)
 }
 
-fn component_id(id_val: i32) -> Result<DataComponent, ReadingError> {
+pub(crate) fn component_id(id_val: i32) -> Result<DataComponent, ReadingError> {
     let id_u8 = id_val
         .try_into()
         .map_err(|_| ReadingError::Message(format!("Invalid component ID: {id_val}")))?;
@@ -874,57 +876,49 @@ impl OptionalItemStackHash {
         Ok(())
     }
 
+    /// `HashedStack.matches`: the item, the count and `HashedPatchMap.matches` of the patch.
     #[must_use]
     pub fn hash_equals(&self, other: &ItemStack) -> bool {
-        if let Some(hash) = &self.0 {
-            // A `Real` client hashes the custom id, any other client the display id.
-            let item_known = [ContentIds::Display, ContentIds::Real]
-                .into_iter()
-                .any(|ids| hash.item_id == other.item.to_java_network_id(ids).into());
-            if !item_known || hash.count != other.item_count.into() {
-                return false;
-            }
-            let calc = || {
-                let mut to_add = 0u8;
-                let mut to_remove = 0u8;
-                for (_id, data) in &other.patch {
-                    if data.is_none() {
-                        to_remove += 1;
-                    } else {
-                        to_add += 1;
-                    }
-                }
-                (to_add, to_remove)
-            };
-            let (to_add, to_remove) = calc();
-            if to_add as usize != hash.components.added.len()
-                || to_remove as usize != hash.components.removed.len()
-            {
-                return false;
-            }
-            for (other_id, data) in &other.patch {
-                if let Some(data) = data {
-                    let checksum = data.get_hash();
-                    for (id, hash) in &hash.components.added {
-                        if id == &VarInt::from(other_id.to_id()) {
-                            if hash == &checksum {
-                                break;
-                            }
-                            return false;
-                        }
-                    }
-                } else if !hash
-                    .components
-                    .removed
-                    .contains(&VarInt::from(other_id.to_id()))
-                {
-                    return false;
-                }
-            }
-            true
-        } else {
-            other.is_empty()
+        let Some(hash) = &self.0 else {
+            return other.is_empty();
+        };
+        if hash.count != other.item_count.into() {
+            return false;
         }
+        // A `Real` client hashes the custom id and the mod components, any other client the
+        // display id and no mod components.
+        [ContentIds::Display, ContentIds::Real]
+            .into_iter()
+            .any(|ids| {
+                hash.item_id == other.item.to_java_network_id(ids).into()
+                    && hash.components.matches(other, ids)
+            })
+    }
+}
+
+impl ItemComponentHash {
+    fn matches(&self, stack: &ItemStack, ids: ContentIds) -> bool {
+        let mut removed = Vec::new();
+        let mut added = Vec::new();
+        for (id, data) in &stack.patch {
+            let id = VarInt::from(id.to_id());
+            match data {
+                Some(data) => added.push((id, data.get_hash())),
+                None => removed.push(id),
+            }
+        }
+        for (id, value) in custom_components(stack, ids) {
+            added.push((
+                VarInt(i32::from(*id)),
+                pumpkin_data::data_component_impl::hash_ops::mod_component(value) as i32,
+            ));
+        }
+        removed.len() == self.removed.len()
+            && removed.iter().all(|id| self.removed.contains(id))
+            && added.len() == self.added.len()
+            && added
+                .iter()
+                .all(|entry| self.added.iter().any(|sent| sent == entry))
     }
 }
 
