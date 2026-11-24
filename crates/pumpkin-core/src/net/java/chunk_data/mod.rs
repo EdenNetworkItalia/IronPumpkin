@@ -19,7 +19,9 @@ use pumpkin_util::version::JavaMinecraftVersion;
 use pumpkin_world::chunk::ChunkData;
 use rustc_hash::FxHashSet;
 
-use crate::block::entities::{BlockEntity, block_entity_from_nbt, block_entity_type_id};
+use crate::block::entities::{
+    BlockEntity, UpdateTagSource, block_entity_from_nbt, block_entity_type_id, update_tag_source,
+};
 use crate::world::World;
 
 /// Sent by the server to provide the client with the full data for a chunk.
@@ -75,25 +77,29 @@ impl<'a> CChunkData<'a> {
                 })
             })
             .collect();
-        let pending = chunk
+        let pending: Vec<(BlockPos, u16, Option<NbtCompound>)> = chunk
             .pending_block_entities
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        block_entities.extend(
-            pending
-                .iter()
-                .filter(|(position, _)| !live_positions.contains(position))
-                .filter_map(|(position, nbt)| {
-                    Some(ChunkBlockEntity {
-                        position: *position,
-                        type_id: block_entity_type_id(nbt.get_string("id")?)?,
-                        tag: block_entity_from_nbt(nbt)
-                            .and_then(|entity| entity.update_tag(block_state_at(chunk, *position)))
-                            .unwrap_or_default(),
-                    })
-                }),
-        );
-        drop(pending);
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(position, _)| !live_positions.contains(position))
+            .filter_map(|(position, nbt)| {
+                let id = nbt.get_string("id")?;
+                let saved = (update_tag_source(id) != UpdateTagSource::Empty).then(|| nbt.clone());
+                Some((*position, block_entity_type_id(id)?, saved))
+            })
+            .collect();
+        block_entities.extend(pending.into_iter().map(|(position, type_id, saved)| {
+            let tag = saved
+                .and_then(|nbt| block_entity_from_nbt(&nbt))
+                .and_then(|entity| entity.update_tag(block_state_at(chunk, position)))
+                .unwrap_or_default();
+            ChunkBlockEntity {
+                position,
+                type_id,
+                tag,
+            }
+        }));
         Self {
             chunk,
             block_entities,
@@ -374,6 +380,30 @@ mod tests {
         let sign = entry(&packet, pos);
         assert_eq!(Some(sign.type_id), block_entity_type_id("minecraft:sign"));
         assert!(contains(&tag_bytes(&sign.tag), b"bare id line"));
+    }
+
+    #[test]
+    fn the_update_tag_table_matches_each_block_entity_type() {
+        let pos = BlockPos::new(0, 64, 0);
+        for (id, name) in pumpkin_data::block_properties::BLOCK_ENTITY_TYPES
+            .iter()
+            .enumerate()
+        {
+            let Some(entity) =
+                crate::block::entities::create_block_entity(u16::try_from(id).unwrap(), pos)
+            else {
+                continue;
+            };
+            let tag = entity.update_tag(pumpkin_data::Block::AIR.default_state.id);
+            if update_tag_source(name) == UpdateTagSource::Empty {
+                assert!(
+                    tag.is_none_or(|tag| tag.is_empty()),
+                    "{name} has an update tag"
+                );
+            } else {
+                assert!(tag.is_some(), "{name} has no update tag");
+            }
+        }
     }
 
     #[test]

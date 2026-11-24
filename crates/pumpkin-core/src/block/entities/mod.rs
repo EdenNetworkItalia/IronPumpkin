@@ -531,6 +531,44 @@ pub fn block_entity_type_id(name: &str) -> Option<u16> {
         .and_then(|id| u16::try_from(id).ok())
 }
 
+/// How vanilla `BlockEntity.getUpdateTag` builds the update tag of a block entity type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UpdateTagSource {
+    /// The empty default tag.
+    Empty,
+    /// A tag of its own, without `saveAdditional`.
+    Own,
+    /// `saveCustomOnly` or `saveWithoutMetadata`: the saved data.
+    SavedData,
+}
+
+/// The update tag source of the block entity type `name`, `Empty` for a type outside the
+/// `minecraft` namespace.
+#[must_use]
+pub fn update_tag_source(name: &str) -> UpdateTagSource {
+    match name.strip_prefix("minecraft:").unwrap_or(name) {
+        "banner"
+        | "beacon"
+        | "conduit"
+        | "creaking_heart"
+        | "decorated_pot"
+        | "end_gateway"
+        | "hanging_sign"
+        | "jigsaw"
+        | "mob_spawner"
+        | "piston"
+        | "sign"
+        | "skull"
+        | "structure_block"
+        | "test_block"
+        | "test_instance_block" => UpdateTagSource::SavedData,
+        "brushable_block" | "campfire" | "shelf" | "trial_spawner" | "vault" => {
+            UpdateTagSource::Own
+        }
+        _ => UpdateTagSource::Empty,
+    }
+}
+
 #[must_use]
 pub fn has_block_block_entity(block: &Block) -> bool {
     BLOCK_ENTITY_TYPES.contains(&block.name)
