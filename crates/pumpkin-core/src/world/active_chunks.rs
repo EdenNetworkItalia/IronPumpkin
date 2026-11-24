@@ -147,8 +147,10 @@ impl ActiveChunkTracker {
         }
     }
 
+    /// Vanilla `DistanceManager.getPlayerTicketLevel` is `max(0, 31 - simulation distance)`, so
+    /// entity ticking stops at a radius of 31.
     fn player_square(area: ActivePlayerArea) -> Square {
-        Square::new(area.center, area.simulation_distance)
+        Square::new(area.center, area.simulation_distance.min(31))
     }
 
     pub fn update_player(&mut self, id: Uuid, area: ActivePlayerArea, sets: &mut TickingSets<'_>) {
@@ -316,6 +318,23 @@ mod tests {
 
         tracker.remove_player(second, &mut sets.view());
         assert!(sets.entity.is_empty() && sets.block.is_empty());
+    }
+
+    /// At a simulation distance above 31, vanilla entity ticks a radius of 31 and block ticks a
+    /// radius of 32.
+    #[test]
+    fn a_simulation_distance_above_31_ticks_as_31() {
+        let mut tracker = ActiveChunkTracker::default();
+        let mut sets = Sets::default();
+
+        tracker.update_player(Uuid::from_u128(1), area(0, 0, 40), &mut sets.view());
+
+        assert_eq!(sets.entity.len(), 63 * 63);
+        assert_eq!(sets.block.len(), 65 * 65);
+        assert!(sets.entity.contains(&Vector2::new(31, -31)));
+        assert!(!sets.entity.contains(&Vector2::new(32, 0)));
+        assert!(sets.block.contains(&Vector2::new(-32, 32)));
+        assert!(!sets.block.contains(&Vector2::new(33, 0)));
     }
 
     /// A simulation distance past the offset table keeps the counts in agreement with the sets.
