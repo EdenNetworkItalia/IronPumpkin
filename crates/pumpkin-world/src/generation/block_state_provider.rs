@@ -304,36 +304,33 @@ impl RotatedBlockProvider {
         )
     }
 
-    /// Sets the `axis` and `facing` properties that the state has. Pumpkin keeps the horizontal
-    /// `facing` of vanilla in [`pumpkin_data::Property::Facing`] too, and a horizontal block
-    /// ignores a vertical facing, as vanilla `trySetValue` does.
+    /// Sets the `axis` and `facing` properties of the state, as vanilla `trySetValue` with
+    /// `AXIS`, `FACING` and `HORIZONTAL_FACING` does.
     fn rotate(state: &'static BlockState, direction: BlockDirection) -> &'static BlockState {
         let block = Block::from_id(state.id.to_block_id());
-        let Some(props_source) = block.properties(state.id) else {
-            return state;
-        };
-        // Pumpkin keeps the vanilla `horizontal_axis` of the nether portal, the only block
-        // with that property, in `Property::Axis`. Vanilla sets only `axis`.
-        let has_axis = block.id != Block::NETHER_PORTAL.id;
-        let mut prop_list = props_source.to_props();
-        let mut modified = false;
-        for p in &mut prop_list {
-            match p {
-                pumpkin_data::Property::Axis(a) if has_axis => {
-                    *a = direction.to_axis();
-                    modified = true;
-                }
-                pumpkin_data::Property::Facing(f) => {
-                    *f = direction.to_facing();
-                    modified = true;
-                }
-                _ => {}
-            }
-        }
-        if !modified {
+        if block.properties(state.id).is_none() {
             return state;
         }
-        BlockState::from_id(block.from_properties(&prop_list).to_state_id(block))
+        // Vanilla matches the property object, not its name. Pumpkin keeps every `axis` in
+        // `Property::Axis` and every `facing` in `Property::Facing`, so the values that the
+        // block accepts tell the vanilla property: `HORIZONTAL_AXIS` (nether portal) has no
+        // `y`, `HORIZONTAL_FACING` has no `down`, `FACING_HOPPER` has no `up`.
+        let accepts = |key, value| block.parse_property(key, value).is_ok();
+        let mut overrides = Vec::with_capacity(2);
+        if accepts("axis", "y") {
+            overrides.push(pumpkin_data::Property::Axis(direction.to_axis()));
+        }
+        let facing = accepts("facing", "up")
+            || (direction.is_horizontal()
+                && accepts("facing", "north")
+                && !accepts("facing", "down"));
+        if facing {
+            overrides.push(pumpkin_data::Property::Facing(direction.to_facing()));
+        }
+        if overrides.is_empty() {
+            return state;
+        }
+        BlockState::from_id(block.apply_properties(state.id, &overrides))
     }
 }
 
@@ -472,5 +469,51 @@ impl NoiseThresholdBlockStateProvider {
                 [random.next_bounded_i32(self.high_states.len() as i32) as usize];
         }
         self.default_state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pumpkin_data::{Block, BlockDirection, BlockState, Property};
+
+    use super::RotatedBlockProvider;
+
+    fn property(state: &'static BlockState, key: &str) -> Option<&'static str> {
+        Block::from_state_id(state.id)
+            .properties(state.id)?
+            .to_props()
+            .into_iter()
+            .find(|p| p.key().to_str() == key)
+            .map(Property::value_str)
+    }
+
+    /// Vanilla `trySetValue` sets `AXIS`, `FACING` and `HORIZONTAL_FACING` only, so the
+    /// horizontal axis of the nether portal and the hopper facing keep their value.
+    #[test]
+    fn rotated_sets_the_vanilla_axis_and_facing_properties() {
+        let rotate =
+            |block: &Block, direction| RotatedBlockProvider::rotate(block.default_state, direction);
+        let log = rotate(&Block::OAK_LOG, BlockDirection::North);
+        assert_eq!(property(log, "axis"), Some("z"));
+        let hay = rotate(&Block::HAY_BLOCK, BlockDirection::Up);
+        assert_eq!(property(hay, "axis"), Some("y"));
+
+        let portal = Block::NETHER_PORTAL.default_state;
+        assert_eq!(property(portal, "axis"), Some("x"));
+        for direction in [BlockDirection::Up, BlockDirection::South] {
+            assert_eq!(rotate(&Block::NETHER_PORTAL, direction).id, portal.id);
+        }
+
+        let dispenser = rotate(&Block::DISPENSER, BlockDirection::Up);
+        assert_eq!(property(dispenser, "facing"), Some("up"));
+        let fan = rotate(&Block::TUBE_CORAL_WALL_FAN, BlockDirection::West);
+        assert_eq!(property(fan, "facing"), Some("west"));
+        let fan_default = Block::TUBE_CORAL_WALL_FAN.default_state;
+        assert_eq!(
+            rotate(&Block::TUBE_CORAL_WALL_FAN, BlockDirection::Down).id,
+            fan_default.id
+        );
+        let hopper = Block::HOPPER.default_state;
+        assert_eq!(rotate(&Block::HOPPER, BlockDirection::East).id, hopper.id);
     }
 }
