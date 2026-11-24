@@ -1,8 +1,9 @@
 use std::{
     collections::BTreeMap,
     fs::{self, File},
-    io::BufWriter,
+    io::{BufWriter, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use pumpkin_data::game_rules::{GameRule, GameRuleRegistry, GameRuleValue};
@@ -749,6 +750,9 @@ pub fn read_random_sequences(level_folder: &Path) -> RandomSequencesData {
     data
 }
 
+/// The number of saves of `random_sequences.dat`, for the name of a temporary file.
+static SAVES: AtomicU64 = AtomicU64::new(0);
+
 /// Writes `random_sequences.dat`. The file is complete or unchanged: a crash during the write
 /// leaves the old file.
 pub fn write_random_sequences(
@@ -776,13 +780,27 @@ pub fn write_random_sequences(
     root.put_int("DataVersion", data.data_version);
     root.put_compound("data", inner);
 
-    let path = dir.join("random_sequences.dat");
-    let path_new = dir.join("random_sequences.dat_new");
-    let file = File::create(&path_new)?;
-    pumpkin_nbt::nbt_compress::write_gzip_compound_tag(root, BufWriter::new(file))
+    // The whole file is in memory before any file exists, so a failed write never leaves a
+    // truncated file under the final name. The temporary name is unique, so two saves at once
+    // never share a file.
+    let bytes = pumpkin_nbt::nbt_compress::write_gzip_compound_tag_to_bytes(root)
         .map_err(|e| WorldInfoError::SerializationError(e.to_string()))?;
-    fs::rename(&path_new, &path)?;
-    Ok(())
+    let path = dir.join("random_sequences.dat");
+    let path_new = dir.join(format!(
+        "random_sequences.dat_new.{}.{}",
+        std::process::id(),
+        SAVES.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = (|| {
+        let mut file = File::create(&path_new)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+        fs::rename(&path_new, &path)
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&path_new);
+    }
+    Ok(written?)
 }
 
 pub fn write_scoreboard_stub(level_folder: &Path, data_version: i32) -> Result<(), WorldInfoError> {
@@ -868,11 +886,51 @@ mod random_sequences_tests {
         assert_eq!(inner.get_bool("include_world_seed"), Some(false));
         assert_eq!(inner.get_bool("include_sequence_id"), Some(false));
         assert_eq!(read_random_sequences(dir.path()), data);
+        assert_eq!(files_of(&dir), ["random_sequences.dat"]);
+    }
+
+    fn files_of(dir: &TempDir) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(minecraft_data_dir(dir.path()))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Two saves at once never share a temporary file: each save leaves a whole file, and no
+    /// temporary file stays.
+    #[test]
+    fn saves_at_the_same_time_leave_one_whole_file() {
+        let dir = TempDir::new().unwrap();
+        std::thread::scope(|scope| {
+            for salt in 0..16 {
+                let dir = &dir;
+                scope.spawn(move || {
+                    let mut data = RandomSequencesData {
+                        salt,
+                        ..RandomSequencesData::default()
+                    };
+                    for sequence in 0..200 {
+                        data.sequences.insert(
+                            format!("minecraft:sequence_{sequence}"),
+                            (i64::from(salt), 1),
+                        );
+                    }
+                    for _ in 0..5 {
+                        write_random_sequences(dir.path(), &data).unwrap();
+                    }
+                });
+            }
+        });
+        let data = read_random_sequences(dir.path());
+        assert_eq!(data.sequences.len(), 200);
         assert!(
-            !minecraft_data_dir(dir.path())
-                .join("random_sequences.dat_new")
-                .exists()
+            data.sequences
+                .values()
+                .all(|(lo, _)| *lo == i64::from(data.salt))
         );
+        assert_eq!(files_of(&dir), ["random_sequences.dat"]);
     }
 
     #[test]
