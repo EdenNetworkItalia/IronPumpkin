@@ -99,14 +99,12 @@ impl BowItem {
         let is_creative = gamemode == GameMode::Creative;
 
         // Check for Infinity enchantment
-        let has_infinity = weapon
-            .get_data_component::<pumpkin_data::data_component_impl::EnchantmentsImpl>()
-            .is_some_and(|enchantments| {
-                enchantments
-                    .enchantment
-                    .iter()
-                    .any(|(e, _)| **e == pumpkin_data::Enchantment::INFINITY)
-            });
+        let has_infinity = weapon.get_all_enchantments().is_some_and(|enchantments| {
+            enchantments
+                .enchantment
+                .iter()
+                .any(|(e, _)| **e == pumpkin_data::Enchantment::INFINITY)
+        });
 
         let fired_projectiles = ProjectileWeaponItem::draw(weapon, &projectile, is_creative);
         if fired_projectiles.is_empty() {

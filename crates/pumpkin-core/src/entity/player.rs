@@ -246,7 +246,7 @@ use pumpkin_data::attributes::Attributes;
 use pumpkin_data::block_properties::HorizontalFacing;
 use pumpkin_data::damage::DamageScaling;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{AttributeModifiersImpl, EnchantmentsImpl, Operation};
+use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::{
     EquipmentSlot, EquippableImpl, GliderImpl, ToolImpl, WeaponImpl,
 };
@@ -1643,7 +1643,7 @@ impl Player {
             if stack.is_empty() {
                 // Vanilla fist: base_attack_speed = -2.4
                 add_speed = -2.4;
-            } else if let Some(modifiers) = stack.get_data_component::<AttributeModifiersImpl>() {
+            } else if let Some(modifiers) = stack.get_attribute_modifiers() {
                 // Only attack speed is read from the item here.
                 // Attack damage is already  part of `base_damage` via the held item's live
                 // ATTACK_DAMAGE modifier, re-adding it here would double it.
@@ -1655,7 +1655,7 @@ impl Player {
                     }
                 }
             }
-            if let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>() {
+            if let Some(enchantments) = stack.get_all_enchantments() {
                 for (enchantment, level) in enchantments.enchantment.iter() {
                     enchantment.modify_damage_against(
                         *level,
@@ -1733,7 +1733,7 @@ impl Player {
         if is_mace_smash {
             let fall_distance = f64::from(self.living_entity.fall_distance.load());
             let mut smash_bonus_per_block = 0.0f64;
-            if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+            if let Some(enchantments) = item_stack.get_all_enchantments() {
                 for (enchantment, level) in enchantments.enchantment.iter() {
                     enchantment.modify_fall_based_damage(*level, &mut smash_bonus_per_block);
                 }
@@ -1855,7 +1855,7 @@ impl Player {
                 combat::spawn_sweep_particle(attacker_entity, &world);
 
                 let mut sweep_damage = 1.0;
-                if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+                if let Some(enchantments) = item_stack.get_all_enchantments() {
                     for (enchantment, level) in enchantments.enchantment.iter() {
                         if **enchantment == Enchantment::SWEEPING_EDGE {
                             sweep_damage += damage as f32 * (*level as f32 / (*level as f32 + 1.0));
@@ -7414,6 +7414,13 @@ impl Player {
                 .cancel();
         };
 
+        // The stacks that `ItemStackedOnOtherEvent` gets, copied only when a handler listens.
+        let stacked_inputs = (packet.mode == SlotActionType::Pickup
+            && server
+                .plugin_manager
+                .has_handlers::<crate::plugin::inventory::ItemStackedOnOtherEvent>())
+        .then(|| (clicked_item.clone(), cursor_item.clone()));
+
         send_cancellable_blocking! {{
             server;
             InventoryClickEvent::new(
@@ -7555,6 +7562,21 @@ impl Player {
             }
         }
 
+        // Vanilla `tryItemClickBehaviourOverride`: a pickup click fires the event before the
+        // item overrides, here before the click takes the lock of the screen handler.
+        let stacked_on_other = stacked_inputs.and_then(|(clicked, cursor)| {
+            let (index, clicked, cursor) = (usize::try_from(slot).ok()?, clicked?, cursor?);
+            let action = if packet.button == SClickSlot::BUTTON_LEFT {
+                crate::plugin::inventory::ClickAction::Primary
+            } else {
+                crate::plugin::inventory::ClickAction::Secondary
+            };
+            let change = crate::plugin::item_events::stacked_on_other(
+                self, index, action, &cursor, &clicked,
+            );
+            Some((change, index, cursor, clicked))
+        });
+
         let screen_handler_arc = self
             .current_screen_handler
             .lock()
@@ -7571,12 +7593,25 @@ impl Player {
                 .load(Ordering::Relaxed) as i32);
 
         screen_handler.disable_sync();
-        screen_handler.on_slot_click(
-            i32::from(slot),
-            i32::from(packet.button),
-            packet.mode.clone(),
-            self.as_ref(),
-        );
+        let mut run_click = true;
+        if let Some((change, index, cursor, clicked)) = &stacked_on_other {
+            change.apply(&*screen_handler, *index, cursor, clicked);
+            match change.outcome {
+                crate::plugin::item_events::StackedOnOther::Continue => {}
+                crate::plugin::item_events::StackedOnOther::SkipOverrides => {
+                    screen_handler.get_behaviour_mut().skip_item_click_overrides = true;
+                }
+                crate::plugin::item_events::StackedOnOther::Handled => run_click = false,
+            }
+        }
+        if run_click {
+            screen_handler.on_slot_click(
+                i32::from(slot),
+                i32::from(packet.button),
+                packet.mode.clone(),
+                self.as_ref(),
+            );
+        }
 
         for (key, value) in packet.array_of_changed_slots {
             screen_handler.set_received_hash(key as usize, value);
@@ -9651,7 +9686,8 @@ impl InventoryPlayer for Player {
         );
     }
 
-    fn on_brewed_potion(&self) {
+    fn on_brewed_potion(&self, stack: &pumpkin_data::item_stack::ItemStack) {
+        crate::plugin::player_events::brewed_potion(self, stack);
         self.trigger_advancement(
             crate::entity::player::advancement::trigger::AdvancementTrigger::BrewedPotion,
         );

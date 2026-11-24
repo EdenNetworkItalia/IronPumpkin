@@ -69,7 +69,11 @@ fn attacker_enchantment_level(params: &LootContextParameters<'_>, name: &str) ->
         .as_ref()
         .filter(|weapon| !weapon.is_empty())
         .map_or(0, |weapon| weapon.get_enchantment_level(enchantment));
-    entity_level.max(weapon_level)
+    crate::plugin::item_events::entity_loot_enchantment_level(
+        params,
+        enchantment,
+        entity_level.max(weapon_level),
+    )
 }
 
 fn tool_enchantment_level(params: &LootContextParameters<'_>, name: &str) -> i32 {
@@ -79,7 +83,14 @@ fn tool_enchantment_level(params: &LootContextParameters<'_>, name: &str) -> i32
                 .tool
                 .as_ref()
                 .filter(|tool| !tool.is_empty())
-                .map(|tool| tool.get_enchantment_level(enchantment))
+                .map(|tool| {
+                    crate::plugin::item_events::block_loot_enchantment_level(
+                        params,
+                        tool,
+                        enchantment,
+                        tool.get_enchantment_level(enchantment),
+                    )
+                })
         })
         .unwrap_or(0)
 }

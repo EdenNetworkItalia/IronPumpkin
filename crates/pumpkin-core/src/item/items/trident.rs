@@ -8,7 +8,7 @@ use crate::entity::projectile::arrow::ArrowPickup;
 use crate::entity::projectile::trident::TridentEntity;
 use crate::entity::{Entity, EntityBase};
 use crate::item::{ItemBehaviour, ItemMetadata};
-use pumpkin_data::data_component_impl::{EnchantmentsImpl, EquipmentSlot};
+use pumpkin_data::data_component_impl::EquipmentSlot;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::{DamageResult, ItemStack};
@@ -36,7 +36,7 @@ impl TridentItem {
     /// Mirrors `EnchantmentHelper.pickHighestLevel(itemStack, EnchantmentEffectComponents.TRIDENT_SOUND)`.
     fn trident_sound(stack: &ItemStack) -> Sound {
         let riptide_level = stack
-            .get_data_component::<EnchantmentsImpl>()
+            .get_all_enchantments()
             .and_then(|enchantments| {
                 enchantments
                     .enchantment

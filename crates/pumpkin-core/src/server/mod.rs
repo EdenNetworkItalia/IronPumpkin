@@ -450,6 +450,7 @@ impl Server {
             });
         }
 
+        crate::plugin::item_events::track(&server);
         crate::plugin::startup::run(&server);
 
         // Mods registered their content in the startup hook. The registry freezes before the

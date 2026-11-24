@@ -264,7 +264,7 @@ impl Slot for BrewingPotionSlot {
 
     fn on_take_item(&self, player: &dyn InventoryPlayer, stack: &ItemStack) {
         if is_potion_item(stack.item) && stack.item.id != Item::GLASS_BOTTLE.id {
-            player.on_brewed_potion();
+            player.on_brewed_potion(stack);
         }
     }
 }

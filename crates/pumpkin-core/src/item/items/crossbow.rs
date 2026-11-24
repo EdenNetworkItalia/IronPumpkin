@@ -6,7 +6,7 @@ use crate::entity::player::Player;
 use crate::item::items::projectile_weapon::ProjectileWeaponItem;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use pumpkin_data::data_component::DataComponent;
-use pumpkin_data::data_component_impl::{ChargedProjectilesImpl, EnchantmentsImpl, EquipmentSlot};
+use pumpkin_data::data_component_impl::{ChargedProjectilesImpl, EquipmentSlot};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::sound::{Sound, SoundCategory};
@@ -171,7 +171,7 @@ impl CrossbowItem {
 
     fn quick_charge_level(stack: &ItemStack) -> i32 {
         stack
-            .get_data_component::<EnchantmentsImpl>()
+            .get_all_enchantments()
             .and_then(|enchantments| {
                 enchantments
                     .enchantment

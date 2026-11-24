@@ -42,8 +42,8 @@ use pumpkin_data::block_properties::{LadderLikeProperties, OakTrapdoorLikeProper
 use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::food::{ConsumableImpl, ConsumeAnimation, ConsumeEffect};
 use pumpkin_data::data_component_impl::{
-    AttributeModifiersImpl, BlocksAttacksImpl, DeathProtectionImpl, EnchantmentsImpl,
-    EquipmentSlot, EquippableImpl, FoodImpl, GliderImpl, UseRemainderImpl,
+    BlocksAttacksImpl, DeathProtectionImpl, EquipmentSlot, EquippableImpl, FoodImpl, GliderImpl,
+    UseRemainderImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityPose, EntityStatus, EntityType};
@@ -756,12 +756,13 @@ impl LivingEntity {
     /// the client never sees the reduced attack speed and does not show the
     /// crosshair attack indicator.
     fn update_weapon_attributes(&self, stack: &ItemStack) {
-        let component = stack.get_data_component::<AttributeModifiersImpl>();
+        let component = stack.get_attribute_modifiers();
 
         // Single pass over the item's modifiers, split by attribute.
         let mut speed_modifiers: Vec<Modifier> = Vec::new();
         let mut damage_modifiers: Vec<Modifier> = Vec::new();
         for modifier in component
+            .as_deref()
             .into_iter()
             .flat_map(|c| c.attribute_modifiers.iter())
         {
@@ -877,8 +878,9 @@ impl LivingEntity {
         }
 
         let mut applied = Vec::new();
-        let item_modifiers = stack
-            .get_data_component::<AttributeModifiersImpl>()
+        let item_component = stack.get_attribute_modifiers();
+        let item_modifiers = item_component
+            .as_deref()
             .into_iter()
             .flat_map(|modifiers| modifiers.attribute_modifiers.iter());
         for item_mod in item_modifiers {
@@ -4148,7 +4150,7 @@ impl LivingEntity {
             ] {
                 if let Some(stack) = equipment_lock.equipment.get(&slot)
                     && !stack.is_empty()
-                    && let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>()
+                    && let Some(enchantments) = stack.get_all_enchantments()
                 {
                     for (enchantment, level) in enchantments.enchantment.iter() {
                         enchantment.modify_damage_protection_against(*level, damage_type, &mut epf);
@@ -5627,24 +5629,21 @@ pub(crate) const fn bypasses_armor_durability(damage_type: &DamageType) -> bool 
 }
 
 pub(crate) fn prevents_armor_change(stack: &ItemStack) -> bool {
-    stack
-        .get_data_component::<EnchantmentsImpl>()
-        .is_some_and(|enchantments| {
-            enchantments
-                .enchantment
-                .iter()
-                .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_armor_change)
-        })
+    stack.get_all_enchantments().is_some_and(|enchantments| {
+        enchantments
+            .enchantment
+            .iter()
+            .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_armor_change)
+    })
 }
 
 pub(crate) fn prevents_equipment_drop(stack: &ItemStack) -> bool {
-    stack
-        .get_data_component::<EnchantmentsImpl>()
-        .is_some_and(|enchantments| {
-            enchantments.enchantment.iter().any(|(enchantment, level)| {
-                *level > 0 && enchantment.effects.prevent_equipment_drop
-            })
-        })
+    stack.get_all_enchantments().is_some_and(|enchantments| {
+        enchantments
+            .enchantment
+            .iter()
+            .any(|(enchantment, level)| *level > 0 && enchantment.effects.prevent_equipment_drop)
+    })
 }
 
 #[cfg(test)]

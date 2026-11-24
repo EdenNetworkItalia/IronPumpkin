@@ -30,6 +30,7 @@ pub mod dispatch;
 pub(crate) mod entity_events;
 pub mod guarded_call;
 pub(crate) mod interact_events;
+pub(crate) mod item_events;
 pub(crate) mod level_events;
 pub(crate) mod living_events;
 pub mod loader;
