@@ -12,7 +12,7 @@
 //! fires the event on every server of the process that has a handler of it.
 
 use std::borrow::Cow;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::sync::{Arc, PoisonError, Weak};
 
 use arc_swap::ArcSwapOption;
@@ -49,6 +49,12 @@ thread_local! {
     static IN_HANDLER: Cell<bool> = const { Cell::new(false) };
 }
 
+thread_local! {
+    /// The answer of `ArmorSlot.mayPickup` for the stack of an armor slot click, read before the
+    /// click takes the lock of the screen handler.
+    static ARMOR_ANSWER: RefCell<Option<(ItemStack, bool)>> = const { RefCell::new(None) };
+}
+
 struct HandlerScope;
 
 impl HandlerScope {
@@ -63,7 +69,46 @@ impl Drop for HandlerScope {
     }
 }
 
-/// Whether the event named `event_name` fires from the reads of an item stack.
+/// Keeps the pre-read answer of [`preread_armor_change`] until it drops.
+pub struct ArmorAnswer;
+
+impl Drop for ArmorAnswer {
+    fn drop(&mut self) {
+        ARMOR_ANSWER.with_borrow_mut(|answer| *answer = None);
+    }
+}
+
+/// Reads `has_prevent_armor_change` of `stack` while no lock is held, and keeps the answer for
+/// [`armor_change_answer`] on this thread. `ArmorSlot.mayPickup` asks it inside the click, under
+/// the lock of the screen handler, and the read fires `GetEnchantmentLevelEvent`. Returns `None`
+/// when no handler listens: the read then costs nothing.
+#[must_use]
+pub fn preread_armor_change(stack: &ItemStack) -> Option<ArmorAnswer> {
+    if stack.is_empty() || !any_listening::<GetEnchantmentLevelEvent>() {
+        return None;
+    }
+    let answer = stack.has_prevent_armor_change();
+    ARMOR_ANSWER.with_borrow_mut(|kept| *kept = Some((stack.clone(), answer)));
+    Some(ArmorAnswer)
+}
+
+/// The pre-read answer for `stack`, when [`preread_armor_change`] kept one for it.
+#[must_use]
+pub fn armor_change_answer(stack: &ItemStack) -> Option<bool> {
+    ARMOR_ANSWER.with_borrow(|kept| {
+        kept.as_ref()
+            .filter(|(read, _)| read.are_equal(stack))
+            .map(|(_, answer)| *answer)
+    })
+}
+
+/// Whether a handler of `ItemAttributeModifierEvent` listens now.
+#[must_use]
+pub fn listens_to_attribute_modifiers() -> bool {
+    any_listening::<ItemAttributeModifierEvent>()
+}
+
+struct HandlerScope;
 #[must_use]
 pub fn is_hooked_event(event_name: &str) -> bool {
     event_name == GetEnchantmentLevelEvent::get_name_static()

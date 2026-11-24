@@ -157,7 +157,7 @@ impl Drop for Deferral {
 }
 
 /// Runs `fire` after the active deferral of this thread, or now when there is none.
-fn defer(fire: impl FnOnce() + 'static) {
+pub(crate) fn defer(fire: impl FnOnce() + 'static) {
     let now = PENDING.with_borrow_mut(|pending| match pending {
         Some(pending) => {
             pending.events.push(Box::new(fire));

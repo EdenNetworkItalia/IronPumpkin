@@ -223,6 +223,13 @@ pub trait InventoryPlayer: Send + Sync {
         false
     }
 
+    /// Whether `stack` has the effect that keeps a player from changing armor (vanilla
+    /// `ArmorSlot.mayPickup`). The check fires `GetEnchantmentLevelEvent`, so a server that holds
+    /// no lock at the click answers it ahead.
+    fn prevents_armor_change(&self, stack: &ItemStack) -> bool {
+        stack.has_prevent_armor_change()
+    }
+
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}
 

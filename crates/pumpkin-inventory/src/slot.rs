@@ -368,6 +368,8 @@ impl Slot for ArmorSlot {
     /// Vanilla `ArmorSlot.mayPickup`: blocks non-creative removal when `prevent_armor_change` is present.
     fn can_take_items(&self, player: &dyn InventoryPlayer) -> bool {
         let stack = self.get_stack();
-        !(!stack.is_empty() && !player.has_infinite_materials() && stack.has_prevent_armor_change())
+        !(!stack.is_empty()
+            && !player.has_infinite_materials()
+            && player.prevents_armor_change(&stack))
     }
 }

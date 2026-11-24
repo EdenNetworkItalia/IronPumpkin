@@ -893,3 +893,69 @@ fn the_equipment_drops_read_the_enchantments_with_the_drop_chances_free() {
     assert!(!seen.is_empty(), "the event did not fire");
     assert!(seen.iter().all(|entry| entry == "chances free"), "{seen:?}");
 }
+
+/// The state of the screen handler lock of `player`, as a handler of an event sees it.
+fn screen_state(player: &Player) -> &'static str {
+    let screen = player.current_screen_handler.lock().unwrap().clone();
+    if screen.try_lock().is_err() {
+        "screen held"
+    } else {
+        "screen free"
+    }
+}
+
+/// The armor slot of the feet in the player inventory screen.
+const FEET: usize = 8;
+
+/// A click that equips armor fires `ItemAttributeModifierEvent` for the equipment change after
+/// the click released the lock of the screen handler: a handler can read the menu.
+#[test]
+fn an_armor_click_fires_the_attribute_event_with_the_screen_lock_free() {
+    let _serial = support::serial();
+    let player = support::player("ArmorClickPlayer");
+    let seen = log();
+    let (record, probe) = (seen.clone(), player.clone());
+    on::<ItemAttributeModifierEvent, _>(move |event| {
+        if event.item_stack.item.id == Item::GOLDEN_BOOTS.id {
+            push(&record, screen_state(&probe));
+        }
+    });
+    {
+        let screen = player.current_screen_handler.lock().unwrap().clone();
+        let screen = screen.lock().unwrap();
+        *screen.get_behaviour().cursor_stack.lock().unwrap() =
+            ItemStack::new(1, &Item::GOLDEN_BOOTS);
+    }
+
+    click(&player, FEET as i16);
+
+    let seen = entries(&seen);
+    assert!(!seen.is_empty(), "the event did not fire");
+    assert!(seen.iter().all(|state| state == "screen free"), "{seen:?}");
+}
+
+/// `ArmorSlot.mayPickup` asks for the enchantments of the armor that a click takes: the answer
+/// is read before the click takes the lock of the screen handler.
+#[test]
+fn an_armor_pickup_fires_the_enchantment_event_with_the_screen_lock_free() {
+    let _serial = support::serial();
+    let player = support::player("ArmorPickupPlayer");
+    let seen = log();
+    let (record, probe) = (seen.clone(), player.clone());
+    on::<GetEnchantmentLevelEvent, _>(move |event| {
+        if event.stack.item.id == Item::IRON_BOOTS.id {
+            push(&record, screen_state(&probe));
+        }
+    });
+    {
+        let screen = player.current_screen_handler.lock().unwrap().clone();
+        let screen = screen.lock().unwrap();
+        screen.get_behaviour().slots[FEET].set_stack(ItemStack::new(1, &Item::IRON_BOOTS));
+    }
+
+    click(&player, FEET as i16);
+
+    let seen = entries(&seen);
+    assert!(!seen.is_empty(), "the event did not fire");
+    assert!(seen.iter().all(|state| state == "screen free"), "{seen:?}");
+}

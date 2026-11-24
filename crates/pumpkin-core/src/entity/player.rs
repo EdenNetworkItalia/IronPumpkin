@@ -7312,6 +7312,15 @@ impl Player {
 
         let slot = packet.slot;
         let raw_slot = slot; // For now raw_slot == slot, as we don't have separate view/inventory indexing yet
+        // `ArmorSlot.mayPickup` reads the enchantments inside the click, under the screen lock:
+        // answer it first, with no lock held.
+        let _armor_answer = (window_type.is_none() && (5..9).contains(&packet.slot))
+            .then(|| {
+                clicked_item
+                    .as_ref()
+                    .and_then(crate::plugin::item_events::preread_armor_change)
+            })
+            .flatten();
         let hotbar_button = if matches!(packet.mode, SlotActionType::Swap) {
             packet.button
         } else {
@@ -9573,9 +9582,24 @@ impl InventoryPlayer for Player {
         );
     }
 
+    fn prevents_armor_change(&self, stack: &ItemStack) -> bool {
+        crate::plugin::item_events::armor_change_answer(stack)
+            .unwrap_or_else(|| stack.has_prevent_armor_change())
+    }
+
     fn enqueue_equipment_change(&self, slot: &EquipmentSlot, stack: &ItemStack) {
-        self.living_entity
-            .send_equipment_changes(&[(slot.clone(), stack.clone())]);
+        let changes = [(slot.clone(), stack.clone())];
+        // The change reads the attribute modifiers of the stack, which fires
+        // `ItemAttributeModifierEvent`. A click calls this under the lock of its screen handler,
+        // so it waits for the end of the click when a handler listens.
+        match self.world().get_player_by_uuid(self.gameprofile.id) {
+            Some(player) if crate::plugin::item_events::listens_to_attribute_modifiers() => {
+                crate::plugin::player_events::defer(move || {
+                    player.living_entity.send_equipment_changes(&changes);
+                });
+            }
+            _ => self.living_entity.send_equipment_changes(&changes),
+        }
 
         if let Some(equippable) = stack.get_data_component::<EquippableImpl>() {
             self.world().play_sound_event(
