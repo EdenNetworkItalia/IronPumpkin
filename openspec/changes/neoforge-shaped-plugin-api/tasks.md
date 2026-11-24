@@ -67,21 +67,21 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [x] 2.32 (#175) Inventory rows that M3, the content registry and wave 8 already cover, the `DeferredRegister` getters, and the abstract event rule; verify: each listed row has a test, an `M5 engine extension:` reason or a `not supported` reason, `mapping_status.py --check`, `openspec validate --all`
 - [x] 2.33 (#176) Config, mod list, event bus and `neoforge.mods.toml` members (follows 2.2 and 2.8); verify: one unit test per member, `ModConfigEvent.Unloading` at shutdown
 - [x] 2.34 (#177) Payload send helpers for player groups and `enqueueWork` (follows 2.11); verify: one test per helper with a player inside and a player outside the set
-- [ ] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
+- [x] 2.35 (#178) Server, data pack and command events with their fire sites (follows 2.3); verify: one test per event, a v0.2 round trip per game-bus event, the performance guardrail
 - [ ] 2.36 (#179) Sound and vanilla game events through one `World` entry point, and the sound ranges of the wave 4 review; verify: one test per event, the list of direct sound sends that stay, a v0.2 round trip per event
 - [ ] 2.37 (#180) Item, enchantment and brewing events with their fire sites; verify: one test per event, no extra cost on the enchantment lookup without a handler
 - [ ] 2.38 (#181) Living and player events that need a vanilla code path (equipment diff, wake checks, the experience orb follow, clone, advancement progress, negotiation); verify: one test per event and per ported vanilla path
 - [ ] 2.39 (#182) Farmland trample, entity section, entity constructing and spawn position events; verify: one test per event, the fixed-seed spawn equal to master, the world generation benches
-- [ ] 2.40 (#183) The NeoForge tag ids missing from the conventional tags; verify: a codegen rerun changes nothing, a unit test per registry
+- [x] 2.40 (#183) The NeoForge tag ids missing from the conventional tags; verify: a codegen rerun changes nothing, a unit test per registry
 - [x] 2.41 (#184) Extension interfaces as one inventory row per hook, with the demand of the modpack scan; verify: the script reruns with no diff, `mapping_status.py --check`
 - [ ] 2.42 (#185) Damage container, permission nodes, transfer handlers and the other remaining packages; verify: a test per handler and per reduction kind
 - [ ] 2.43 (#186) Block and item event gaps of the wave 4 review; verify: a test per fix
 - [ ] 2.44 (#187) Damage, cause, explosion and tick gaps of the wave 4 review; verify: a test per fix
 - [ ] 2.45 (#188) Registration and registry gaps of the wave 4 review; verify: a test per fix
 - [ ] 2.46 (#151) Component hashes and nested item stack templates like vanilla; verify: hashes against the decompiled `HashOps`, template bytes from the decompiled codecs
-- [ ] 2.47 (#162) The hopper and the dropper ask the mod block capability before the entity containers; verify: the minecart test, the `hopper_tick` bench
-- [ ] 2.48 (#189) World generation adds the vanilla placement modifiers `cuboid`, `random_chance` and `randomly_selected`, and the codegen fails on an unknown modifier; verify: a test per modifier, a fixed-seed chunk test, a codegen rerun changes nothing, the world generation benches
-- [ ] 2.49 (#190) Forced chunks save and load in the vanilla format, and the fluid spread event carries the source, the destination and the fluid block; verify: a save and reload test, a test for water and lava
+- [x] 2.47 (#162) The hopper and the dropper ask the mod block capability before the entity containers; verify: the minecart test, the `hopper_tick` bench
+- [x] 2.48 (#189) World generation adds the vanilla placement modifiers `cuboid`, `random_chance` and `randomly_selected`, and the codegen fails on an unknown modifier; verify: a test per modifier, a fixed-seed chunk test, a codegen rerun changes nothing, the world generation benches
+- [x] 2.49 (#190) Forced chunks save and load in the vanilla format, and the fluid spread event carries the source, the destination and the fluid block; verify: a save and reload test, a test for water and lava
 - [ ] 2.50 (#191) The vanilla recipe sync is sent, data pack cooking recipes cook, and `"#tag"` ingredient strings parse as tags; verify: the packet bytes against the decompiled codec, a headless client test, a test per cooking block
 - [ ] 2.51 (#192) The chunk packet carries the vanilla update tag of each block entity, pending or live, and no saved NBT; the type id matches the full name; verify: the reproducer test, a test per block entity kind, an upstream PR draft
 - [ ] 2.53 (#196) World generation places the vanilla `template` and `sequence` features (desert wells, sculk patches, sulfur pools and springs), and the codegen fails on a feature reference it cannot read; verify: a fixed-seed test per type against the vanilla classes, a desert well chunk test, the feature benches
