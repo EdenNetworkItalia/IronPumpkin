@@ -6795,8 +6795,53 @@ impl World {
         );
     }
 
+    /// Sends a level event that every player can hear, as `ServerLevel.globalLevelEvent`.
+    ///
+    /// With the game rule `global_sound_events` on, each player of the server gets a packet of
+    /// its own with the global flag. A player of this world within 32 blocks of the block
+    /// center gets the block center. A player farther away gets a position 32 blocks from the
+    /// player toward the event. A player of another world gets its own position. With the rule
+    /// off, this is a local level event: the players of this world closer than 64 blocks get
+    /// it, with no global flag.
     pub fn sync_global_world_event(&self, world_event: WorldEvent, position: BlockPos, data: i32) {
-        self.broadcast_packet_all(&CWorldEvent::new(world_event as i32, position, data, true));
+        let event = world_event as i32;
+        if !matches!(
+            self.get_game_rule(&GameRule::GlobalSoundEvents),
+            GameRuleValue::Bool(true)
+        ) {
+            let corner = position.to_f64();
+            let players = self.players.load();
+            let recipients = players.iter().filter(|player| {
+                player
+                    .living_entity
+                    .entity
+                    .pos
+                    .load()
+                    .squared_distance_to_vec(&corner)
+                    < 64.0 * 64.0
+            });
+            Self::broadcast_java_players(
+                &CWorldEvent::new(event, position, data, false),
+                recipients,
+            );
+            return;
+        }
+        let players = self.server.upgrade().map_or_else(
+            || self.players.load().to_vec(),
+            |server| server.get_all_players(),
+        );
+        let center = position.to_centered_f64();
+        for player in players {
+            let at = player.living_entity.entity.pos.load();
+            let sound_position =
+                sound::global_event_position(center, at, player.world().uuid == self.uuid);
+            player.try_send_client_packet(&CWorldEvent::new(
+                event,
+                BlockPos::floored_v(sound_position),
+                data,
+                true,
+            ));
+        }
     }
 
     pub fn set_block_destroy_stage(&self, entity_id: i32, location: BlockPos, stage: i8) {

@@ -709,3 +709,146 @@ fn a_handler_can_play_a_sound_and_emit_a_game_event_from_inside_an_item_use() {
         )
     );
 }
+
+/// A level event as a client reads it: the event, the block position, the data and the global flag.
+type LevelEventPacket = (i32, (i32, i32, i32), i32, bool);
+
+/// Reads the level events of `peer` up to the marker sound.
+fn level_events_until(peer: &mut Peer, marker: Sound) -> Vec<LevelEventPacket> {
+    use pumpkin_protocol::java::client::play::CWorldEvent;
+    support::RUNTIME.block_on(async {
+        let mut events = Vec::new();
+        loop {
+            let packet = tokio::time::timeout(Duration::from_secs(10), peer.get_raw_packet())
+                .await
+                .unwrap()
+                .unwrap();
+            let mut body = &packet.payload[..];
+            if packet.id == CWorldEvent::to_id(CURRENT_MC_VERSION) {
+                let event = body.get_i32_be().unwrap();
+                let position =
+                    pumpkin_util::math::position::BlockPos::from_i64(body.get_i64_be().unwrap());
+                let data = body.get_i32_be().unwrap();
+                events.push((
+                    event,
+                    (position.0.x, position.0.y, position.0.z),
+                    data,
+                    body.get_bool().unwrap(),
+                ));
+            } else if packet.id == CSoundEffect::to_id(CURRENT_MC_VERSION)
+                && read_sound(&mut body) == marker.to_name_string()
+            {
+                return events;
+            }
+        }
+    })
+}
+
+/// With `global_sound_events` on, each player gets its own packet: the block center within 32
+/// blocks, else a point 32 blocks from the player toward the event.
+#[test]
+fn a_global_level_event_gives_each_player_a_position_within_32_blocks() {
+    use pumpkin_data::world::WorldEvent;
+    use pumpkin_util::math::position::BlockPos;
+
+    let _serial = support::serial();
+    let x = 23_000.0;
+    let (_near, mut near_peer) = listener("GlobalNear", x);
+    let (_far, mut far_peer) = listener("GlobalFar", x + 1000.0);
+    let world = support::world();
+
+    world.sync_global_world_event(
+        WorldEvent::SoundDragonDeath,
+        BlockPos::new(x as i32 + 10, 100, 0),
+        0,
+    );
+    marker(&Vector3::new(x, 100.0, 0.5));
+    marker(&Vector3::new(x + 1000.0, 100.0, 0.5));
+
+    let near = level_events_until(&mut near_peer, Sound::BlockAnvilLand);
+    let far = level_events_until(&mut far_peer, Sound::BlockAnvilLand);
+    assert_eq!(near, [(1028, (x as i32 + 10, 100, 0), 0, true)]);
+    // 32 blocks from the player at x + 1000, toward the event 990 blocks to the west.
+    assert_eq!(far, [(1028, (x as i32 + 1000 - 32, 100, 0), 0, true)]);
+}
+
+/// With the rule off the event is local: the players closer than 64 blocks get it, without the
+/// global flag.
+#[test]
+fn a_global_level_event_is_local_when_global_sound_events_is_off() {
+    use pumpkin_data::{
+        game_rules::{GameRule, GameRuleValue},
+        world::WorldEvent,
+    };
+    use pumpkin_util::math::position::BlockPos;
+
+    let _serial = support::serial();
+    let x = 25_000.0;
+    let (_near, mut near_peer) = listener("LocalNear", x + 50.0);
+    let (_far, mut far_peer) = listener("LocalFar", x + 70.0);
+    let world = support::world();
+    world.set_game_rule(&GameRule::GlobalSoundEvents, GameRuleValue::Bool(false));
+
+    world.sync_global_world_event(
+        WorldEvent::SoundDragonDeath,
+        BlockPos::new(x as i32, 100, 0),
+        7,
+    );
+    marker(&Vector3::new(x + 50.0, 100.0, 0.5));
+    marker(&Vector3::new(x + 70.0, 100.0, 0.5));
+
+    let near = level_events_until(&mut near_peer, Sound::BlockAnvilLand);
+    let far = level_events_until(&mut far_peer, Sound::BlockAnvilLand);
+    assert_eq!(near, [(1028, (x as i32, 100, 0), 7, false)]);
+    assert!(far.is_empty());
+}
+
+/// A player of another world gets its own position.
+#[test]
+fn a_global_level_event_position_follows_vanilla() {
+    use pumpkin_core::world::sound::global_event_position;
+
+    let center = Vector3::new(10.5, 64.5, 0.5);
+    let near = Vector3::new(0.0, 64.0, 0.5);
+    let far = Vector3::new(-100.0, 64.5, 0.5);
+
+    assert_eq!(global_event_position(center, near, true), center);
+    assert_eq!(
+        global_event_position(center, far, true),
+        Vector3::new(-68.0, 64.5, 0.5)
+    );
+    assert_eq!(global_event_position(center, far, false), far);
+}
+
+/// The raid horn goes to the players within 64 blocks horizontally and to the players in the
+/// raid, whatever their distance, 13 blocks from the player toward the raid.
+#[test]
+fn the_raid_horn_reaches_the_players_in_range_and_in_the_raid() {
+    use pumpkin_core::world::raid::Raid;
+    use pumpkin_util::{difficulty::Difficulty, math::position::BlockPos};
+
+    let _serial = support::serial();
+    let x = 26_000.0;
+    let (_near, mut near_peer) = listener("RaidNear", x + 30.0);
+    let (_far, mut far_peer) = listener("RaidFar", x + 100.0);
+    let (member, mut member_peer) = listener("RaidMember", x - 100.0);
+    let mut raid = Raid::new(1, BlockPos::new(x as i32, 100, 0), Difficulty::Normal);
+    raid.players_in_raid.insert(member.gameprofile.id);
+
+    raid.play_sound(&support::world(), BlockPos::new(x as i32, 100, 0));
+    marker(&Vector3::new(x + 30.0, 100.0, 0.5));
+    marker(&Vector3::new(x + 100.0, 100.0, 0.5));
+    marker(&Vector3::new(x - 100.0, 100.0, 0.5));
+
+    let horn = |peer: &mut Peer| -> Vec<(i32, f32)> {
+        heard_until(peer, Sound::BlockAnvilLand)
+            .into_iter()
+            .filter(|heard| heard.sound == "event.raid.horn")
+            .map(|heard| (heard.at, heard.volume))
+            .collect()
+    };
+    // The packet position is 13 blocks from the player toward the raid center at x + 0.5.
+    assert_eq!(horn(&mut near_peer), [(x as i32 + 17, 64.0)]);
+    assert!(horn(&mut far_peer).is_empty());
+    assert_eq!(horn(&mut member_peer), [(x as i32 - 87, 64.0)]);
+}
