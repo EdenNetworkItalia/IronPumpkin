@@ -45,7 +45,10 @@ use pumpkin_core::plugin::{
         TagsUpdatedEventServerDataLoad,
     },
     startup::create_context,
-    world::{LevelTickEventPost, LevelTickEventPre},
+    world::{
+        LevelTickEventPost, LevelTickEventPre, PlayLevelSoundEventAtEntity,
+        PlayLevelSoundEventAtPosition,
+    },
 };
 
 use pumpkin_core::plugin::level::{
@@ -67,6 +70,7 @@ use pumpkin_wasm_host_v0_2::{
         neoforge_living::register_neoforge_living_event,
         neoforge_player::register_neoforge_player_event,
         neoforge_server::register_neoforge_server_event,
+        neoforge_sound::register_neoforge_sound_event,
     },
     pumpkin::plugin::event::EventType,
 };
@@ -480,5 +484,25 @@ fn each_server_event_type_registers_its_own_event() {
         "v0.2-server-routing-plugin",
         &cases,
         register_neoforge_server_event,
+    );
+}
+
+/// The sound events route through `register_neoforge_sound_event` the same way.
+#[test]
+fn each_sound_event_type_registers_its_own_event() {
+    let cases: [(EventType, Listens); 2] = [
+        (
+            EventType::PlayLevelSoundEventAtPosition,
+            listens::<PlayLevelSoundEventAtPosition>,
+        ),
+        (
+            EventType::PlayLevelSoundEventAtEntity,
+            listens::<PlayLevelSoundEventAtEntity>,
+        ),
+    ];
+    assert_each_registers_its_own_event(
+        "v0.2-sound-routing-plugin",
+        &cases,
+        register_neoforge_sound_event,
     );
 }

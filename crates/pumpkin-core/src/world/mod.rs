@@ -45,6 +45,7 @@ pub mod poi_scan;
 pub mod portal;
 pub mod raid;
 pub mod random_sequences;
+pub mod sound;
 pub mod stopwatches;
 pub mod time;
 pub mod village_siege;
@@ -146,8 +147,8 @@ use pumpkin_protocol::{
         self,
         client::play::{
             CBlockEntityData, CDamageEvent, CEntityStatus, CGameEvent, CLogin, CMultiBlockUpdate,
-            CPlayerInfoUpdate, CRemoveEntities, CRemovePlayerInfo, CSetSelectedSlot, CSoundEffect,
-            GameEvent, InitChat, PlayerAction, PlayerInfoFlags,
+            CPlayerInfoUpdate, CRemoveEntities, CRemovePlayerInfo, CSetSelectedSlot, GameEvent,
+            InitChat, PlayerAction, PlayerInfoFlags,
         },
         server::play::SChatMessage,
     },
@@ -1588,16 +1589,15 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rng().random::<i64>();
-        let packet = CSoundEffect::new(
+        self.play_seeded_sound(
+            None,
+            position,
             data_to_proto_sound(sound),
             category,
-            position,
             volume,
             pitch,
-            seed,
+            rng().random::<i64>(),
         );
-        self.broadcast_packet_all(&packet);
     }
 
     pub fn play_sound_event_expect(
@@ -1609,16 +1609,15 @@ impl World {
         category: SoundCategory,
         position: &Vector3<f64>,
     ) {
-        let seed = rng().random::<i64>();
-        let packet = CSoundEffect::new(
+        self.play_seeded_sound(
+            Some(player),
+            position,
             data_to_proto_sound(sound),
             category,
-            position,
             1.0,
             1.0,
-            seed,
+            rng().random::<i64>(),
         );
-        self.broadcast_packet_except(&[player.gameprofile.id], &packet);
     }
 
     pub fn play_sound_fine(
@@ -1632,7 +1631,9 @@ impl World {
         self.play_sound_raw(sound as u16, category, position, volume, pitch);
     }
 
-    /// Plays a custom sound event by identifier for all players in range.
+    /// Plays a sound event by identifier for the players in its range: the registry id of a
+    /// vanilla sound, or the fixed range of a registered mod sound, else 16 blocks times a volume
+    /// above 1.
     pub fn play_custom_sound(
         &self,
         sound_name: &str,
@@ -1641,19 +1642,15 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::random::<i64>();
-        let packet = CSoundEffect::new(
-            pumpkin_protocol::IdOr::Value(pumpkin_protocol::SoundEvent {
-                sound_name: sound_name.into(),
-                range: None,
-            }),
-            category,
+        self.play_seeded_sound(
+            None,
             position,
+            sound::sound_holder_from_name(sound_name),
+            category,
             volume,
             pitch,
-            seed,
+            rand::random::<i64>(),
         );
-        self.broadcast_packet_all(&packet);
     }
 
     /// Spawns a cluster of particles in the world for all players in range.
@@ -1725,21 +1722,15 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::rng().random::<i64>();
-        let packet = CSoundEffect::new(IdOr::Id(sound_id), category, position, volume, pitch, seed);
-
-        // Calculate the number of chunks the sound can be heard from based on its volume.
-        let audible_chunks = f64::from(volume.max(1.0)).ceil() as i32;
-        let chunk_pos = BlockPos::floored_v(*position).chunk_position();
-
-        let players = self.players.load();
-        let recipients = players.iter().filter(|p| {
-            let center = p.get_entity().chunk_pos.load();
-            // If the sound reaches their chunk, send it!
-            is_within_chebyshev_distance(chunk_pos, center, audible_chunks)
-        });
-
-        Self::broadcast_java_players(&packet, recipients);
+        self.play_seeded_sound(
+            None,
+            position,
+            IdOr::Id(sound_id),
+            category,
+            volume,
+            pitch,
+            rand::rng().random::<i64>(),
+        );
     }
 
     pub fn play_sound_raw_expect(
@@ -1751,24 +1742,15 @@ impl World {
         volume: f32,
         pitch: f32,
     ) {
-        let seed = rand::rng().random::<i64>();
-        let packet = CSoundEffect::new(IdOr::Id(sound_id), category, position, volume, pitch, seed);
-
-        let audible_chunks = f64::from(volume.max(1.0)).ceil() as i32;
-        let chunk_pos = BlockPos::floored_v(*position).chunk_position();
-
-        let players = self.players.load();
-        let recipients = players.iter().filter(|p| {
-            // Skip the expected player
-            if p.gameprofile.id == player.gameprofile.id {
-                return false;
-            }
-
-            let center = p.get_entity().chunk_pos.load();
-            is_within_chebyshev_distance(chunk_pos, center, audible_chunks)
-        });
-
-        Self::broadcast_java_players(&packet, recipients);
+        self.play_seeded_sound(
+            Some(player),
+            position,
+            IdOr::Id(sound_id),
+            category,
+            volume,
+            pitch,
+            rand::rng().random::<i64>(),
+        );
     }
 
     pub fn play_block_sound(&self, sound: Sound, category: SoundCategory, position: BlockPos) {
@@ -8116,7 +8098,7 @@ impl World {
         Self::broadcast_bedrock_grouped(be_packet, bedrock_recipients.into_iter());
     }
 
-    pub fn emit_game_event(&self, event_key: impl Into<String>, position: Vector3<f64>) {
+    pub fn emit_game_event(&self, event_key: impl AsRef<str>, position: Vector3<f64>) {
         self.emit_game_event_with_context(
             event_key,
             position,
@@ -8126,29 +8108,38 @@ impl World {
         );
     }
 
+    /// The one emit path of the vanilla game events, `Level.gameEvent`: it fires
+    /// [`GenericGameEvent`](crate::plugin::api::events::world::generic_game::GenericGameEvent),
+    /// the `NeoForge` `VanillaGameEvent`, and then posts the event to the listeners of the world.
+    /// A cancel posts nothing.
     pub fn emit_game_event_with_context(
         &self,
-        event_key: impl Into<String>,
+        event_key: impl AsRef<str>,
         position: Vector3<f64>,
         context: &game_event::GameEventContext<'_>,
     ) {
-        let mut event_key: String = event_key.into();
+        let event_key = event_key.as_ref();
+        let mut kind = pumpkin_data::game_event::GameEvent::from_name(event_key);
         let mut position = position;
-        if let Some(server) = self.server.upgrade()
-            && let Some(event) = server.plugin_manager.fire_blocking_with(&server, || {
-                crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
-                    std::mem::take(&mut event_key),
-                    position,
-                )
-            })
-        {
+        if let Some(event) = self.plugin_event_in_world(|world| {
+            crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
+                world,
+                event_key.to_owned(),
+                position,
+                context
+                    .source_entity
+                    .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id)),
+            )
+        }) {
             if event.cancelled {
                 return;
             }
-            event_key = event.event_key;
+            if event.event_key != event_key {
+                kind = pumpkin_data::game_event::GameEvent::from_name(&event.event_key);
+            }
             position = event.position;
         }
-        if let Some(kind) = pumpkin_data::game_event::GameEvent::from_name(&event_key) {
+        if let Some(kind) = kind {
             self.post_game_event(kind, position, context);
         }
     }

@@ -503,17 +503,8 @@ impl ToFromWasmEvent for pumpkin_core::plugin::api::events::world::generic_game:
         })
     }
 
-    fn from_wasm_event(event: Event, _state: &mut PluginHostState) -> Self {
-        match event {
-            Event::GenericGameEvent(data) => Self {
-                event_key: data.event_id,
-                position: pumpkin_util::math::vector3::Vector3::new(
-                    data.pos.0, data.pos.1, data.pos.2,
-                ),
-                cancelled: data.cancelled,
-            },
-            _ => panic!("unexpected event type"),
-        }
+    fn from_wasm_event(_event: Event, _state: &mut PluginHostState) -> Self {
+        panic!("Cannot construct GenericGameEvent from WASM")
     }
 
     fn apply_wasm_event(&mut self, event: Event, state: &mut PluginHostState) {

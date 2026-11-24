@@ -2768,6 +2768,27 @@ impl pumpkin_world::generation::generator::CustomChunkGenerator for WasmChunkGen
 }
 
 #[must_use]
+pub const fn to_wit_sound_category(
+    category: pumpkin_data::sound::SoundCategory,
+) -> pumpkin::plugin::sounds::SoundCategory {
+    use pumpkin::plugin::sounds::SoundCategory as Wit;
+    use pumpkin_data::sound::SoundCategory as Native;
+    match category {
+        Native::Master => Wit::Master,
+        Native::Music => Wit::Music,
+        Native::Records => Wit::Records,
+        Native::Weather => Wit::Weather,
+        Native::Blocks => Wit::Blocks,
+        Native::Hostile => Wit::Hostile,
+        Native::Neutral => Wit::Neutral,
+        Native::Players => Wit::Players,
+        Native::Ambient => Wit::Ambient,
+        Native::Voice => Wit::Voice,
+        Native::Ui => Wit::Ui,
+    }
+}
+
+#[must_use]
 pub const fn from_wit_sound_category(
     category: pumpkin::plugin::sounds::SoundCategory,
 ) -> pumpkin_data::sound::SoundCategory {

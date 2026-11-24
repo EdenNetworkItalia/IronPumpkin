@@ -75,6 +75,7 @@ interface event {
         level-tick-event-post-data,
         command-event-data, permissions-changed-event-data, on-datapack-sync-event-data,
         loot-table-load-event-data,
+        play-level-sound-event-at-position-data, play-level-sound-event-at-entity-data,
     };
 
     variant serverbound-packet {
@@ -2470,6 +2471,8 @@ interface event {
         on-datapack-sync-event,
         loot-table-load-event,
         game-shutting-down-event,
+        play-level-sound-event-at-position,
+        play-level-sound-event-at-entity,
     }
 
     variant event {
@@ -2830,5 +2833,7 @@ interface event {
         on-datapack-sync-event(on-datapack-sync-event-data),
         loot-table-load-event(loot-table-load-event-data),
         game-shutting-down-event,
+        play-level-sound-event-at-position(play-level-sound-event-at-position-data),
+        play-level-sound-event-at-entity(play-level-sound-event-at-entity-data),
     }
 }

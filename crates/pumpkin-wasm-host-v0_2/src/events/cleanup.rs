@@ -806,5 +806,9 @@ pub fn cleanup_event(event: &Event, state: &mut PluginHostState) {
         | Event::GameShuttingDownEvent) => {
             super::neoforge_server::cleanup_neoforge_server_event(event, state);
         }
+        event @ (Event::PlayLevelSoundEventAtPosition(_)
+        | Event::PlayLevelSoundEventAtEntity(_)) => {
+            super::neoforge_sound::cleanup_neoforge_sound_event(event, state);
+        }
     }
 }
