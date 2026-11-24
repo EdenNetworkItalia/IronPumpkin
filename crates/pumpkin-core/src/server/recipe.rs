@@ -9,6 +9,19 @@ use tracing::warn;
 
 use crate::net::java::JavaClient;
 
+/// Vanilla `RecipeManager.finalizeRecipeLoading` ignores a recipe that cannot be placed. This
+/// manager drops it, so no lookup and no client sees it.
+fn placeable(recipe: &DynamicRecipe) -> bool {
+    let placeable = recipe_index::is_placeable(recipe);
+    if !placeable {
+        warn!(
+            "Recipe {} can't be placed due to empty ingredients and will be ignored",
+            recipe.recipe_id().unwrap_or("<unnamed>")
+        );
+    }
+    placeable
+}
+
 /// The data pack and plugin recipes. Each change rebuilds the [`recipe_index`].
 pub struct RecipeManager {
     dynamic_recipes: RwLock<Vec<DynamicRecipe>>,
@@ -29,6 +42,9 @@ impl RecipeManager {
     }
 
     pub fn add_recipe(&self, recipe: DynamicRecipe) {
+        if !placeable(&recipe) {
+            return;
+        }
         let mut recipes = self
             .dynamic_recipes
             .write()
@@ -42,7 +58,7 @@ impl RecipeManager {
             .dynamic_recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        recipes.extend(new_recipes);
+        recipes.extend(new_recipes.into_iter().filter(placeable));
         recipe_index::install(&recipes);
     }
 
@@ -51,7 +67,7 @@ impl RecipeManager {
             .dynamic_recipes
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        *recipes = new_recipes;
+        *recipes = new_recipes.into_iter().filter(placeable).collect();
         recipe_index::install(&recipes);
     }
 
@@ -107,5 +123,46 @@ pub fn send_update_recipes(client: &JavaClient) {
             client.try_send_packet(&CUpdateRecipes::new(&body));
         }
         Err(err) => warn!("Failed to encode the recipe sync packet: {err}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pumpkin_protocol::codec::recipe::{
+        OwnedRecipeIngredient, OwnedRecipeResult, OwnedStonecutterRecipe,
+    };
+
+    fn stonecutting(id: &str, ingredient: &str) -> DynamicRecipe {
+        DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+            recipe_id: id.to_string(),
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple(ingredient.to_string()),
+            result: OwnedRecipeResult {
+                item_id: "minecraft:stone".to_string(),
+                count: 1,
+            },
+        })
+    }
+
+    #[test]
+    fn the_manager_drops_a_recipe_that_cannot_be_placed() {
+        let manager = RecipeManager::new();
+        manager.set_recipes(vec![
+            stonecutting("test:kept", "minecraft:dirt"),
+            stonecutting("test:dropped", "test:missing"),
+        ]);
+        manager.add_recipe(stonecutting("test:added", "minecraft:air"));
+        let ids: Vec<String> = manager
+            .get_dynamic_recipes_internal()
+            .iter()
+            .filter_map(|r| r.recipe_id().map(ToString::to_string))
+            .collect();
+        assert_eq!(ids, ["test:kept"]);
+        assert!(
+            recipe_index::current()
+                .stonecutter_recipes(pumpkin_data::dynamic::ContentIds::Real)
+                .all(|r| r.recipe_id != "test:dropped")
+        );
     }
 }

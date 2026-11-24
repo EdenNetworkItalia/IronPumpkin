@@ -20,8 +20,8 @@ use pumpkin_data::recipes::{
     RecipeResultStruct,
 };
 use pumpkin_protocol::codec::recipe::{
-    DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
-    OwnedRecipeResult,
+    DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe,
+    OwnedRecipeIngredient, OwnedRecipeResult,
 };
 
 type Components = &'static [(DataComponent, &'static dyn DataComponentImpl)];
@@ -429,6 +429,50 @@ impl PropertySet {
     }
 }
 
+/// Whether vanilla keeps `ingredient`: the codecs reject an unknown item or tag and air, and
+/// `RecipeManager.finalizeRecipeLoading` ignores an ingredient without items.
+fn ingredient_is_placeable(ingredient: &OwnedRecipeIngredient) -> bool {
+    let known =
+        |id: &String| Item::from_registry_key(id).is_some_and(|item| item.id != Item::AIR.id);
+    match ingredient {
+        OwnedRecipeIngredient::Simple(id) => known(id),
+        OwnedRecipeIngredient::OneOf(ids) => !ids.is_empty() && ids.iter().all(known),
+        OwnedRecipeIngredient::Tagged(_) => !ingredient.items().is_empty(),
+    }
+}
+
+/// Whether a client can place `recipe`: every ingredient holds an item. Vanilla does not load
+/// or sync a recipe with an ingredient that [`ingredient_is_placeable`] rejects.
+#[must_use]
+pub fn is_placeable(recipe: &DynamicRecipe) -> bool {
+    match recipe {
+        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shaped { key, .. }) => key
+            .iter()
+            .all(|(_, ingredient)| ingredient_is_placeable(ingredient)),
+        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. }) => {
+            !ingredients.is_empty() && ingredients.iter().all(ingredient_is_placeable)
+        }
+        DynamicRecipe::Cooking(cooking) => {
+            ingredient_is_placeable(&owned_cooking(cooking).0.ingredient)
+        }
+        DynamicRecipe::Brewing(r) => {
+            ingredient_is_placeable(&r.input_item) && ingredient_is_placeable(&r.reagent)
+        }
+        DynamicRecipe::Stonecutting(r) => ingredient_is_placeable(&r.ingredient),
+        DynamicRecipe::SmithingTransform(r) => {
+            ingredient_is_placeable(&r.base)
+                && [&r.template, &r.addition]
+                    .into_iter()
+                    .flatten()
+                    .all(ingredient_is_placeable)
+        }
+        DynamicRecipe::SmithingTrim(r) => [&r.template, &r.base, &r.addition]
+            .into_iter()
+            .all(ingredient_is_placeable),
+        DynamicRecipe::SpecialCrafting(_) => true,
+    }
+}
+
 static INDEX: LazyLock<RwLock<Arc<RecipeIndex>>> =
     LazyLock::new(|| RwLock::new(Arc::new(RecipeIndex::build(&[]))));
 
@@ -462,6 +506,42 @@ mod tests {
                 count: 1,
             },
         }))
+    }
+
+    fn stonecutting(ingredient: OwnedRecipeIngredient) -> DynamicRecipe {
+        DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+            recipe_id: "test:cut".to_string(),
+            group: None,
+            ingredient,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:stone".to_string(),
+                count: 1,
+            },
+        })
+    }
+
+    #[test]
+    fn a_recipe_with_an_ingredient_without_items_is_not_placeable() {
+        let simple = |id: &str| OwnedRecipeIngredient::Simple(id.to_string());
+        assert!(is_placeable(&stonecutting(simple("minecraft:stone"))));
+        assert!(is_placeable(&stonecutting(OwnedRecipeIngredient::Tagged(
+            "minecraft:planks".to_string()
+        ))));
+        for ingredient in [
+            simple("test:missing"),
+            simple("minecraft:air"),
+            OwnedRecipeIngredient::Tagged("test:missing".to_string()),
+            OwnedRecipeIngredient::OneOf(Vec::new()),
+            OwnedRecipeIngredient::OneOf(vec![
+                "minecraft:stone".to_string(),
+                "test:missing".to_string(),
+            ]),
+        ] {
+            assert!(
+                !is_placeable(&stonecutting(ingredient.clone())),
+                "{ingredient:?}"
+            );
+        }
     }
 
     #[test]
