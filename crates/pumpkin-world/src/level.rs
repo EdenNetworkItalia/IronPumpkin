@@ -575,8 +575,8 @@ impl Level {
     }
 
     /// Collects random ticks in `random_tick_chunks` and the due scheduled ticks in
-    /// `scheduled_tick_chunks`. A loaded chunk outside `scheduled_tick_chunks` keeps its
-    /// scheduled ticks, and their delays wait until the chunk ticks again.
+    /// `scheduled_tick_chunks`. A loaded chunk outside `scheduled_tick_chunks` keeps its due
+    /// scheduled ticks, and they run as overdue ticks when the chunk ticks again.
     pub fn get_tick_data(
         &self,
         random_tick_chunks: &FxHashSet<Vector2<i32>>,
@@ -649,12 +649,14 @@ impl Level {
             .collect();
         for pos in scheduled_chunk_pos {
             if let Some(chunk) = self.loaded_chunks.get(&pos) {
-                if !scheduled_tick_chunks.contains(&pos) {
-                    continue;
-                }
+                let ticking = scheduled_tick_chunks.contains(&pos);
                 let chunk = chunk.value();
-                ticks.block_ticks.append(&mut chunk.block_ticks.step_tick());
-                ticks.fluid_ticks.append(&mut chunk.fluid_ticks.step_tick());
+                ticks
+                    .block_ticks
+                    .append(&mut chunk.block_ticks.step_tick(ticking));
+                ticks
+                    .fluid_ticks
+                    .append(&mut chunk.fluid_ticks.step_tick(ticking));
 
                 // Remove from set if it no longer has ticks
                 if !chunk.block_ticks.has_ticks() && !chunk.fluid_ticks.has_ticks() {

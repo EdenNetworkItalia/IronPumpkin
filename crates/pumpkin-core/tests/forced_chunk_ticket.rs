@@ -270,6 +270,58 @@ fn the_neighbours_of_a_forced_chunk_tick_blocks_and_not_random_ticks() {
     world.update_active_chunks();
 }
 
+/// A scheduled tick in a loaded chunk that does not block tick keeps its trigger tick: when the
+/// chunk block ticks again, the overdue tick runs on the first tick, as vanilla `LevelTicks`
+/// keeps a container with a due tick until `tickCheck` passes.
+#[test]
+fn an_overdue_scheduled_tick_runs_on_the_first_block_tick() {
+    let _serial = support::serial();
+    let world = support::world();
+    let server = support::server();
+    let forced = Vector2::new(90, 90);
+    let neighbour = Vector2::new(91, 90);
+    let outside = Vector2::new(92, 90);
+
+    world.set_chunk_forced(forced, true);
+    wait_until_loaded(outside);
+    world.update_active_chunks();
+    assert!(
+        !world
+            .block_ticking_chunks
+            .read()
+            .unwrap()
+            .contains(&outside)
+    );
+
+    let lamp = block_at(outside, 210);
+    world.set_block_state(&lamp, lit_lamp(), BlockFlags::empty());
+    world.schedule_block_tick(&Block::REDSTONE_LAMP, lamp, 10, TickPriority::Normal);
+    for _ in 0..30 {
+        world.tick(server);
+    }
+    assert_eq!(world.get_block_state_id(&lamp), lit_lamp());
+
+    world.set_chunk_forced(neighbour, true);
+    world.update_active_chunks();
+    assert!(
+        world
+            .block_ticking_chunks
+            .read()
+            .unwrap()
+            .contains(&outside)
+    );
+    world.tick(server);
+    assert_eq!(
+        world.get_block_state_id(&lamp),
+        Block::REDSTONE_LAMP.default_state.id,
+        "the overdue tick runs on the first block tick"
+    );
+
+    world.set_chunk_forced(neighbour, false);
+    world.set_chunk_forced(forced, false);
+    world.update_active_chunks();
+}
+
 /// The ring at the simulation distance plus one is at level 32 of the player's simulation
 /// ticket (`31 - simulation distance`): block ticking, not entity ticking.
 #[test]
