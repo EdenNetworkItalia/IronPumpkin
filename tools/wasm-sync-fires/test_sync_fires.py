@@ -49,7 +49,24 @@ class ScanTest(unittest.TestCase):
     def test_a_direct_fire_is_found_and_deferred_work_is_not(self):
         found = self.scan(HOST_SOURCE, CORE_SOURCE)
         self.assertEqual(sorted(found), ["HostPlayer.direct"])
-        self.assertEqual(found["HostPlayer.direct"][2], ["open_sign", "fire_blocking"])
+        self.assertEqual(found["HostPlayer.direct"][2], [["open_sign", "fire_blocking"]])
+
+    def test_each_path_of_an_import_is_a_chain(self):
+        host = HOST_SOURCE.replace("open_sign(text);", "open_sign(text);\n        read_level();")
+        core = CORE_SOURCE + "\npub fn read_level() {\n    stack.get_enchantment_level(e);\n}\n"
+        found = self.scan(host, core)
+        self.assertEqual(
+            found["HostPlayer.direct"][2],
+            [["open_sign", "fire_blocking"], ["read_level", "get_enchantment_level"]],
+        )
+
+    def test_a_deferring_send_is_no_path(self):
+        core = CORE_SOURCE.replace(
+            "server.plugin_manager.fire_blocking(&server, &mut event);",
+            "client.try_enqueue_packet_data(data);",
+            1,
+        ) + "\npub fn try_enqueue_packet_data(d: u8) {\n    fire_blocking();\n}\n"
+        self.assertEqual(self.scan(HOST_SOURCE, core), {})
 
     def test_an_async_function_is_no_path(self):
         found = self.scan(HOST_SOURCE.replace("open_sign(text)", "later()"), CORE_SOURCE)

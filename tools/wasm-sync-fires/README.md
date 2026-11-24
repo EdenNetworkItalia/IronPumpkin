@@ -1,7 +1,9 @@
 # wasm-sync-fires
 
 `sync_fires.py` lists the synchronous (`func`) imports of the v0.2 Wasm host whose host code
-reaches `PluginManager::fire_blocking` or `fire_blocking_with`. Such an import runs while the guest
+reaches `PluginManager::fire_blocking` or `fire_blocking_with`, or a read of an item stack that
+fires an event through the item hooks (`get_enchantment_level`, `get_all_enchantments`,
+`get_attribute_modifiers`, `has_prevent_armor_change`). Such an import runs while the guest
 call holds the root permit of the Wasm plugin stores. If a Wasm plugin handles the event, the
 handler waits for that permit and the call hangs. An import that returns nothing defers the work
 with `DeferHost::defer` (`crates/pumpkin-wasm-host-v0_2/src/lib.rs`). The deferred queue
@@ -10,8 +12,9 @@ order. The scan does not follow the code inside a `defer` call. An import that r
 from an event runs its work in `guest_call::native_handlers_only`
 (`crates/pumpkin-core/src/plugin/guest_call.rs`), so that its fires skip the Wasm handlers. The
 Java and Bedrock send paths defer the send of a packet, a raw packet and a kick inside a guest
-call when a Wasm plugin handles the sent event of the send. The scan cannot see these runtime
-checks, so `sync_fires.tsv` records them.
+call when a Wasm plugin handles the sent event of the send, so the scan treats these send
+functions (the `SENDS` set of the script) as safe. The scan cannot see the native-only runtime
+check, so `sync_fires.tsv` records those imports.
 
 `sync_fires.tsv` records each import that the scan finds and its disposition. The check fails when
 the scan finds an import that the list does not have, or when the list has an import that the scan
@@ -20,7 +23,7 @@ no longer finds.
 ## Command
 
 ```sh
-python3 -I -B tools/wasm-sync-fires/sync_fires.py            # list the imports and their chains
+python3 -I -B tools/wasm-sync-fires/sync_fires.py            # one line for each chain of an import
 python3 -I -B tools/wasm-sync-fires/sync_fires.py --check    # exit 1 when the scan and the list differ
 python3 -I -B tools/wasm-sync-fires/test_sync_fires.py       # unit tests
 ```

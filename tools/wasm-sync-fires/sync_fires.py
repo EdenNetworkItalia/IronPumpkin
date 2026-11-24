@@ -23,7 +23,39 @@ SCANNED = [
     "crates/pumpkin-wasm-host-common/src",
     HOST,
 ]
-TARGETS = {"fire_blocking", "fire_blocking_with"}
+# The blocking fires, and the reads of an item stack that fire an event through the item hooks of
+# `crates/pumpkin-core/src/plugin/item_events.rs`.
+TARGETS = {
+    "fire_blocking",
+    "fire_blocking_with",
+    "get_enchantment_level",
+    "get_all_enchantments",
+    "get_attribute_modifiers",
+    "has_prevent_armor_change",
+}
+# The send paths of the Java and Bedrock connections. Inside a guest call they defer the send when
+# a Wasm plugin handles its sent event (`deferring_guest_call`), so they are no path to a hang.
+SENDS = {
+    "try_enqueue_packet_data",
+    "try_enqueue_packet_data_inner",
+    "try_enqueue_packet",
+    "try_enqueue_packet_data_unobserved",
+    "translate_outgoing",
+    "reserve_pending_bytes",
+    "send_and_wait",
+    "try_kick",
+    "kick_explicit",
+    "try_enqueue_raw_packet_direct",
+    "queue_extra_packets",
+    "deferring_guest_call",
+    "defer_in_guest_call",
+    "packet_sent_target",
+    "prepare_play_sent_event",
+    "try_queue_packet_data",
+    "enqueue_packet_data",
+    "send_packet_now_data",
+    "queue_translated_packet",
+}
 # A name with more definitions than this is too ambiguous to follow: `set_velocity` of a player
 # and of a projectile have the same name.
 MAX_DEFINITIONS = 4
@@ -176,7 +208,7 @@ def reaching(definitions):
     """For each name that reaches a target, the next name on the way to it."""
     ignored = {
         name for name, bodies in definitions.items() if len(bodies) > MAX_DEFINITIONS
-    } | COMMON_NAMES
+    } | COMMON_NAMES | SENDS
     next_name = dict.fromkeys(TARGETS)
     changed = True
     while changed:
@@ -201,7 +233,8 @@ def chain(next_name, name):
 
 
 def scan(root):
-    """`{import: (path, line, chain)}` for each synchronous import that reaches a target."""
+    """`{import: (path, line, chains)}` for each synchronous import that reaches a target: one chain
+    for each function that the import calls and that reaches a target."""
     definitions = collections.defaultdict(list)
     for directory in SCANNED:
         for path in rust_files(root, directory):
@@ -223,15 +256,13 @@ def scan(root):
             for name, is_async, offset, body in functions(block):
                 if is_async:
                     continue
-                hit = min(
-                    (c for c in calls(body) if c in next_name and c not in ignored), default=None
-                )
-                if hit:
+                hits = sorted(c for c in calls(body) if c in next_name and c not in ignored)
+                if hits:
                     line = src.count("\n", 0, start + offset) + 1
                     found[f"{trait}.{name}"] = (
                         os.path.relpath(path, root),
                         line,
-                        chain(next_name, hit),
+                        [chain(next_name, hit) for hit in hits],
                     )
     return found
 
@@ -256,9 +287,10 @@ def main():
     new = sorted(set(found) - set(known))
     gone = sorted(set(known) - set(found))
     for name in sorted(found):
-        path, line, names = found[name]
+        path, line, chains = found[name]
         mark = "new" if name in new else known[name]
-        print(f"{name}\t{mark}\t{path}:{line}\t{' -> '.join(names)}")
+        for names in chains:
+            print(f"{name}\t{mark}\t{path}:{line}\t{' -> '.join(names)}")
     for name in gone:
         print(f"{name}\tgone: in the list, but the scan does not find it")
     print(f"{len(found)} synchronous imports reach a fire, {len(new)} new, {len(gone)} gone")
