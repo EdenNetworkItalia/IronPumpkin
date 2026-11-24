@@ -630,7 +630,9 @@ impl DataComponentImpl for VillagerFoodImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        get_i32_hash(self.nutrition) as i32
+        hash_ops::MapHasher::new()
+            .put("nutrition", hash_ops::int(self.nutrition))
+            .finish() as i32
     }
     default_impl!(VillagerFood);
 }

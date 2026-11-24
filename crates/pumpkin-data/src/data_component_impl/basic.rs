@@ -156,8 +156,11 @@ impl DataComponentImpl for ItemNameImpl {
         component.put_string("translate", self.name.to_string());
         NbtTag::Compound(component)
     }
+    /// The server sends the name as a translatable text, `{translate: name}`.
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.name) as i32
+        hash_ops::MapHasher::new()
+            .put("translate", hash_ops::string(&self.name))
+            .finish() as i32
     }
     default_impl!(ItemName);
 }
@@ -285,7 +288,7 @@ impl DataComponentImpl for RarityImpl {
     }
 
     fn get_hash(&self) -> i32 {
-        crate::data_component_impl::get_i32_hash(self.rarity.to_id()) as i32
+        hash_ops::string(self.rarity.to_name()) as i32
     }
 
     default_impl!(Rarity);

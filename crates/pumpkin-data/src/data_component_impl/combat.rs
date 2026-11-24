@@ -5,8 +5,8 @@ use crate::attributes::Attributes;
 use crate::damage::DamageType;
 use crate::data_component_impl::basic::SoundEvent;
 use crate::data_component_impl::{
-    DataComponentImpl, EquipmentSlot, IDSet, IdOr, get_f32_hash, get_i32_hash, get_idor,
-    get_idor_hash, get_idset_hash, get_str_hash, hash_ops, put_idor,
+    DataComponentImpl, EquipmentSlot, IDSet, IDSetContent, IdOr, get_f32_hash, get_i32_hash,
+    get_idor, get_idor_hash, get_idset_hash, get_str_hash, hash_ops, put_idor,
 };
 use crate::dynamic::DynamicTaggable;
 use crate::entity_type::EntityType;
@@ -1887,18 +1887,35 @@ pub struct DamageTypeImpl {
     pub damage_type: DamageType,
 }
 impl DamageTypeImpl {
+    /// Reads the damage type id. Older IronPumpkin saves wrote the message id, such as
+    /// `minecraft:inFire`. Several types share a message id, so the type whose id is the
+    /// message id in snake case comes first.
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let name = data.extract_string()?;
-        let damage_type = DamageType::from_name(name.strip_prefix("minecraft:").unwrap_or(name))?;
+        let key = name.strip_prefix("minecraft:").unwrap_or(name);
+        let by_id = |key: &str| <DamageType as IDSetContent>::from_str(key).copied();
+        let snake_case: String = key
+            .chars()
+            .flat_map(|c| {
+                let lower = c.to_ascii_lowercase();
+                [(c.is_ascii_uppercase()).then_some('_'), Some(lower)]
+            })
+            .flatten()
+            .collect();
+        let damage_type = by_id(key).or_else(|| by_id(&snake_case)).or_else(|| {
+            (0..=u8::MAX)
+                .map_while(DamageType::from_id)
+                .find(|damage_type| damage_type.message_id == key)
+        })?;
         Some(Self { damage_type })
     }
 }
 impl DataComponentImpl for DamageTypeImpl {
     fn write_data(&self) -> NbtTag {
-        NbtTag::String(format!("minecraft:{}", self.damage_type.registry_key()).into())
+        NbtTag::String(IDSetContent::to_string(&self.damage_type).into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(self.damage_type.registry_key()) as i32
+        hash_ops::string(&IDSetContent::to_string(&self.damage_type)) as i32
     }
     default_impl!(DamageType);
 }

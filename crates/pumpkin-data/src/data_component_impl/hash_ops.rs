@@ -1124,5 +1124,54 @@ mod tests {
                 ])
             );
         }
+
+        #[test]
+        fn rarity_item_name_and_villager_food_hash_their_codecs() {
+            use crate::data_component_impl::{ItemNameImpl, Rarity, RarityImpl, VillagerFoodImpl};
+            // `Rarity.CODEC` is a `StringRepresentable` codec.
+            let rarity = RarityImpl {
+                rarity: Rarity::Epic,
+            };
+            assert_eq!(hash(&rarity), vanilla::string("epic"));
+            // The server sends the item name as a translatable text.
+            let name = ItemNameImpl {
+                name: Cow::Borrowed("item.minecraft.stick"),
+            };
+            assert_eq!(
+                hash(&name),
+                vanilla::map(&[("translate", vanilla::string("item.minecraft.stick"))])
+            );
+            let food = VillagerFoodImpl { nutrition: 4 };
+            assert_eq!(hash(&food), vanilla::map(&[("nutrition", vanilla::int(4))]));
+        }
+
+        #[test]
+        fn damage_type_saves_and_hashes_its_registry_id() {
+            use crate::damage::DamageType;
+            use crate::data_component_impl::DamageTypeImpl;
+            use pumpkin_nbt::tag::NbtTag;
+            let fire = DamageTypeImpl {
+                damage_type: DamageType::IN_FIRE,
+            };
+            assert_eq!(
+                fire.write_data(),
+                NbtTag::String("minecraft:in_fire".into())
+            );
+            assert_eq!(hash(&fire), vanilla::string("minecraft:in_fire"));
+            // Older IronPumpkin saves wrote the message id.
+            for saved in ["minecraft:in_fire", "in_fire", "minecraft:inFire"] {
+                let loaded = DamageTypeImpl::read_data(&NbtTag::String(saved.into()));
+                assert_eq!(
+                    loaded.map(|d| d.damage_type.id),
+                    Some(DamageType::IN_FIRE.id)
+                );
+            }
+            // `campfire` shares the message id `inFire`; its own id loads it.
+            let campfire = DamageTypeImpl::read_data(&NbtTag::String("minecraft:campfire".into()));
+            assert_eq!(
+                campfire.map(|d| d.damage_type.id),
+                Some(DamageType::CAMPFIRE.id)
+            );
+        }
     }
 }
