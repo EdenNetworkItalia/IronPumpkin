@@ -562,6 +562,7 @@ impl EntityBase for MinecartEntity {
             container.unpack_loot(&crate::world::loot::LootContextParameters {
                 world: Some(&world),
                 position: Some(self.vehicle.entity.pos.load()),
+                killer_entity: Some(self),
                 ..Default::default()
             });
         }
@@ -802,6 +803,7 @@ impl EntityBase for MinecartEntity {
                     container.unpack_loot(&crate::world::loot::LootContextParameters {
                         world: Some(&world),
                         position: Some(self.vehicle.entity.pos.load()),
+                        killer_entity: Some(self),
                         ..Default::default()
                     });
                     let inventory: Arc<dyn Inventory> = container.clone();
@@ -823,7 +825,7 @@ impl EntityBase for MinecartEntity {
     fn interact(&self, player: &Arc<Player>, item_stack: &mut ItemStack) -> bool {
         match &self.kind {
             MinecartKind::Chest(minecart) => {
-                minecart.interact(&self.vehicle.entity, player);
+                minecart.interact(&self.vehicle.entity, player, self);
                 true
             }
             MinecartKind::CommandBlock(_) => CommandBlockMinecart::interact(player),
@@ -831,7 +833,7 @@ impl EntityBase for MinecartEntity {
                 minecart.interact(&self.vehicle.entity, player, item_stack)
             }
             MinecartKind::Hopper(minecart) => {
-                minecart.interact(&self.vehicle.entity, player);
+                minecart.interact(&self.vehicle.entity, player, self);
                 true
             }
             MinecartKind::Rideable(_) => RideableMinecart::interact(&self.vehicle.entity, player),

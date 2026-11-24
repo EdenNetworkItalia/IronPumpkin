@@ -40,7 +40,10 @@ use ironpumpkin_mods::{
             },
             registry::BlockActionResult,
         },
-        entity::{EntityBase, passive::armadillo::ArmadilloEntity},
+        entity::{
+            EntityBase, passive::armadillo::ArmadilloEntity,
+            projectile::fishing_bobber::FishingBobberEntity,
+        },
         item::{
             ItemBehaviour,
             items::{brush::BrushItem, hoe::HoeItem},
@@ -863,4 +866,63 @@ fn get_block_drops_rolls_the_block_entity_and_the_center_of_the_block() {
     assert_eq!(rolls[0].origin, Some(center(&pos)));
     assert_eq!(rolls[0].block_entity, Some(pos));
     assert_eq!(rolls[0].this_entity, Some(entity_id(player.as_ref())));
+}
+
+/// Review 171: `FishingHook.retrieve` sets the owner as the attacking entity.
+#[test]
+fn fishing_rolls_the_owner_as_the_attacking_entity() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    let player = support::player("angler");
+    let bobber = FishingBobberEntity::new(
+        ironpumpkin_mods::pumpkin_core::entity::Entity::new(
+            world.clone(),
+            Vector3::new(150.5, 101.0, 0.5),
+            &EntityType::FISHING_BOBBER,
+        ),
+        &player,
+    );
+    bobber
+        .bite_countdown
+        .store(5, std::sync::atomic::Ordering::Relaxed);
+    let rod = ItemStack::new(1, &Item::FISHING_ROD);
+
+    let rolls = rolls_of("minecraft:gameplay/fishing", || {
+        bobber.reel_in(&player, &rod);
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(rolls[0].attacking_entity, Some(entity_id(player.as_ref())));
+    assert_eq!(rolls[0].this_entity, Some(entity_id(&bobber)));
+    assert_eq!(rolls[0].tool, Some("fishing_rod"));
+}
+
+/// Review 171: NeoForge sets a container minecart as the attacking entity of its loot roll.
+#[test]
+fn a_container_minecart_rolls_itself_as_the_attacking_entity() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let world = support::world();
+    set(BlockPos::new(160, 100, 0), Block::STONE.default_state.id);
+    let minecart = ironpumpkin_mods::pumpkin_core::entity::r#type::from_type(
+        &EntityType::CHEST_MINECART,
+        Vector3::new(160.5, 101.0, 0.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    assert!(world.spawn_entity(minecart.clone()));
+    let mut nbt = NbtCompound::new();
+    nbt.put_string("LootTable", DUNGEON.to_owned());
+    nbt.put_long("LootTableSeed", 9);
+    minecart.read_nbt_non_mut(&nbt);
+
+    let rolls = rolls_of(DUNGEON, || {
+        assert!(minecart.get_container_inventory().is_some());
+    });
+    assert_eq!(rolls.len(), 1);
+    assert_eq!(
+        rolls[0].attacking_entity,
+        Some(entity_id(minecart.as_ref()))
+    );
+    assert_eq!(rolls[0].this_entity, None);
 }
