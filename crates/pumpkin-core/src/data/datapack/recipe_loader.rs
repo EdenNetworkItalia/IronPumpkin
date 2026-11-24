@@ -7,13 +7,29 @@ use pumpkin_protocol::codec::recipe::{
 };
 use serde_json::Value;
 
+/// The recipe of a data pack file, or `None` when the file does not decode.
+#[must_use]
 pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<DynamicRecipe> {
-    let value: Value = serde_json::from_str(json_str).ok()?;
+    try_parse_recipe(namespace, name, json_str).ok()
+}
+
+/// The recipe of a data pack file, or the cause when the file does not decode. A decoded recipe
+/// can still fail later, in the recipe manager, with the vanilla error of an item or a tag.
+pub fn try_parse_recipe(
+    namespace: &str,
+    name: &str,
+    json_str: &str,
+) -> Result<DynamicRecipe, String> {
+    let value: Value = serde_json::from_str(json_str).map_err(|error| error.to_string())?;
     let recipe_id = format!("{namespace}:{name}");
-    let raw_type = value.get("type")?.as_str()?;
+    let raw_type = match value.get("type") {
+        None => return Err(format!("No key type in MapLike[{value}]")),
+        Some(Value::String(raw_type)) => raw_type.as_str(),
+        Some(other) => return Err(format!("Not a string: {other}")),
+    };
     let recipe_type = raw_type.strip_prefix("minecraft:").unwrap_or(raw_type);
 
-    match recipe_type {
+    let parsed = match recipe_type {
         "crafting_shaped" => parse_shaped(recipe_id, &value).map(DynamicRecipe::Crafting),
         "crafting_shapeless" => parse_shapeless(recipe_id, &value).map(DynamicRecipe::Crafting),
         "crafting_transmute" => parse_transmute(recipe_id, &value).map(DynamicRecipe::Crafting),
@@ -43,8 +59,14 @@ pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<Dynam
         "campfire_cooking" => parse_cooking(recipe_id, &value, 600)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(c))),
         "brewing" => parse_brewing(recipe_id, &value).map(DynamicRecipe::Brewing),
-        _ => None,
-    }
+        _ => {
+            return Err(format!(
+                "Unknown registry key in ResourceKey[minecraft:root / minecraft:recipe_serializer]: {}",
+                normalize_id(raw_type)
+            ));
+        }
+    };
+    parsed.ok_or_else(|| format!("The {raw_type} recipe has a field that does not decode"))
 }
 
 fn normalize_id(id: &str) -> String {

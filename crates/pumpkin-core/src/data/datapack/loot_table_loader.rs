@@ -2,6 +2,8 @@ use pumpkin_util::loot_table::DynamicLootTable;
 use pumpkin_util::loot_table::parser::parse_loot_table_with_predicates;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
+use super::load_error::{self, Entry};
+
 #[must_use]
 pub fn parse_loot_table(json: &str) -> Option<DynamicLootTable> {
     parse_loot_table_with_predicates(json, &|name| {
@@ -9,9 +11,11 @@ pub fn parse_loot_table(json: &str) -> Option<DynamicLootTable> {
     })
 }
 
-/// Loads all loot table JSON files from a directory recursively into `registry`.
+/// Loads all loot table JSON files from a directory recursively into `registry`. A file that does
+/// not decode is logged and skipped.
 pub fn load_loot_tables_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     dir: &Path,
     registry: &mut HashMap<String, Arc<DynamicLootTable>, S>,
 ) -> usize {
@@ -19,12 +23,13 @@ pub fn load_loot_tables_from_dir<S: std::hash::BuildHasher>(
         return 0;
     }
     let before = registry.len();
-    load_loot_tables_recursive(namespace, dir, dir, registry);
+    load_loot_tables_recursive(namespace, pack, dir, dir, registry);
     registry.len() - before
 }
 
 fn load_loot_tables_recursive<S: std::hash::BuildHasher>(
     namespace: &str,
+    pack: &str,
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut HashMap<String, Arc<DynamicLootTable>, S>,
@@ -35,47 +40,50 @@ fn load_loot_tables_recursive<S: std::hash::BuildHasher>(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            load_loot_tables_recursive(namespace, base_dir, &path, registry);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-            let stem_path = stem_path.replace('\\', "/");
-            let loot_table_id = format!("{namespace}:{stem_path}");
-
-            if let Ok(content) = fs::read_to_string(&path)
-                && let Some(table) = parse_loot_table_with_predicates(&content, &|name| {
-                    let id = pumpkin_util::identifier::Identifier::parse(name).ok()?;
-                    let (namespace, path) = (id.namespace(), id.path());
-                    if !Path::new(namespace)
-                        .components()
-                        .chain(Path::new(path).components())
-                        .all(|part| matches!(part, std::path::Component::Normal(_)))
-                    {
-                        return None;
-                    }
-                    let data_dir = base_dir.parent()?.parent()?;
-                    let file = data_dir
-                        .join(namespace)
-                        .join("predicate")
-                        .join(format!("{path}.json"));
-                    fs::read_to_string(file)
-                        .ok()
-                        .and_then(|json| serde_json::from_str(&json).ok())
-                        .or_else(|| {
-                            pumpkin_data::loot_table::get_loot_predicate(&format!(
-                                "{namespace}:{path}"
-                            ))
+            load_loot_tables_recursive(namespace, pack, base_dir, &path, registry);
+        } else if let Some(loot_table_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: load_error::LOOT_TABLE,
+                id: &loot_table_id,
+                pack,
+            };
+            let Some(content) = file.read(&path) else {
+                continue;
+            };
+            let table = parse_loot_table_with_predicates(&content, &|name| {
+                let id = pumpkin_util::identifier::Identifier::parse(name).ok()?;
+                let (namespace, path) = (id.namespace(), id.path());
+                if !Path::new(namespace)
+                    .components()
+                    .chain(Path::new(path).components())
+                    .all(|part| matches!(part, std::path::Component::Normal(_)))
+                {
+                    return None;
+                }
+                let data_dir = base_dir.parent()?.parent()?;
+                let predicate_file = data_dir
+                    .join(namespace)
+                    .join("predicate")
+                    .join(format!("{path}.json"));
+                fs::read_to_string(predicate_file)
+                    .ok()
+                    .and_then(|json| serde_json::from_str(&json).ok())
+                    .or_else(|| {
+                        pumpkin_data::loot_table::get_loot_predicate(&format!("{namespace}:{path}"))
                             .cloned()
-                        })
-                })
-            {
-                registry.insert(loot_table_id, Arc::new(table));
+                    })
+            });
+            match table {
+                Some(table) => {
+                    registry.insert(loot_table_id, Arc::new(table));
+                }
+                // The parser reports only that the file does not decode. A JSON error is the
+                // one cause that the loader can name.
+                None => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Err(error) => file.skip(error),
+                    Ok(value) if !value.is_object() => file.skip(format!("Not a map: {value}")),
+                    Ok(_) => file.skip("The loot table has a pool, an entry, a condition or a function that does not decode"),
+                },
             }
         }
     }
@@ -244,7 +252,7 @@ mod tests {
         fs::write(sub.join("dirt.json"), table_json).expect("write json");
 
         let mut registry = HashMap::new();
-        let count = load_loot_tables_from_dir("custom", &root, &mut registry);
+        let count = load_loot_tables_from_dir("custom", "file/test", &root, &mut registry);
         assert_eq!(count, 1);
         assert!(matches!(
             registry["custom:blocks/dirt"].pools[0].condition,
