@@ -211,7 +211,7 @@ fn a_plugin_cancels_a_vanilla_game_event() {
     );
 
     assert!(event.cancelled);
-    assert_eq!(event.event_key, "block_activate");
+    assert_eq!(event.event_key(), "block_activate");
     assert_eq!(
         *seen.lock().unwrap_or_else(PoisonError::into_inner),
         [("block_activate".to_owned(), (1.0, 2.0, 3.0))]

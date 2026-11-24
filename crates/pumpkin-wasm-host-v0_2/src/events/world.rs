@@ -513,8 +513,8 @@ impl ToFromWasmEvent
 impl ToFromWasmEvent for pumpkin_core::plugin::api::events::world::generic_game::GenericGameEvent {
     fn to_wasm_event(&self, _state: &mut PluginHostState) -> Event {
         Event::GenericGameEvent(crate::pumpkin::plugin::event::GenericGameEventData {
-            event_id: self.event_key.clone(),
-            pos: (self.position.x, self.position.y, self.position.z),
+            event_id: self.event_key().to_owned(),
+            pos: (self.position().x, self.position().y, self.position().z),
             cancelled: self.cancelled,
         })
     }
