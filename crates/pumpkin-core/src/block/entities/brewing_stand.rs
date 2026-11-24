@@ -350,20 +350,38 @@ impl BrewingStandBlockEntity {
         self.mark_dirty();
     }
 
+    fn read_items(&self) -> std::sync::RwLockReadGuard<'_, [ItemStack; Self::INVENTORY_SIZE]> {
+        self.items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn write_items(&self) -> std::sync::RwLockWriteGuard<'_, [ItemStack; Self::INVENTORY_SIZE]> {
+        self.items
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     fn try_refill_fuel(&self, world: &Arc<crate::world::World>) -> bool {
-        let (expected_fuel, default_uses, speed_multiplier) = if self.fuel.load(Ordering::Relaxed)
-            <= 0
-            && let Ok(items) = self.items.try_read()
-            && !items[4].is_empty()
-            && let Some(fuel_comp) = items[4].get_data_component::<BrewingFuelImpl>()
-        {
+        // Block entities tick in parallel: a hopper push can hold the items lock. Vanilla ticks
+        // them one after another, so each tick lock here waits for the push.
+        if self.fuel.load(Ordering::Relaxed) > 0 {
+            return false;
+        }
+        let (expected_fuel, default_uses, speed_multiplier) = {
+            let items = self.read_items();
+            let fuel = &items[4];
+            let Some(fuel_comp) = fuel
+                .get_data_component::<BrewingFuelImpl>()
+                .filter(|_| !fuel.is_empty())
+            else {
+                return false;
+            };
             (
-                items[4].clone(),
+                fuel.clone(),
                 fuel_comp.get_uses(),
                 fuel_comp.get_speed_multiplier(),
             )
-        } else {
-            return false;
         };
 
         let initial_power = u16::try_from(default_uses.max(0)).unwrap_or(u16::MAX);
@@ -390,8 +408,8 @@ impl BrewingStandBlockEntity {
         };
 
         let mut dropped_remainder = None;
+        let mut items = self.write_items();
         let refilled = if self.fuel.load(Ordering::Relaxed) <= 0
-            && let Ok(mut items) = self.items.try_write()
             && !items[4].is_empty()
             && items[4].are_equal(&expected_fuel)
         {
@@ -414,6 +432,7 @@ impl BrewingStandBlockEntity {
         } else {
             false
         };
+        drop(items);
 
         if let Some(remainder) = dropped_remainder {
             world.drop_stack(&self.position, remainder);
@@ -741,11 +760,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
         let fuel_refilled = self.try_refill_fuel(world);
 
         // Get current ingredient and check brewing state
-        let Ok(items) = self.items.try_read() else {
-            return;
-        };
-        let ingredient = items[3].clone();
-        drop(items);
+        let ingredient = self.read_items()[3].clone();
         let brewable = self.is_brewable(&ingredient, world);
         let is_brewing = self.brew_time.load(Ordering::Relaxed) > 0;
 
@@ -803,11 +818,13 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
         // Ensure clients are notified when potion slot contents (and their data) change.
         // Compute current presence bits for the three bottle slots
         let mut current: [bool; 3] = [false; 3];
-        if let Ok(items_guard) = self.items.try_read() {
-            for (i, slot) in items_guard.iter().take(3).enumerate() {
-                // Consider a potion slot "present" when it has an item and a PotionContents component or is a glass bottle
-                current[i] = !slot.is_empty() && (slot.get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>().is_some() || slot.get_item().id == Item::GLASS_BOTTLE.id);
-            }
+        for (i, slot) in self.read_items().iter().take(3).enumerate() {
+            // Consider a potion slot "present" when it has an item and a PotionContents component or is a glass bottle
+            current[i] = !slot.is_empty()
+                && (slot
+                    .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
+                    .is_some()
+                    || slot.get_item().id == Item::GLASS_BOTTLE.id);
         }
 
         // If potion presence changed, update last_potion_count and update block state so clients

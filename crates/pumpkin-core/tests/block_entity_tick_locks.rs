@@ -10,10 +10,12 @@
 mod support;
 
 use std::marker::PhantomData;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Barrier, Mutex};
 use std::time::{Duration, Instant};
 
 use pumpkin_core::block::entities::BlockEntity;
+use pumpkin_core::block::entities::brewing_stand::BrewingStandBlockEntity;
 use pumpkin_core::block::entities::campfire::CampfireBlockEntity;
 use pumpkin_core::block::entities::furnace::FurnaceBlockEntity;
 use pumpkin_core::block::entities::furnace_like_block_entity::CookingBlockEntityBase;
@@ -240,4 +242,22 @@ fn a_campfire_start_handler_can_read_the_campfire() {
         COOKING_TIME + 3
     );
     assert_eq!(*campfire.cooking_times[0].lock().unwrap(), 1);
+}
+
+/// Vanilla `BrewingStandBlockEntity.serverTick` refuels from blaze powder and stops a brew that
+/// has no ingredient, also while a hopper pushes a bottle into the stand.
+#[test]
+fn a_hopper_push_does_not_cost_the_brewing_stand_a_tick() {
+    let _serial = support::serial();
+    let world = support::world();
+    let stand = BrewingStandBlockEntity::new(BlockPos::new(6, 100, 0));
+    place(&world, stand.get_position(), &Block::BREWING_STAND);
+    stand.set_stack(4, ItemStack::new(1, &Item::BLAZE_POWDER));
+    during_push(&stand, 0, &Item::GLASS_BOTTLE, || stand.tick(&world));
+    assert_eq!(stand.fuel.load(Ordering::Relaxed), 20);
+    assert!(stand.get_stack(4).is_empty());
+
+    stand.brew_time.store(5, Ordering::Relaxed);
+    during_push(&stand, 1, &Item::GLASS_BOTTLE, || stand.tick(&world));
+    assert_eq!(stand.brew_time.load(Ordering::Relaxed), 0);
 }
