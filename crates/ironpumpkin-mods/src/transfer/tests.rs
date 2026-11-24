@@ -459,6 +459,37 @@ fn a_transaction_on_the_furnace_input_resets_the_cooking_only_on_commit() {
 }
 
 #[test]
+fn a_transaction_reset_uses_the_recipes_of_the_furnace_type() {
+    use pumpkin_core::block::entities::blasting_furnace::BlastingFurnaceBlockEntity;
+    use pumpkin_protocol::codec::recipe::{
+        DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
+        OwnedRecipeResult,
+    };
+    pumpkin_inventory::recipe_index::install(&[DynamicRecipe::Cooking(
+        OwnedCookingRecipeType::Blasting(OwnedCookingRecipe {
+            recipe_id: "test:blast_dirt".to_string(),
+            category: pumpkin_data::recipes::RecipeCategoryTypes::Misc,
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            cooking_time: 37,
+            experience: 0.0,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 1,
+            },
+        }),
+    )]);
+    let furnace = Arc::new(BlastingFurnaceBlockEntity::new(BlockPos::new(0, 64, 0)));
+    let wrapper = InventoryWrapper::of_kind(furnace.clone(), ContainerKind::Furnace);
+    let dirt = ItemResource::of_item(&Item::DIRT);
+    let mut transaction = Transaction::open_root().unwrap();
+    assert_eq!(wrapper.insert_at(0, &dirt, 1, &mut transaction), 1);
+    transaction.commit();
+    assert_eq!(furnace.get_cooking_total_time(), 37);
+    assert_eq!(furnace.get_cooking_time_spent(), 0);
+}
+
+#[test]
 fn an_insert_into_an_empty_hopper_sets_its_cooldown_unless_aborted() {
     let hopper = Arc::new(HopperBlockEntity::new(BlockPos::new(0, 64, 0)));
     let wrapper = InventoryWrapper::of_kind(hopper.clone(), ContainerKind::Hopper);

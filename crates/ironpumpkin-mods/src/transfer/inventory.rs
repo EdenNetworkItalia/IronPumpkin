@@ -30,7 +30,6 @@ use pumpkin_data::{
     item::Item,
     item_stack::ItemStack,
     potion_brewing::BREWING_RECIPES,
-    recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
     tag::{self, Taggable},
 };
 use pumpkin_inventory::Inventory;
@@ -346,19 +345,9 @@ impl Journal for CookingReset {
             return;
         }
         let input = self.furnace.get_stack(FURNACE_INPUT);
-        // The reset of Pumpkin's furnace `set_stack`.
-        let total = if input.is_empty() {
-            0
-        } else {
-            get_cooking_recipe_with_ingredient(input.item, CookingRecipeKind::Smelting)
-                .map_or(0, |recipe| {
-                    u16::try_from(recipe.cookingtime).unwrap_or(u16::MAX)
-                })
-        };
-        with_furnace!(self.furnace.as_ref(), |furnace| {
-            furnace.set_cooking_total_time(total);
-            furnace.set_cooking_time_spent(0);
-        });
+        // The reset of the furnace `set_stack`, with the recipes of that furnace type.
+        with_furnace!(self.furnace.as_ref(), |furnace| furnace
+            .reset_cooking(&input));
     }
 }
 
