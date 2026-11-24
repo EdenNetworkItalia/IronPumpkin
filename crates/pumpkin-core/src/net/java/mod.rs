@@ -514,6 +514,8 @@ impl JavaClient {
         }
 
         // Count only queued chunks -> a `PacketSentEvent` cancel drops one without closing.
+        // A chunk that a guest call defers counts as sent before its event runs: a later cancel
+        // leaves the count one too high (see `Self::deferring_guest_call`).
         self.send_packet(&CChunkBatchEnd::new(outcome.sent.len() as u16))
             .await;
         outcome
@@ -808,7 +810,9 @@ impl JavaClient {
     /// Sends the disconnect packet and closes the connection. In a guest call that defers the
     /// sends of this connection, the packet and the close run after the guest call.
     pub fn try_kick(&self, reason: &TextComponent) {
-        if let Some((call, player)) = self.deferring_guest_call(false) {
+        // The kick defers when the sends of this connection defer, so that it does not overtake
+        // them: `true`, although the disconnect packet itself fires no event on this version.
+        if let Some((call, player)) = self.deferring_guest_call(true) {
             let reason = reason.clone();
             call.defer(
                 "kick",
@@ -860,9 +864,22 @@ impl JavaClient {
             call.defer(
                 "kick",
                 Box::new(move || {
-                    if let ClientPlatform::Java(java) = player.client.as_ref() {
-                        runtime.block_on(java.kick_explicit(&reason, true));
-                    }
+                    let ClientPlatform::Java(java) = player.client.as_ref() else {
+                        return;
+                    };
+                    // The packet goes out in the order of the deferred sends. The wait for the
+                    // flush runs on a task: a stalled peer does not hold the deferred queue.
+                    let flushed = java
+                        .serialize_disconnect(&reason)
+                        .and_then(|data| java.queue_with_completion(data, OutgoingPacket::flushed));
+                    runtime.spawn(async move {
+                        if let Some(flushed) = flushed {
+                            let _ = tokio::time::timeout(DISCONNECT_FLUSH_TIMEOUT, flushed).await;
+                        }
+                        if let ClientPlatform::Java(java) = player.client.as_ref() {
+                            java.close_for_kick(&reason);
+                        }
+                    });
                 }),
             );
             return;
@@ -875,6 +892,10 @@ impl JavaClient {
             )
             .await;
         }
+        self.close_for_kick(reason);
+    }
+
+    fn close_for_kick(&self, reason: &TextComponent) {
         let reason_text = reason.clone().get_text();
         warn!("Closing connection for {}: {reason_text}", self.id);
         self.close();
@@ -907,21 +928,31 @@ impl JavaClient {
         if self.defer_in_guest_call(&packet, true) {
             return true;
         }
-        let Some((packet, packet_len, extras)) = self.reserve_pending_bytes(packet, true) else {
+        let Some(completion_rx) = self.queue_with_completion(packet, make) else {
             return false;
         };
-
-        let (completion_tx, completion_rx) = oneshot::channel();
-        if !self.queue_outgoing(make(packet, completion_tx), packet_len) {
-            return false;
-        }
-        self.queue_extra_packets(extras);
 
         if completion_rx.await.is_err() && !self.close_token.is_cancelled() {
             // The outgoing packet task dropped before confirming the write.
             self.close();
         }
         true
+    }
+
+    /// Queues `packet`, made by `make`, and its extra packets. The receiver completes when the
+    /// writer completes the packet. `None` when the packet was dropped instead of queued.
+    fn queue_with_completion(
+        &self,
+        packet: Bytes,
+        make: fn(Bytes, oneshot::Sender<()>) -> OutgoingPacket,
+    ) -> Option<oneshot::Receiver<()>> {
+        let (packet, packet_len, extras) = self.reserve_pending_bytes(packet, true)?;
+        let (completion_tx, completion_rx) = oneshot::channel();
+        if !self.queue_outgoing(make(packet, completion_tx), packet_len) {
+            return None;
+        }
+        self.queue_extra_packets(extras);
+        Some(completion_rx)
     }
 
     /// A bare version encodes display ids.

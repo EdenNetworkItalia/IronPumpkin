@@ -86,27 +86,25 @@ pub(crate) fn skips_wasm_handlers() -> bool {
     NATIVE_ONLY.get() && CURRENT.with_borrow(Option::is_some)
 }
 
-/// A future that [`enter`]s its guest call on each poll.
+/// A future that [`enter`]s its guest call on each poll. `F` is pinned already, as a boxed
+/// future is.
 pub struct InGuestCall<F> {
     call: Arc<dyn GuestCall>,
-    future: Pin<Box<F>>,
+    future: F,
 }
 
-impl<F: Future> InGuestCall<F> {
+impl<F: Future + Unpin> InGuestCall<F> {
     pub fn new(call: Arc<dyn GuestCall>, future: F) -> Self {
-        Self {
-            call,
-            future: Box::pin(future),
-        }
+        Self { call, future }
     }
 }
 
-impl<F: Future> Future for InGuestCall<F> {
+impl<F: Future + Unpin> Future for InGuestCall<F> {
     type Output = F::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = &mut *self;
-        enter(&this.call, || this.future.as_mut().poll(cx))
+        enter(&this.call, || Pin::new(&mut this.future).poll(cx))
     }
 }
 
