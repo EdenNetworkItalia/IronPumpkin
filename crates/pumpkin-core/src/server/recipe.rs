@@ -66,6 +66,9 @@ impl RecipeManager {
         }
     }
 
+    /// Adds a recipe. The players online get it at the next [`Server::sync_recipes`].
+    ///
+    /// [`Server::sync_recipes`]: crate::server::Server::sync_recipes
     pub fn add_recipe(&self, recipe: DynamicRecipe) {
         self.add_recipes([recipe]);
     }
@@ -146,6 +149,25 @@ pub fn send_update_recipes(client: &JavaClient) {
             client.try_send_packet(&CUpdateRecipes::new(&body));
         }
         Err(err) => warn!("Failed to encode the recipe sync packet: {err}"),
+    }
+}
+
+/// Whether `client` gets the recipe book, as at join.
+pub fn gets_recipe_book(server: &crate::server::Server, client: &JavaClient) -> bool {
+    server.advanced_config.recipe.send_recipes
+        && client.version.load() >= pumpkin_util::version::JavaMinecraftVersion::V_1_21_2
+}
+
+/// Sends the whole recipe book of the [`recipe_index`], which replaces the book of the client.
+pub fn send_recipe_book(client: &JavaClient) {
+    let index = recipe_index::current();
+    let packet = pumpkin_protocol::codec::recipe_book::CRecipeBookEntries::all(
+        true,
+        index.book(),
+        index.dynamic_recipes(),
+    );
+    if let Ok(data) = client.serialize_packet(&packet) {
+        client.try_enqueue_packet(data);
     }
 }
 

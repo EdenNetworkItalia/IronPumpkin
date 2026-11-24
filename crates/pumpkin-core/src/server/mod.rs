@@ -629,16 +629,24 @@ impl Server {
             .datapack_manager
             .execute_function(server, &source, "#minecraft:load");
 
-        let dynamic_recipes = self.recipe_manager.get_dynamic_recipes_internal();
+        self.sync_recipes();
+    }
+
+    /// Adds a plugin recipe and sends the recipes again to the players online.
+    pub fn add_recipe(&self, recipe: recipe::DynamicRecipe) {
+        self.recipe_manager.add_recipe(recipe);
+        self.sync_recipes();
+    }
+
+    /// Sends the recipe sync and the recipe book to every Java player, as vanilla
+    /// `PlayerList.reloadResources` does. A recipe keeps its display id, so the recipe book of
+    /// an open screen stays valid.
+    pub fn sync_recipes(&self) {
         for player in self.get_all_players() {
             if let crate::net::ClientPlatform::Java(java_client) = player.client.as_ref() {
                 recipe::send_update_recipes(java_client);
-                let add_packet = pumpkin_protocol::java::client::play::CRecipeBookAdd::new(
-                    true,
-                    &dynamic_recipes,
-                );
-                if let Ok(data) = java_client.serialize_packet(&add_packet) {
-                    java_client.try_enqueue_packet(data);
+                if recipe::gets_recipe_book(self, java_client) {
+                    recipe::send_recipe_book(java_client);
                 }
             }
         }
