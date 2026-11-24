@@ -563,13 +563,15 @@ fn replace_preserving_properties(
         })
 }
 
+/// Vanilla `BlockAgeProcessor.getRandomFacingStairs`.
 fn get_random_facing_stairs(
     rng: &mut impl RandomImpl,
     stair_block: &'static Block,
 ) -> &'static BlockState {
     use pumpkin_data::block_properties::{Facing, Half};
-    let facings = [Facing::North, Facing::South, Facing::East, Facing::West];
-    let halves = [Half::Bottom, Half::Top];
+    // `Direction.Plane.HORIZONTAL` and `Half.values()` orders.
+    let facings = [Facing::North, Facing::East, Facing::South, Facing::West];
+    let halves = [Half::Top, Half::Bottom];
     let facing = facings[rng.next_bounded_i32(4) as usize];
     let half = halves[rng.next_bounded_i32(2) as usize];
     let props = [Property::Facing(facing), Property::Half(half)];
@@ -577,6 +579,22 @@ fn get_random_facing_stairs(
     BlockState::from_id(state_id)
 }
 
+/// Vanilla `BlockAgeProcessor.getRandomBlock`: the mossiness roll, then the index.
+fn get_random_block(
+    rng: &mut impl RandomImpl,
+    mossiness: f32,
+    non_mossy: [&'static BlockState; 2],
+    mossy: [&'static BlockState; 2],
+) -> &'static BlockState {
+    let blocks = if rng.next_f32() < mossiness {
+        mossy
+    } else {
+        non_mossy
+    };
+    blocks[rng.next_bounded_i32(2) as usize]
+}
+
+/// Vanilla `BlockAgeProcessor.processBlock`.
 fn process_block_age(
     state: &'static BlockState,
     mossiness: f32,
@@ -586,12 +604,7 @@ fn process_block_age(
 
     if matches!(
         block_id,
-        BlockId::STONE_BRICKS
-            | BlockId::STONE
-            | BlockId::CHISELED_STONE_BRICKS
-            | BlockId::INFESTED_STONE
-            | BlockId::INFESTED_STONE_BRICKS
-            | BlockId::INFESTED_CHISELED_STONE_BRICKS
+        BlockId::STONE_BRICKS | BlockId::STONE | BlockId::CHISELED_STONE_BRICKS
     ) {
         if rng.next_f32() < 0.5 {
             let non_mossy = [
@@ -602,11 +615,7 @@ fn process_block_age(
                 Block::MOSSY_STONE_BRICKS.default_state,
                 get_random_facing_stairs(rng, &Block::MOSSY_STONE_BRICK_STAIRS),
             ];
-            let idx = rng.next_bounded_i32(2) as usize;
-            if rng.next_f32() < mossiness {
-                return mossy[idx];
-            }
-            return non_mossy[idx];
+            return get_random_block(rng, mossiness, non_mossy, mossy);
         }
     } else if block_id.has_tag(pumpkin_data::tag::Block::MINECRAFT_STAIRS) {
         if rng.next_f32() < 0.5 {
@@ -618,11 +627,7 @@ fn process_block_age(
                 replace_preserving_properties(state, &Block::MOSSY_STONE_BRICK_STAIRS),
                 Block::MOSSY_STONE_BRICK_SLAB.default_state,
             ];
-            let idx = rng.next_bounded_i32(2) as usize;
-            if rng.next_f32() < mossiness {
-                return mossy[idx];
-            }
-            return non_mossy[idx];
+            return get_random_block(rng, mossiness, non_mossy, mossy);
         }
     } else if block_id.has_tag(pumpkin_data::tag::Block::MINECRAFT_SLABS) {
         if rng.next_f32() < mossiness {
@@ -1438,5 +1443,32 @@ mod tests {
                 rottable_blocks: None,
             }] if (*integrity - 0.05).abs() < f32::EPSILON
         ));
+    }
+
+    /// `testdata/block_age_vanilla.txt` is the output of vanilla 26.3 `BlockAgeProcessor(0.5)`
+    /// with `new LegacyRandomSource(seed)` as the settings random. Each line holds the input
+    /// state id, the seed, the output state id and the next `nextInt()` of the random.
+    #[test]
+    fn block_age_matches_vanilla() {
+        let data = include_str!("testdata/block_age_vanilla.txt");
+        for line in data.lines() {
+            let values: Vec<i64> = line
+                .split("//")
+                .next()
+                .unwrap()
+                .trim()
+                .trim_end_matches(',')
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .split(',')
+                .map(|value| value.trim().parse().unwrap())
+                .collect();
+            let input =
+                BlockState::from_id(pumpkin_data::BlockStateId::new(values[0] as u16).unwrap());
+            let mut random = LegacyRand::from_seed(values[1] as u64);
+            let output = process_block_age(input, 0.5, &mut random);
+            assert_eq!(i64::from(output.id.as_u16()), values[2], "{line}");
+            assert_eq!(i64::from(random.next_i32()), values[3], "{line}: random");
+        }
     }
 }
