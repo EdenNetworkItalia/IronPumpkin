@@ -47,7 +47,7 @@ fn load_loot_tables_recursive<S: std::hash::BuildHasher>(
                 id: &loot_table_id,
                 pack,
             };
-            let Some(content) = file.read(&path) else {
+            let Some((content, value)) = file.read_json(&path) else {
                 continue;
             };
             let table = parse_loot_table_with_predicates(&content, &|name| {
@@ -77,12 +77,13 @@ fn load_loot_tables_recursive<S: std::hash::BuildHasher>(
                 Some(table) => {
                     registry.insert(loot_table_id, Arc::new(table));
                 }
-                // The parser reports only that the file does not decode. A JSON error is the
-                // one cause that the loader can name.
-                None => match serde_json::from_str::<serde_json::Value>(&content) {
-                    Err(error) => file.skip(error),
-                    Ok(value) if !value.is_object() => file.skip(format!("Not a map: {value}")),
-                    Ok(_) => file.skip("The loot table has a pool, an entry, a condition or a function that does not decode"),
+                // The parser reports only that the file does not decode. A value that is no object
+                // is the one cause that the loader can name.
+                None => match load_error::root_object(&value) {
+                    Err(cause) => file.skip(cause),
+                    Ok(_) => file.skip(
+                        "The loot table has a pool, an entry, a condition or a function that does not decode",
+                    ),
                 },
             }
         }

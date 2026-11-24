@@ -119,7 +119,9 @@ Failed to parse <namespace>:<path> from pack <pack id>: <cause> (skipped minecra
 
 The first words are the message of vanilla `RegistryDataLoader`. The cause is the decoder error: a JSON error, a missing key (`No key criteria in MapLike[...]`), or an unknown type. The recipe manager reports a recipe that decodes but names an unknown item or tag with the vanilla message, in the form `Failed to parse <id>: <cause>`.
 
-The rule applies to the five registries that the loaders read. A `/reload` that has a bad file keeps the good files of the same reload and replaces all old data with them. The log line is the same for the five registries only.
+The rule applies to the reloadable registries that the server loads: recipes, loot tables, predicates, item modifiers, advancements, slot sources and the context int and float providers. It applies to villager trades, trade sets and villager trade tags too. A `/reload` that has a bad file keeps the good files of the same reload and replaces all old data with them. The log line is the same for all of them.
+
+A file that holds only `neoforge:conditions` is a removal stub: NeoForge uses it to remove an entry when the conditions pass. The server does not evaluate conditions yet, so it skips such a file with a debug line and logs no error. A file that has other keys next to `neoforge:conditions` loads as before, whatever its conditions say.
 
 A mod that relied on the vanilla failure to catch a typo must read the log of the server start. Do not use a bad file to disable content. Use a load condition when the server supports it.
 

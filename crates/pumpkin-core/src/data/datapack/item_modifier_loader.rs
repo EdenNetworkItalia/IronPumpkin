@@ -6,16 +6,6 @@ use serde_json::Value;
 
 use super::load_error::{self, Entry};
 
-/// An item modifier file holds one function: vanilla `LootItemFunctions.TYPED_CODEC` dispatches on
-/// the `type` key, which holds a string.
-fn decode(value: &Value) -> Result<(), String> {
-    match value.get("type") {
-        None => Err(format!("No key type in MapLike[{value}]")),
-        Some(Value::String(_)) => Ok(()),
-        Some(other) => Err(format!("Not a string: {other}")),
-    }
-}
-
 pub fn load_item_modifiers_from_dir<S: std::hash::BuildHasher>(
     namespace: &str,
     pack: &str,
@@ -48,10 +38,8 @@ fn load_item_modifiers_recursive<S: std::hash::BuildHasher>(
                 id: &modifier_id,
                 pack,
             };
-            if let Some(text) = file.read(&path)
-                && let Some(val) = file.json(&text)
-            {
-                if let Err(cause) = decode(&val) {
+            if let Some((_, val)) = file.read_json(&path) {
+                if let Err(cause) = load_error::type_of(&val) {
                     file.skip(cause);
                     continue;
                 }

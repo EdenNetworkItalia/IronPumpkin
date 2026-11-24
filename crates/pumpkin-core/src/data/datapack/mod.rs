@@ -1862,6 +1862,8 @@ fn load_pack_contents(
                     counts.int_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_INT_PROVIDER,
                             &provider_dir,
                             acc.context_int_providers,
                         );
@@ -1875,6 +1877,8 @@ fn load_pack_contents(
                     counts.float_providers +=
                         context_provider_loader::load_context_providers_from_dir(
                             &namespace,
+                            pack_id,
+                            load_error::CONTEXT_FLOAT_PROVIDER,
                             &provider_dir,
                             acc.context_float_providers,
                         );
@@ -1948,6 +1952,7 @@ fn load_pack_contents(
                 if ss_dir.is_dir() {
                     counts.slot_sources += slot_source_loader::load_slot_sources_from_dir(
                         &namespace,
+                        pack_id,
                         &ss_dir,
                         acc.slot_sources,
                     );
@@ -1992,6 +1997,7 @@ fn load_pack_contents(
                 if ts_dir.is_dir() {
                     counts.trade_sets += trade_loader::load_trade_sets_from_dir(
                         &namespace,
+                        pack_id,
                         &ts_dir,
                         &mut acc.trade_registry.trade_sets,
                     );
@@ -2004,6 +2010,7 @@ fn load_pack_contents(
                 if vt_dir.is_dir() {
                     counts.trades += trade_loader::load_trades_from_dir(
                         &namespace,
+                        pack_id,
                         &vt_dir,
                         &mut acc.trade_registry.trades,
                     );
@@ -2018,6 +2025,7 @@ fn load_pack_contents(
                     if vt_tag_dir.is_dir() {
                         counts.trade_tags += trade_loader::load_trade_tags_from_dir(
                             &namespace,
+                            pack_id,
                             &vt_tag_dir,
                             &mut acc.trade_registry.trade_tags,
                         );
@@ -2184,7 +2192,7 @@ fn load_recipes_recursive(
                 id: &recipe_id,
                 pack,
             };
-            let Some(content) = file.read(&path) else {
+            let Some((content, _)) = file.read_json(&path) else {
                 continue;
             };
             let recipe = match recipe_loader::try_parse_recipe(namespace, &recipe_name, &content) {

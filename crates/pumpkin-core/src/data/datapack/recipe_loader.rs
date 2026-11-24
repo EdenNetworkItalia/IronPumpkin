@@ -7,6 +7,19 @@ use pumpkin_protocol::codec::recipe::{
 };
 use serde_json::Value;
 
+/// The special crafting serializers in the registry `minecraft:recipe_serializer`, from
+/// `RecipeSerializers.java`.
+const SPECIAL_CRAFTING_TYPES: [&str; 8] = [
+    "crafting_special_bookcloning",
+    "crafting_special_mapextending",
+    "crafting_special_firework_rocket",
+    "crafting_special_firework_star",
+    "crafting_special_firework_star_fade",
+    "crafting_special_bannerduplicate",
+    "crafting_special_shielddecoration",
+    "crafting_special_repairitem",
+];
+
 /// The recipe of a data pack file, or `None` when the file does not decode.
 #[must_use]
 pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<DynamicRecipe> {
@@ -22,11 +35,7 @@ pub fn try_parse_recipe(
 ) -> Result<DynamicRecipe, String> {
     let value: Value = serde_json::from_str(json_str).map_err(|error| error.to_string())?;
     let recipe_id = format!("{namespace}:{name}");
-    let raw_type = match value.get("type") {
-        None => return Err(format!("No key type in MapLike[{value}]")),
-        Some(Value::String(raw_type)) => raw_type.as_str(),
-        Some(other) => return Err(format!("Not a string: {other}")),
-    };
+    let raw_type = super::load_error::type_of(&value)?;
     let recipe_type = raw_type.strip_prefix("minecraft:").unwrap_or(raw_type);
 
     let parsed = match recipe_type {
@@ -43,7 +52,7 @@ pub fn try_parse_recipe(
             parse_smithing_transform(recipe_id, &value).map(DynamicRecipe::SmithingTransform)
         }
         "smithing_trim" => parse_smithing_trim(recipe_id, &value).map(DynamicRecipe::SmithingTrim),
-        s if s.starts_with("crafting_special_") => {
+        s if SPECIAL_CRAFTING_TYPES.contains(&s) => {
             let category = parse_category(value.get("category"));
             Some(DynamicRecipe::SpecialCrafting(OwnedSpecialCraftingRecipe {
                 recipe_id,

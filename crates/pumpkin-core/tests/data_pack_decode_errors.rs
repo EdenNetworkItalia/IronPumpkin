@@ -367,3 +367,325 @@ fn a_file_with_load_conditions_logs_no_error() {
     );
     assert!(skipped(&log).is_empty(), "{log}");
 }
+
+const GOOD_TRADE: &str = r#"{
+    "wants": {"id": "minecraft:rotten_flesh", "count": 32},
+    "gives": {"id": "minecraft:emerald", "count": 1}
+}"#;
+
+/// The cause that the log line of the file `id` has, or `None` when the log has no such line.
+fn cause_of<'a>(log: &'a str, id: &str) -> Option<&'a str> {
+    let prefix = format!("Failed to parse {id} from pack {PACK}: ");
+    log.lines()
+        .find_map(|line| line.split_once(&prefix).map(|(_, cause)| cause))
+}
+
+#[test]
+fn a_slot_source_that_does_not_decode_is_skipped() {
+    let world = world(&[
+        (
+            "test/slot_source/good.json",
+            r#"{"type": "minecraft:slot_range", "slot_range": "armor.*"}"#,
+        ),
+        (
+            "test/slot_source/no_type.json",
+            r#"{"slot_range": "armor.*"}"#,
+        ),
+        ("test/slot_source/broken.json", "{"),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    assert_eq!(manager.get_slot_source_ids(), ["test:good"]);
+    assert_eq!(skipped(&log).len(), 2, "{log}");
+    assert!(
+        cause_of(&log, "test:no_type")
+            .unwrap()
+            .starts_with("No key type in MapLike["),
+        "{log}"
+    );
+    assert!(
+        cause_of(&log, "test:broken")
+            .unwrap()
+            .contains("(skipped minecraft:slot_source entry)"),
+        "{log}"
+    );
+}
+
+#[test]
+fn a_context_provider_that_does_not_decode_is_skipped() {
+    let world = world(&[
+        ("test/context_int_provider/constant.json", "5"),
+        (
+            "test/context_int_provider/typed.json",
+            r#"{"type": "minecraft:constant", "value": 3}"#,
+        ),
+        ("test/context_int_provider/text.json", r#""five""#),
+        ("test/context_int_provider/no_type.json", r#"{"value": 3}"#),
+        ("test/context_float_provider/constant.json", "0.5"),
+        ("test/context_float_provider/list.json", "[1.0]"),
+        ("test/context_float_provider/broken.json", "{"),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    let test_ids = |names: Vec<String>| -> Vec<String> {
+        let mut ids: Vec<String> = names
+            .into_iter()
+            .filter(|name| name.starts_with("test:"))
+            .collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(
+        test_ids(manager.get_context_int_provider_names()),
+        ["test:constant", "test:typed"]
+    );
+    assert_eq!(
+        test_ids(manager.get_context_float_provider_names()),
+        ["test:constant"]
+    );
+    assert_eq!(skipped(&log).len(), 4, "{log}");
+    assert!(
+        cause_of(&log, "test:text")
+            .unwrap()
+            .starts_with("Not a number: \"five\""),
+        "{log}"
+    );
+    assert!(
+        cause_of(&log, "test:no_type")
+            .unwrap()
+            .contains("(skipped minecraft:context_int_provider entry)"),
+        "{log}"
+    );
+    assert!(
+        cause_of(&log, "test:list")
+            .unwrap()
+            .contains("(skipped minecraft:context_float_provider entry)"),
+        "{log}"
+    );
+}
+
+#[test]
+fn a_villager_trade_and_a_trade_set_that_do_not_decode_are_skipped() {
+    let world = world(&[
+        ("test/villager_trade/good.json", GOOD_TRADE),
+        ("test/villager_trade/bad.json", r#"{"wants": 5}"#),
+        (
+            "test/trade_set/good.json",
+            r#"{"amount": 1, "trades": ["test:good"]}"#,
+        ),
+        ("test/trade_set/bad.json", r#"{"amount": "many"}"#),
+        (
+            "test/tags/villager_trade/good_tag.json",
+            r#"{"values": ["test:good"]}"#,
+        ),
+        ("test/tags/villager_trade/bad_tag.json", r#"{"values": 5}"#),
+        (
+            "test/trade_set/tagged.json",
+            r##"{"amount": 1, "trades": "#test:good_tag"}"##,
+        ),
+        (
+            "test/trade_set/badly_tagged.json",
+            r##"{"amount": 1, "trades": "#test:bad_tag"}"##,
+        ),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    let trades = |set: &str| manager.get_trade_set(set).map(|set| set.trades.len());
+    assert_eq!(trades("test:good"), Some(1));
+    assert_eq!(trades("test:bad"), None);
+    assert_eq!(trades("test:tagged"), Some(1));
+    assert_ne!(trades("test:badly_tagged"), Some(1));
+    assert_eq!(skipped(&log).len(), 3, "{log}");
+    assert!(
+        cause_of(&log, "test:bad")
+            .unwrap()
+            .contains("(skipped minecraft:villager_trade entry)")
+            || log.contains("(skipped minecraft:trade_set entry)"),
+        "{log}"
+    );
+    for registry in [
+        "minecraft:villager_trade",
+        "minecraft:trade_set",
+        "minecraft:tags/villager_trade",
+    ] {
+        assert!(
+            log.contains(&format!("(skipped {registry} entry)")),
+            "{registry}: {log}"
+        );
+    }
+}
+
+/// A file that holds only `neoforge:conditions` removes an entry on NeoForge. It cannot decode,
+/// so the loader skips it with a debug line and loads no empty entry.
+#[test]
+fn a_removal_stub_is_skipped_without_an_error_line() {
+    let stub = r#"{"neoforge:conditions": [{"type": "neoforge:false"}]}"#;
+    let world = world(&[
+        ("test/recipe/stub.json", stub),
+        ("test/loot_table/stub.json", stub),
+        ("test/predicate/stub.json", stub),
+        ("test/item_modifier/stub.json", stub),
+        ("test/advancement/stub.json", stub),
+        ("test/slot_source/stub.json", stub),
+        ("test/context_int_provider/stub.json", stub),
+        ("test/context_float_provider/stub.json", stub),
+        ("test/villager_trade/stub.json", stub),
+        ("test/trade_set/stub.json", stub),
+        ("test/tags/villager_trade/stub.json", stub),
+    ]);
+    let manager = DatapackManager::new();
+    let recipes = RecipeManager::default();
+    let log = load(&manager, &recipes, world.path());
+    assert!(skipped(&log).is_empty(), "{log}");
+    assert!(recipe_ids(&recipes).is_empty());
+    assert!(
+        manager
+            .get_loot_table_names()
+            .iter()
+            .all(|name| !name.starts_with("test:"))
+    );
+    assert!(manager.get_predicate_ids().is_empty());
+    assert!(manager.get_item_modifier_ids().is_empty());
+    assert!(
+        manager
+            .get_advancement_ids()
+            .iter()
+            .all(|id| !id.starts_with("test:"))
+    );
+    assert!(manager.get_slot_source_ids().is_empty());
+    assert!(manager.get_trade_set("test:stub").is_none());
+}
+
+/// Vanilla reads a data file as a map. A list at the root is "Not a map", not a missing key.
+#[test]
+fn a_file_with_a_list_at_the_root_is_not_a_map() {
+    let world = world(&[
+        ("test/recipe/list.json", "[]"),
+        ("test/predicate/list.json", "[]"),
+        ("test/item_modifier/list.json", "[]"),
+        ("test/advancement/list.json", "[]"),
+        ("test/slot_source/list.json", "[]"),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    let lines = skipped(&log);
+    assert_eq!(lines.len(), 5, "{log}");
+    assert!(
+        lines.iter().all(|line| line.contains(": Not a map: []")),
+        "{log}"
+    );
+}
+
+#[test]
+fn a_type_that_is_no_identifier_is_skipped() {
+    let world = world(&[
+        (
+            "test/predicate/bad_case.json",
+            r#"{"type": "Minecraft:Bad"}"#,
+        ),
+        ("test/item_modifier/bad_path.json", r#"{"type": "a:b:c"}"#),
+        ("test/slot_source/bad_char.json", r#"{"type": "no way"}"#),
+        ("test/recipe/bad_type.json", r#"{"type": "Bad"}"#),
+        (
+            "test/predicate/unprefixed.json",
+            r#"{"type": "survives_explosion"}"#,
+        ),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    assert_eq!(skipped(&log).len(), 4, "{log}");
+    assert_eq!(
+        cause_of(&log, "test:bad_case")
+            .unwrap()
+            .split(" (skipped")
+            .next(),
+        Some(
+            "Not a valid resource location: Minecraft:Bad Non [a-z0-9_.-] character in namespace of identifier: Minecraft:Bad"
+        )
+    );
+    assert!(
+        cause_of(&log, "test:bad_path")
+            .unwrap()
+            .starts_with("Not a valid resource location: a:b:c Non [a-z0-9/._-] character in path of location: a:b:c"),
+        "{log}"
+    );
+    assert!(cause_of(&log, "test:bad_char").is_some(), "{log}");
+    assert!(cause_of(&log, "test:bad_type").is_some(), "{log}");
+    assert_eq!(manager.get_predicate_ids(), ["test:unprefixed"]);
+}
+
+#[test]
+fn an_unknown_special_crafting_recipe_is_skipped() {
+    let world = world(&[
+        (
+            "test/recipe/known.json",
+            r#"{"type": "minecraft:crafting_special_repairitem"}"#,
+        ),
+        (
+            "test/recipe/unknown.json",
+            r#"{"type": "minecraft:crafting_special_nothing"}"#,
+        ),
+    ]);
+    let recipes = RecipeManager::default();
+    let log = load(&DatapackManager::new(), &recipes, world.path());
+    assert_eq!(recipe_ids(&recipes), ["test:known"]);
+    one_skipped(
+        &log,
+        "test:unknown",
+        "Unknown registry key in ResourceKey[minecraft:root / minecraft:recipe_serializer]: minecraft:crafting_special_nothing",
+    );
+}
+
+#[test]
+fn an_advancement_with_an_unknown_trigger_is_skipped() {
+    let world = world(&[
+        (
+            "test/advancement/known.json",
+            r#"{"criteria": {"a": {"trigger": "tick"}}}"#,
+        ),
+        (
+            "test/advancement/unknown.json",
+            r#"{"criteria": {"a": {"trigger": "test:nothing"}}}"#,
+        ),
+        (
+            "test/advancement/bad_id.json",
+            r#"{"criteria": {"a": {"trigger": "Not Valid"}}}"#,
+        ),
+        (
+            "test/advancement/not_a_map.json",
+            r#"{"criteria": {"a": 5}}"#,
+        ),
+    ]);
+    let manager = DatapackManager::new();
+    let log = load(&manager, &RecipeManager::default(), world.path());
+    let loaded: Vec<String> = manager
+        .get_advancement_ids()
+        .into_iter()
+        .filter(|id| id.starts_with("test:"))
+        .collect();
+    assert_eq!(loaded, ["test:known"]);
+    assert_eq!(skipped(&log).len(), 3, "{log}");
+    assert!(
+        cause_of(&log, "test:unknown").unwrap().starts_with(
+            "Unknown registry key in ResourceKey[minecraft:root / minecraft:trigger_type]: test:nothing"
+        ),
+        "{log}"
+    );
+    assert!(
+        cause_of(&log, "test:bad_id")
+            .unwrap()
+            .starts_with("Not a valid resource location: Not Valid"),
+        "{log}"
+    );
+    assert!(
+        cause_of(&log, "test:not_a_map")
+            .unwrap()
+            .starts_with("Not a map: 5"),
+        "{log}"
+    );
+    // The unprefixed name reads as `minecraft:tick`.
+    assert_eq!(
+        manager.get_advancement("test:known").unwrap().criteria["a"].0,
+        "minecraft:tick"
+    );
+}
