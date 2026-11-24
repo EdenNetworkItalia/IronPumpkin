@@ -92,6 +92,7 @@ Every event task has the performance guardrail as a verification line: no eviden
 - [x] 2.58 (#200) The panda eating test passes every run: the cause of the missing sit goal is measured and fixed in the engine or the test; verify: 300 of 300 stress runs
 - [ ] 2.59 (#201) Data pack decode errors follow the rule the owner picks for the reloadable registries; verify: a test per registry with the vanilla error text
 - [ ] 2.60 (#202) The headless client tests pass under parallel load; verify: 30 of 30 stress runs of the whole `ironpumpkin-test-mod` suite
+- [ ] 2.61 (#203) The creeper flee test cannot fail by chance: the failing step of the avoid entity start check is measured and fixed in the engine or in the test; verify: 1000 of 1000 stress runs
 - [ ] 2.52 The inventory moves before the archive: the inventory tables of this design.md, `mapping-table.md` and `modpack-usage.md` move to `docs/neoforge-inventory/`, `tools/openspec-sync/mapping_status.py` reads that folder by default, and phase 6 (`openspec/changes/modded-gameplay-parity/`) points there; verify: `mapping_status.py --check`, the unit tests of the script, `openspec validate --all`
 
 ## Workflow follow-up
