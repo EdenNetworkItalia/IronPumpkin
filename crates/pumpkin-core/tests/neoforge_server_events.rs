@@ -39,12 +39,16 @@ use pumpkin_core::{
             AddServerReloadListenersEvent, CommandEvent, LootTableLoadEvent, OnDatapackSyncEvent,
             ReloadListener, ReloadListenerError, TagsUpdatedEvent, TagsUpdatedEventServerDataLoad,
         },
+        data_maps::{DataMapHost, set_host},
         server_events,
     },
     server::{Server, recipe::RecipeManager},
     world::loot::{LootContextParameters, generate_loot_from_handle},
 };
 use pumpkin_data::game_rules::GameRule;
+use pumpkin_protocol::java::neoforge::KnownRegistryDataMapsPayload;
+use pumpkin_util::identifier::Identifier;
+use std::collections::{BTreeMap, BTreeSet};
 use pumpkin_util::PermissionLvl;
 
 type Log = Arc<Mutex<Vec<String>>>;
@@ -713,4 +717,46 @@ fn change_permission_lvl_fires_permissions_changed_event() {
     assert!(player.change_permission_lvl(server, PermissionLvl::Two, &dispatcher));
     assert_eq!(player.permission_lvl.load(), PermissionLvl::Two);
     assert!(player.change_permission_lvl(server, PermissionLvl::Two, &dispatcher));
+}
+
+static ORDER: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// A data map host that records when the server loads the data maps.
+struct OrderHost;
+
+impl DataMapHost for OrderHost {
+    fn load(&self, _server: &Arc<Server>) {
+        ORDER.lock().unwrap().push("data maps".to_owned());
+    }
+
+    fn known_data_maps(&self) -> KnownRegistryDataMapsPayload {
+        KnownRegistryDataMapsPayload::default()
+    }
+
+    fn mandatory_data_maps(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn sync_payloads(&self, _known: &BTreeMap<Identifier, BTreeSet<Identifier>>) -> Vec<Vec<u8>> {
+        Vec::new()
+    }
+}
+
+static ORDER_HOST: OrderHost = OrderHost;
+
+/// The data maps load before the tags event and the sync event, as `NeoForge` loads them in its
+/// own handler of `TagsUpdatedEvent.ServerDataLoad`: a handler of either event sees the new
+/// values.
+#[test]
+fn the_data_maps_load_before_the_tags_and_the_datapack_sync_events() {
+    let _serial = support::serial();
+    let server = support::server();
+    assert!(set_host(&ORDER_HOST));
+    on::<TagsUpdatedEventServerDataLoad, _>(|_event| ORDER.lock().unwrap().push("tags".to_owned()));
+    on::<OnDatapackSyncEvent, _>(|_event| ORDER.lock().unwrap().push("sync".to_owned()));
+    ORDER.lock().unwrap().clear();
+
+    server.reload_datapacks(server);
+
+    assert_eq!(*ORDER.lock().unwrap(), ["data maps", "tags", "sync"]);
 }

@@ -508,8 +508,8 @@ impl Server {
         server
             .datapack_manager
             .load_all(&world_path, &enabled_packs, &server.recipe_manager);
+        crate::plugin::data_maps::load(&server);
         crate::plugin::server_events::server_data_loaded(&server);
-        crate::plugin::data_maps::after_load(&server, false);
 
         let source = crate::command::CommandSender::Console.into_source(&server);
         let _ = server
@@ -623,9 +623,10 @@ impl Server {
         let world_path = self.basic_config.get_world_path();
         self.datapack_manager
             .load_all(&world_path, &enabled_packs, &self.recipe_manager);
+        crate::plugin::data_maps::load(server);
         crate::plugin::server_events::server_data_loaded(server);
         crate::plugin::server_events::datapack_sync(server, None);
-        crate::plugin::data_maps::after_load(server, true);
+        crate::plugin::data_maps::sync_after_reload(server);
 
         let source = crate::command::CommandSender::Console.into_source(server);
         let _ = self
