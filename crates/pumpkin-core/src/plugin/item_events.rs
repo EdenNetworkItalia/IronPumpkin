@@ -13,11 +13,14 @@
 
 use std::borrow::Cow;
 use std::cell::Cell;
-use std::sync::{Arc, PoisonError, RwLock, Weak};
+use std::sync::{Arc, PoisonError, Weak};
+
+use arc_swap::ArcSwapOption;
 
 use pumpkin_data::data_component_impl::AttributeModifiersImpl;
 use pumpkin_data::item_stack::{
-    EnchantmentLevels, ItemStack, set_attribute_modifiers_hook, set_enchantment_level_hook,
+    AttributeModifiersHook, EnchantmentLevelHook, EnchantmentLevels, ItemStack,
+    set_attribute_modifiers_hook, set_enchantment_level_hook,
 };
 use pumpkin_data::{Enchantment, damage::DamageType};
 use pumpkin_inventory::screen_handler::ScreenHandler;
@@ -38,7 +41,7 @@ use crate::world::loot::LootContextParameters;
 const MAX_LEVEL: i32 = 255;
 
 /// The servers of this process.
-static SERVERS: RwLock<Vec<Weak<Server>>> = RwLock::new(Vec::new());
+static SERVERS: ArcSwapOption<Vec<Weak<Server>>> = ArcSwapOption::const_empty();
 
 thread_local! {
     /// Set while a handler of the hooked events runs on this thread: a read inside a handler
@@ -78,29 +81,63 @@ pub fn without_item_hooks<R>(operation: impl FnOnce() -> R) -> R {
 /// Records `server`, so the hooks of the item stack reads can fire events on it. Runs in each
 /// [`Server::new`].
 pub fn track(server: &Arc<Server>) {
-    let mut servers = SERVERS.write().unwrap_or_else(PoisonError::into_inner);
-    servers.retain(|tracked| tracked.strong_count() > 0);
-    servers.push(Arc::downgrade(server));
+    SERVERS.rcu(|servers| {
+        let mut servers: Vec<_> = servers
+            .as_deref()
+            .map(|servers| {
+                servers
+                    .iter()
+                    .filter(|tracked| tracked.strong_count() > 0)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        servers.push(Arc::downgrade(server));
+        Some(Arc::new(servers))
+    });
 }
 
 /// Sets the hook of the item stack reads for the first handler of `event_name`.
 pub fn note_registration(event_name: &str) {
     if event_name == GetEnchantmentLevelEvent::get_name_static() {
-        set_enchantment_level_hook(enchantment_level_hook);
+        set_enchantment_level_hook(EnchantmentLevelHook {
+            active: any_listening::<GetEnchantmentLevelEvent>,
+            apply: enchantment_level_hook,
+        });
     } else if event_name == ItemAttributeModifierEvent::get_name_static() {
-        set_attribute_modifiers_hook(attribute_modifiers_hook);
+        set_attribute_modifiers_hook(AttributeModifiersHook {
+            active: any_listening::<ItemAttributeModifierEvent>,
+            apply: attribute_modifiers_hook,
+        });
     }
+}
+
+/// Whether a server has a handler of `E` and this thread runs no handler of a hooked event.
+/// Each read of an item stack calls it once the hook is set: it allocates nothing and takes no
+/// lock.
+fn any_listening<E: Payload + 'static>() -> bool {
+    !IN_HANDLER.with(Cell::get)
+        && SERVERS.load().as_deref().is_some_and(|servers| {
+            servers
+                .iter()
+                .filter_map(Weak::upgrade)
+                .any(|server| server.plugin_manager.has_handlers::<E>())
+        })
 }
 
 /// The servers that have a handler of `E`.
 fn listening<E: Payload + 'static>() -> Vec<Arc<Server>> {
     SERVERS
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .iter()
-        .filter_map(Weak::upgrade)
-        .filter(|server| server.plugin_manager.has_handlers::<E>())
-        .collect()
+        .load()
+        .as_deref()
+        .map(|servers| {
+            servers
+                .iter()
+                .filter_map(Weak::upgrade)
+                .filter(|server| server.plugin_manager.has_handlers::<E>())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// The hook of [`ItemStack::get_enchantment_level`] and [`ItemStack::get_all_enchantments`]:

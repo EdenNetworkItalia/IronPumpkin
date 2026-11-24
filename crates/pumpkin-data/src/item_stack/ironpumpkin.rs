@@ -6,19 +6,30 @@ use crate::data_component_impl::AttributeModifiersImpl;
 /// The enchantment levels of a stack that a hook may change.
 pub type EnchantmentLevels = Vec<(&'static Enchantment, i32)>;
 
-/// Called by [`ItemStack::get_enchantment_level`] and [`ItemStack::get_all_enchantments`] with the
-/// stack, the enchantment that the caller asks for (`None` for all) and the levels of the stack.
-/// Returns the levels that the caller sees.
-pub type EnchantmentLevelHook =
-    fn(&ItemStack, Option<&'static Enchantment>, EnchantmentLevels) -> EnchantmentLevels;
+/// The hook of [`ItemStack::get_enchantment_level`] and [`ItemStack::get_all_enchantments`].
+#[derive(Clone, Copy)]
+pub struct EnchantmentLevelHook {
+    /// Whether a handler listens now. It must not allocate: each lookup calls it once the hook
+    /// is set.
+    pub active: fn() -> bool,
+    /// Called with the stack, the enchantment that the caller asks for (`None` for all) and the
+    /// levels of the stack. Returns the levels that the caller sees.
+    pub apply: fn(&ItemStack, Option<&'static Enchantment>, EnchantmentLevels) -> EnchantmentLevels,
+}
 
-/// Called by [`ItemStack::get_attribute_modifiers`] with the stack and its default modifiers.
-/// Returns the modifiers that the caller sees, or `None` for the default ones.
-pub type AttributeModifiersHook =
-    fn(&ItemStack, &AttributeModifiersImpl) -> Option<AttributeModifiersImpl>;
+/// The hook of [`ItemStack::get_attribute_modifiers`].
+#[derive(Clone, Copy)]
+pub struct AttributeModifiersHook {
+    /// Whether a handler listens now. It must not allocate.
+    pub active: fn() -> bool,
+    /// Called with the stack and its default modifiers. Returns the modifiers that the caller
+    /// sees, or `None` for the default ones.
+    pub apply: fn(&ItemStack, &AttributeModifiersImpl) -> Option<AttributeModifiersImpl>,
+}
 
 /// A lookup with no hook set costs one atomic load: the hook is set once, when the first handler
-/// of `GetEnchantmentLevelEvent` registers.
+/// of `GetEnchantmentLevelEvent` registers. A lookup with a hook set and no live handler costs
+/// the `active` call and allocates nothing.
 static ENCHANTMENT_LEVEL_HOOK: OnceLock<EnchantmentLevelHook> = OnceLock::new();
 
 /// Set once, when the first handler of `ItemAttributeModifierEvent` registers.
@@ -54,7 +65,7 @@ impl ItemStack {
     #[must_use]
     pub fn get_enchantment_level(&self, enchantment: &'static Enchantment) -> i32 {
         let level = self.get_tag_enchantment_level(enchantment);
-        let Some(hook) = ENCHANTMENT_LEVEL_HOOK.get() else {
+        let Some(hook) = ENCHANTMENT_LEVEL_HOOK.get().filter(|hook| (hook.active)()) else {
             return level;
         };
         let levels = if level > 0 {
@@ -62,7 +73,7 @@ impl ItemStack {
         } else {
             Vec::new()
         };
-        hook(self, Some(enchantment), levels)
+        (hook.apply)(self, Some(enchantment), levels)
             .iter()
             .find(|(enc, _)| *enc == enchantment)
             .map_or(0, |(_, level)| (*level).max(0))
@@ -73,11 +84,11 @@ impl ItemStack {
     #[must_use]
     pub fn get_all_enchantments(&self) -> Option<Cow<'_, EnchantmentsImpl>> {
         let tag = self.get_data_component::<EnchantmentsImpl>();
-        let Some(hook) = ENCHANTMENT_LEVEL_HOOK.get() else {
+        let Some(hook) = ENCHANTMENT_LEVEL_HOOK.get().filter(|hook| (hook.active)()) else {
             return tag.map(Cow::Borrowed);
         };
         let levels = tag.map_or_else(Vec::new, |tag| tag.enchantment.to_vec());
-        let levels = hook(self, None, levels);
+        let levels = (hook.apply)(self, None, levels);
         if levels.is_empty() && tag.is_none() {
             return None;
         }
@@ -92,13 +103,16 @@ impl ItemStack {
     #[must_use]
     pub fn get_attribute_modifiers(&self) -> Option<Cow<'_, AttributeModifiersImpl>> {
         let default = self.get_data_component::<AttributeModifiersImpl>();
-        let Some(hook) = ATTRIBUTE_MODIFIERS_HOOK.get() else {
+        let Some(hook) = ATTRIBUTE_MODIFIERS_HOOK
+            .get()
+            .filter(|hook| (hook.active)())
+        else {
             return default.map(Cow::Borrowed);
         };
         let empty = AttributeModifiersImpl {
             attribute_modifiers: Cow::Borrowed(&[]),
         };
-        match hook(self, default.unwrap_or(&empty)) {
+        match (hook.apply)(self, default.unwrap_or(&empty)) {
             Some(modifiers) => Some(Cow::Owned(modifiers)),
             None => default.map(Cow::Borrowed),
         }
