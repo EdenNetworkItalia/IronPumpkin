@@ -12,8 +12,7 @@ use crate::world::World;
 use pumpkin_data::attributes::Attributes;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component_impl::{
-    AttackRangeImpl, AttributeModifiersImpl, EnchantmentsImpl, EquipmentSlot, KineticWeaponImpl,
-    Operation, PiercingWeaponImpl, WeaponImpl,
+    AttackRangeImpl, EquipmentSlot, KineticWeaponImpl, Operation, PiercingWeaponImpl, WeaponImpl,
 };
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::entity::{EntityStatus, EntityType};
@@ -504,7 +503,7 @@ impl SpearItem {
         if already_applied {
             return value;
         }
-        let Some(modifiers) = stack.get_data_component::<AttributeModifiersImpl>() else {
+        let Some(modifiers) = stack.get_attribute_modifiers() else {
             return value;
         };
         modifiers
@@ -517,7 +516,7 @@ impl SpearItem {
     }
 
     fn enchantment_damage(stack: &ItemStack, target: &Entity) -> f64 {
-        let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>() else {
+        let Some(enchantments) = stack.get_all_enchantments() else {
             return 0.0;
         };
         enchantments
@@ -546,7 +545,7 @@ impl SpearItem {
 
     fn knockback_level(stack: &ItemStack) -> u32 {
         stack
-            .get_data_component::<EnchantmentsImpl>()
+            .get_all_enchantments()
             .and_then(|enchantments| {
                 enchantments
                     .enchantment
@@ -558,7 +557,7 @@ impl SpearItem {
     }
 
     fn apply_post_damage_effects(stack: &ItemStack, target: &Entity) {
-        let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>() else {
+        let Some(enchantments) = stack.get_all_enchantments() else {
             return;
         };
         for (enchantment, level) in enchantments.enchantment.iter() {

@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use pumpkin_data::{
     data_component::DataComponent,
     data_component_impl::{
-        DataComponentImpl, EnchantmentsImpl, EquipmentSlot,
+        DataComponentImpl, EquipmentSlot,
         basic::{CustomDataImpl, DamageImpl},
         combat::StoredEnchantmentsImpl,
         read_data,
@@ -657,7 +657,7 @@ fn match_enchantments(tool: &ItemStack, requirements: &Value, stored: bool) -> b
             .map(|data| data.enchantment.to_vec())
             .unwrap_or_default()
     } else {
-        tool.get_data_component::<EnchantmentsImpl>()
+        tool.get_all_enchantments()
             .map(|data| data.enchantment.to_vec())
             .unwrap_or_default()
     };

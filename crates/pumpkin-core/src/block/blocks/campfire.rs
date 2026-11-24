@@ -150,16 +150,17 @@ impl BlockBehaviour for CampfireBlock {
             && let Some(living_entity) = args.entity.get_living_entity()
         {
             let has_frost_walker_enchantment = {
-                let equipment = living_entity
+                // The read fires `GetEnchantmentLevelEvent`: no equipment lock is held.
+                let boots = living_entity
                     .entity_equipment
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                equipment
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .equipment
                     .get(&EquipmentSlot::FEET)
-                    .is_some_and(|boots| {
-                        boots.get_enchantment_level(&Enchantment::FROST_WALKER) != 0
-                    })
+                    .cloned();
+                boots.is_some_and(|boots| {
+                    boots.get_enchantment_level(&Enchantment::FROST_WALKER) != 0
+                })
             };
             let has_fire_res = living_entity
                 .get_effect(&StatusEffect::FIRE_RESISTANCE)

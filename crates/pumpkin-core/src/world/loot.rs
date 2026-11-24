@@ -2,7 +2,6 @@ use super::random_sequences::CheckedOutSequence;
 use crate::{block::entities::BlockEntity, entity::EntityBase, world::World};
 use pumpkin_data::BlockState;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::EnchantmentsImpl;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::CookingRecipeKind;
@@ -169,7 +168,11 @@ fn attacker_enchantment_level(params: &LootContextParameters<'_>, name: &str) ->
         .as_ref()
         .filter(|weapon| !weapon.is_empty())
         .map_or(0, |weapon| weapon.get_enchantment_level(enchantment));
-    entity_level.max(weapon_level)
+    crate::plugin::item_events::entity_loot_enchantment_level(
+        params,
+        enchantment,
+        entity_level.max(weapon_level),
+    )
 }
 
 fn tool_enchantment_level(params: &LootContextParameters<'_>, name: &str) -> i32 {
@@ -179,7 +182,14 @@ fn tool_enchantment_level(params: &LootContextParameters<'_>, name: &str) -> i32
                 .tool
                 .as_ref()
                 .filter(|tool| !tool.is_empty())
-                .map(|tool| tool.get_enchantment_level(enchantment))
+                .map(|tool| {
+                    crate::plugin::item_events::block_loot_enchantment_level(
+                        params,
+                        tool,
+                        enchantment,
+                        tool.get_enchantment_level(enchantment),
+                    )
+                })
         })
         .unwrap_or(0)
 }
@@ -188,7 +198,7 @@ fn direct_attacker_weapon_has_enchantment(params: &LootContextParameters, tag: &
     params
         .direct_attacker_weapon
         .as_ref()
-        .and_then(|weapon| weapon.get_data_component::<EnchantmentsImpl>())
+        .and_then(ItemStack::get_all_enchantments)
         .is_some_and(|enchantments| {
             enchantments
                 .enchantment

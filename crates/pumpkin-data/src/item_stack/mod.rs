@@ -26,6 +26,11 @@ mod categories;
 
 mod ironpumpkin;
 
+pub use ironpumpkin::{
+    AttributeModifiersHook, EnchantmentLevelHook, EnchantmentLevels, set_attribute_modifiers_hook,
+    set_enchantment_level_hook,
+};
+
 /// The outcome of a [`ItemStack::damage_item`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamageResult {
@@ -377,21 +382,8 @@ impl ItemStack {
     }
 
     #[must_use]
-    pub fn get_enchantment_level(&self, enchantment: &'static Enchantment) -> i32 {
-        let Some(data) = self.get_data_component::<EnchantmentsImpl>() else {
-            return 0;
-        };
-        for (enc, level) in data.enchantment.iter() {
-            if *enc == enchantment {
-                return *level;
-            }
-        }
-        0
-    }
-
-    #[must_use]
     pub fn has_enchantment_tag(&self, tag: &'static crate::tag::Tag) -> bool {
-        let Some(data) = self.get_data_component::<EnchantmentsImpl>() else {
+        let Some(data) = self.get_all_enchantments() else {
             return false;
         };
         data.enchantment
@@ -402,7 +394,7 @@ impl ItemStack {
     /// Vanilla `EnchantmentHelper.has(stack, EnchantmentEffectComponents.PREVENT_ARMOR_CHANGE)`.
     #[must_use]
     pub fn has_prevent_armor_change(&self) -> bool {
-        let Some(data) = self.get_data_component::<EnchantmentsImpl>() else {
+        let Some(data) = self.get_all_enchantments() else {
             return false;
         };
         data.enchantment
