@@ -843,6 +843,70 @@ fn beehive_rolls_the_block_interact_set_with_the_shears() {
     );
 }
 
+/// Whether `action` waits for the random sequence `key`: it runs while another roll holds the
+/// sequence, and a roll that draws from the sequence cannot end before that roll drops.
+fn waits_for_sequence(key: &str, action: impl FnOnce() + Send) -> bool {
+    let server = support::server();
+    let seed = server.level_info.load().world_gen_settings.seed;
+    let handle = server
+        .random_sequences
+        .lock()
+        .unwrap()
+        .get_or_create(&key.try_into().unwrap(), seed)
+        .handle();
+    let held = handle.check_out();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(move || {
+            action();
+            sender.send(()).unwrap();
+        });
+        let waited = receiver.recv_timeout(Duration::from_millis(500)).is_err();
+        drop(held);
+        if waited {
+            receiver.recv_timeout(support::SLOW_RUNNER).unwrap();
+        }
+        waited
+    })
+}
+
+/// `dropFromBlockInteractLootTable` rolls with no seed: the roll waits for the random sequence
+/// of the table.
+#[test]
+fn block_interact_rolls_draw_from_the_random_sequence_of_their_table() {
+    let _serial = support::serial();
+    LazyLock::force(&SETUP);
+    let player = support::player("sequence_user");
+
+    let pos = BlockPos::new(120, 100, 0);
+    let mut props = NetherWartLikeProperties::default(&Block::SWEET_BERRY_BUSH);
+    props.age = 3;
+    set(pos, props.to_state_id(&Block::SWEET_BERRY_BUSH));
+    assert!(waits_for_sequence(
+        "minecraft:harvest/sweet_berry_bush",
+        || {
+            normal_use(&SweetBerryBushBlock, &Block::SWEET_BERRY_BUSH, pos, &player);
+        }
+    ));
+
+    let pos = BlockPos::new(121, 100, 0);
+    let mut props = CaveVinesLikeProperties::default(&Block::CAVE_VINES);
+    props.berries = true;
+    set(pos, props.to_state_id(&Block::CAVE_VINES));
+    assert!(waits_for_sequence("minecraft:harvest/cave_vine", || {
+        normal_use(&CaveVinesBlock, &Block::CAVE_VINES, pos, &player);
+    }));
+
+    let pos = BlockPos::new(122, 100, 0);
+    let mut props = BeeNestLikeProperties::default(&Block::BEEHIVE);
+    props.honey_level = 5;
+    set(pos, props.to_state_id(&Block::BEEHIVE));
+    let mut shears = ItemStack::new(1, &Item::SHEARS);
+    assert!(waits_for_sequence("minecraft:harvest/beehive", || {
+        use_with_item(&BeehiveBlock, &Block::BEEHIVE, pos, &player, &mut shears);
+    }));
+}
+
 #[test]
 fn pumpkin_rolls_the_block_interact_set_with_the_state_before_carving() {
     let _serial = support::serial();
