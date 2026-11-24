@@ -8108,6 +8108,24 @@ impl World {
         );
     }
 
+    /// Emits the game event `event_key` with `entity` as its cause, as `Level.gameEvent(entity,
+    /// event, position)`. The cause is the entity that the world lists under the id of `entity`.
+    pub fn emit_game_event_by(
+        &self,
+        event_key: impl AsRef<str>,
+        position: Vector3<f64>,
+        entity: &Entity,
+    ) {
+        let listed = self.get_entity_by_id(entity.entity_id);
+        self.emit_game_event_with_context(
+            event_key,
+            position,
+            &game_event::GameEventContext {
+                source_entity: listed.as_deref(),
+            },
+        );
+    }
+
     /// The one emit path of the vanilla game events, `Level.gameEvent`: it fires
     /// [`GenericGameEvent`](crate::plugin::api::events::world::generic_game::GenericGameEvent),
     /// the `NeoForge` `VanillaGameEvent`, and then posts the event to the listeners of the world.
@@ -8119,25 +8137,21 @@ impl World {
         context: &game_event::GameEventContext<'_>,
     ) {
         let event_key = event_key.as_ref();
-        let mut kind = pumpkin_data::game_event::GameEvent::from_name(event_key);
-        let mut position = position;
-        if let Some(event) = self.plugin_event_in_world(|world| {
-            crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
-                world,
-                event_key.to_owned(),
-                position,
-                context
-                    .source_entity
-                    .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id)),
-            )
-        }) {
-            if event.cancelled {
-                return;
-            }
-            if event.event_key != event_key {
-                kind = pumpkin_data::game_event::GameEvent::from_name(&event.event_key);
-            }
-            position = event.position;
+        let kind = pumpkin_data::game_event::GameEvent::from_name(event_key);
+        if self
+            .plugin_event_in_world(|world| {
+                crate::plugin::api::events::world::generic_game::GenericGameEvent::new(
+                    world,
+                    event_key.to_owned(),
+                    position,
+                    context
+                        .source_entity
+                        .and_then(|entity| self.get_entity_by_id(entity.get_entity().entity_id)),
+                )
+            })
+            .is_some_and(|event| event.cancelled)
+        {
+            return;
         }
         if let Some(kind) = kind {
             self.post_game_event(kind, position, context);

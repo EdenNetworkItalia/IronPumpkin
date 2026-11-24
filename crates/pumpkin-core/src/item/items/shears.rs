@@ -89,7 +89,11 @@ fn handle_growing_plant(
     };
 
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+    world.emit_game_event_by(
+        GameEvent::BlockChange.name(),
+        location.to_f64(),
+        &player.living_entity.entity,
+    );
     world.play_sound(
         Sound::BlockGrowingPlantCrop,
         SoundCategory::Blocks,

@@ -89,7 +89,11 @@ impl ItemBehaviour for LeadItem {
 
         if any_leashed {
             world.play_sound(Sound::ItemLeadTied, SoundCategory::Neutral, &center);
-            world.emit_game_event(GameEvent::BlockAttach.name(), center);
+            world.emit_game_event_by(
+                GameEvent::BlockAttach.name(),
+                center,
+                &player.living_entity.entity,
+            );
             BlockActionResult::SuccessServer
         } else {
             BlockActionResult::Pass

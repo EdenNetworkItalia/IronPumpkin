@@ -38,7 +38,11 @@ fn toggle_trapdoor(player: &Player, world: &Arc<World>, block_pos: &BlockPos) {
     } else {
         pumpkin_data::game_event::GameEvent::BlockClose
     };
-    world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+    world.emit_game_event_by(
+        game_event.name(),
+        block_pos.to_centered_f64(),
+        &player.living_entity.entity,
+    );
 
     world.set_block_state(
         block_pos,

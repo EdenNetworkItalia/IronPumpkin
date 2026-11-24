@@ -592,7 +592,11 @@ impl ItemBehaviour for EmptyBucketItem {
             SoundCategory::Blocks,
             &block_pos.to_f64(),
         );
-        world.emit_game_event(GameEvent::FluidPickup.name(), block_pos.to_f64());
+        world.emit_game_event_by(
+            GameEvent::FluidPickup.name(),
+            block_pos.to_f64(),
+            &player.living_entity.entity,
+        );
         player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
 
         give_player_bucket_item(player, hand, filled_item);
