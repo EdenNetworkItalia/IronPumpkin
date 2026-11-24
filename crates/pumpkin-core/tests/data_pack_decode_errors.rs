@@ -515,7 +515,7 @@ fn a_villager_trade_and_a_trade_set_that_do_not_decode_are_skipped() {
     }
 }
 
-/// A file that holds only `neoforge:conditions` removes an entry on NeoForge. It cannot decode,
+/// A file that holds only `neoforge:conditions` removes an entry on `NeoForge`. It cannot decode,
 /// so the loader skips it with a debug line and loads no empty entry.
 #[test]
 fn a_removal_stub_is_skipped_without_an_error_line() {
