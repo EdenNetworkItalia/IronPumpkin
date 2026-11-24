@@ -250,6 +250,12 @@ impl EnchantmentHelper {
             direct_killer_entity: direct_entity,
             position: Some(victim_entity.pos.load()),
             damage_type: Some(damage_type),
+            // `Enchantment.damageContext`: the `enchanted_damage` parameter set.
+            damage_source: Some(crate::world::loot::LootDamageSource {
+                damage_type,
+                attacker,
+                direct: direct_entity,
+            }),
             ..Default::default()
         };
 

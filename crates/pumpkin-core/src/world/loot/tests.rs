@@ -227,6 +227,13 @@ async fn damage_source_predicates_use_the_attackers_components() {
                 world: Some(&world),
                 this_entity: Some(cube.as_ref()),
                 killer_entity: Some(frog.as_ref()),
+                // `damage_source_properties` fails without a damage source and an origin.
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::MOB_ATTACK,
+                    attacker: Some(frog.as_ref()),
+                    direct: Some(frog.as_ref()),
+                }),
                 ..Default::default()
             };
             assert_drops("entities/magma_cube", json, &params, &[(light, 1)]);
@@ -1157,6 +1164,12 @@ async fn vanilla_tables_dump() {
             LootContextParameters {
                 last_damage_player: Some(player.as_ref()),
                 damage_type: Some(DamageType::PLAYER_ATTACK),
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::PLAYER_ATTACK,
+                    attacker: None,
+                    direct: None,
+                }),
                 direct_attacker_weapon: Some(tool(&Item::DIAMOND_SWORD)),
                 ..Default::default()
             },
@@ -1174,6 +1187,12 @@ async fn vanilla_tables_dump() {
             LootContextParameters {
                 is_on_fire: Some(true),
                 damage_type: Some(DamageType::ON_FIRE),
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::ON_FIRE,
+                    attacker: None,
+                    direct: None,
+                }),
                 ..Default::default()
             },
         ),
@@ -1284,6 +1303,7 @@ async fn the_damage_source_feeds_the_damage_conditions() {
     let fire = r#"{"condition":"minecraft:damage_source_properties","predicate":{"tags":[{"id":"minecraft:is_fire","expected":true}]}}"#;
     let attacker = r#"{"condition":"minecraft:damage_source_properties","predicate":{"source_entity":{"type":"minecraft:chicken"}}}"#;
     let source = |damage_type, attacker| LootContextParameters {
+        position: Some(Vector3::default()),
         damage_source: Some(LootDamageSource {
             damage_type,
             attacker,
@@ -1299,4 +1319,76 @@ async fn the_damage_source_feeds_the_damage_conditions() {
         attacker,
         &source(DamageType::PLAYER_ATTACK, Some(chicken.as_ref()))
     ));
+}
+
+/// Review 171: `DamageSourceCondition.test` fails without a damage source or an origin.
+#[test]
+fn damage_source_properties_need_the_damage_source_and_the_origin() {
+    // An empty predicate passes in vanilla when both exist.
+    let any = r#"{"condition":"minecraft:damage_source_properties","predicate":{}}"#;
+    let source = Some(LootDamageSource {
+        damage_type: DamageType::ON_FIRE,
+        attacker: None,
+        direct: None,
+    });
+    let origin = Some(Vector3::default());
+    assert!(passes(
+        any,
+        &LootContextParameters {
+            position: origin,
+            damage_source: source,
+            ..Default::default()
+        }
+    ));
+    for (position, damage_source) in [(None, source), (origin, None), (None, None)] {
+        // The damage type alone is not a damage source.
+        let params = LootContextParameters {
+            position,
+            damage_source,
+            damage_type: Some(DamageType::ON_FIRE),
+            ..Default::default()
+        };
+        assert!(
+            !passes(any, &params),
+            "{position:?} {}",
+            damage_source.is_some()
+        );
+    }
+}
+
+/// Review 171: `DamageSource.isDirect` is true when the causing entity is the direct entity, and
+/// reads the damage source for both, as the other keys do.
+#[tokio::test]
+async fn is_direct_compares_the_causing_and_the_direct_entity() {
+    fn source<'a>(
+        attacker: Option<&'a dyn EntityBase>,
+        direct: Option<&'a dyn EntityBase>,
+    ) -> LootContextParameters<'a> {
+        LootContextParameters {
+            position: Some(Vector3::default()),
+            damage_source: Some(LootDamageSource {
+                damage_type: DamageType::PLAYER_ATTACK,
+                attacker,
+                direct,
+            }),
+            ..Default::default()
+        }
+    }
+
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let first = chicken(&world);
+    let second = chicken(&world);
+    let direct =
+        r#"{"condition":"minecraft:damage_source_properties","predicate":{"is_direct":true}}"#;
+    let (a, b) = (
+        first.as_ref() as &dyn EntityBase,
+        second.as_ref() as &dyn EntityBase,
+    );
+    assert!(passes(direct, &source(None, None)));
+    assert!(passes(direct, &source(Some(a), Some(a))));
+    assert!(!passes(direct, &source(Some(a), Some(b))));
+    // The attacker without a direct entity, and a direct entity without an attacker.
+    assert!(!passes(direct, &source(Some(a), None)));
+    assert!(!passes(direct, &source(None, Some(a))));
 }

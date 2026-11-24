@@ -440,7 +440,11 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
         let Some(predicate) = value.get("predicate") else {
             return Condition::Never;
         };
-        let mut conditions = Vec::new();
+        // `DamageSourceCondition.test` fails without a damage source or an origin, whatever the
+        // predicate holds. An empty predicate only checks that they exist.
+        let mut conditions = vec![Condition::DamageSourceProperties(Value::Object(
+            serde_json::Map::new(),
+        ))];
         for (field, target) in [
             ("source_entity", LootEntityTarget::Attacker),
             ("direct_entity", LootEntityTarget::DirectAttacker),

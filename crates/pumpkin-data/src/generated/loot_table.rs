@@ -14672,6 +14672,8 @@ static LOOT_PREDICATE_529: std::sync::LazyLock<LootPredicateValue> =
         )
     });
 static LOOT_PREDICATE_530: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_531: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [(
@@ -14682,7 +14684,7 @@ static LOOT_PREDICATE_530: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_531: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_532: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [(
@@ -14700,7 +14702,9 @@ static LOOT_PREDICATE_531: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_532: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_533: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_534: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [(
@@ -14711,7 +14715,7 @@ static LOOT_PREDICATE_532: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_533: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_535: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [(
@@ -14733,7 +14737,9 @@ static LOOT_PREDICATE_533: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_534: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_536: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_537: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -14757,7 +14763,9 @@ static LOOT_PREDICATE_534: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_535: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_538: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_539: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -14781,7 +14789,9 @@ static LOOT_PREDICATE_535: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_536: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_540: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_541: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -14805,7 +14815,7 @@ static LOOT_PREDICATE_536: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_537: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_542: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [(
@@ -14820,146 +14830,6 @@ static LOOT_PREDICATE_537: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_538: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("white".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_539: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("orange".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_540: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("magenta".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_541: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("light_blue".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_542: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("yellow".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
 static LOOT_PREDICATE_543: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
@@ -14969,7 +14839,7 @@ static LOOT_PREDICATE_543: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("lime".to_owned()),
+                            LootPredicateValue::String("white".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -14997,7 +14867,7 @@ static LOOT_PREDICATE_544: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("pink".to_owned()),
+                            LootPredicateValue::String("orange".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15025,7 +14895,7 @@ static LOOT_PREDICATE_545: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("gray".to_owned()),
+                            LootPredicateValue::String("magenta".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15053,7 +14923,7 @@ static LOOT_PREDICATE_546: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("light_gray".to_owned()),
+                            LootPredicateValue::String("light_blue".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15081,7 +14951,7 @@ static LOOT_PREDICATE_547: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("cyan".to_owned()),
+                            LootPredicateValue::String("yellow".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15109,7 +14979,7 @@ static LOOT_PREDICATE_548: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("purple".to_owned()),
+                            LootPredicateValue::String("lime".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15137,7 +15007,7 @@ static LOOT_PREDICATE_549: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("blue".to_owned()),
+                            LootPredicateValue::String("pink".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15165,7 +15035,7 @@ static LOOT_PREDICATE_550: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("brown".to_owned()),
+                            LootPredicateValue::String("gray".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15193,7 +15063,7 @@ static LOOT_PREDICATE_551: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("green".to_owned()),
+                            LootPredicateValue::String("light_gray".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15221,7 +15091,7 @@ static LOOT_PREDICATE_552: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("red".to_owned()),
+                            LootPredicateValue::String("cyan".to_owned()),
                         )]
                         .into_iter()
                         .collect(),
@@ -15249,542 +15119,6 @@ static LOOT_PREDICATE_553: std::sync::LazyLock<LootPredicateValue> =
                     LootPredicateValue::Object(
                         [(
                             "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("black".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_554: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:entity_type".to_owned(),
-                LootPredicateValue::String("minecraft:frog".to_owned()),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_555: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:entity_type".to_owned(),
-                LootPredicateValue::String("minecraft:frog".to_owned()),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_556: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:type_specific/cube_mob".to_owned(),
-                LootPredicateValue::Object(
-                    [("size".to_owned(), LootPredicateValue::from(1i64))]
-                        .into_iter()
-                        .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_557: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:vehicle".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:entity_type".to_owned(),
-                        LootPredicateValue::String("minecraft:zombie_horse".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_558: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:flags".to_owned(),
-                    LootPredicateValue::Object(
-                        [("is_baby".to_owned(), LootPredicateValue::Bool(true))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:vehicle".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:entity_type".to_owned(),
-                            LootPredicateValue::String("minecraft:chicken".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_559: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:components".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:chicken/variant".to_owned(),
-                        LootPredicateValue::String("minecraft:temperate".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_560: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:components".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:chicken/variant".to_owned(),
-                        LootPredicateValue::String("minecraft:warm".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_561: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:components".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:chicken/variant".to_owned(),
-                        LootPredicateValue::String("minecraft:cold".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_562: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:type_specific/fishing_hook".to_owned(),
-                LootPredicateValue::Object(
-                    [("in_open_water".to_owned(), LootPredicateValue::Bool(true))]
-                        .into_iter()
-                        .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_563: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "biomes".to_owned(),
-                LootPredicateValue::Array(vec![
-                    LootPredicateValue::String("minecraft:jungle".to_owned()),
-                    LootPredicateValue::String("minecraft:sparse_jungle".to_owned()),
-                    LootPredicateValue::String("minecraft:bamboo_jungle".to_owned()),
-                ]),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_564: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "type".to_owned(),
-                    LootPredicateValue::String("minecraft:match_block".to_owned()),
-                ),
-                (
-                    "blocks".to_owned(),
-                    LootPredicateValue::String("minecraft:sweet_berry_bush".to_owned()),
-                ),
-                (
-                    "state".to_owned(),
-                    LootPredicateValue::Object(
-                        [("age".to_owned(), LootPredicateValue::String("3".to_owned()))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_565: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:components".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:mooshroom/variant".to_owned(),
-                        LootPredicateValue::String("red".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_566: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [(
-                "minecraft:components".to_owned(),
-                LootPredicateValue::Object(
-                    [(
-                        "minecraft:mooshroom/variant".to_owned(),
-                        LootPredicateValue::String("brown".to_owned()),
-                    )]
-                    .into_iter()
-                    .collect(),
-                ),
-            )]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_567: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("white".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_568: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("orange".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_569: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("magenta".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_570: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("light_blue".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_571: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("yellow".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_572: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("lime".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_573: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("pink".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_574: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("gray".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_575: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("light_gray".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_576: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
-                            LootPredicateValue::String("cyan".to_owned()),
-                        )]
-                        .into_iter()
-                        .collect(),
-                    ),
-                ),
-                (
-                    "minecraft:type_specific/sheep".to_owned(),
-                    LootPredicateValue::Object(
-                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
-                            .into_iter()
-                            .collect(),
-                    ),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        )
-    });
-static LOOT_PREDICATE_577: std::sync::LazyLock<LootPredicateValue> =
-    std::sync::LazyLock::new(|| {
-        LootPredicateValue::Object(
-            [
-                (
-                    "minecraft:components".to_owned(),
-                    LootPredicateValue::Object(
-                        [(
-                            "minecraft:sheep/color".to_owned(),
                             LootPredicateValue::String("purple".to_owned()),
                         )]
                         .into_iter()
@@ -15804,7 +15138,7 @@ static LOOT_PREDICATE_577: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_578: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_554: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -15832,7 +15166,7 @@ static LOOT_PREDICATE_578: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_579: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_555: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -15860,7 +15194,7 @@ static LOOT_PREDICATE_579: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_580: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_556: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -15888,7 +15222,7 @@ static LOOT_PREDICATE_580: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
-static LOOT_PREDICATE_581: std::sync::LazyLock<LootPredicateValue> =
+static LOOT_PREDICATE_557: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -15916,7 +15250,689 @@ static LOOT_PREDICATE_581: std::sync::LazyLock<LootPredicateValue> =
             .collect(),
         )
     });
+static LOOT_PREDICATE_558: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("black".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_559: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_560: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("minecraft:frog".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_561: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_562: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:entity_type".to_owned(),
+                LootPredicateValue::String("minecraft:frog".to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_563: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:type_specific/cube_mob".to_owned(),
+                LootPredicateValue::Object(
+                    [("size".to_owned(), LootPredicateValue::from(1i64))]
+                        .into_iter()
+                        .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_564: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_565: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:vehicle".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:entity_type".to_owned(),
+                        LootPredicateValue::String("minecraft:zombie_horse".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_566: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:flags".to_owned(),
+                    LootPredicateValue::Object(
+                        [("is_baby".to_owned(), LootPredicateValue::Bool(true))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:vehicle".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:entity_type".to_owned(),
+                            LootPredicateValue::String("minecraft:chicken".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_567: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:components".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:chicken/variant".to_owned(),
+                        LootPredicateValue::String("minecraft:temperate".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_568: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:components".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:chicken/variant".to_owned(),
+                        LootPredicateValue::String("minecraft:warm".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_569: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:components".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:chicken/variant".to_owned(),
+                        LootPredicateValue::String("minecraft:cold".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_570: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:type_specific/fishing_hook".to_owned(),
+                LootPredicateValue::Object(
+                    [("in_open_water".to_owned(), LootPredicateValue::Bool(true))]
+                        .into_iter()
+                        .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_571: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "biomes".to_owned(),
+                LootPredicateValue::Array(vec![
+                    LootPredicateValue::String("minecraft:jungle".to_owned()),
+                    LootPredicateValue::String("minecraft:sparse_jungle".to_owned()),
+                    LootPredicateValue::String("minecraft:bamboo_jungle".to_owned()),
+                ]),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_572: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "type".to_owned(),
+                    LootPredicateValue::String("minecraft:match_block".to_owned()),
+                ),
+                (
+                    "blocks".to_owned(),
+                    LootPredicateValue::String("minecraft:sweet_berry_bush".to_owned()),
+                ),
+                (
+                    "state".to_owned(),
+                    LootPredicateValue::Object(
+                        [("age".to_owned(), LootPredicateValue::String("3".to_owned()))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_573: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:components".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:mooshroom/variant".to_owned(),
+                        LootPredicateValue::String("red".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_574: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [(
+                "minecraft:components".to_owned(),
+                LootPredicateValue::Object(
+                    [(
+                        "minecraft:mooshroom/variant".to_owned(),
+                        LootPredicateValue::String("brown".to_owned()),
+                    )]
+                    .into_iter()
+                    .collect(),
+                ),
+            )]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_575: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("white".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_576: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("orange".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_577: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("magenta".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_578: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("light_blue".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_579: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("yellow".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_580: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("lime".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_581: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("pink".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
 static LOOT_PREDICATE_582: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("gray".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_583: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("light_gray".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_584: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("cyan".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_585: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("purple".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_586: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("blue".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_587: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("brown".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_588: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("green".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_589: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| {
+        LootPredicateValue::Object(
+            [
+                (
+                    "minecraft:components".to_owned(),
+                    LootPredicateValue::Object(
+                        [(
+                            "minecraft:sheep/color".to_owned(),
+                            LootPredicateValue::String("red".to_owned()),
+                        )]
+                        .into_iter()
+                        .collect(),
+                    ),
+                ),
+                (
+                    "minecraft:type_specific/sheep".to_owned(),
+                    LootPredicateValue::Object(
+                        [("sheared".to_owned(), LootPredicateValue::Bool(false))]
+                            .into_iter()
+                            .collect(),
+                    ),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        )
+    });
+static LOOT_PREDICATE_590: std::sync::LazyLock<LootPredicateValue> =
     std::sync::LazyLock::new(|| {
         LootPredicateValue::Object(
             [
@@ -55654,9 +55670,10 @@ pub static ENTITIES_GHAST: LootTable = LootTable {
             bonus_rolls: LootNumberProvider::Constant(0f64),
             condition: LootCondition::AllOf(&[
                 LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_530),
                     LootCondition::EntityProperties {
                         target: LootEntityTarget::DirectAttacker,
-                        predicate: &LOOT_PREDICATE_530,
+                        predicate: &LOOT_PREDICATE_531,
                     },
                     LootCondition::DamageSourceTag {
                         tag: "minecraft:is_projectile",
@@ -56027,7 +56044,7 @@ pub static ENTITIES_HUSK: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::EntityProperties {
                     target: LootEntityTarget::This,
-                    predicate: &LOOT_PREDICATE_531,
+                    predicate: &LOOT_PREDICATE_532,
                 },
                 functions: &[
                     LootFunction {
@@ -56208,13 +56225,16 @@ pub static ENTITIES_MAGMA_CUBE: LootTable = LootTable {
                 weight: 1i32,
                 quality: 0i32,
                 condition: LootCondition::AllOf(&[
-                    LootCondition::Inverted(&LootCondition::EntityProperties {
-                        target: LootEntityTarget::Attacker,
-                        predicate: &LOOT_PREDICATE_532,
-                    }),
+                    LootCondition::Inverted(&LootCondition::AllOf(&[
+                        LootCondition::DamageSourceProperties(&LOOT_PREDICATE_533),
+                        LootCondition::EntityProperties {
+                            target: LootEntityTarget::Attacker,
+                            predicate: &LOOT_PREDICATE_534,
+                        },
+                    ])),
                     LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_533,
+                        predicate: &LOOT_PREDICATE_535,
                     },
                 ]),
                 functions: &[
@@ -56246,10 +56266,13 @@ pub static ENTITIES_MAGMA_CUBE: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:pearlescent_froglight"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::EntityProperties {
-                    target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_534,
-                },
+                condition: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_536),
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::Attacker,
+                        predicate: &LOOT_PREDICATE_537,
+                    },
+                ]),
                 functions: &[LootFunction {
                     kind: LootFunctionKind::SetCount {
                         count: LootNumberProvider::Constant(1f64),
@@ -56263,10 +56286,13 @@ pub static ENTITIES_MAGMA_CUBE: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:verdant_froglight"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::EntityProperties {
-                    target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_535,
-                },
+                condition: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_538),
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::Attacker,
+                        predicate: &LOOT_PREDICATE_539,
+                    },
+                ]),
                 functions: &[LootFunction {
                     kind: LootFunctionKind::SetCount {
                         count: LootNumberProvider::Constant(1f64),
@@ -56280,10 +56306,13 @@ pub static ENTITIES_MAGMA_CUBE: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:ochre_froglight"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::EntityProperties {
-                    target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_536,
-                },
+                condition: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_540),
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::Attacker,
+                        predicate: &LOOT_PREDICATE_541,
+                    },
+                ]),
                 functions: &[LootFunction {
                     kind: LootFunctionKind::SetCount {
                         count: LootNumberProvider::Constant(1f64),
@@ -56746,7 +56775,7 @@ pub static ENTITIES_PILLAGER: LootTable = LootTable {
         bonus_rolls: LootNumberProvider::Constant(0f64),
         condition: LootCondition::EntityProperties {
             target: LootEntityTarget::This,
-            predicate: &LOOT_PREDICATE_537,
+            predicate: &LOOT_PREDICATE_542,
         },
         functions: &[],
     }],
@@ -57100,7 +57129,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_538,
+                            predicate: &LOOT_PREDICATE_543,
                         },
                         functions: &[],
                     },
@@ -57110,7 +57139,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_539,
+                            predicate: &LOOT_PREDICATE_544,
                         },
                         functions: &[],
                     },
@@ -57120,7 +57149,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_540,
+                            predicate: &LOOT_PREDICATE_545,
                         },
                         functions: &[],
                     },
@@ -57130,7 +57159,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_541,
+                            predicate: &LOOT_PREDICATE_546,
                         },
                         functions: &[],
                     },
@@ -57140,7 +57169,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_542,
+                            predicate: &LOOT_PREDICATE_547,
                         },
                         functions: &[],
                     },
@@ -57150,7 +57179,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_543,
+                            predicate: &LOOT_PREDICATE_548,
                         },
                         functions: &[],
                     },
@@ -57160,7 +57189,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_544,
+                            predicate: &LOOT_PREDICATE_549,
                         },
                         functions: &[],
                     },
@@ -57170,7 +57199,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_545,
+                            predicate: &LOOT_PREDICATE_550,
                         },
                         functions: &[],
                     },
@@ -57180,7 +57209,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_546,
+                            predicate: &LOOT_PREDICATE_551,
                         },
                         functions: &[],
                     },
@@ -57190,7 +57219,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_547,
+                            predicate: &LOOT_PREDICATE_552,
                         },
                         functions: &[],
                     },
@@ -57200,7 +57229,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_548,
+                            predicate: &LOOT_PREDICATE_553,
                         },
                         functions: &[],
                     },
@@ -57210,7 +57239,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_549,
+                            predicate: &LOOT_PREDICATE_554,
                         },
                         functions: &[],
                     },
@@ -57220,7 +57249,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_550,
+                            predicate: &LOOT_PREDICATE_555,
                         },
                         functions: &[],
                     },
@@ -57230,7 +57259,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_551,
+                            predicate: &LOOT_PREDICATE_556,
                         },
                         functions: &[],
                     },
@@ -57240,7 +57269,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_552,
+                            predicate: &LOOT_PREDICATE_557,
                         },
                         functions: &[],
                     },
@@ -57250,7 +57279,7 @@ pub static ENTITIES_SHEEP: LootTable = LootTable {
                         quality: 0i32,
                         condition: LootCondition::EntityProperties {
                             target: LootEntityTarget::This,
-                            predicate: &LOOT_PREDICATE_553,
+                            predicate: &LOOT_PREDICATE_558,
                         },
                         functions: &[],
                     },
@@ -57672,10 +57701,13 @@ pub static ENTITIES_SLIME: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:slime_ball"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::Inverted(&LootCondition::EntityProperties {
-                    target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_554,
-                }),
+                condition: LootCondition::Inverted(&LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_559),
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::Attacker,
+                        predicate: &LOOT_PREDICATE_560,
+                    },
+                ])),
                 functions: &[
                     LootFunction {
                         kind: LootFunctionKind::SetCount {
@@ -57705,10 +57737,13 @@ pub static ENTITIES_SLIME: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:slime_ball"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::EntityProperties {
-                    target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_555,
-                },
+                condition: LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_561),
+                    LootCondition::EntityProperties {
+                        target: LootEntityTarget::Attacker,
+                        predicate: &LOOT_PREDICATE_562,
+                    },
+                ]),
                 functions: &[LootFunction {
                     kind: LootFunctionKind::SetCount {
                         count: LootNumberProvider::Constant(1f64),
@@ -57723,7 +57758,7 @@ pub static ENTITIES_SLIME: LootTable = LootTable {
         bonus_rolls: LootNumberProvider::Constant(0f64),
         condition: LootCondition::EntityProperties {
             target: LootEntityTarget::This,
-            predicate: &LOOT_PREDICATE_556,
+            predicate: &LOOT_PREDICATE_563,
         },
         functions: &[],
     }],
@@ -58160,10 +58195,13 @@ pub static ENTITIES_TURTLE: LootTable = LootTable {
             }],
             rolls: LootNumberProvider::Constant(1f64),
             bonus_rolls: LootNumberProvider::Constant(0f64),
-            condition: LootCondition::DamageSourceTag {
-                tag: "minecraft:is_lightning",
-                expected: true,
-            },
+            condition: LootCondition::AllOf(&[
+                LootCondition::DamageSourceProperties(&LOOT_PREDICATE_564),
+                LootCondition::DamageSourceTag {
+                    tag: "minecraft:is_lightning",
+                    expected: true,
+                },
+            ]),
             functions: &[],
         },
     ],
@@ -58658,7 +58696,7 @@ pub static ENTITIES_ZOMBIE: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::EntityProperties {
                     target: LootEntityTarget::This,
-                    predicate: &LOOT_PREDICATE_557,
+                    predicate: &LOOT_PREDICATE_565,
                 },
                 functions: &[
                     LootFunction {
@@ -58748,7 +58786,7 @@ pub static ENTITIES_ZOMBIE: LootTable = LootTable {
                 LootCondition::KilledByPlayer,
                 LootCondition::EntityProperties {
                     target: LootEntityTarget::This,
-                    predicate: &LOOT_PREDICATE_558,
+                    predicate: &LOOT_PREDICATE_566,
                 },
             ]),
             functions: &[],
@@ -59326,7 +59364,7 @@ pub static GAMEPLAY_CHICKEN_LAY: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_559,
+                        predicate: &LOOT_PREDICATE_567,
                     },
                     functions: &[],
                 },
@@ -59336,7 +59374,7 @@ pub static GAMEPLAY_CHICKEN_LAY: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_560,
+                        predicate: &LOOT_PREDICATE_568,
                     },
                     functions: &[],
                 },
@@ -59346,7 +59384,7 @@ pub static GAMEPLAY_CHICKEN_LAY: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_561,
+                        predicate: &LOOT_PREDICATE_569,
                     },
                     functions: &[],
                 },
@@ -59379,7 +59417,7 @@ pub static GAMEPLAY_FISHING: LootTable = LootTable {
                 quality: 2i32,
                 condition: LootCondition::EntityProperties {
                     target: LootEntityTarget::This,
-                    predicate: &LOOT_PREDICATE_562,
+                    predicate: &LOOT_PREDICATE_570,
                 },
                 functions: &[],
             },
@@ -59537,7 +59575,7 @@ pub static GAMEPLAY_FISHING_JUNK: LootTable = LootTable {
                 quality: 0i32,
                 condition: LootCondition::LocationCheck {
                     offset: [0i32, 0i32, 0i32],
-                    predicate: &LOOT_PREDICATE_563,
+                    predicate: &LOOT_PREDICATE_571,
                 },
                 functions: &[],
             },
@@ -60680,7 +60718,7 @@ pub static HARVEST_SWEET_BERRY_BUSH: LootTable = LootTable {
                 kind: LootEntryKind::Item("minecraft:sweet_berries"),
                 weight: 1i32,
                 quality: 0i32,
-                condition: LootCondition::MatchBlock(&LOOT_PREDICATE_564),
+                condition: LootCondition::MatchBlock(&LOOT_PREDICATE_572),
                 functions: &[LootFunction {
                     kind: LootFunctionKind::SetCount {
                         count: LootNumberProvider::Constant(1f64),
@@ -60898,7 +60936,7 @@ pub static SHEARING_MOOSHROOM: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_565,
+                        predicate: &LOOT_PREDICATE_573,
                     },
                     functions: &[],
                 },
@@ -60908,7 +60946,7 @@ pub static SHEARING_MOOSHROOM: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_566,
+                        predicate: &LOOT_PREDICATE_574,
                     },
                     functions: &[],
                 },
@@ -60967,7 +61005,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_567,
+                        predicate: &LOOT_PREDICATE_575,
                     },
                     functions: &[],
                 },
@@ -60977,7 +61015,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_568,
+                        predicate: &LOOT_PREDICATE_576,
                     },
                     functions: &[],
                 },
@@ -60987,7 +61025,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_569,
+                        predicate: &LOOT_PREDICATE_577,
                     },
                     functions: &[],
                 },
@@ -60997,7 +61035,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_570,
+                        predicate: &LOOT_PREDICATE_578,
                     },
                     functions: &[],
                 },
@@ -61007,7 +61045,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_571,
+                        predicate: &LOOT_PREDICATE_579,
                     },
                     functions: &[],
                 },
@@ -61017,7 +61055,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_572,
+                        predicate: &LOOT_PREDICATE_580,
                     },
                     functions: &[],
                 },
@@ -61027,7 +61065,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_573,
+                        predicate: &LOOT_PREDICATE_581,
                     },
                     functions: &[],
                 },
@@ -61037,7 +61075,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_574,
+                        predicate: &LOOT_PREDICATE_582,
                     },
                     functions: &[],
                 },
@@ -61047,7 +61085,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_575,
+                        predicate: &LOOT_PREDICATE_583,
                     },
                     functions: &[],
                 },
@@ -61057,7 +61095,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_576,
+                        predicate: &LOOT_PREDICATE_584,
                     },
                     functions: &[],
                 },
@@ -61067,7 +61105,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_577,
+                        predicate: &LOOT_PREDICATE_585,
                     },
                     functions: &[],
                 },
@@ -61077,7 +61115,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_578,
+                        predicate: &LOOT_PREDICATE_586,
                     },
                     functions: &[],
                 },
@@ -61087,7 +61125,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_579,
+                        predicate: &LOOT_PREDICATE_587,
                     },
                     functions: &[],
                 },
@@ -61097,7 +61135,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_580,
+                        predicate: &LOOT_PREDICATE_588,
                     },
                     functions: &[],
                 },
@@ -61107,7 +61145,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_581,
+                        predicate: &LOOT_PREDICATE_589,
                     },
                     functions: &[],
                 },
@@ -61117,7 +61155,7 @@ pub static SHEARING_SHEEP: LootTable = LootTable {
                     quality: 0i32,
                     condition: LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_582,
+                        predicate: &LOOT_PREDICATE_590,
                     },
                     functions: &[],
                 },

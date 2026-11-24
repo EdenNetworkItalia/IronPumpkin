@@ -56,6 +56,8 @@ pub struct LootContextParameters<'a> {
     pub is_on_fire: Option<bool>,
     pub direct_attacker_weapon: Option<ItemStack>,
     pub enchantment_level: Option<i32>,
+    /// `ENCHANTMENT_ACTIVE`: whether the enchantment of an effect is active.
+    pub enchantment_active: Option<bool>,
     /// `LAST_DAMAGE_PLAYER`: the player that last damaged the killed entity. The condition
     /// `killed_by_player` tests this field only.
     pub last_damage_player: Option<&'a dyn EntityBase>,
@@ -67,8 +69,21 @@ pub struct LootContextParameters<'a> {
     pub target_entity: Option<&'a dyn EntityBase>,
     /// `BLOCK_ENTITY`: the block entity of the block of the roll.
     pub block_entity: Option<&'a dyn BlockEntity>,
-    /// `ENCHANTMENT_ACTIVE`: whether the enchantment of an effect is active.
-    pub enchantment_active: Option<bool>,
+}
+
+impl<'a> LootContextParameters<'a> {
+    /// `ATTACKING_ENTITY`: `killer_entity`, else the attacker of `damage_source`.
+    fn attacker(&self) -> Option<&'a dyn EntityBase> {
+        self.killer_entity
+            .or_else(|| self.damage_source.and_then(|source| source.attacker))
+    }
+
+    /// `DIRECT_ATTACKING_ENTITY`: `direct_killer_entity`, else the direct entity of
+    /// `damage_source`.
+    fn direct_attacker(&self) -> Option<&'a dyn EntityBase> {
+        self.direct_killer_entity
+            .or_else(|| self.damage_source.and_then(|source| source.direct))
+    }
 }
 
 impl LootContextParameters<'_> {
