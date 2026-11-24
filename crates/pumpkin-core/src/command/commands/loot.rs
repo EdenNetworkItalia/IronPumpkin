@@ -416,17 +416,16 @@ impl CommandExecutor for LootExecutor {
                     last_damage_player: killer
                         .as_ref()
                         .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                    // `target.damageSources().magic()` has no causing or direct entity. The
+                    // killer is the attacking and direct attacking entity of the roll.
                     damage_source: Some(crate::world::loot::LootDamageSource {
                         damage_type: pumpkin_data::damage::DamageType::MAGIC,
-                        attacker: killer
-                            .as_ref()
-                            .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
-                        direct: killer
-                            .as_ref()
-                            .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
+                        attacker: None,
+                        direct: None,
                     }),
                     tool: killer_tool,
-                    position: killer.as_ref().map(|p| p.position()),
+                    // `source.getPosition()`, for every target.
+                    position: Some(context.source.position),
                     ..Default::default()
                 };
 
@@ -444,7 +443,6 @@ impl CommandExecutor for LootExecutor {
                             direct_killer_entity: killer
                                 .as_ref()
                                 .map(|player| player.as_ref() as &dyn crate::entity::EntityBase),
-                            position: Some(entity.get_entity().pos.load()),
                             is_on_fire: Some(
                                 entity
                                     .get_entity()
