@@ -17,7 +17,7 @@ use pumpkin_protocol::java::neoforge::{
 use pumpkin_util::identifier::Identifier;
 use tracing::error;
 
-use super::{Registered, loader, registered, registries::ServerLookup};
+use super::{Registered, consumers, loader, registered, registries::ServerLookup};
 
 struct Host;
 
@@ -30,16 +30,20 @@ pub(super) fn install_host() {
 
 impl DataMapHost for Host {
     fn load(&self, server: &Arc<Server>) {
-        let packs: Vec<loader::Pack> = server
-            .datapack_manager
-            .get_loaded_packs()
-            .into_iter()
-            .map(|pack| loader::Pack {
-                id: pack.id,
-                root: pack.root_path,
-            })
-            .collect();
+        let mut packs = vec![consumers::default_pack()];
+        packs.extend(
+            server
+                .datapack_manager
+                .get_loaded_packs()
+                .into_iter()
+                .map(|pack| loader::Pack {
+                    id: pack.id,
+                    root: Some(pack.root_path),
+                    memory: Vec::new(),
+                }),
+        );
         let updated = loader::load(&registered(), &packs, &ServerLookup { server });
+        consumers::publish(&ServerLookup { server });
         for registry in updated {
             let mut event = DataMapsUpdatedEvent::new(registry, UpdateCause::ServerReload);
             server.plugin_manager.fire_blocking(server, &mut event);

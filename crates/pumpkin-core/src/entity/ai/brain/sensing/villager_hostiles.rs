@@ -3,13 +3,16 @@ use pumpkin_data::entity::EntityType;
 use super::super::BrainTick;
 use super::super::memory::{MemoryModuleId, types};
 use super::Sensor;
+use crate::plugin::data_maps::builtin::acceptable_villager_distance;
 
 const REQUIRES: [MemoryModuleId; 2] = [
     types::NEAREST_HOSTILE.id(),
     types::NEAREST_VISIBLE_LIVING_ENTITIES.id(),
 ];
 
-const ACCEPTABLE_DISTANCE_FROM_HOSTILES: &[(&EntityType, f32)] = &[
+/// `VillagerHostilesSensor.ACCEPTABLE_DISTANCE_FROM_HOSTILES`: the fallback for an entity type that the
+/// `acceptable_villager_distances` data map does not name.
+pub(crate) const ACCEPTABLE_DISTANCE_FROM_HOSTILES: &[(&EntityType, f32)] = &[
     (&EntityType::DROWNED, 8.0),
     (&EntityType::EVOKER, 12.0),
     (&EntityType::HUSK, 8.0),
@@ -26,9 +29,11 @@ const ACCEPTABLE_DISTANCE_FROM_HOSTILES: &[(&EntityType, f32)] = &[
 pub struct VillagerHostilesSensor;
 
 fn hostile_distance(entity_type: &EntityType) -> Option<f32> {
-    ACCEPTABLE_DISTANCE_FROM_HOSTILES
-        .iter()
-        .find_map(|(hostile, distance)| (*hostile == entity_type).then_some(*distance))
+    acceptable_villager_distance(entity_type).or_else(|| {
+        ACCEPTABLE_DISTANCE_FROM_HOSTILES
+            .iter()
+            .find_map(|(hostile, distance)| (*hostile == entity_type).then_some(*distance))
+    })
 }
 
 fn is_matching_entity(entity_type: &EntityType, squared_distance: f64) -> bool {
@@ -62,11 +67,31 @@ impl Sensor for VillagerHostilesSensor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::data_maps::builtin::{BuiltinDataMaps, test_support::install};
 
     #[test]
     fn hostile_distance_is_inclusive_and_ignores_other_types() {
+        let _installed = install(BuiltinDataMaps::vanilla());
         assert!(is_matching_entity(&EntityType::ZOMBIE, 64.0));
         assert!(!is_matching_entity(&EntityType::ZOMBIE, 64.000_001));
         assert!(!is_matching_entity(&EntityType::COW, 0.0));
+    }
+
+    #[test]
+    fn a_data_map_distance_makes_an_entity_hostile_and_vanilla_stays_the_fallback() {
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.acceptable_villager_distances
+            .insert(EntityType::CHICKEN.id, 3.0);
+        maps.acceptable_villager_distances
+            .insert(EntityType::PILLAGER.id, 4.0);
+        // `ZOMBIE` has no value in the map: the vanilla table answers, as in `NeoForge`.
+        maps.acceptable_villager_distances
+            .remove(&EntityType::ZOMBIE.id);
+        let _installed = install(maps);
+        assert!(!is_matching_entity(&EntityType::CHICKEN, 9.1));
+        assert!(is_matching_entity(&EntityType::CHICKEN, 9.0));
+        assert!(is_matching_entity(&EntityType::PILLAGER, 16.0));
+        assert!(!is_matching_entity(&EntityType::PILLAGER, 16.1));
+        assert!(is_matching_entity(&EntityType::ZOMBIE, 64.0));
     }
 }

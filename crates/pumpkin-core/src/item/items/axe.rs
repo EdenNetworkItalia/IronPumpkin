@@ -1,6 +1,7 @@
 use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
+use crate::plugin::data_maps::builtin::block_transformer;
 use crate::server::Server;
 use pumpkin_data::block_properties::{
     ChestLikeProperties, ChestType, DoubleBlockHalf, OakDoorLikeProperties,
@@ -37,7 +38,7 @@ impl ItemBehaviour for AxeItem {
     ) -> BlockActionResult {
         let Some(transformer) = item
             .get_data_component::<BlockTransformerImpl>()
-            .and_then(BlockTransformerImpl::get_transformer)
+            .and_then(block_transformer)
         else {
             return BlockActionResult::Pass;
         };

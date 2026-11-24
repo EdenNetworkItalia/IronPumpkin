@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::villager::VillagerProfession;
@@ -11,6 +11,7 @@ use super::super::utils;
 use crate::entity::EntityBase;
 use crate::entity::passive::villager::VillagerEntity;
 use crate::entity::player::Player;
+use crate::plugin::data_maps::builtin::raid_hero_gift;
 use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
 
 const THROW_GIFT_AT_DISTANCE: i32 = 5;
@@ -86,7 +87,7 @@ fn throw_gift(tick: &BrainTick<'_>, target: &Arc<dyn EntityBase>) {
     );
     let Some(table) = tick
         .world
-        .get_loot_table(loot_table_to_throw(is_baby, profession))
+        .get_loot_table(&loot_table_to_throw(is_baby, profession))
     else {
         return;
     };
@@ -182,10 +183,18 @@ fn calculate_time_until_next_gift(tick: &BrainTick<'_>) -> i32 {
             .random_range(0..=MAX_TIME_BETWEEN_GIFTS - MIN_TIME_BETWEEN_GIFTS)
 }
 
-const fn loot_table_to_throw(is_baby: bool, profession: VillagerProfession) -> &'static str {
+/// `GiveGiftToHero.getLootTableToThrow`: a baby gives the baby gift, a profession with a value in
+/// the `raid_hero_gifts` data map gives that table, and the vanilla table decides the rest.
+fn loot_table_to_throw(is_baby: bool, profession: VillagerProfession) -> Cow<'static, str> {
     if is_baby {
-        return "minecraft:gameplay/hero_of_the_village/baby_gift";
+        return Cow::Borrowed("minecraft:gameplay/hero_of_the_village/baby_gift");
     }
+    raid_hero_gift(profession)
+        .map_or_else(|| Cow::Borrowed(vanilla_loot_table(profession)), Cow::Owned)
+}
+
+/// `GiveGiftToHero.GIFTS`.
+pub(crate) const fn vanilla_loot_table(profession: VillagerProfession) -> &'static str {
     match profession {
         VillagerProfession::Armorer => "minecraft:gameplay/hero_of_the_village/armorer_gift",
         VillagerProfession::Butcher => "minecraft:gameplay/hero_of_the_village/butcher_gift",
@@ -215,9 +224,11 @@ const fn loot_table_to_throw(is_baby: bool, profession: VillagerProfession) -> &
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::data_maps::builtin::{BuiltinDataMaps, test_support::install};
 
     #[test]
     fn gift_loot_table_follows_baby_profession_and_default_rules() {
+        let _installed = install(BuiltinDataMaps::vanilla());
         assert_eq!(
             loot_table_to_throw(true, VillagerProfession::Farmer),
             "minecraft:gameplay/hero_of_the_village/baby_gift"
@@ -233,6 +244,34 @@ mod tests {
         assert_eq!(
             loot_table_to_throw(false, VillagerProfession::Nitwit),
             "minecraft:gameplay/hero_of_the_village/unemployed_gift"
+        );
+    }
+
+    #[test]
+    fn a_data_map_gift_replaces_the_vanilla_table_but_not_the_baby_gift() {
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.raid_hero_gifts
+            .insert(VillagerProfession::Farmer, "mymod:gifts/farmer".to_owned());
+        maps.raid_hero_gifts
+            .insert(VillagerProfession::Nitwit, "mymod:gifts/nitwit".to_owned());
+        // `BUTCHER` has no value in the map: the vanilla table answers.
+        maps.raid_hero_gifts.remove(&VillagerProfession::Butcher);
+        let _installed = install(maps);
+        assert_eq!(
+            loot_table_to_throw(false, VillagerProfession::Farmer),
+            "mymod:gifts/farmer"
+        );
+        assert_eq!(
+            loot_table_to_throw(false, VillagerProfession::Nitwit),
+            "mymod:gifts/nitwit"
+        );
+        assert_eq!(
+            loot_table_to_throw(false, VillagerProfession::Butcher),
+            "minecraft:gameplay/hero_of_the_village/butcher_gift"
+        );
+        assert_eq!(
+            loot_table_to_throw(true, VillagerProfession::Farmer),
+            "minecraft:gameplay/hero_of_the_village/baby_gift"
         );
     }
 }

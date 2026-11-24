@@ -17,8 +17,10 @@ use rand::RngExt;
 use crate::block::blocks::fire::FireBlockBase;
 use crate::entity::player::Player;
 use crate::entity::{Entity, EntityBase};
+use crate::plugin::data_maps::builtin::{first_oxidized_stage, previous_oxidized_stage};
 use crate::server::Server;
 use crate::world::World;
+use pumpkin_data::block_transformer::{get_next_weathering, get_previous_weathering};
 
 pub struct LightningBoltEntity {
     entity: Entity,
@@ -322,25 +324,21 @@ pub const fn is_waxed_copper(id: BlockId) -> bool {
     pumpkin_data::block_transformer::get_unwaxed(id).is_some()
 }
 
+/// `instanceof WeatheringCopper`: the vanilla copper family, whatever the `oxidizables` data map
+/// holds.
 #[must_use]
 pub const fn is_weathering_copper(id: BlockId) -> bool {
-    pumpkin_data::block_transformer::get_previous_weathering(id).is_some()
-        || pumpkin_data::block_transformer::get_next_weathering(id).is_some()
+    get_previous_weathering(id).is_some() || get_next_weathering(id).is_some()
 }
 
+/// `WeatheringCopper.getFirst`: the data map leads back to the first stage.
 #[must_use]
-pub const fn get_first_stage_copper(id: BlockId) -> Option<BlockId> {
-    if !is_weathering_copper(id) {
-        return None;
-    }
-    let mut cur = id;
-    while let Some(prev) = pumpkin_data::block_transformer::get_previous_weathering(cur) {
-        cur = prev;
-    }
-    Some(cur)
+pub fn get_first_stage_copper(id: BlockId) -> Option<BlockId> {
+    is_weathering_copper(id).then(|| first_oxidized_stage(id.to_block()))
 }
 
+/// `WeatheringCopper.getPrevious`.
 #[must_use]
-pub const fn get_previous_stage_copper(id: BlockId) -> Option<BlockId> {
-    pumpkin_data::block_transformer::get_previous_weathering(id)
+pub fn get_previous_stage_copper(id: BlockId) -> Option<BlockId> {
+    previous_oxidized_stage(id.to_block())
 }

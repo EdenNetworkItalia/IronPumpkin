@@ -25,6 +25,9 @@ use crate::entity::{
     mob::{Mob, MobEntity},
     player::Player,
 };
+use crate::plugin::data_maps::builtin::{
+    has_parrot_imitation, parrot_imitated_types, parrot_imitation,
+};
 
 /// Duration in ticks of the poison a parrot gets from eating a cookie, matching
 /// vanilla `Parrot.mobInteract`.
@@ -32,6 +35,11 @@ const COOKIE_POISON_DURATION: i32 = 900;
 const AMBIENT_IMITATION_INTERVAL: i32 = 1000;
 const NEARBY_IMITATION_INTERVAL: i32 = 400;
 const IMITATION_VOLUME: f32 = 0.7;
+
+/// `NOT_PARROT_PREDICATE`: the vanilla table or the data map names the type.
+fn can_imitate(entity_type: &EntityType) -> bool {
+    IMITATIONS.iter().any(|(kind, _)| *kind == entity_type) || has_parrot_imitation(entity_type)
+}
 
 /// Represents a Parrot, a passive flying mob that can mimic nearby mob sounds.
 ///
@@ -56,12 +64,7 @@ impl ParrotEntity {
             .load()
             .get_entities_at_box(&e.bounding_box.load().expand(20.0, 20.0, 20.0))
             .into_iter()
-            .filter(|m| {
-                m.get_mob().is_some()
-                    && IMITATIONS
-                        .iter()
-                        .any(|(kind, _)| *kind == m.get_entity().entity_type)
-            })
+            .filter(|m| m.get_mob().is_some() && can_imitate(m.get_entity().entity_type))
             .collect();
         if candidates.is_empty() {
             return false;
@@ -70,20 +73,14 @@ impl ParrotEntity {
         if target.get_entity().is_silent() {
             return false;
         }
-        if let Some((_, sound)) = IMITATIONS
-            .iter()
-            .find(|(kind, _)| *kind == target.get_entity().entity_type)
-        {
-            e.world.load().play_sound_fine(
-                *sound,
-                entity.sound_source(),
-                &e.pos.load(),
-                IMITATION_VOLUME,
-                Self::pitch(),
-            );
-            return true;
-        }
-        false
+        e.world.load().play_sound_fine(
+            parrot_imitation(target.get_entity().entity_type),
+            entity.sound_source(),
+            &e.pos.load(),
+            IMITATION_VOLUME,
+            Self::pitch(),
+        );
+        true
     }
 
     pub(crate) fn pitch() -> f32 {
@@ -96,7 +93,11 @@ impl ParrotEntity {
         if world.level_info.load().difficulty != pumpkin_util::Difficulty::Peaceful
             && rng.random_range(0..AMBIENT_IMITATION_INTERVAL) == 0
         {
-            IMITATIONS[rng.random_range(0..IMITATIONS.len())].1
+            // `Parrot.getAmbient` picks among the types of the vanilla table and the data map.
+            let types = parrot_imitated_types();
+            types
+                .get(rng.random_range(0..types.len()))
+                .map_or(Sound::EntityParrotAmbient, |kind| parrot_imitation(kind))
         } else {
             Sound::EntityParrotAmbient
         }
@@ -428,8 +429,9 @@ impl Mob for ParrotEntity {
     }
 }
 
-// Vanilla 26.3 Parrot.MOB_SOUND_MAP, including the deliberately empty happy ghast sound.
-const IMITATIONS: &[(&EntityType, Sound)] = &[
+/// Vanilla 26.3 `Parrot.MOB_SOUND_MAP`, including the deliberately empty happy ghast sound. A
+/// parrot also imitates the types of the `parrot_imitations` data map.
+pub(crate) const IMITATIONS: &[(&EntityType, Sound)] = &[
     (&EntityType::BLAZE, Sound::EntityParrotImitateBlaze),
     (&EntityType::BOGGED, Sound::EntityParrotImitateBogged),
     (&EntityType::BREEZE, Sound::EntityParrotImitateBreeze),
@@ -507,6 +509,32 @@ const IMITATIONS: &[(&EntityType, Sound)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::plugin::data_maps::builtin::{BuiltinDataMaps, test_support::install};
+
+    #[test]
+    fn a_data_map_entry_adds_a_type_and_sets_its_sound() {
+        let installed = install(BuiltinDataMaps::vanilla());
+        assert!(!can_imitate(&EntityType::CHICKEN));
+        assert!(can_imitate(&EntityType::CREEPER));
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.parrot_imitations
+            .insert(EntityType::CHICKEN.id, Sound::EntityParrotImitateBlaze);
+        maps.parrot_imitations.remove(&EntityType::ZOMBIE.id);
+        installed.replace(maps);
+        assert!(can_imitate(&EntityType::CHICKEN));
+        assert_eq!(
+            parrot_imitation(&EntityType::CHICKEN),
+            Sound::EntityParrotImitateBlaze
+        );
+        assert!(parrot_imitated_types().contains(&&EntityType::CHICKEN));
+        // `ZOMBIE` is in the vanilla table only: a parrot still picks it, with the ambient sound.
+        assert!(can_imitate(&EntityType::ZOMBIE));
+        assert!(parrot_imitated_types().contains(&&EntityType::ZOMBIE));
+        assert_eq!(
+            parrot_imitation(&EntityType::ZOMBIE),
+            Sound::EntityParrotAmbient
+        );
+    }
     use crate::entity::{
         ageable::AgeableMob, ai::test_support::world, passive::tamable::TamableAnimal,
     };

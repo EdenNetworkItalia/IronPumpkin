@@ -59,7 +59,8 @@ fn load_one<T: DataMapValue>(data_map: &DataMapType<T>, dir: &Path) {
         &registered,
         &[Pack {
             id: "file/pack".to_owned(),
-            root: dir.join("pack"),
+            root: Some(dir.join("pack")),
+            memory: Vec::new(),
         }],
         &Items,
     );

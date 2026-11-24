@@ -9,6 +9,7 @@ use crate::entity::Entity;
 use crate::entity::EntityBase;
 use crate::entity::mob::Mob;
 use crate::entity::passive::villager::VillagerEntity;
+use crate::plugin::data_maps::builtin::villager_type_of_biome;
 use crate::world::World;
 
 const EXCESS_FOOD_THRESHOLD: i32 = 24;
@@ -35,7 +36,14 @@ const fn breed_type_roll(
     }
 }
 
+/// `VillagerType.byBiome`: the `villager_types` data map, then the vanilla table.
 pub(crate) fn villager_type_for_biome(registry_id: &str) -> VillagerType {
+    villager_type_of_biome(registry_id)
+        .unwrap_or_else(|| vanilla_villager_type_for_biome(registry_id))
+}
+
+/// `VillagerType.BY_BIOME` with the plains type for the other biomes.
+pub(crate) fn vanilla_villager_type_for_biome(registry_id: &str) -> VillagerType {
     match registry_id {
         "badlands" | "desert" | "eroded_badlands" | "wooded_badlands" => VillagerType::Desert,
         "bamboo_jungle" | "jungle" | "sparse_jungle" => VillagerType::Jungle,
@@ -112,8 +120,24 @@ impl VillagerEntity {
 
 #[cfg(test)]
 mod tests {
-    use super::{breed_type_roll, can_breed_with_food};
+    use super::{breed_type_roll, can_breed_with_food, villager_type_for_biome};
     use crate::entity::passive::villager::VillagerType;
+    use crate::plugin::data_maps::builtin::{BuiltinDataMaps, test_support::install};
+
+    #[test]
+    fn a_data_map_type_replaces_the_vanilla_type_of_a_biome() {
+        let installed = install(BuiltinDataMaps::vanilla());
+        assert_eq!(villager_type_for_biome("desert"), VillagerType::Desert);
+        assert_eq!(villager_type_for_biome("plains"), VillagerType::Plains);
+        let mut maps = BuiltinDataMaps::vanilla();
+        maps.villager_types
+            .insert("plains".to_owned(), VillagerType::Swamp);
+        maps.villager_types.remove("desert");
+        installed.replace(maps);
+        assert_eq!(villager_type_for_biome("plains"), VillagerType::Swamp);
+        // `desert` has no value in the map: the vanilla table answers.
+        assert_eq!(villager_type_for_biome("desert"), VillagerType::Desert);
+    }
 
     #[test]
     fn can_breed_needs_twelve_food_points() {

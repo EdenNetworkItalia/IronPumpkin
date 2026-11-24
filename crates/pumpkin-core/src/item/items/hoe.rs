@@ -1,6 +1,7 @@
 use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
+use crate::plugin::data_maps::builtin::block_transformer;
 use crate::server::Server;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::block_transformer::DropStrategy;
@@ -35,7 +36,7 @@ impl ItemBehaviour for HoeItem {
     ) -> BlockActionResult {
         let Some(transformer) = item
             .get_data_component::<BlockTransformerImpl>()
-            .and_then(BlockTransformerImpl::get_transformer)
+            .and_then(block_transformer)
         else {
             return BlockActionResult::Pass;
         };

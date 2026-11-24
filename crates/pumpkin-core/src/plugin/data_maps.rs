@@ -5,6 +5,8 @@
 //! configuration phase of each connection and when a player joins. Without a host the server
 //! advertises the `NeoForge` built-in data maps and syncs nothing.
 
+pub mod builtin;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::{

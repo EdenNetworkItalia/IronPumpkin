@@ -5,12 +5,12 @@ use crate::block::entities::BlockEntity;
 use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
+use crate::plugin::data_maps::builtin::waxed_block;
 use crate::server::Server;
 use crate::world::World;
 use pumpkin_data::block_properties::{
     ChestLikeProperties, ChestType, DoubleBlockHalf, OakDoorLikeProperties,
 };
-use pumpkin_data::block_transformer::get_waxed;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
@@ -59,7 +59,7 @@ impl ItemBehaviour for HoneyCombItem {
 /// Waxes the block at `location` if it has a waxed equivalent, emitting the wax
 /// particles and sound on success.
 pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Block) -> bool {
-    let Some(replacement) = get_waxed(block.id) else {
+    let Some(replacement) = waxed_block(block) else {
         return false;
     };
     let new_block = replacement.to_block();
@@ -97,7 +97,7 @@ pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Bloc
             };
             let neighbor_pos = location.offset(neighbor_dir.to_offset());
             let (neighbor_block, neighbor_state_id) = world.get_block_and_state_id(&neighbor_pos);
-            if let Some(neighbor_waxed) = get_waxed(neighbor_block.id) {
+            if let Some(neighbor_waxed) = waxed_block(neighbor_block) {
                 let neighbor_new_block = neighbor_waxed.to_block();
                 let neighbor_new_state =
                     neighbor_new_block.with_properties_of(neighbor_block, neighbor_state_id);

@@ -1,6 +1,7 @@
 use crate::block::registry::BlockActionResult;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
+use crate::plugin::data_maps::builtin::block_transformer;
 use crate::server::Server;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::data_component_impl::BlockTransformerImpl;
@@ -43,7 +44,7 @@ impl ItemBehaviour for ShovelItem {
 
         if let Some(transformer) = item
             .get_data_component::<BlockTransformerImpl>()
-            .and_then(BlockTransformerImpl::get_transformer)
+            .and_then(block_transformer)
             && let Some(result) =
                 transformer.transform(block, world.get_block_state_id(&location), face, &get_block)
         {

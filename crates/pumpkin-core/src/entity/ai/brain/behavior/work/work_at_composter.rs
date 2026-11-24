@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use pumpkin_data::block_properties::ComposterLikeProperties;
 use pumpkin_data::item::Item;
@@ -13,8 +13,11 @@ use super::work_at_poi::WorkAtPoi;
 use crate::block::blocks::composter::ComposterBlock;
 use crate::entity::EntityBase;
 use crate::entity::passive::villager::VillagerEntity;
+use crate::plugin::data_maps::builtin::villager_can_compost;
 
-const COMPOSTABLE_ITEMS: [&Item; 2] = [&Item::WHEAT_SEEDS, &Item::BEETROOT_SEEDS];
+/// `WorkAtComposter.COMPOSTABLE_ITEMS`: the values of the `villager_compostables` data map in
+/// vanilla.
+pub(crate) const COMPOSTABLE_ITEMS: [&Item; 2] = [&Item::WHEAT_SEEDS, &Item::BEETROOT_SEEDS];
 
 const BREAD_CAP: i32 = 36;
 const MAX_AMOUNT_OF_BREAD_TO_MAKE: i32 = 3;
@@ -88,7 +91,7 @@ fn compost_items(
 
     let original_state_id = state_id;
     let mut total_items_to_use = TOTAL_ITEMS_TO_USE;
-    let mut items_seen_so_far = [0i32; COMPOSTABLE_ITEMS.len()];
+    let mut items_seen_so_far: HashMap<u16, i32> = HashMap::new();
     let mut inventory = villager
         .inventory
         .lock()
@@ -101,15 +104,13 @@ fn compost_items(
             break;
         }
         let item_stack = &mut inventory[i];
-        let Some(item_index) = COMPOSTABLE_ITEMS
-            .iter()
-            .position(|item| item.id == item_stack.item.id)
-        else {
+        if !villager_can_compost(item_stack.item) {
             continue;
-        };
+        }
         let stack_size = i32::from(item_stack.item_count);
-        let total_item_count = items_seen_so_far[item_index] + stack_size;
-        items_seen_so_far[item_index] = total_item_count;
+        let seen = items_seen_so_far.entry(item_stack.item.id).or_insert(0);
+        let total_item_count = *seen + stack_size;
+        *seen = total_item_count;
         let items_to_use = items_to_use(total_item_count, total_items_to_use, stack_size);
         if items_to_use > 0 {
             total_items_to_use -= items_to_use;

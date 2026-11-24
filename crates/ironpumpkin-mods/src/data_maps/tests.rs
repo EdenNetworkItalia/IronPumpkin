@@ -276,7 +276,8 @@ fn packs(dir: &Path, names: &[&str]) -> Vec<Pack> {
         .iter()
         .map(|name| Pack {
             id: format!("file/{name}"),
-            root: dir.join(name),
+            root: Some(dir.join(name)),
+            memory: Vec::new(),
         })
         .collect()
 }
@@ -1167,6 +1168,10 @@ fn review_builtin_network_forms_decode_as_the_neoforge_network_codecs() {
 
 #[test]
 fn review_a_neoforge_client_with_only_the_builtin_maps_gets_six_empty_payloads() {
+    // The built-in types hold their values in statics: no load of another test runs now.
+    let _serial = super::consumers_tests::SERIAL
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     let target = target();
     post_with(&[], target, true).unwrap();
     let registered = read(target);
@@ -1211,7 +1216,6 @@ fn review_a_neoforge_client_with_only_the_builtin_maps_gets_six_empty_payloads()
         10
     );
     let bytes: usize = payloads.iter().map(Vec::len).sum();
-    // The play boot test checks the same sum on the wire.
     assert_eq!(bytes, 429);
 }
 
