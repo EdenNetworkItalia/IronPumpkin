@@ -96,8 +96,17 @@ Rules for every task:
 
 ### Wave 2: conditions, recipes, registries, game rules, chunk tickets
 
+- [ ] 6.41 Data pack tags
+  - Needs: 6.2.
+  - Build the effective tag table of each static registry at each data pack load and reload: the generated tags, the mod tags registered in code, then the tag files of the enabled packs in pack order, with `replace`, optional entries, nested tags and the NeoForge `remove` list.
+  - Skip a tag with a missing required entry, with the vanilla log line. Skip a tag in a reference cycle.
+  - Let `Taggable::has_tag` and the tag value lookups read the table, with the generated lookup when the table has no entry for the tag.
+  - Send the effective members in the tags packet at the join and after a reload: mod ids to a `Real` connection, vanilla ids to a `Display` connection.
+  - Fold `dynamic::set_data_pack_item_tags` of #191 into the table.
+  - Verify: requirements "Data pack tags apply to tag checks", "Merge rules", "Missing references", "The tags packet" and "Cost of tag checks" of `neoforge-data-tags`.
+  - Verify: a `has_tag` bench with and without a changed tag, on master and the branch.
 - [ ] 6.9 Data conditions
-  - Needs: 6.2, 6.3.
+  - Needs: 6.2, 6.3, 6.41.
   - Add one module that evaluates `neoforge:conditions` after the JSON parse of each covered loader.
   - Run the loaders in two passes, tags first.
   - Read the mod list from `plugin/startup.rs`. Answer `registered` from the Pumpkin lookups, false with a warning when none exists.
