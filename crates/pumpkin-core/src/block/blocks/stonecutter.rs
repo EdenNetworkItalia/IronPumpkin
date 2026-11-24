@@ -53,10 +53,9 @@ impl BlockBehaviour for StonecutterBlock {
 
     fn get_screen_handler_factory(
         &self,
-        args: GetScreenHandlerFactoryArgs<'_>,
+        _args: GetScreenHandlerFactoryArgs<'_>,
     ) -> Option<Box<dyn ScreenHandlerFactory>> {
-        let recipe_manager = args.server.recipe_manager.clone();
-        Some(Box::new(StonecutterScreenFactory(recipe_manager)))
+        Some(Box::new(StonecutterScreenFactory))
     }
 
     fn is_pathfindable(&self, _state: &BlockState, _computation_type: PathComputationType) -> bool {
@@ -64,7 +63,7 @@ impl BlockBehaviour for StonecutterBlock {
     }
 }
 
-struct StonecutterScreenFactory(Arc<crate::server::recipe::RecipeManager>);
+struct StonecutterScreenFactory;
 
 impl ScreenHandlerFactory for StonecutterScreenFactory {
     fn create_screen_handler(
@@ -76,7 +75,6 @@ impl ScreenHandlerFactory for StonecutterScreenFactory {
         let handler: SharedScreenHandler = Arc::new(Mutex::new(StonecutterScreenHandler::new(
             sync_id,
             player_inventory,
-            Some(self.0.clone()),
         )));
         Some(handler)
     }

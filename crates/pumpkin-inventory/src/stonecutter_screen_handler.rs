@@ -2,84 +2,32 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, AtomicI64, AtomicU8, AtomicU16, Ordering};
 
-use crate::crafting::recipe_provider::RecipeProvider;
 use crate::inventory::Inventory;
 use crate::inventory::SimpleInventory;
 use crate::player::player_inventory::PlayerInventory;
+use crate::recipe_index::{self, RecipeOutput};
 use crate::screen_handler::{
     InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour, ScreenProperty,
 };
 use crate::slot::{NormalSlot, Slot};
 use crate::window_property::PropertyDelegate;
 
-use pumpkin_data::data_component::DataComponent;
-use pumpkin_data::data_component_impl::DataComponentImpl;
-use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::RECIPES_STONECUTTING;
 use pumpkin_data::screen::WindowType;
 use pumpkin_data::sound::Sound;
 use pumpkin_data::statistic::StatisticCategory;
-use pumpkin_protocol::codec::recipe::DynamicRecipe;
 use pumpkin_protocol::java::server::play::SlotActionType;
 
-pub struct StonecutterRecipeChoice {
-    pub result_id: String,
-    pub count: u8,
-    pub components: &'static [(DataComponent, &'static dyn DataComponentImpl)],
-}
-
-impl StonecutterRecipeChoice {
-    #[must_use]
-    pub fn assemble(&self) -> ItemStack {
-        let key = self
-            .result_id
-            .strip_prefix("minecraft:")
-            .unwrap_or(&self.result_id);
-        let Some(item) = Item::from_registry_key(key) else {
-            return ItemStack::EMPTY.clone();
-        };
-        let mut stack = ItemStack::new(self.count, item);
-        for (component, value) in self.components {
-            stack.patch.push((*component, Some(value.clone_dyn())));
-        }
-        stack
-    }
-}
-
+/// The stonecutter recipes for `input`, in the order of the client's recipe buttons.
 #[must_use]
-pub fn get_stonecutter_recipes(
-    input: &ItemStack,
-    provider: Option<&dyn RecipeProvider>,
-) -> Vec<StonecutterRecipeChoice> {
+pub fn get_stonecutter_recipes(input: &ItemStack) -> Vec<RecipeOutput> {
     if input.is_empty() {
         return Vec::new();
     }
-    let item = input.item;
-    let mut results = Vec::new();
-    for r in RECIPES_STONECUTTING {
-        if r.ingredient.match_item(item) {
-            results.push(StonecutterRecipeChoice {
-                result_id: r.result.id.to_string(),
-                count: r.result.count,
-                components: r.result.components,
-            });
-        }
-    }
-    if let Some(provider) = provider {
-        for dynamic in provider.get_dynamic_recipes() {
-            if let DynamicRecipe::Stonecutting(r) = dynamic
-                && r.ingredient.match_item(item)
-            {
-                results.push(StonecutterRecipeChoice {
-                    result_id: r.result.item_id,
-                    count: r.result.count,
-                    components: &[],
-                });
-            }
-        }
-    }
-    results
+    recipe_index::current()
+        .stonecutter_recipes_for(input.item)
+        .map(|r| r.result.clone())
+        .collect()
 }
 
 pub struct StonecutterState {
@@ -88,15 +36,11 @@ pub struct StonecutterState {
     pub selected_recipe_index: AtomicI32,
     pub input_item: AtomicU16,
     pub last_sound_time: AtomicI64,
-    pub recipe_provider: Option<Arc<dyn RecipeProvider>>,
 }
 
 impl StonecutterState {
-    fn recipes_for_input(&self) -> Vec<StonecutterRecipeChoice> {
-        get_stonecutter_recipes(
-            &self.input_inventory.get_stack(0),
-            self.recipe_provider.as_deref(),
-        )
+    fn recipes_for_input(&self) -> Vec<RecipeOutput> {
+        get_stonecutter_recipes(&self.input_inventory.get_stack(0))
     }
 
     fn is_valid_recipe_index(&self, index: i32) -> bool {
@@ -160,11 +104,7 @@ impl StonecutterScreenHandler {
     pub const USE_ROW_SLOT_START: i32 = 29;
     pub const USE_ROW_SLOT_END: i32 = 38;
 
-    pub fn new(
-        sync_id: u8,
-        player_inventory: &Arc<PlayerInventory>,
-        recipe_provider: Option<Arc<dyn RecipeProvider>>,
-    ) -> Self {
+    pub fn new(sync_id: u8, player_inventory: &Arc<PlayerInventory>) -> Self {
         let behaviour = ScreenHandlerBehaviour::new(sync_id, Some(WindowType::Stonecutter));
         let input_inventory = Arc::new(SimpleInventory::new(1));
         let output_inventory = Arc::new(SimpleInventory::new(1));
@@ -174,7 +114,6 @@ impl StonecutterScreenHandler {
             selected_recipe_index: AtomicI32::new(-1),
             input_item: AtomicU16::new(0),
             last_sound_time: AtomicI64::new(0),
-            recipe_provider,
         });
 
         let mut handler = Self {
@@ -228,8 +167,8 @@ impl StonecutterScreenHandler {
     }
 
     #[must_use]
-    pub fn get_available_recipes(&self, input: &ItemStack) -> Vec<StonecutterRecipeChoice> {
-        get_stonecutter_recipes(input, self.state.recipe_provider.as_deref())
+    pub fn get_available_recipes(&self, input: &ItemStack) -> Vec<RecipeOutput> {
+        get_stonecutter_recipes(input)
     }
 
     fn accepts_input(&self, stack: &ItemStack) -> bool {

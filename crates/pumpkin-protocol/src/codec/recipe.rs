@@ -148,3 +148,17 @@ impl DynamicRecipe {
         }
     }
 }
+
+/// A vanilla `RecipePropertySet` to sync: the items of `ingredients`.
+pub struct PropertySetSync<'a> {
+    /// The `minecraft:recipe_property_set` key, for example `minecraft:furnace_input`.
+    pub key: &'a str,
+    pub ingredients: &'a [OwnedRecipeIngredient],
+}
+
+/// A stonecutter recipe to sync.
+pub struct StonecutterSync<'a> {
+    pub ingredient: &'a OwnedRecipeIngredient,
+    pub result_item: &'a str,
+    pub result_count: u8,
+}

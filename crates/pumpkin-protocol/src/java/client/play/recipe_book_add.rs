@@ -73,7 +73,7 @@ fn write_item_slot_display(
     Ok(())
 }
 
-fn write_item_stack_slot_display(
+pub(super) fn write_item_stack_slot_display(
     write: &mut impl Write,
     item: &Item,
     count: u8,
@@ -90,7 +90,7 @@ fn write_item_stack_slot_display(
     ItemStackTemplateSerializer::from(stack).write_with_version(write, &version)
 }
 
-fn write_empty_slot_display(
+pub(super) fn write_empty_slot_display(
     write: &mut impl Write,
     _version: EncodingKey,
 ) -> Result<(), WritingError> {
@@ -106,7 +106,7 @@ fn write_any_fuel_slot_display(
     Ok(())
 }
 
-fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'static Item>> {
+pub(super) fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'static Item>> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
     let full_tag = if tag.contains(':') {
         Cow::Borrowed(tag)
@@ -787,7 +787,7 @@ fn write_dynamic_ingredient_slot_display(
     Ok(())
 }
 
-fn write_dynamic_ingredient_holderset(
+pub(super) fn write_dynamic_ingredient_holderset(
     write: &mut impl Write,
     ingredient: &crate::codec::recipe::OwnedRecipeIngredient,
     version: EncodingKey,

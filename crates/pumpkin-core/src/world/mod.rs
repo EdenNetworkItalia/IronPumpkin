@@ -4183,6 +4183,9 @@ impl World {
         player.enqueue_set_held_item_packet(&CSetSelectedSlot::new(
             player.get_inventory().get_selected_slot() as i8,
         ));
+        if let crate::net::ClientPlatform::Java(java_client) = player.client.as_ref() {
+            crate::server::recipe::send_update_recipes(java_client);
+        }
         crate::plugin::data_maps::sync_player(player);
 
         if client.version.load() >= JavaMinecraftVersion::V_1_20_2 {

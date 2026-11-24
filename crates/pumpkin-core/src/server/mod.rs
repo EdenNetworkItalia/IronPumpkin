@@ -632,6 +632,7 @@ impl Server {
         let dynamic_recipes = self.recipe_manager.get_dynamic_recipes_internal();
         for player in self.get_all_players() {
             if let crate::net::ClientPlatform::Java(java_client) = player.client.as_ref() {
+                recipe::send_update_recipes(java_client);
                 let add_packet = pumpkin_protocol::java::client::play::CRecipeBookAdd::new(
                     true,
                     &dynamic_recipes,
