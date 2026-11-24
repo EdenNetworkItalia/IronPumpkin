@@ -2939,7 +2939,10 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         let player = self.get(&player)?;
         let internal_pos = pumpkin_util::math::position::BlockPos::new(pos.x, pos.y, pos.z);
         let block = player.world().get_block(&internal_pos);
-        Ok(player.get_mining_speed(block))
+        // The enchantment level read fires `GetEnchantmentLevelEvent`.
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || player.get_mining_speed(block),
+        ))
     }
 
     fn drop(&mut self, rep: Resource<Player>) -> wasmtime::Result<()> {

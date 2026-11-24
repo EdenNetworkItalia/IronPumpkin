@@ -325,8 +325,8 @@ impl HostContainerBlockEntity for PluginHostState {
 
     fn clear(&mut self, res: Resource<ContainerBlockEntity>) -> wasmtime::Result<()> {
         let inventory = self.get(&res)?.inventory.clone();
-        inventory.clear();
-        Ok(())
+        // A jukebox fires the game event of the stop here.
+        self.defer("container clear", move || inventory.clear())
     }
 
     fn drop(&mut self, rep: Resource<ContainerBlockEntity>) -> wasmtime::Result<()> {

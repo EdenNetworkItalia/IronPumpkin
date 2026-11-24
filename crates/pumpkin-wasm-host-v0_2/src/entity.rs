@@ -1,6 +1,6 @@
 use super::{AccessorExt, run_blocking};
-use crate::LockIgnorePoison;
 use crate::pumpkin::plugin::world::HostEntityWithStore;
+use crate::{DeferHost, LockIgnorePoison};
 
 use std::sync::Arc;
 use wasmtime::component::{Accessor, HasSelf, Resource};
@@ -635,9 +635,9 @@ impl HostEntity for PluginHostState {
     }
 
     fn remove(&mut self, entity: Resource<Entity>) -> wasmtime::Result<()> {
-        let entity = self.get(&entity)?;
-        entity.get_entity().remove();
-        Ok(())
+        let entity = self.get(&entity)?.clone();
+        // The removal fires `EntityLeaveLevelEvent`.
+        self.defer("entity remove", move || entity.get_entity().remove())
     }
 
     fn raycast(
