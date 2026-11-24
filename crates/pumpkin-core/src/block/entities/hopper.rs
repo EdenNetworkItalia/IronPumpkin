@@ -14,7 +14,7 @@ use pumpkin_data::block_properties::{
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_data::{Block, BlockDirection, BlockId, BlockStateId};
+use pumpkin_data::{Block, BlockDirection, BlockId, BlockState, BlockStateId};
 use pumpkin_inventory::{Clearable, Inventory};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -256,12 +256,17 @@ impl HopperBlockEntity {
         y: f64,
         z: f64,
     ) -> Option<Arc<dyn Inventory>> {
-        Self::get_block_container(world, pos).or_else(|| Self::get_entity_container(world, x, y, z))
+        let state = world.get_block_and_state(pos);
+        Self::get_block_container(world, pos, state)
+            .or_else(|| Self::get_entity_container(world, x, y, z))
     }
 
     /// Vanilla `HopperBlockEntity.getBlockContainer`.
-    fn get_block_container(world: &Arc<World>, pos: &BlockPos) -> Option<Arc<dyn Inventory>> {
-        let (block, state) = world.get_block_and_state(pos);
+    fn get_block_container(
+        world: &Arc<World>,
+        pos: &BlockPos,
+        (block, state): (&'static Block, &'static BlockState),
+    ) -> Option<Arc<dyn Inventory>> {
         // `WorldlyContainerHolder`: the composter has no block entity.
         if block == &Block::COMPOSTER {
             return Some(ComposterBlock::get_container(state.id, world, pos));
@@ -424,7 +429,17 @@ impl HopperBlockEntity {
             return false;
         }
 
-        if let Some(container) = Self::get_container_at(world, pos_up) {
+        let (block, state) = world.get_block_and_state(pos_up);
+        let source = Self::container_or_handler_at(
+            world,
+            pos_up,
+            BlockDirection::Down,
+            (block, state),
+            f64::from(pos_up.0.x) + 0.5,
+            f64::from(pos_up.0.y) + 0.5,
+            f64::from(pos_up.0.z) + 0.5,
+        );
+        if let Some(ContainerOrHandler::Container(container)) = &source {
             // An empty container has nothing to take, skip reading every slot.
             if container.is_empty() {
                 return false;
@@ -477,9 +492,8 @@ impl HopperBlockEntity {
             }
             return false;
         }
-        let (block, state) = world.get_block_and_state(pos_up);
-        if let Some(moved) = self.extract_from_capability(world, pos_up, (block, state)) {
-            return moved;
+        if let Some(ContainerOrHandler::Handler(handler)) = &source {
+            return Self::extract_from_handler(handler.as_ref(), self);
         }
         if !state.is_full_cube() || block.has_tag(&tag::Block::MINECRAFT_DOES_NOT_BLOCK_HOPPERS) {
             let entities = world.get_entities_at_box(&SUCK_AABB.at_pos(self.position));
@@ -568,10 +582,22 @@ impl HopperBlockEntity {
         let direction = to_direction(facing);
         let opposite_dir = direction.opposite();
         let target_pos = self.position.offset(direction.to_offset());
-        let Some(container) = Self::get_container_at(world, &target_pos) else {
-            return self
-                .insert_into_capability(world, &target_pos, opposite_dir)
-                .unwrap_or(false);
+        let target_state = world.get_block_and_state(&target_pos);
+        let center = target_pos.to_centered_f64();
+        let container = match Self::container_or_handler_at(
+            world,
+            &target_pos,
+            opposite_dir,
+            target_state,
+            center.x,
+            center.y,
+            center.z,
+        ) {
+            Some(ContainerOrHandler::Container(container)) => container,
+            Some(ContainerOrHandler::Handler(handler)) => {
+                return self.insert_into_handler(world, &target_pos, handler.as_ref());
+            }
+            None => return false,
         };
         if Self::is_full_container(container.as_ref(), opposite_dir) {
             return false;
@@ -797,6 +823,7 @@ impl Clearable for HopperBlockEntity {
 
 #[path = "hopper_ironpumpkin.rs"]
 mod ironpumpkin;
+pub(crate) use ironpumpkin::ContainerOrHandler;
 
 #[cfg(test)]
 mod tests {

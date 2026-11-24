@@ -105,6 +105,14 @@ impl MinecartEntity {
         }
     }
 
+    /// One `MinecartHopper.tick` pull attempt of a hopper minecart, without the movement of the
+    /// entity tick. Does nothing for another kind.
+    pub fn tick_hopper(&self) {
+        if let MinecartKind::Hopper(minecart) = &self.kind {
+            minecart.tick(&self.vehicle.entity);
+        }
+    }
+
     #[must_use]
     pub const fn command_block(&self) -> Option<&CommandBlockMinecart> {
         match &self.kind {

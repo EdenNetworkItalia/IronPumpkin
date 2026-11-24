@@ -17,7 +17,34 @@ use crate::{
     world::World,
 };
 
+/// `ContainerOrHandler`: what a hopper, a dropper or a crafter finds at a position.
+pub enum ContainerOrHandler {
+    Container(Arc<dyn Inventory>),
+    Handler(Box<dyn ItemTarget>),
+}
+
 impl HopperBlockEntity {
+    /// `HopperBlockEntity.getContainerOrHandlerAt`: the block container, else the item
+    /// capability of the block looked up from `side`, else a container entity around `x`, `y`,
+    /// `z`. A container minecart inside a block with an item capability loses to the block.
+    pub(crate) fn container_or_handler_at(
+        world: &Arc<World>,
+        pos: &BlockPos,
+        side: BlockDirection,
+        state: (&'static Block, &'static BlockState),
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> Option<ContainerOrHandler> {
+        if let Some(container) = Self::get_block_container(world, pos, state) {
+            return Some(ContainerOrHandler::Container(container));
+        }
+        if let Some(handler) = Self::capability_target(world, pos, side, Some(state)) {
+            return Some(ContainerOrHandler::Handler(handler));
+        }
+        Self::get_entity_container(world, x, y, z).map(ContainerOrHandler::Container)
+    }
+
     /// `cooldownTime`.
     #[must_use]
     pub fn cooldown(&self) -> i32 {
@@ -48,17 +75,16 @@ impl HopperBlockEntity {
         item_target(world, pos, side, block_entity.as_ref(), Some(state))
     }
 
-    /// `VanillaInventoryCodeHooks.insertHook`: pushes one item into the item capability of the
-    /// block at `target_pos`, looked up from `side`. `None` when that block has none.
-    pub(super) fn insert_into_capability(
+    /// `VanillaInventoryCodeHooks.insertHook`: pushes one item into the item capability
+    /// `target` of the block at `target_pos`.
+    pub(super) fn insert_into_handler(
         &self,
         world: &Arc<World>,
         target_pos: &BlockPos,
-        side: BlockDirection,
-    ) -> Option<bool> {
-        let target = Self::capability_target(world, target_pos, side, None)?;
+        target: &dyn ItemTarget,
+    ) -> bool {
         if target.is_full() {
-            return Some(false);
+            return false;
         }
         for slot in 0..Self::INVENTORY_SIZE {
             let item = self.get_stack(slot);
@@ -79,25 +105,19 @@ impl HopperBlockEntity {
                 continue;
             };
             if target.insert(&one_item) == 1 {
-                return Some(true);
+                return true;
             }
             if let Some(leftover) = Self::put_back(self, slot, one_item) {
                 let pos = self.position.to_centered_f64();
                 world.scatter_stack(pos.x, pos.y, pos.z, leftover);
             }
         }
-        Some(false)
+        false
     }
 
-    /// `VanillaInventoryCodeHooks.extractHook`: pulls one item from the item capability of the
-    /// block at `source`, looked up from below. `None` when that block has none.
-    pub(super) fn extract_from_capability(
-        &self,
-        world: &Arc<World>,
-        source: &BlockPos,
-        state: (&'static Block, &'static BlockState),
-    ) -> Option<bool> {
-        let source = Self::capability_target(world, source, BlockDirection::Down, Some(state))?;
-        Some(source.extract_one(&mut |item| Self::add_one_item(self, self, item)))
+    /// `VanillaInventoryCodeHooks.extractHook`: pulls one item from the item capability
+    /// `source` of the block above into `into`, a hopper or a hopper minecart.
+    pub(crate) fn extract_from_handler(source: &dyn ItemTarget, into: &dyn Inventory) -> bool {
+        source.extract_one(&mut |item| Self::add_one_item(into, into, item))
     }
 }
