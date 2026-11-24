@@ -3,7 +3,7 @@ use pumpkin_data::recipes::RecipeCategoryTypes;
 use pumpkin_data::dynamic::{DynamicTaggable, namespaced_name};
 use pumpkin_data::item::Item;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OwnedRecipeIngredient {
     Simple(String),
     Tagged(String),
@@ -76,9 +76,9 @@ pub enum OwnedCookingRecipeType {
 #[derive(Clone, Debug)]
 pub struct OwnedBrewingRecipe {
     pub recipe_id: String,
-    pub input_item: String,
+    pub input_item: OwnedRecipeIngredient,
     pub input_potion: Option<String>,
-    pub reagent: String,
+    pub reagent: OwnedRecipeIngredient,
     pub output_item: String,
     pub output_potion: Option<String>,
 }

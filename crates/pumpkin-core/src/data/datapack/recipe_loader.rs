@@ -56,7 +56,11 @@ fn normalize_id(id: &str) -> String {
 
 fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
     match value {
-        Value::String(s) => Some(OwnedRecipeIngredient::Simple(normalize_id(s))),
+        // `HolderSetCodec` reads a string that starts with `#` as a tag.
+        Value::String(s) => Some(s.strip_prefix('#').map_or_else(
+            || OwnedRecipeIngredient::Simple(normalize_id(s)),
+            |tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)),
+        )),
         Value::Object(map) => map
             .get("tag")
             .and_then(Value::as_str)
@@ -254,14 +258,14 @@ fn parse_cooking(
 
 fn parse_brewing(recipe_id: String, value: &Value) -> Option<OwnedBrewingRecipe> {
     let input = value.get("input")?;
-    let input_item = normalize_id(input.get("item")?.as_str()?);
+    let input_item = parse_ingredient(input.get("item")?)?;
     let input_potion = input
         .get("potion_contents")
         .and_then(|pc| pc.get("potions").or_else(|| pc.get("potion")))
         .and_then(Value::as_str)
         .map(normalize_id);
 
-    let reagent = normalize_id(value.get("reagent")?.get("item")?.as_str()?);
+    let reagent = parse_ingredient(value.get("reagent")?.get("item")?)?;
 
     let output = value.get("output")?;
     let output_item = normalize_id(output.get("id").or_else(|| output.get("item"))?.as_str()?);
@@ -412,6 +416,7 @@ fn parse_smithing_trim(recipe_id: String, value: &Value) -> Option<OwnedSmithing
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_data::item::Item;
 
     #[test]
     fn parse_shaped_recipe() {
@@ -555,13 +560,76 @@ mod tests {
                 brewing.recipe_id,
                 "minecraft:brewing/potion_water_nether_wart"
             );
-            assert_eq!(brewing.input_item, "minecraft:potion");
+            assert_eq!(
+                brewing.input_item,
+                OwnedRecipeIngredient::Simple("minecraft:potion".to_string())
+            );
             assert_eq!(brewing.input_potion.as_deref(), Some("minecraft:water"));
-            assert_eq!(brewing.reagent, "minecraft:nether_wart");
+            assert_eq!(
+                brewing.reagent,
+                OwnedRecipeIngredient::Simple("minecraft:nether_wart".to_string())
+            );
             assert_eq!(brewing.output_item, "minecraft:potion");
             assert_eq!(brewing.output_potion.as_deref(), Some("minecraft:awkward"));
         } else {
             panic!("Expected brewing recipe");
         }
+    }
+
+    #[test]
+    fn tag_string_ingredient_is_a_tag() {
+        let json = r##"{
+            "type": "minecraft:smelting",
+            "ingredient": "#c:ingots",
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "ingots", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        assert_eq!(
+            cooking.ingredient,
+            OwnedRecipeIngredient::Tagged("c:ingots".to_string())
+        );
+        assert!(cooking.ingredient.match_item(&Item::IRON_INGOT));
+        assert!(!cooking.ingredient.match_item(&Item::STICK));
+    }
+
+    #[test]
+    fn tag_string_in_ingredient_list_is_a_tag() {
+        let json = r##"{
+            "type": "minecraft:crafting_shapeless",
+            "ingredients": ["#c:ingots", "minecraft:stick"],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        let Some(DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. })) =
+            parse_recipe("test", "mix", json)
+        else {
+            panic!("Expected shapeless recipe");
+        };
+        assert_eq!(
+            ingredients,
+            vec![
+                OwnedRecipeIngredient::Tagged("c:ingots".to_string()),
+                OwnedRecipeIngredient::Simple("minecraft:stick".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn brewing_reagent_accepts_a_tag_string() {
+        let json = r##"{
+            "type": "minecraft:brewing",
+            "input": { "item": "minecraft:potion" },
+            "output": { "id": "minecraft:potion" },
+            "reagent": { "item": "#c:ingots" }
+        }"##;
+        let Some(DynamicRecipe::Brewing(brewing)) = parse_recipe("test", "ingot_potion", json)
+        else {
+            panic!("Expected brewing recipe");
+        };
+        assert!(brewing.reagent.match_item(&Item::GOLD_INGOT));
+        assert!(!brewing.reagent.match_item(&Item::NETHER_WART));
     }
 }
