@@ -34,8 +34,10 @@ interface block-entity {
         remove-stack: func(slot: u32) -> option<item-stack>;
         /// Removes every stack. For a jukebox, the clear applies after the guest call returns, in
         /// call order with `start-playing` and `stop-playing`, so that a handler of the
-        /// `generic-game-event` of `jukebox_stop_play` can run. A read in the same guest call may
-        /// see the old or the new value: work that reaches no Wasm handler runs at once.
+        /// `generic-game-event` of `jukebox_stop_play` can run. `set-stack` and `remove-stack` run
+        /// at once, so on a jukebox a `set-stack` after `clear` in the same guest call is cleared.
+        /// A read in the same guest call may see the old or the new value: work that reaches no
+        /// Wasm handler runs at once.
         clear: func();
     }
 
