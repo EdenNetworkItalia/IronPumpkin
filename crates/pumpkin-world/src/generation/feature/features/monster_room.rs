@@ -42,12 +42,16 @@ pub fn vanilla_monster_room_mobs() -> Vec<(String, i32)> {
 
 /// Sets the mobs of `MonsterRoomHooks.onDataMapsUpdated`.
 ///
-/// A list that is empty, has no weight or equals the vanilla list keeps the vanilla pick, so a
-/// world with no override generates the same dungeons as vanilla for a seed.
+/// A list that is empty, has no weight, has a negative weight (`NON_NEGATIVE_INT` refuses it) or
+/// equals the vanilla list keeps the vanilla pick, so a world with no override generates the same
+/// dungeons as vanilla for a seed.
 pub fn set_monster_room_mobs(mut mobs: Vec<(String, i32)>) {
     mobs.sort();
     let total: i64 = mobs.iter().map(|(_, weight)| i64::from(*weight)).sum();
-    let custom = total > 0 && total <= i64::from(i32::MAX) && mobs != vanilla_monster_room_mobs();
+    let custom = total > 0
+        && total <= i64::from(i32::MAX)
+        && mobs.iter().all(|(_, weight)| *weight >= 0)
+        && mobs != vanilla_monster_room_mobs();
     MONSTER_ROOM_MOBS.store(custom.then(|| std::sync::Arc::new(mobs)));
 }
 
@@ -275,6 +279,21 @@ mod tests {
         // A list with no weight cannot pick: the vanilla pick stays.
         set_monster_room_mobs(vec![("mymod:crab".to_owned(), 0)]);
         assert_eq!(picks(11, 64), vanilla);
+        set_monster_room_mobs(Vec::new());
+    }
+
+    #[test]
+    fn a_negative_weight_keeps_the_vanilla_pick() {
+        let _guard = TABLE
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_monster_room_mobs(Vec::new());
+        let vanilla = picks(5, 64);
+        set_monster_room_mobs(vec![
+            ("mymod:crab".to_owned(), 10),
+            ("mymod:bug".to_owned(), -3),
+        ]);
+        assert_eq!(picks(5, 64), vanilla);
         set_monster_room_mobs(Vec::new());
     }
 
