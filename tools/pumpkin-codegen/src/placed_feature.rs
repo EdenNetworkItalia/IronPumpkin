@@ -91,7 +91,8 @@ pub fn build() -> TokenStream {
         .iter()
         .map(|(name, value)| {
             let variant_name = format_ident!("{}", name.to_pascal_case());
-            let pf = value_to_placed_feature(value);
+            let pf = std::panic::catch_unwind(|| value_to_placed_feature(value))
+                .unwrap_or_else(|_| panic!("cannot convert the placed feature {name}"));
             quote! {
                 map.insert(pumpkin_data::placed_feature::PlacedFeature::#variant_name, #pf);
             }
@@ -830,14 +831,14 @@ fn block_state_name_and_props(v: &Value) -> (&str, Option<&Map<String, Value>>) 
                 .get("Name")
                 .or_else(|| object.get("id"))
                 .and_then(Value::as_str)
-                .unwrap_or("minecraft:air");
+                .unwrap_or_else(|| panic!("block state without a name: {v}"));
             let props = object
                 .get("Properties")
                 .or_else(|| object.get("properties"))
                 .and_then(Value::as_object);
             (name, props)
         }
-        _ => ("minecraft:air", None),
+        _ => panic!("block state is neither a name nor an object: {v}"),
     }
 }
 

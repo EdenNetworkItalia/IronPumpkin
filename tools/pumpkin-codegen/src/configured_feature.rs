@@ -98,7 +98,8 @@ pub fn build() -> TokenStream {
     let entries: Vec<TokenStream> = json
         .iter()
         .map(|(name, value)| {
-            let cf = value_to_configured_feature(value);
+            let cf = std::panic::catch_unwind(|| value_to_configured_feature(value))
+                .unwrap_or_else(|_| panic!("cannot convert the configured feature {name}"));
             let variant_name = format_ident!("{}", name.to_pascal_case());
             quote! {
                 map.insert(pumpkin_data::configured_feature::ConfiguredFeature::#variant_name, #cf);
@@ -1472,11 +1473,28 @@ fn value_to_noise_base(v: &Value) -> TokenStream {
     }
 }
 
+/// The base amplitude of vanilla `NormalNoise.createParity` for one octave of amplitude 1.
+const PARITY_BASE_AMPLITUDE_ONE_OCTAVE: f64 = 0.955388882960065;
+
 /// Converts a double-perlin-noise parameters JSON object into a `DoublePerlinNoiseParametersCodec` token stream.
 ///
 /// # Arguments
 /// - `v` - the JSON object containing `"firstOctave"` and `"amplitudes"` fields.
 fn value_to_dpnp(v: &Value) -> TokenStream {
+    // `DoublePerlinNoiseSampler` normalizes as vanilla `NormalNoise.createParity`, so it is
+    // right only for the 26.3 parameters that equal a parity noise of one octave:
+    // `normalize` enabled (the vanilla default) and the parity base amplitude.
+    if v.get("base_octave").is_some() {
+        let enabled = v.get("normalize").is_none_or(|n| n == &Value::Bool(true));
+        let one_octave = v.get("octave_count").is_none_or(|n| n.as_u64() == Some(1))
+            && v.get("amplitude_modifiers")
+                .is_none_or(|a| a == &serde_json::json!([1.0]));
+        let amplitude = v.get("base_amplitude").and_then(Value::as_f64);
+        assert!(
+            enabled && one_octave && amplitude == Some(PARITY_BASE_AMPLITUDE_ONE_OCTAVE),
+            "noise parameters that the sampler does not reproduce: {v}"
+        );
+    }
     let first_octave = v["firstOctave"]
         .as_i64()
         .or_else(|| v["base_octave"].as_i64())
