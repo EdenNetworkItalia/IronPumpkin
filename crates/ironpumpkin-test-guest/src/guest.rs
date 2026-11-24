@@ -42,7 +42,9 @@ use bindings::pumpkin::plugin::{
     status_effect::StatusEffectType,
     world::{BlockDirection, EquipmentSlot, MobData, ShulkerData},
 };
-use bindings::pumpkin::plugin::{block_entity::BlockEntityType, text::TextComponent};
+use bindings::pumpkin::plugin::{
+    block_entity::BlockEntityType, command::Command, text::TextComponent,
+};
 
 /// The events of the table "Mutators and their events" of
 /// `openspec/changes/neoforge-shaped-plugin-api/design.md`.
@@ -83,7 +85,7 @@ const EVENTS: [EventType; 32] = [
 
 /// The events that synchronous imports fire, through the queue of the host. Only the first
 /// handler listens, and it logs only while the test arms it: other tests also fire these events.
-const IMPORT_EVENTS: [EventType; 12] = [
+const IMPORT_EVENTS: [EventType; 13] = [
     EventType::PlayerOpenSignEvent,
     EventType::PlayerVelocityEvent,
     EventType::EntityKnockbackEvent,
@@ -96,6 +98,7 @@ const IMPORT_EVENTS: [EventType; 12] = [
     EventType::PacketSentEvent,
     EventType::PlayerEventHarvestCheck,
     EventType::PlayerEventTabListNameFormat,
+    EventType::PlayerPermissionCheckEvent,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -333,6 +336,7 @@ fn import_view(event: &mut Event) -> Option<View<'_>> {
             ("PlayerEventHarvestCheck", Some(&mut data.can_harvest), None)
         }
         Event::PlayerEventTabListNameFormat(_) => ("PlayerEventTabListNameFormat", None, None),
+        Event::PlayerPermissionCheckEvent(_) => ("PlayerPermissionCheckEvent", None, None),
         _ => return None,
     })
 }
@@ -642,8 +646,53 @@ async fn ordered(words: &[&str]) -> Result<String, String> {
         }
         // The message `text`.
         "say" => say(words.get(2).ok_or("say <name> <text>")?),
+        // A message, then a kick that drops the connection without a disconnect packet.
+        "drop-kick" => {
+            say("drop-kick-message");
+            let java = player.as_java().ok_or("not a java player")?;
+            java.kick(JavaKickOptions {
+                reason: TextComponent::text("drop-kick"),
+                log_to_console: false,
+                teardown_policy: SocketTeardownPolicy::DropConnection,
+            })
+            .await;
+        }
         // A message that the handler of `PacketSentEvent` answers with a title, after `packet-reply`.
         "reply" => say("reply-me"),
+        // `container <x> <y> <z>`: a clear, then a stack in slot 0, of the container at the
+        // position.
+        "container" => {
+            let number = |index: usize| {
+                words
+                    .get(index)
+                    .and_then(|text| text.parse::<i32>().ok())
+                    .ok_or("container <name> <x> <y> <z>")
+            };
+            let pos = BlockPos {
+                x: number(2)?,
+                y: number(3)?,
+                z: number(4)?,
+            };
+            let world = server
+                .get_all_worlds()
+                .into_iter()
+                .next()
+                .ok_or("no world")?;
+            let container = match world.get_block_entity(pos) {
+                Some(BlockEntityType::ChestBlockEntity(chest)) => chest.get_container(),
+                Some(BlockEntityType::JukeboxBlockEntity(jukebox)) => {
+                    // A stop, then a start: the jukebox plays at the end.
+                    jukebox.stop_playing();
+                    jukebox.start_playing(1000);
+                    return Ok(String::new());
+                }
+                _ => return Err("no container".to_owned()),
+            };
+            container.clear();
+            container
+                .set_stack(0, Some(ItemStack::new("minecraft:stone", 1)))
+                .await;
+        }
         _ => return Err(format!("not an ordered case: {case}")),
     }
     Ok(String::new())
@@ -765,6 +814,18 @@ fn import(words: &[&str]) -> Result<String, String> {
                 z: number(z)?,
             };
             return Ok(player(name)?.get_mining_speed(pos).to_string());
+        }
+        // A command that needs a permission, registered while a player is online.
+        ["register-command", name] => {
+            let command = Command::new(&[(*name).to_owned()], "a test command");
+            STATE
+                .with_borrow(|state| {
+                    state
+                        .context
+                        .as_ref()
+                        .map(|context| context.register_command(command, "test.command"))
+                })
+                .ok_or("no context")?;
         }
         ["clear-equipment", id] => world
             .get_entity_by_id(number(id)?)

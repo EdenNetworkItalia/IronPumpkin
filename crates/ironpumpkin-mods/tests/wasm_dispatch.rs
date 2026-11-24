@@ -2721,3 +2721,98 @@ fn two_plugins_that_answer_each_other_stop_at_the_depth_limit() {
         "the server tick hangs"
     );
 }
+
+/// A message, then a `java-player.kick` that drops the connection without a disconnect packet:
+/// the close defers too, so the message reaches the client before the close.
+#[test]
+fn a_message_before_a_drop_connection_kick_reaches_the_client() {
+    let _serial = setup();
+    let (player, peer) = support::player_with_peer(
+        "DropKickPlayer",
+        pumpkin_core::net::java::neoforge::NegotiatedState::default(),
+    );
+    play(&player);
+
+    ipc(GUEST, "arm");
+    assert_eq!(ipc_returns("ordered drop-kick DropKickPlayer"), "");
+
+    assert_eq!(
+        marks(peer, &["drop-kick-message"], 1),
+        ["drop-kick-message"]
+    );
+}
+
+/// `context.register-command` returns while a player is online and a Wasm handler listens to
+/// `PlayerPermissionCheckEvent`: the resend of the commands runs the permission check of the
+/// command for the player after the guest call.
+#[test]
+fn a_plugin_registers_a_command_while_a_wasm_handler_listens_to_the_permission_check() {
+    let _serial = setup();
+    let _player = support::player("CommandImportPlayer");
+
+    ipc(GUEST, "arm");
+    assert_eq!(
+        ipc_returns("import register-command wasm-order-command"),
+        ""
+    );
+
+    assert!(!w1_fires("PlayerPermissionCheckEvent").is_empty());
+}
+
+/// A clear, then a stack in slot 0, of a chest in one guest call: the chest keeps the stack.
+#[test]
+fn a_clear_then_a_set_stack_of_a_chest_keep_their_order() {
+    let _serial = setup();
+    let _player = support::player("ChestOrderPlayer");
+    let pos = spot(507);
+    load(pos);
+    set(pos, &Block::CHEST);
+    let chest = Arc::new(pumpkin_core::block::entities::chest::ChestBlockEntity::new(
+        pos,
+    ));
+    support::world().add_block_entity(chest.clone());
+
+    ipc(GUEST, "arm");
+    assert_eq!(
+        ipc_returns(&format!(
+            "ordered container ChestOrderPlayer {} {} {}",
+            pos.0.x, pos.0.y, pos.0.z
+        )),
+        ""
+    );
+
+    let stack = pumpkin_inventory::Inventory::get_stack(chest.as_ref(), 0);
+    assert_eq!(stack.item.registry_key, "stone");
+}
+
+/// A stop, then a start, of a jukebox in one guest call: the deferred calls keep their order, so
+/// the jukebox plays at the end.
+#[test]
+fn a_stop_then_a_start_of_a_jukebox_keep_their_order() {
+    let _serial = setup();
+    let _player = support::player("JukeboxOrderPlayer");
+    let pos = spot(508);
+    load(pos);
+    set(pos, &Block::JUKEBOX);
+    let jukebox = Arc::new(pumpkin_core::block::entities::jukebox::JukeboxBlockEntity::new(pos));
+    support::world().add_block_entity(jukebox.clone());
+    jukebox.start_playing(1000);
+
+    ipc(GUEST, "arm");
+    assert_eq!(
+        ipc_returns(&format!(
+            "ordered container JukeboxOrderPlayer {} {} {}",
+            pos.0.x, pos.0.y, pos.0.z
+        )),
+        ""
+    );
+
+    let start = std::time::Instant::now();
+    while !jukebox.is_playing() {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(60),
+            "the jukebox stopped"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
