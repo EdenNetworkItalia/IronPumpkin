@@ -57,20 +57,12 @@ fn normalize_id(id: &str) -> String {
 
 fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
     match value {
-        // `HolderSetCodec` reads a string that starts with `#` as a tag.
+        // `HolderSetCodec` reads a string that starts with `#` as a tag. A legacy `{"item": ..}`
+        // or `{"tag": ..}` object is no ingredient in vanilla 26.3.
         Value::String(s) => Some(s.strip_prefix('#').map_or_else(
             || OwnedRecipeIngredient::Simple(normalize_id(s)),
             |tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)),
         )),
-        Value::Object(map) => map
-            .get("tag")
-            .and_then(Value::as_str)
-            .map(|tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)))
-            .or_else(|| {
-                map.get("item")
-                    .and_then(Value::as_str)
-                    .map(|item| OwnedRecipeIngredient::Simple(normalize_id(item)))
-            }),
         Value::Array(arr) => {
             let mut ids = Vec::new();
             for item in arr {
@@ -630,6 +622,26 @@ mod tests {
             "result": { "id": "minecraft:iron_nugget" }
         }"#;
         assert!(parse_recipe("test", "legacy_list", json).is_none());
+    }
+
+    #[test]
+    fn a_legacy_object_as_an_ingredient_fails_the_recipe() {
+        for ingredient in [
+            r#"{ "item": "minecraft:dirt" }"#,
+            r#"{ "tag": "minecraft:planks" }"#,
+        ] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "ingredient": {ingredient},
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(
+                parse_recipe("test", "legacy", &json).is_none(),
+                "{ingredient}"
+            );
+        }
     }
 
     #[test]
