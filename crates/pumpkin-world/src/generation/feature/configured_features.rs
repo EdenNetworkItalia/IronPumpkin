@@ -14,10 +14,7 @@ use super::features::{
     blue_ice::BlueIceFeature,
     bonus_chest::BonusChestFeature,
     chorus_plant::ChorusPlantFeature,
-    coral::{
-        coral_claw::CoralClawFeature, coral_mushroom::CoralMushroomFeature,
-        coral_tree::CoralTreeFeature,
-    },
+    coral::{coral_claw::CoralClawFeature, coral_tree::CoralTreeFeature},
     delta_feature::DeltaFeatureFeature,
     desert_well::DesertWellFeature,
     disk::DiskFeature,
@@ -141,7 +138,6 @@ pub enum ConfiguredFeature {
     Seagrass(SeagrassFeature),
     Kelp(KelpFeature),
     CoralTree(CoralTreeFeature),
-    CoralMushroom(CoralMushroomFeature),
     CoralClaw(CoralClawFeature),
     SeaPickle(SeaPickleFeature),
     SimpleBlock(SimpleBlockFeature),
@@ -228,7 +224,7 @@ impl ConfiguredFeature {
                 pos,
             ),
             Self::PointedDripstone(feature) => feature.generate(chunk, random, pos),
-            Self::CoralMushroom(_feature) => CoralMushroomFeature::generate(
+            Self::CoralTree(feature) => feature.generate(
                 chunk,
                 block_registry,
                 min_y,
@@ -237,7 +233,7 @@ impl ConfiguredFeature {
                 random,
                 pos,
             ),
-            Self::CoralTree(_feature) => CoralTreeFeature::generate(
+            Self::CoralClaw(feature) => feature.generate(
                 chunk,
                 block_registry,
                 min_y,
@@ -246,9 +242,6 @@ impl ConfiguredFeature {
                 random,
                 pos,
             ),
-            Self::CoralClaw(_feature) => {
-                CoralClawFeature::generate(chunk, block_registry, random, pos)
-            }
             Self::EndPlatform(_feature) => EndPlatformFeature::generate(
                 chunk,
                 block_registry,

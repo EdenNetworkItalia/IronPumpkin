@@ -1,29 +1,46 @@
+use crate::generation::feature::placed_features::PlacedFeatureWrapper;
 use crate::{generation::proto_chunk::GenerationCache, world::WorldPortalExt};
-use pumpkin_data::{BlockDirection, tag};
+use pumpkin_data::BlockDirection;
 use pumpkin_util::{
     math::position::BlockPos,
     random::{RandomGenerator, RandomImpl},
 };
 
-use super::CoralFeature;
+use super::place_piece;
 
-pub struct CoralTreeFeature;
+/// Vanilla `CoralTreeFeature`: a trunk and branches of `feature` pieces.
+pub struct CoralTreeFeature {
+    pub feature: Box<PlacedFeatureWrapper>,
+}
 
 impl CoralTreeFeature {
+    #[expect(clippy::too_many_arguments)]
     pub fn generate<T: GenerationCache>(
+        &self,
         chunk: &mut T,
         block_registry: &dyn WorldPortalExt,
-        _min_y: i8,
-        _height: u16,
-        _feature: pumpkin_data::placed_feature::PlacedFeature,
+        min_y: i8,
+        height: u16,
+        feature_name: pumpkin_data::placed_feature::PlacedFeature,
         random: &mut RandomGenerator,
         pos: BlockPos,
     ) -> bool {
-        let block = CoralFeature::get_random_tag_entry(tag::Block::MINECRAFT_CORAL_BLOCKS, random);
+        let place = |chunk: &mut T, random: &mut RandomGenerator, pos| {
+            place_piece(
+                &self.feature,
+                chunk,
+                block_registry,
+                min_y,
+                height,
+                feature_name,
+                random,
+                pos,
+            )
+        };
         let mut cur_pos = pos;
         let trunk_height = random.next_bounded_i32(3) + 1;
         for _ in 0..trunk_height {
-            if !CoralFeature::generate_coral_piece(chunk, block_registry, random, block, cur_pos) {
+            if !place(chunk, random, cur_pos) {
                 return true;
             }
             cur_pos = cur_pos.up();
@@ -48,13 +65,7 @@ impl CoralTreeFeature {
             let mut segment_length = 0;
 
             for j in 0..branch_height {
-                if !CoralFeature::generate_coral_piece(
-                    chunk,
-                    block_registry,
-                    random,
-                    block,
-                    branch_pos,
-                ) {
+                if !place(chunk, random, branch_pos) {
                     break;
                 }
                 segment_length += 1;

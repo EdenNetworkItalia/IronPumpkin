@@ -132,8 +132,8 @@ pub fn build() -> TokenStream {
             use crate::generation::block_state_provider::{
                 BlockStateProvider, BlockStateRule, DualNoiseBlockStateProvider,
                 NoiseBlockStateProvider, NoiseBlockStateProviderBase,
-                NoiseThresholdBlockStateProvider, PillarBlockStateProvider,
-                RandomizedIntBlockStateProvider, RuleBasedBlockStateProvider, SimpleStateProvider,
+                NoiseThresholdBlockStateProvider, RandomBlockProvider, RandomizedIntBlockStateProvider,
+                RotatedBlockProvider, RuleBasedBlockStateProvider, SimpleStateProvider,
                 WeightedBlockStateProvider,
             };
             use pumpkin_util::math::pool::Weighted;
@@ -935,13 +935,20 @@ pub fn value_to_configured_feature(v: &Value) -> TokenStream {
             }
         }
         "minecraft:coral_tree" => {
-            quote! { ConfiguredFeature::CoralTree(crate::generation::feature::features::coral::coral_tree::CoralTreeFeature) }
-        }
-        "minecraft:coral_mushroom" => {
-            quote! { ConfiguredFeature::CoralMushroom(crate::generation::feature::features::coral::coral_mushroom::CoralMushroomFeature) }
+            let feature = value_to_placed_feature_wrapper(&config["feature"]);
+            quote! {
+                ConfiguredFeature::CoralTree(crate::generation::feature::features::coral::coral_tree::CoralTreeFeature {
+                    feature: Box::new(#feature),
+                })
+            }
         }
         "minecraft:coral_claw" => {
-            quote! { ConfiguredFeature::CoralClaw(crate::generation::feature::features::coral::coral_claw::CoralClawFeature) }
+            let feature = value_to_placed_feature_wrapper(&config["feature"]);
+            quote! {
+                ConfiguredFeature::CoralClaw(crate::generation::feature::features::coral::coral_claw::CoralClawFeature {
+                    feature: Box::new(#feature),
+                })
+            }
         }
         "minecraft:huge_fungus" => {
             let valid_base_block = value_to_block_state(&config["valid_base_block"]);
@@ -1328,8 +1335,25 @@ fn value_to_block_state_provider(v: &Value) -> TokenStream {
             }
         }
         "minecraft:rotated_block_provider" | "minecraft:rotated" => {
-            let state = value_to_block_state(&v["state"]);
-            quote! { BlockStateProvider::Pillar(PillarBlockStateProvider { state: #state }) }
+            let state = value_to_block_state_provider(&v["state"]);
+            let direction = match v["direction"].as_str() {
+                None => quote! { None },
+                Some(name @ ("down" | "up" | "north" | "south" | "west" | "east")) => {
+                    let ident = format_ident!("{}", name.to_pascal_case());
+                    quote! { Some(pumpkin_data::BlockDirection::#ident) }
+                }
+                Some(other) => panic!("invalid rotated provider direction: {other}"),
+            };
+            quote! {
+                BlockStateProvider::Rotated(RotatedBlockProvider {
+                    state: Box::new(#state),
+                    direction: #direction,
+                })
+            }
+        }
+        "minecraft:random_block" => {
+            let blocks = value_to_block_list(&v["blocks"]);
+            quote! { BlockStateProvider::RandomBlock(RandomBlockProvider { blocks: const { #blocks } }) }
         }
         "minecraft:noise_provider" | "minecraft:noise" => {
             let base = value_to_noise_base(v);
@@ -1430,14 +1454,8 @@ fn value_to_block_state_provider(v: &Value) -> TokenStream {
                 })
             }
         }
-        _ => {
-            // Default to air
-            quote! {
-                BlockStateProvider::Simple(SimpleStateProvider {
-                    state: pumpkin_data::Block::AIR.default_state,
-                })
-            }
-        }
+        // `copy_properties` is a vanilla 26.3 type that the data does not use.
+        _ => panic!("unknown block state provider: {v}"),
     }
 }
 
@@ -1655,6 +1673,8 @@ fn value_to_root_placer(v: &Value) -> TokenStream {
     }
 }
 
+/// Converts a block holder set (a `#tag`, one block id or a list of ids) into a `&[u16]` of block
+/// ids.
 fn value_to_block_list(v: &Value) -> TokenStream {
     if let Some(tag) = v.as_str().and_then(|s| s.strip_prefix('#')) {
         let name = format!(
@@ -1664,16 +1684,19 @@ fn value_to_block_list(v: &Value) -> TokenStream {
         let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
         return quote! { &pumpkin_data::tag::Block::#ident.1 };
     }
-    let mut blocks = Vec::new();
-    if let Some(arr) = v.as_array() {
-        for b in arr {
-            if let Some(s) = b.as_str() {
-                let name = s.strip_prefix("minecraft:").unwrap_or(s).to_uppercase();
-                let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
-                blocks.push(quote! { pumpkin_data::BlockId::#ident.as_u16() });
-            }
-        }
-    }
+    let ids: Vec<&Value> = match v {
+        Value::String(_) => vec![v],
+        Value::Array(arr) => arr.iter().collect(),
+        other => panic!("block holder set is neither a tag, an id nor a list: {other}"),
+    };
+    let blocks = ids.into_iter().map(|b| {
+        let s = b
+            .as_str()
+            .unwrap_or_else(|| panic!("block id is not a string: {b}"));
+        let name = s.strip_prefix("minecraft:").unwrap_or(s).to_uppercase();
+        let ident = syn::Ident::new(&name, proc_macro2::Span::call_site());
+        quote! { pumpkin_data::BlockId::#ident.as_u16() }
+    });
     quote! { &[#(#blocks),*] }
 }
 
