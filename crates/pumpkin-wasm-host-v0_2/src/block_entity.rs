@@ -249,6 +249,13 @@ impl HostBlockEntity for PluginHostState {
     }
 }
 
+fn is_jukebox(container: &state::ContainerBlockEntity) -> bool {
+    container
+        .provider
+        .as_any()
+        .is::<pumpkin_core::block::entities::jukebox::JukeboxBlockEntity>()
+}
+
 fn get_container_from_be(
     state: &mut PluginHostState,
     res: &Resource<impl FromResource<Internal = Arc<impl InternalBlockEntity>>>,
@@ -324,9 +331,15 @@ impl HostContainerBlockEntity for PluginHostState {
     }
 
     fn clear(&mut self, res: Resource<ContainerBlockEntity>) -> wasmtime::Result<()> {
-        let inventory = self.get(&res)?.inventory.clone();
-        // A jukebox fires the game event of the stop here.
-        self.defer("container clear", move || inventory.clear())
+        let container = self.get(&res)?.clone();
+        // A jukebox fires the game event of the stop here, so its clear defers, in order with the
+        // other deferred jukebox calls. The clear of another container fires nothing and runs now,
+        // in order with `set-stack` and `remove-stack`.
+        if is_jukebox(&container) {
+            return self.defer("container clear", move || container.inventory.clear());
+        }
+        container.inventory.clear();
+        Ok(())
     }
 
     fn drop(&mut self, rep: Resource<ContainerBlockEntity>) -> wasmtime::Result<()> {
@@ -347,8 +360,8 @@ impl HostContainerBlockEntityWithStore<PluginHostState> for HasSelf<PluginHostSt
             None => pumpkin_data::item_stack::ItemStack::EMPTY.clone(),
         };
 
-        inventory.set_stack(slot as usize, stack);
-        Ok(())
+        // A jukebox fires the game event of the record here.
+        crate::run_blocking(accessor, move || inventory.set_stack(slot as usize, stack)).await
     }
 }
 
@@ -486,8 +499,11 @@ impl HostJukeboxBlockEntity for PluginHostState {
         res: Resource<JukeboxBlockEntity>,
         length_in_ticks: u64,
     ) -> wasmtime::Result<()> {
-        self.get(&res)?.start_playing(length_in_ticks);
-        Ok(())
+        let jukebox = self.get(&res)?.clone();
+        // In order with a deferred `stop-playing`.
+        self.defer("jukebox start-playing", move || {
+            jukebox.start_playing(length_in_ticks);
+        })
     }
 
     fn drop(&mut self, rep: Resource<JukeboxBlockEntity>) -> wasmtime::Result<()> {
