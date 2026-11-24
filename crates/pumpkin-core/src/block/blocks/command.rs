@@ -19,7 +19,7 @@ use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_protocol::codec::var_int::VarInt;
 use pumpkin_protocol::java::client::play::CBlockEntityData;
 
-use pumpkin_util::{GameMode, PermissionLvl, math::position::BlockPos};
+use pumpkin_util::{GameMode, math::position::BlockPos};
 use pumpkin_world::tick::TickPriority;
 use tracing::warn;
 
@@ -245,7 +245,7 @@ impl BlockBehaviour for CommandBlock {
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
         {
-            if args.player.permission_lvl.load() < PermissionLvl::Two {
+            if !args.player.can_use_game_master_blocks() {
                 return BlockActionResult::Pass;
             }
             let Some(block_entity) = args.world.get_block_entity(args.position) else {
