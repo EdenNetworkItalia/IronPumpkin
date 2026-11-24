@@ -10,6 +10,25 @@ use pumpkin_world::{tick::TickPriority, world::BlockFlags};
 use std::sync::Arc;
 pub type FlowingFluidProperties = pumpkin_data::fluid::FlowingWaterLikeFluidProperties;
 
+/// Fires `BlockFromToEvent` for `fluid` flowing from `from` to `to`. Returns whether a handler
+/// cancelled the spread.
+pub fn spread_is_cancelled(world: &World, fluid: &Fluid, from: &BlockPos, to: &BlockPos) -> bool {
+    let flowing_block = if fluid.id == Fluid::FLOWING_LAVA.id || fluid.id == Fluid::LAVA.id {
+        &Block::LAVA
+    } else {
+        &Block::WATER
+    };
+    let mut event = crate::plugin::api::events::block::block_from_to::BlockFromToEvent::new(
+        *from,
+        *to,
+        flowing_block,
+    );
+    if let Some(server) = world.server.upgrade() {
+        server.plugin_manager.fire_blocking(&server, &mut event);
+    }
+    event.cancelled
+}
+
 #[allow(async_fn_in_trait)]
 pub trait FlowingFluid: Send + Sync {
     fn get_level_decrease_per_block(&self, world: &World) -> i32;
@@ -148,7 +167,13 @@ pub trait FlowingFluid: Send + Sync {
         // Try to flow down first
         if is_hole {
             let falling_props = self.get_flowing(fluid, Level::L8, true);
-            self.spread_to(world, fluid, &below_pos, falling_props.to_state_id(fluid));
+            self.spread_to(
+                world,
+                fluid,
+                block_pos,
+                &below_pos,
+                falling_props.to_state_id(fluid),
+            );
 
             // Check if we should also spread to sides
             if props.level == Level::L8 && props.falling == Falling::False {
@@ -302,11 +327,13 @@ pub trait FlowingFluid: Send + Sync {
         &self,
         world: &Arc<World>,
         fluid: &Fluid,
+        from: &BlockPos,
         pos: &BlockPos,
         state_id: BlockStateId,
         new_props: FlowingFluidProperties,
     ) {
         let current_state_id = world.get_block_state_id(pos);
+        let mut breaks_block = false;
         if let Some(current_props) = self.get_effective_props(fluid, current_state_id) {
             let current_level = i32::from(current_props.level.to_index()) + 1;
             let new_level = i32::from(new_props.level.to_index()) + 1;
@@ -346,24 +373,16 @@ pub trait FlowingFluid: Send + Sync {
             }
         } else {
             // Replace non-fluid blocks
-            let block = world.get_block(pos);
-            if block.id != Block::AIR.id {
-                world.break_block(pos, None, BlockFlags::NOTIFY_ALL);
-            }
+            breaks_block = world.get_block(pos).id != Block::AIR.id;
         }
 
-        let mut event = crate::plugin::api::events::block::block_from_to::BlockFromToEvent::new(
-            *pos,
-            *pos,
-            &pumpkin_data::Block::WATER,
-        );
-        if let Some(server) = world.server.upgrade() {
-            server.plugin_manager.fire_blocking(&server, &mut event);
-        }
-        if event.cancelled {
+        if spread_is_cancelled(world, fluid, from, pos) {
             return;
         }
 
+        if breaks_block {
+            world.break_block(pos, None, BlockFlags::NOTIFY_ALL);
+        }
         world.set_block_state(pos, state_id, BlockFlags::NOTIFY_ALL);
 
         // Check for infinite source formation after placing new fluid
@@ -449,9 +468,16 @@ pub trait FlowingFluid: Send + Sync {
     ///
     /// Default implementation delegates to `apply_spread`. Implementations like
     /// lava can override to add fluid-specific logic (e.g., water -> stone conversion).
-    fn spread_to(&self, world: &Arc<World>, fluid: &Fluid, pos: &BlockPos, state_id: BlockStateId) {
+    fn spread_to(
+        &self,
+        world: &Arc<World>,
+        fluid: &Fluid,
+        from: &BlockPos,
+        pos: &BlockPos,
+        state_id: BlockStateId,
+    ) {
         let new_props = FlowingFluidProperties::from_state_id(state_id, fluid);
-        self.apply_spread(world, fluid, pos, state_id, new_props);
+        self.apply_spread(world, fluid, from, pos, state_id, new_props);
     }
 
     /// Spreads fluid horizontally to adjacent positions using pathfinding.
@@ -482,7 +508,7 @@ pub trait FlowingFluid: Send + Sync {
         for &(direction, state_id) in spread_dirs.iter().take(count) {
             let side_pos = block_pos.offset(direction.to_offset());
 
-            self.spread_to(world, fluid, &side_pos, state_id);
+            self.spread_to(world, fluid, block_pos, &side_pos, state_id);
         }
     }
 }
