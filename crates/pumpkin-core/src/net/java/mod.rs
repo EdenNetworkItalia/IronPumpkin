@@ -89,6 +89,7 @@ use crate::net::{
     decrement_pending_bytes, java::neoforge::NegotiatedState,
 };
 use crate::plugin::api::events::world::chunk_send::ChunkSend;
+use crate::plugin::guest_call;
 use crate::plugin::player::player_custom_payload::PlayerCustomPayloadEvent;
 use crate::plugin::server::packet::PacketSentEvent;
 use crate::{error::PumpkinError, server::Server};
@@ -588,29 +589,17 @@ impl JavaClient {
     /// plugins (anti-cheats, protocol libraries) see every outbound packet. `observe` is
     /// `false` for packets a plugin injected itself, to avoid echoing them back.
     fn translate_outgoing(&self, packet_data: Bytes, observe: bool) -> (Option<Bytes>, Vec<Bytes>) {
+        let Some((player, server)) = self.packet_sent_target(observe) else {
+            return (Some(packet_data), Vec::new());
+        };
         let current_version = self.version.load() == CURRENT_MC_VERSION;
-        if current_version
-            && (!observe || !matches!(self.connection_state.load(), ConnectionState::Play))
-        {
-            return (Some(packet_data), Vec::new());
-        }
-        let player = self.player.load_full();
-        let Some(player) = player.as_ref() else {
-            return (Some(packet_data), Vec::new());
-        };
-        let Some(server) = player.world().server.upgrade() else {
-            return (Some(packet_data), Vec::new());
-        };
-        if !server.plugin_manager.has_handlers::<PacketSentEvent>() {
-            return (Some(packet_data), Vec::new());
-        }
 
         let mut reader = &packet_data[..];
         let Ok(packet_id) = reader.get_var_int() else {
             return (Some(packet_data), Vec::new());
         };
         let payload = packet_data.slice(packet_data.len() - reader.len()..);
-        let mut event = PacketSentEvent::new_raw(player.clone(), packet_id.0, payload);
+        let mut event = PacketSentEvent::new_raw(player, packet_id.0, payload);
         server.plugin_manager.fire_blocking(&server, &mut event);
 
         let extras = event
@@ -627,12 +616,63 @@ impl JavaClient {
         (frame_packet(event.packet_id, &event.payload), extras)
     }
 
+    /// The player and the server of the `PacketSentEvent` that a send fires, or `None` when the
+    /// send fires no event.
+    fn packet_sent_target(&self, observe: bool) -> Option<(Arc<Player>, Arc<Server>)> {
+        if self.version.load() == CURRENT_MC_VERSION
+            && (!observe || !matches!(self.connection_state.load(), ConnectionState::Play))
+        {
+            return None;
+        }
+        let player = self.player.load_full().as_ref().clone()?;
+        let server = player.world().server.upgrade()?;
+        server
+            .plugin_manager
+            .has_handlers::<PacketSentEvent>()
+            .then_some((player, server))
+    }
+
+    /// Moves the send to the deferred queue of the guest call that runs on this thread, and
+    /// returns `true`. A Wasm handler of `PacketSentEvent` waits for the root permit that the
+    /// guest call holds, so the event and the send run after the guest call. The queue keeps the
+    /// order of the sends. Returns `false`, and defers nothing, outside a guest call or when no
+    /// Wasm plugin handles `PacketSentEvent`.
+    fn defer_in_guest_call(&self, packet_data: &Bytes, observe: bool) -> bool {
+        let Some(call) = guest_call::current() else {
+            return false;
+        };
+        let Some((player, server)) = self.packet_sent_target(observe) else {
+            return false;
+        };
+        if !server.plugin_manager.has_wasm_handlers::<PacketSentEvent>() {
+            return false;
+        }
+        let packet_data = packet_data.clone();
+        call.defer(
+            "packet send",
+            Box::new(move || {
+                if let ClientPlatform::Java(java) = player.client.as_ref() {
+                    if observe {
+                        java.try_enqueue_packet_data(packet_data);
+                    } else {
+                        java.try_enqueue_packet_data_unobserved(packet_data);
+                    }
+                }
+            }),
+        );
+        true
+    }
+
     pub fn try_enqueue_packet(&self, packet_data: Bytes) {
         self.try_enqueue_packet_data(packet_data);
     }
 
-    /// `false` when the packet was dropped instead (cancelled, closed, buffer full).
+    /// `false` when the packet was dropped instead (cancelled, closed, buffer full). `true` also
+    /// when a guest call deferred the send: see [`Self::defer_in_guest_call`].
     pub fn try_enqueue_packet_data(&self, packet_data: Bytes) -> bool {
+        if self.defer_in_guest_call(&packet_data, true) {
+            return true;
+        }
         let Some((packet_data, packet_len, extras)) = self.reserve_pending_bytes(packet_data, true)
         else {
             return false;
@@ -647,6 +687,9 @@ impl JavaClient {
     /// Like [`Self::try_enqueue_packet_data`] but does not fire `PacketSentEvent` for
     /// current-version clients. For packets that a plugin already observed itself.
     pub fn try_enqueue_packet_data_unobserved(&self, packet_data: Bytes) -> bool {
+        if self.defer_in_guest_call(&packet_data, false) {
+            return true;
+        }
         let Some((packet_data, packet_len, extras)) =
             self.reserve_pending_bytes(packet_data, false)
         else {
@@ -806,6 +849,10 @@ impl JavaClient {
         packet: Bytes,
         make: fn(Bytes, oneshot::Sender<()>) -> OutgoingPacket,
     ) -> bool {
+        // A deferred send goes out with the normal priority, and this call does not wait for it.
+        if self.defer_in_guest_call(&packet, true) {
+            return true;
+        }
         let Some((packet, packet_len, extras)) = self.reserve_pending_bytes(packet, true) else {
             return false;
         };
