@@ -342,7 +342,18 @@ fn handle_signal(action: SignalAction) {
     }
 }
 
+/// Whether a panic is a crash of the server. A panic inside a guarded call of mod code is not:
+/// the call catches it, as `NeoForge` logs the exception of such a call and goes on.
+const fn is_crash(guarded: bool) -> bool {
+    !guarded
+}
+
 fn handle_panic(panic_info: &PanicHookInfo<'_>) {
+    if !is_crash(pumpkin_core::plugin::guarded_call::is_guarded()) {
+        tracing::error!("A guarded call panicked: {panic_info}");
+        return;
+    }
+
     // Generate a crash report.
     let crash_report = {
         // We capture the backtraces here, and not in the
@@ -522,4 +533,18 @@ fn parse_convert_world_arg(mut args: impl Iterator<Item = String>) -> Option<Str
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use pumpkin_core::plugin::guarded_call::{guarded_call, is_guarded};
+
+    use super::is_crash;
+
+    #[test]
+    fn a_panic_inside_a_guarded_call_does_not_stop_the_server() {
+        assert!(is_crash(is_guarded()));
+        assert!(!guarded_call(|| is_crash(is_guarded())).unwrap());
+        assert!(is_crash(is_guarded()));
+    }
 }

@@ -3,11 +3,13 @@
 use std::{
     cell::RefCell,
     ops::{Deref, DerefMut},
-    panic::{AssertUnwindSafe, catch_unwind},
     sync::{MutexGuard, PoisonError},
 };
 
-use pumpkin_core::plugin::attachments::{AttachmentCell, AttachmentValue, Attachments};
+use pumpkin_core::plugin::{
+    attachments::{AttachmentCell, AttachmentValue, Attachments},
+    guarded_call::guarded_call,
+};
 
 thread_local! {
     /// The cells that this thread holds, so a re-entry panics instead of a deadlock.
@@ -72,7 +74,7 @@ impl DerefMut for CellGuard<'_> {
 /// Runs a mod callback, with a panic turned into the error that `NeoForge` logs when the
 /// callback throws.
 pub(super) fn guarded<R>(f: impl FnOnce() -> R) -> Result<R, String> {
-    catch_unwind(AssertUnwindSafe(f)).map_err(|payload| {
+    guarded_call(f).map_err(|payload| {
         payload
             .downcast_ref::<&str>()
             .map(|message| (*message).to_owned())
