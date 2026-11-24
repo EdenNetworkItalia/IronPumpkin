@@ -840,11 +840,16 @@ impl ItemComponentHash {
         if added_length.0 < 0 || added_length.0 > MAX_COMPONENTS {
             return Err(ReadingError::Message("added_length out of bounds".into()));
         }
-        let mut added = Vec::with_capacity(added_length.0 as usize);
+        // `HashedPatchMap.STREAM_CODEC` reads the added hashes into a map and the removed
+        // types into a set.
+        let mut added: Vec<(VarInt, i32)> = Vec::with_capacity(added_length.0 as usize);
         for _ in 0..added_length.0 {
             let component_id = read.get_var_int()?;
             let component_value = read.get_i32()?;
-            added.push((component_id, component_value));
+            match added.iter_mut().find(|(id, _)| *id == component_id) {
+                Some(entry) => entry.1 = component_value,
+                None => added.push((component_id, component_value)),
+            }
         }
 
         let removed_length = read.get_var_int()?;
@@ -854,7 +859,9 @@ impl ItemComponentHash {
         let mut removed = Vec::with_capacity(removed_length.0 as usize);
         for _ in 0..removed_length.0 {
             let component_id = read.get_var_int()?;
-            removed.push(component_id);
+            if !removed.contains(&component_id) {
+                removed.push(component_id);
+            }
         }
 
         Ok(Self { added, removed })
@@ -1289,5 +1296,22 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    /// `HashedPatchMap.STREAM_CODEC` reads the added hashes into a map and the removed types
+    /// into a set, so a repeated entry counts once.
+    #[test]
+    fn repeated_click_hash_entries_count_once() {
+        let damage = i32::from(DataComponent::Damage.to_id());
+        let sword = i32::from(Item::DIAMOND_SWORD.id);
+        let stack = ItemStack::new_with_component(
+            1,
+            &Item::DIAMOND_SWORD,
+            vec![(DataComponent::Damage, None)],
+        );
+        // Item, count, no added hash, then `damage` removed twice.
+        let bytes = [vec![1], var_ints(&[sword, 1, 0, 2, damage, damage])].concat();
+        let hash = OptionalItemStackHash::read(&mut bytes.as_slice()).unwrap();
+        assert!(hash.hash_equals(&stack));
     }
 }
