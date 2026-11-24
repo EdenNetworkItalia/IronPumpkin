@@ -412,13 +412,16 @@ impl ConsumableImpl {
     }
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
-        let consume_seconds = compound.get_float("consume_seconds")?;
-        let animation = compound
-            .get_string("animation")?
-            .parse::<ConsumeAnimation>()
-            .ok()?;
+        // `Consumable.CODEC` omits the fields that equal their default.
+        let consume_seconds = compound.get_float("consume_seconds").unwrap_or(1.6);
+        let animation = match compound.get_string("animation") {
+            None => ConsumeAnimation::Eat,
+            // Older IronPumpkin saves named `toot_horn` "horn".
+            Some("horn") => ConsumeAnimation::TootHorn,
+            Some(name) => name.parse::<ConsumeAnimation>().ok()?,
+        };
         let sound_event = get_idor(compound, "sound", Sound::EntityGenericEat);
-        let consume_particles = compound.get_bool("has_consume_particles").unwrap_or(false);
+        let consume_particles = compound.get_bool("has_consume_particles").unwrap_or(true);
         let opt_list = compound.get_list("on_consume_effects");
         let effects: Cow<'static, [ConsumeEffect]> = if let Some(effect_list) = opt_list {
             effect_list
@@ -917,6 +920,28 @@ mod tests {
             ConsumeEffect::read_data(&NbtTag::Compound(teleport)),
             Some(ConsumeEffect::TeleportRandomly(16.0))
         );
+    }
+
+    /// `Consumable.CODEC` omits `consume_seconds` (1.6), `animation` (`eat`) and
+    /// `has_consume_particles` (true) at their defaults.
+    #[test]
+    fn consumables_load_the_vanilla_defaults_and_the_old_horn_name() {
+        use super::{ConsumableImpl, ConsumeAnimation};
+        use pumpkin_nbt::compound::NbtCompound;
+        use pumpkin_nbt::tag::NbtTag;
+
+        let loaded = ConsumableImpl::read_data(&NbtTag::Compound(NbtCompound::new()))
+            .expect("an empty consumable loads");
+        assert_eq!(loaded.consume_seconds, 1.6);
+        assert_eq!(loaded.animation, ConsumeAnimation::Eat);
+        assert!(loaded.consume_particles);
+        assert!(loaded.effects.is_empty());
+
+        // Older IronPumpkin saves named `toot_horn` "horn".
+        let mut horn = NbtCompound::new();
+        horn.put_string("animation", "horn".to_owned());
+        let loaded = ConsumableImpl::read_data(&NbtTag::Compound(horn)).unwrap();
+        assert_eq!(loaded.animation, ConsumeAnimation::TootHorn);
     }
 
     #[test]
