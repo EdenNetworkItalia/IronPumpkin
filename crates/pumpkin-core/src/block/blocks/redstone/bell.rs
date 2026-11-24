@@ -26,6 +26,7 @@ pub(crate) fn ring_bell(
     hit_direction: Option<HorizontalFacing>,
     entity: Option<Arc<dyn crate::entity::EntityBase>>,
 ) -> bool {
+    let cause = entity.clone();
     let mut event = crate::plugin::block::bell_ring::BellRingEvent {
         block_pos: position,
         world: world.clone(),
@@ -58,7 +59,11 @@ pub(crate) fn ring_bell(
         2.0,
         1.0,
     );
-    world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        position.to_centered_f64(),
+        &crate::world::game_event::GameEventContext::of_entity(cause.as_deref()),
+    );
 
     true
 }

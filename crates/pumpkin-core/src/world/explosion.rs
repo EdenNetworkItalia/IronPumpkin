@@ -704,10 +704,10 @@ impl<'a> Explosion<'a> {
 
     /// Vanilla `ServerExplosion.explode`: returns the count of affected positions, also for `Keep`.
     pub fn explode(&self, world: &Arc<World>) -> u32 {
-        // TODO vanilla passes the source entity with the event. `Explosion` has no source yet.
-        world.emit_game_event(
+        world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::Explode.name(),
             self.pos,
+            &crate::world::game_event::GameEventContext::of_entity(self.source),
         );
         // Vanilla collects the positions before `hurtEntities`: a crystal set off by the damage
         // must not change which blocks this explosion breaks. `Keep` counts them too, for the packet.

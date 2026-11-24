@@ -287,6 +287,7 @@ pub fn hit_target_or_deflect_self(
 
 fn on_hit(projectile: &dyn EntityBase, hit: ProjectileHit, server: &Server) {
     let world = projectile.get_entity().world.load();
+    let mut land_block = None;
     let land_pos = match &hit {
         ProjectileHit::Entity {
             entity, hit_pos, ..
@@ -308,6 +309,7 @@ fn on_hit(projectile: &dyn EntityBase, hit: ProjectileHit, server: &Server) {
         }
         ProjectileHit::Block { pos, hit_pos, .. } => {
             let (block, state) = world.get_block_and_state(pos);
+            land_block = Some(*pos);
             world
                 .block_registry
                 .on_projectile_hit(block, &world, projectile, pos, state, hit_pos, server);
@@ -315,12 +317,12 @@ fn on_hit(projectile: &dyn EntityBase, hit: ProjectileHit, server: &Server) {
         }
     };
     projectile.on_hit(hit);
+    // Vanilla reads the state after `onHitBlock`.
+    let land_state = land_block.map(|pos| world.get_block_state_id(&pos));
     world.emit_game_event_with_context(
         GameEvent::ProjectileLand.name(),
         land_pos,
-        &GameEventContext {
-            source_entity: Some(projectile),
-        },
+        &GameEventContext::of_entity(Some(projectile)).with_state(land_state),
     );
 }
 

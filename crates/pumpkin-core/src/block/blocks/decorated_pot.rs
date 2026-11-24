@@ -154,9 +154,10 @@ impl BlockBehaviour for DecoratedPotBlock {
         );
         args.world
             .update_neighbour_for_output_signal(args.position, args.block);
-        args.world.emit_game_event(
+        args.world.emit_game_event_by(
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
         );
         BlockActionResult::Success
     }
@@ -175,9 +176,10 @@ impl BlockBehaviour for DecoratedPotBlock {
             );
             args.world
                 .add_synced_block_event(*args.position, EVENT_POT_WOBBLES, WOBBLE_NEGATIVE);
-            args.world.emit_game_event(
+            args.world.emit_game_event_by(
                 GameEvent::BlockChange.name(),
                 args.position.to_centered_f64(),
+                &args.player.living_entity.entity,
             );
             return BlockActionResult::Success;
         }

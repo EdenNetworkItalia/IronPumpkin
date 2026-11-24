@@ -35,13 +35,17 @@ impl BrushableBlock {
         if let Some(be) = world.get_block_entity(pos)
             && let Some(brush_be) = be.as_any().downcast_ref::<BrushableBlockBlockEntity>()
         {
-            let mut hits = brush_be
-                .hits
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            *hits += 1;
+            // The sound event runs mod handlers, so the hit counter is not locked when it plays.
+            let hits = {
+                let mut hits = brush_be
+                    .hits
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                *hits += 1;
+                *hits
+            };
 
-            if *hits >= 4 {
+            if hits >= 4 {
                 let item = brush_be
                     .item
                     .lock()
@@ -67,7 +71,7 @@ impl BrushableBlock {
 
                 world.play_sound(sound, SoundCategory::Blocks, &pos.to_f64());
             } else {
-                props.dusted = (*hits as u8).min(3);
+                props.dusted = (hits as u8).min(3);
                 world.set_block_state(pos, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
 
                 let sound = if is_gravel {

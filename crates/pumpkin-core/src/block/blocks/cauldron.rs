@@ -13,6 +13,7 @@ use crate::item::items::bucket::create_filled_result;
 use crate::item::items::glass_bottle::water_bottle;
 use crate::plugin::block::cauldron_level_change::{CauldronChangeReason, CauldronLevelChangeEvent};
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::WaterCauldronLikeProperties;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::data_component::DataComponent;
@@ -93,6 +94,15 @@ pub(crate) fn is_water_potion(stack: &ItemStack) -> bool {
             .is_some_and(|contents| contents.potion_id == Some(i32::from(Potion::WATER.id)))
 }
 
+/// Vanilla `Context.of(newState)`: the block change of a cauldron has no entity.
+fn emit_cauldron_change(world: &World, pos: &BlockPos, new_state: BlockStateId) {
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        pos.to_centered_f64(),
+        &GameEventContext::of_state(new_state),
+    );
+}
+
 fn lower_fill_level(world: &Arc<World>, pos: &BlockPos, block: &Block, current_level: u8) {
     let new_state_id = if current_level <= 1 {
         Block::CAULDRON.default_state.id
@@ -100,7 +110,7 @@ fn lower_fill_level(world: &Arc<World>, pos: &BlockPos, block: &Block, current_l
         layered_state_id(block, current_level - 1)
     };
     world.set_block_state(pos, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), pos.to_centered_f64());
+    emit_cauldron_change(world, pos, new_state_id);
 }
 
 fn content_collision_box(block_id: BlockId, state_id: BlockStateId) -> BoundingBox {
@@ -213,12 +223,9 @@ impl CauldronBlock {
                         None,
                     )
                 {
-                    world.set_block_state(
-                        pos,
-                        layered_state_id(&Block::WATER_CAULDRON, level + 1),
-                        BlockFlags::NOTIFY_ALL,
-                    );
-                    world.emit_game_event(GameEvent::BlockChange.name(), pos.to_centered_f64());
+                    let new_state = layered_state_id(&Block::WATER_CAULDRON, level + 1);
+                    world.set_block_state(pos, new_state, BlockFlags::NOTIFY_ALL);
+                    emit_cauldron_change(world, pos, new_state);
                 }
             }
             BlockId::POWDER_SNOW_CAULDRON if !is_rain => {
@@ -233,12 +240,9 @@ impl CauldronBlock {
                         None,
                     )
                 {
-                    world.set_block_state(
-                        pos,
-                        layered_state_id(&Block::POWDER_SNOW_CAULDRON, level + 1),
-                        BlockFlags::NOTIFY_ALL,
-                    );
-                    world.emit_game_event(GameEvent::BlockChange.name(), pos.to_centered_f64());
+                    let new_state = layered_state_id(&Block::POWDER_SNOW_CAULDRON, level + 1);
+                    world.set_block_state(pos, new_state, BlockFlags::NOTIFY_ALL);
+                    emit_cauldron_change(world, pos, new_state);
                 }
             }
             _ => {}
@@ -689,15 +693,10 @@ impl BlockBehaviour for CauldronBlock {
                 ) {
                     return;
                 }
-                args.world.set_block_state(
-                    args.position,
-                    layered_state_id(&Block::WATER_CAULDRON, 1),
-                    BlockFlags::NOTIFY_ALL,
-                );
-                args.world.emit_game_event(
-                    GameEvent::BlockChange.name(),
-                    args.position.to_centered_f64(),
-                );
+                let new_state = layered_state_id(&Block::WATER_CAULDRON, 1);
+                args.world
+                    .set_block_state(args.position, new_state, BlockFlags::NOTIFY_ALL);
+                emit_cauldron_change(args.world, args.position, new_state);
                 args.world.sync_world_event(
                     WorldEvent::SoundDripWaterIntoCauldron,
                     *args.position,
@@ -715,15 +714,10 @@ impl BlockBehaviour for CauldronBlock {
                 ) {
                     return;
                 }
-                args.world.set_block_state(
-                    args.position,
-                    Block::LAVA_CAULDRON.default_state.id,
-                    BlockFlags::NOTIFY_ALL,
-                );
-                args.world.emit_game_event(
-                    GameEvent::BlockChange.name(),
-                    args.position.to_centered_f64(),
-                );
+                let new_state = Block::LAVA_CAULDRON.default_state.id;
+                args.world
+                    .set_block_state(args.position, new_state, BlockFlags::NOTIFY_ALL);
+                emit_cauldron_change(args.world, args.position, new_state);
                 args.world.sync_world_event(
                     WorldEvent::SoundDripLavaIntoCauldron,
                     *args.position,
@@ -744,15 +738,10 @@ impl BlockBehaviour for CauldronBlock {
                 {
                     return;
                 }
-                args.world.set_block_state(
-                    args.position,
-                    layered_state_id(&Block::WATER_CAULDRON, level + 1),
-                    BlockFlags::NOTIFY_ALL,
-                );
-                args.world.emit_game_event(
-                    GameEvent::BlockChange.name(),
-                    args.position.to_centered_f64(),
-                );
+                let new_state = layered_state_id(&Block::WATER_CAULDRON, level + 1);
+                args.world
+                    .set_block_state(args.position, new_state, BlockFlags::NOTIFY_ALL);
+                emit_cauldron_change(args.world, args.position, new_state);
                 args.world.sync_world_event(
                     WorldEvent::SoundDripWaterIntoCauldron,
                     *args.position,

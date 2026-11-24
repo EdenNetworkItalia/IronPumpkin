@@ -749,9 +749,7 @@ impl RaidGardenGoal {
                 world.emit_game_event_with_context(
                     GameEvent::BlockChange.name(),
                     crops_pos.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(rabbit),
-                    },
+                    &GameEventContext::of_entity(Some(rabbit)),
                 );
                 world.sync_world_event(
                     WorldEvent::ParticlesAndSoundDestroyBlock,

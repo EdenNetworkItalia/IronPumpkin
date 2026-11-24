@@ -1991,8 +1991,21 @@ impl Player {
         } else if (36..45).contains(&screen_slot)
             && self.inventory().get_selected_slot() as usize == screen_slot - 36
         {
-            self.living_entity
-                .send_equipment_changes(&[(EquipmentSlot::MAIN_HAND, stack.clone())]);
+            self.send_equipment_changes_after_click([(EquipmentSlot::MAIN_HAND, stack.clone())]);
+        }
+    }
+
+    /// Sends the equipment changes of a screen click. The change reads the attribute modifiers of
+    /// the stack, which fires `ItemAttributeModifierEvent`. A click calls this under the lock of
+    /// its screen handler, so it waits for the end of the click when a handler listens.
+    fn send_equipment_changes_after_click(&self, changes: [(EquipmentSlot, ItemStack); 1]) {
+        match self.world().get_player_by_uuid(self.gameprofile.id) {
+            Some(player) if crate::plugin::item_events::listens_to_attribute_modifiers() => {
+                crate::plugin::player_events::defer(move || {
+                    player.living_entity.send_equipment_changes(&changes);
+                });
+            }
+            _ => self.living_entity.send_equipment_changes(&changes),
         }
     }
 
@@ -3800,9 +3813,10 @@ impl Player {
                     self.damage_item_in_slot(&slots[rand::random_range(0..slots.len())], 1);
                 }
             }
-            self.world().emit_game_event(
+            self.world().emit_game_event_by(
                 pumpkin_data::game_event::GameEvent::ElytraGlide.name(),
                 entity.pos.load(),
+                entity,
             );
         }
     }
@@ -9595,25 +9609,17 @@ impl InventoryPlayer for Player {
     }
 
     fn enqueue_equipment_change(&self, slot: &EquipmentSlot, stack: &ItemStack) {
-        let changes = [(slot.clone(), stack.clone())];
-        // The change reads the attribute modifiers of the stack, which fires
-        // `ItemAttributeModifierEvent`. A click calls this under the lock of its screen handler,
-        // so it waits for the end of the click when a handler listens.
-        match self.world().get_player_by_uuid(self.gameprofile.id) {
-            Some(player) if crate::plugin::item_events::listens_to_attribute_modifiers() => {
-                crate::plugin::player_events::defer(move || {
-                    player.living_entity.send_equipment_changes(&changes);
-                });
-            }
-            _ => self.living_entity.send_equipment_changes(&changes),
-        }
+        self.send_equipment_changes_after_click([(slot.clone(), stack.clone())]);
 
         if let Some(equippable) = stack.get_data_component::<EquippableImpl>() {
-            self.world().play_sound_event(
-                &equippable.equip_sound,
-                SoundCategory::Players,
-                &self.position(),
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            let sound = equippable.equip_sound.clone();
+            let position = self.position();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_event(&sound, SoundCategory::Players, &position);
+            });
         }
     }
 
@@ -9634,13 +9640,18 @@ impl InventoryPlayer for Player {
 
     fn play_block_sound(&self, sound: Sound, pitch: f32) {
         if let Some(pos) = self.open_container_pos.load() {
-            self.world().play_sound_fine(
-                sound,
-                SoundCategory::Blocks,
-                &pos.to_centered_f64(),
-                1.0,
-                pitch,
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_fine(
+                    sound,
+                    SoundCategory::Blocks,
+                    &pos.to_centered_f64(),
+                    1.0,
+                    pitch,
+                );
+            });
         }
     }
 

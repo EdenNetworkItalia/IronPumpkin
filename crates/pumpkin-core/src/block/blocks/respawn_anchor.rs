@@ -34,14 +34,16 @@ impl BlockBehaviour for RespawnAnchorBlock {
         }
 
         props.charges += 1;
-        args.world.set_block_state(
-            args.position,
-            props.to_state_id(args.block),
-            BlockFlags::NOTIFY_ALL,
-        );
-        args.world.emit_game_event(
+        let new_state = props.to_state_id(args.block);
+        args.world
+            .set_block_state(args.position, new_state, BlockFlags::NOTIFY_ALL);
+        args.world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_entity_state(
+                Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                new_state,
+            ),
         );
 
         args.item_stack

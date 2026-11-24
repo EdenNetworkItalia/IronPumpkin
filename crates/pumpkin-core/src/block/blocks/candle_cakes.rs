@@ -103,9 +103,10 @@ impl BlockBehaviour for CandleCakeBlock {
                 SoundCategory::Blocks,
                 &args.position.to_centered_f64(),
             );
-            args.world.emit_game_event(
+            args.world.emit_game_event_by(
                 GameEvent::BlockChange.name(),
                 args.position.to_centered_f64(),
+                &args.player.living_entity.entity,
             );
             return BlockActionResult::Success;
         }

@@ -203,9 +203,7 @@ impl ArmadilloEntity {
         entity.world.load().emit_game_event_with_context(
             event.name(),
             entity.pos.load(),
-            &GameEventContext {
-                source_entity: Some(self),
-            },
+            &GameEventContext::of_entity(Some(self)),
         );
     }
 

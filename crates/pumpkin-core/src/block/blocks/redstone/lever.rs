@@ -37,7 +37,11 @@ pub struct LeverBlock;
 
 impl BlockBehaviour for LeverBlock {
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
-        Self::pull(args.world, args.position);
+        Self::pull(
+            args.world,
+            args.position,
+            Some(&args.player.living_entity.entity),
+        );
         BlockActionResult::Success
     }
 
@@ -100,7 +104,11 @@ impl WallMountedBlock for LeverBlock {
 }
 
 impl LeverBlock {
-    pub(crate) fn pull(world: &Arc<World>, block_pos: &BlockPos) {
+    pub(crate) fn pull(
+        world: &Arc<World>,
+        block_pos: &BlockPos,
+        source: Option<&crate::entity::Entity>,
+    ) {
         let (block, state) = world.get_block_and_state_id(block_pos);
 
         let mut lever_props = LeverLikeProperties::from_state_id(state);
@@ -120,7 +128,7 @@ impl LeverBlock {
         } else {
             GameEvent::BlockDeactivate
         };
-        world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+        world.emit_game_event_by(game_event.name(), block_pos.to_centered_f64(), source);
     }
 
     fn update_neighbors(

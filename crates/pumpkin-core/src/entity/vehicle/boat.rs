@@ -93,9 +93,7 @@ impl BoatEntity {
             world.emit_game_event_with_context(
                 GameEvent::ContainerOpen.name(),
                 self.vehicle.entity.pos.load(),
-                &GameEventContext {
-                    source_entity: Some(player.as_ref()),
-                },
+                &GameEventContext::of_entity(Some(player.as_ref())),
             );
         }
         opened
