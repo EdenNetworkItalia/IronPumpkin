@@ -5,7 +5,8 @@
 /// record names as settable; the host keeps the other fields.
 interface neoforge-events {
     use common.{block-pos, hand, position};
-    use item-stack.{item-stack, enchantment-value};
+    use item-stack.{item-stack, enchantment-value, item-attribute-modifier};
+    use enchantments.{enchantment};
     use player.{player};
     use text.{text-component};
     use %world.{%world, entity, block-direction};
@@ -920,5 +921,76 @@ interface neoforge-events {
         /// The id of the table, such as `mymod:blocks/ruby_ore`.
         name: string,
         cancelled: bool,
+    }
+
+    /// NeoForge `ClickAction`: the primary click is a left click and the secondary click is a
+    /// right click with the default key mapping.
+    enum click-action {
+        primary,
+        secondary,
+    }
+
+    /// NeoForge `ItemAttributeModifierEvent`: the server reads the attribute modifiers of an item
+    /// stack. Settable: `modifiers`, the list that the reader sees. The host matches an entry to
+    /// a default modifier by attribute and id and keeps the display of the default modifier; a new
+    /// entry has the default display.
+    record item-attribute-modifier-event-data {
+        item: item-stack,
+        default-modifiers: list<item-attribute-modifier>,
+        modifiers: list<item-attribute-modifier>,
+    }
+
+    /// NeoForge `ItemStackedOnOtherEvent`: a player clicks a slot with a carried item, before the
+    /// item overrides of the click. Settable: `carried-item`, `stacked-on-item`, `cancelled` and
+    /// `cancellation-result`. A cancel with the result `true` ends the click; with `false`, the
+    /// click runs without the item overrides. The click takes a changed stack only when the
+    /// cursor and the slot still hold the stacks that the event got.
+    record item-stacked-on-other-event-data {
+        player: player,
+        carried-item: item-stack,
+        stacked-on-item: item-stack,
+        /// The index of the clicked slot in the screen handler of the player.
+        slot: u32,
+        click-action: click-action,
+        cancelled: bool,
+        cancellation-result: bool,
+    }
+
+    /// NeoForge `GetEnchantmentLevelEvent`: the server asks for the gameplay enchantment levels
+    /// of an item stack. Settable: `enchantments`, the levels that the caller sees; a level of 0
+    /// removes the enchantment and a level above 255 becomes 255. For a lookup of one enchantment
+    /// (`target-enchant` is set), `enchantments` holds that enchantment at its level, or nothing.
+    record get-enchantment-level-event-data {
+        item: item-stack,
+        enchantments: list<enchantment-value>,
+        /// The enchantment that the lookup asks for, or none for all of them.
+        target-enchant: option<enchantment>,
+    }
+
+    /// NeoForge `EnchantedBlockLootEvent`: the loot of a block asks for an enchantment level of
+    /// the tool. Settable: `enchantment-level`; a negative level is ignored.
+    record enchanted-block-loot-event-data {
+        target-world: %world,
+        block-pos: block-pos,
+        state-id: u16,
+        tool: item-stack,
+        enchantment: enchantment,
+        enchantment-level: s32,
+    }
+
+    /// NeoForge `EnchantedEntityLootEvent`: the loot of a killed entity asks for an enchantment
+    /// level. Settable: `enchantment-level`; a negative level is ignored.
+    record enchanted-entity-loot-event-data {
+        entity: entity,
+        damage-source: damage-source,
+        enchantment: enchantment,
+        enchantment-level: s32,
+    }
+
+    /// NeoForge `PlayerBrewedPotionEvent`: a player took a potion out of a brewing stand. It has
+    /// no settable field: `stack` is a copy.
+    record player-brewed-potion-event-data {
+        player: player,
+        stack: item-stack,
     }
 }

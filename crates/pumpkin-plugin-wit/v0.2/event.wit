@@ -75,6 +75,9 @@ interface event {
         level-tick-event-post-data,
         command-event-data, permissions-changed-event-data, on-datapack-sync-event-data,
         loot-table-load-event-data,
+        item-attribute-modifier-event-data, item-stacked-on-other-event-data,
+        get-enchantment-level-event-data, enchanted-block-loot-event-data,
+        enchanted-entity-loot-event-data, player-brewed-potion-event-data,
     };
 
     variant serverbound-packet {
@@ -2470,6 +2473,12 @@ interface event {
         on-datapack-sync-event,
         loot-table-load-event,
         game-shutting-down-event,
+        item-attribute-modifier-event,
+        item-stacked-on-other-event,
+        get-enchantment-level-event,
+        enchanted-block-loot-event,
+        enchanted-entity-loot-event,
+        player-brewed-potion-event,
     }
 
     variant event {
@@ -2830,5 +2839,11 @@ interface event {
         on-datapack-sync-event(on-datapack-sync-event-data),
         loot-table-load-event(loot-table-load-event-data),
         game-shutting-down-event,
+        item-attribute-modifier-event(item-attribute-modifier-event-data),
+        item-stacked-on-other-event(item-stacked-on-other-event-data),
+        get-enchantment-level-event(get-enchantment-level-event-data),
+        enchanted-block-loot-event(enchanted-block-loot-event-data),
+        enchanted-entity-loot-event(enchanted-entity-loot-event-data),
+        player-brewed-potion-event(player-brewed-potion-event-data),
     }
 }
