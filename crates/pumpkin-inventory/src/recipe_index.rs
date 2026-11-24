@@ -431,14 +431,20 @@ impl RecipeIndex {
     }
 
     /// The stonecutter recipes that take `item` for a client in mode `ids`, as vanilla
-    /// `SingleInputSet.selectByInput` on the list of that client: the order of its buttons.
+    /// `SingleInputSet.selectByInput` on the list of that client: the order of its buttons. A
+    /// `Display` client sees a custom item as its display item and selects by that item, so
+    /// the server does too.
     pub fn stonecutter_recipes_for<'a>(
         &'a self,
         item: &'a Item,
         ids: ContentIds,
     ) -> impl Iterator<Item = &'a StonecutterEntry> + 'a {
+        let seen: &Item = match ids {
+            ContentIds::Display => Item::from_id(item.to_java_network_id(ids)).unwrap_or(item),
+            ContentIds::Real => item,
+        };
         self.stonecutter_recipes(ids)
-            .filter(move |r| r.ingredient.match_item(item))
+            .filter(move |r| r.ingredient.match_item(seen))
     }
 
     #[must_use]
