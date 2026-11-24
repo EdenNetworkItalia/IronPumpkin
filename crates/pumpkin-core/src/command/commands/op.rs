@@ -34,9 +34,9 @@ impl CommandExecutor for OpCommandExecutor {
         let new_level = server.basic_config.op_permission_level;
 
         for profile in profiles {
-            if permission_change_cancelled(server, profile.id, new_level) {
-                continue;
-            }
+            // Vanilla `PlayerList.op` returns when a handler cancels, and the command still counts
+            // the player and sends the success message.
+            let cancelled = permission_change_cancelled(server, profile.id, new_level);
 
             let mut config = server.data.operator_config.write().unwrap();
             let maybe_existing_entry = config.ops.iter_mut().find(|o| o.uuid == profile.id);
@@ -46,16 +46,20 @@ impl CommandExecutor for OpCommandExecutor {
                     continue;
                 }
 
-                op.level = new_level;
-                op.name.clone_from(&profile.name);
-            } else {
+                if !cancelled {
+                    op.level = new_level;
+                    op.name.clone_from(&profile.name);
+                }
+            } else if !cancelled {
                 let op_entry = Op::new(profile.id, profile.name.clone(), new_level, false);
                 config.ops.push(op_entry);
             }
-            config.save();
+            if !cancelled {
+                config.save();
+            }
             drop(config);
 
-            if let Some(player) = server.get_player_by_uuid(profile.id) {
+            if !cancelled && let Some(player) = server.get_player_by_uuid(profile.id) {
                 let command_dispatcher = server.command_dispatcher.load();
                 player.set_permission_lvl(server, new_level, &command_dispatcher);
             }

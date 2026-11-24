@@ -311,8 +311,14 @@ fn cancel_permissions_changed_event() {
         }
     });
 
-    run_as_console("op CancelledOp");
+    let source = CommandSender::Console.into_source(server).with_silent();
+    let result = server
+        .command_dispatcher
+        .load()
+        .execute_input("op CancelledOp", &source);
 
+    // Vanilla counts the player and sends the success message although a handler cancelled.
+    assert_eq!(result.unwrap(), 1);
     assert_eq!(op_level(server, &player), None);
     assert_eq!(player.permission_lvl.load(), PermissionLvl::Zero);
 }
