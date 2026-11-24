@@ -364,11 +364,17 @@ pub fn block_entity_from_generic<T: BlockEntity>(nbt: &NbtCompound) -> T {
 #[allow(clippy::too_many_lines)]
 pub fn block_entity_from_nbt(nbt: &NbtCompound) -> Option<Arc<dyn BlockEntity>> {
     let id = nbt.get_string("id")?;
+    // Vanilla `Identifier.parse` reads a name without a namespace as `minecraft`.
+    let id: std::borrow::Cow<'_, str> = if id.contains(':') {
+        id.into()
+    } else {
+        format!("minecraft:{id}").into()
+    };
     let x = nbt.get_int("x")?;
     let y = nbt.get_int("y")?;
     let z = nbt.get_int("z")?;
     let pos = BlockPos::new(x, y, z);
-    match id {
+    match id.as_ref() {
         barrel::BarrelBlockEntity::ID => {
             Some(Arc::new(barrel::BarrelBlockEntity::from_nbt(nbt, pos)))
         }

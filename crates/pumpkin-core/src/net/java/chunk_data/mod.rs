@@ -365,6 +365,18 @@ mod tests {
     }
 
     #[test]
+    fn a_saved_id_without_namespace_reads_as_minecraft() {
+        let pos = BlockPos::new(2, 70, 3);
+        let mut sign = saved_sign(pos, "bare id line");
+        sign.put_string("id", "sign".to_string());
+        let chunk = chunk_with(vec![sign]);
+        let packet = CChunkData::with_live_block_entities(&chunk, &[]);
+        let sign = entry(&packet, pos);
+        assert_eq!(Some(sign.type_id), block_entity_type_id("minecraft:sign"));
+        assert!(contains(&tag_bytes(&sign.tag), b"bare id line"));
+    }
+
+    #[test]
     fn unknown_block_entity_types_stay_out_of_the_packet() {
         let chunk = chunk_with(vec![
             saved("examplemod:chest", BlockPos::new(0, 64, 0)),
