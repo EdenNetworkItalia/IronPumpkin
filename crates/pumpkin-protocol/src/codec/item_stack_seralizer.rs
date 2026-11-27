@@ -1442,6 +1442,60 @@ mod tests {
         assert!(hash.hash_equals(&stack));
     }
 
+    /// The last added hash of a repeated component type is the one that counts.
+    #[test]
+    fn a_repeated_added_click_hash_keeps_the_last_value() {
+        let damage = DataComponent::Damage;
+        let sword = i32::from(Item::DIAMOND_SWORD.id);
+        let value = pumpkin_data::data_component_impl::DamageImpl { damage: 5 };
+        let hash = value.get_hash();
+        let stack = ItemStack::new_with_component(
+            1,
+            &Item::DIAMOND_SWORD,
+            vec![(damage, Some(value.to_dyn()))],
+        );
+        let damage = i32::from(damage.to_id());
+        let entry = |value: i32| [var_ints(&[damage]), value.to_be_bytes().to_vec()].concat();
+        let bytes = |first: i32, last: i32| {
+            [
+                vec![1],
+                var_ints(&[sword, 1, 2]),
+                entry(first),
+                entry(last),
+                var_ints(&[0]),
+            ]
+            .concat()
+        };
+        let read = |bytes: Vec<u8>| OptionalItemStackHash::read(&mut bytes.as_slice()).unwrap();
+        assert!(read(bytes(hash ^ 1, hash)).hash_equals(&stack));
+        assert!(!read(bytes(hash, hash ^ 1)).hash_equals(&stack));
+    }
+
+    /// A block predicate decodes with its ids in a list. `ExtraCodecs.compactListCodec` hashes
+    /// a list of one predicate and a list of one id as the element, so the hash survives the
+    /// round trip through the wire.
+    #[test]
+    fn a_predicate_list_of_one_keeps_its_hash_on_the_wire() {
+        use crate::codec::data_component::{deserialize, serialize};
+        use pumpkin_data::data_component_impl::CanPlaceOnImpl;
+        use pumpkin_nbt::compound::NbtCompound;
+        let mut block = NbtCompound::new();
+        block.put_string("blocks", "minecraft:stone".to_owned());
+        let sent = CanPlaceOnImpl {
+            predicate: NbtTag::Compound(block),
+        };
+        let mut bytes = Vec::new();
+        serialize(
+            DataComponent::CanPlaceOn,
+            &sent,
+            &mut bytes,
+            ContentIds::Display,
+        )
+        .unwrap();
+        let received = deserialize(DataComponent::CanPlaceOn, &mut bytes.as_slice()).unwrap();
+        assert_eq!(received.get_hash(), sent.get_hash());
+    }
+
     /// `MobEffectInstance.Details.STREAM_CODEC` writes each hidden effect after an optional
     /// flag, and `TeleportRandomlyConsumeEffect.STREAM_CODEC` writes the diameter and the
     /// `directional_particles` flag.
