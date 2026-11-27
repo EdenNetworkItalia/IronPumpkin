@@ -74,8 +74,7 @@ pub struct EntityType {
     /// Spawn location restrictions for natural spawning.
     pub spawn_restriction: SpawnRestriction,
     /// Whether vanilla `SpawnPlacements` has an entry for this type. A type without one carries a
-    /// default `spawn_restriction`. An extractor that does not write the flag means every type has one.
-    #[serde(default = "default_has_spawn_placement")]
+    /// default `spawn_restriction`.
     pub has_spawn_placement: bool,
     pub passenger_attachments: Vec<[f64; 3]>,
     pub vehicle_attachment: [f64; 3],
@@ -109,10 +108,6 @@ pub struct Baby {
     angry_sound: Option<String>,
     #[serde(default)]
     poses: BTreeMap<String, PoseDimensions>,
-}
-
-const fn default_has_spawn_placement() -> bool {
-    true
 }
 
 fn poses_tokens(poses: &BTreeMap<String, PoseDimensions>) -> TokenStream {

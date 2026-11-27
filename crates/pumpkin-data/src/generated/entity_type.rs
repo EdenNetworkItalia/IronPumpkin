@@ -264,7 +264,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -322,7 +322,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -410,7 +410,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.6000000238418579f64, 0f64]],
             vehicle: [0f64, -0.03999999910593033f64, 0f64],
@@ -476,7 +476,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -671,7 +671,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1.975000023841858f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -737,7 +737,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -906,7 +906,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -964,7 +964,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -1147,7 +1147,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -1231,7 +1231,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -1289,7 +1289,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -1442,7 +1442,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -1687,7 +1687,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.3125f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -2201,7 +2201,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -2259,7 +2259,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -2317,7 +2317,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -2579,7 +2579,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -2662,7 +2662,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.9800000190734863f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3031,7 +3031,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3086,7 +3086,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3144,7 +3144,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3428,7 +3428,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3597,7 +3597,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3747,7 +3747,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 2f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -3896,7 +3896,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4236,7 +4236,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.800000011920929f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4291,7 +4291,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4346,7 +4346,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4401,7 +4401,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4456,7 +4456,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.9800000190734863f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4511,7 +4511,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4566,7 +4566,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4621,7 +4621,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -4886,7 +4886,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -5131,7 +5131,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -5772,7 +5772,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6149,7 +6149,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6299,7 +6299,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6354,7 +6354,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6409,7 +6409,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6464,7 +6464,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6522,7 +6522,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6580,7 +6580,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6635,7 +6635,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6690,7 +6690,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -6858,7 +6858,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7008,7 +7008,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7066,7 +7066,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7151,7 +7151,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1.7999999523162842f64, 0f64]],
             vehicle: [0f64, 0.6f64, 0f64],
@@ -7279,7 +7279,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7334,7 +7334,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7729,7 +7729,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7787,7 +7787,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -7959,7 +7959,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -8014,7 +8014,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -8069,7 +8069,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -8127,7 +8127,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -8841,7 +8841,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 2.012500047683716f64, 0f64]],
             vehicle: [0f64, 0.699999988079071f64, 0f64],
@@ -9039,7 +9039,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1.7999999523162842f64, 0f64]],
             vehicle: [0f64, 0.6f64, 0f64],
@@ -9281,7 +9281,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -9339,7 +9339,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10001,7 +10001,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.3125f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10454,7 +10454,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.3125f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10538,7 +10538,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 2.09375f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10716,7 +10716,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10771,7 +10771,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10826,7 +10826,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -10976,7 +10976,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.25f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11031,7 +11031,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11089,7 +11089,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5625f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11609,7 +11609,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.30000001192092896f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11675,7 +11675,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11730,7 +11730,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.9800000190734863f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11785,7 +11785,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.1875f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -11953,7 +11953,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.5f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -12724,7 +12724,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.3125f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -13065,7 +13065,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 0.3125f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
@@ -13604,7 +13604,7 @@ impl EntityType {
             location: SpawnLocation::Unrestricted,
             heightmap: HeightMap::MotionBlockingNoLeaves,
         },
-        has_spawn_placement: true,
+        has_spawn_placement: false,
         attachments: EntityAttachments {
             passenger: &[[0f64, 1.1375000476837158f64, 0f64]],
             vehicle: [0f64, 0f64, 0f64],
