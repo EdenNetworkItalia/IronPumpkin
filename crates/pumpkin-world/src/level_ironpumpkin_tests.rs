@@ -420,3 +420,93 @@ async fn a_generated_chunk_steps_its_fluid_ticks() {
     assert_eq!((at.x, at.y, at.z), GENERATED_TICK);
     level.shutdown().await;
 }
+
+/// A chunk that unloads and publishes again while the tick step runs.
+/// The publisher follows the order of `unpublish_chunk` and `publish_chunk` (map, then set).
+/// After each publish it waits two whole steps and checks that a chunk with ticks is still in
+/// the stepped set. The race is rare (about 2 lost publishes in a million without the recheck
+/// in the tick step): set `TICK_RACE_ITER` to 4000000 to reproduce it.
+#[test]
+fn a_chunk_published_again_during_the_tick_step_keeps_its_ticks() {
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+    let temp_dir = TempDir::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let level = Level::from_root_folder(
+        &LevelConfig::default(),
+        temp_dir.path().to_path_buf(),
+        0,
+        Dimension::OVERWORLD,
+    );
+    let pos = Vector2::new(0, 0);
+    let (_, chunk) = saved_chunk(pos, None);
+    let schedule = |chunk: &SyncChunk| {
+        chunk.block_ticks.schedule_tick(
+            &ScheduledTick {
+                delay: 200,
+                priority: TickPriority::Normal,
+                position: BlockPos::new(3, 70, 4),
+                value: &Block::REDSTONE_LAMP,
+            },
+            0,
+        );
+    };
+    schedule(&chunk);
+    level.loaded_chunks.insert(pos, chunk.clone());
+    level.chunks_with_scheduled_ticks.insert(pos);
+    let stop = AtomicBool::new(false);
+    let steps = AtomicU64::new(0);
+    let iterations: u64 = std::env::var("TICK_RACE_ITER")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200_000);
+    let lost = std::thread::scope(|s| {
+        s.spawn(|| {
+            let no_block_tick = std::env::var("TICK_RACE_NOTICK").is_ok();
+            while !stop.load(Ordering::Relaxed) {
+                if no_block_tick {
+                    level.get_tick_data(&FxHashSet::default(), &FxHashSet::default(), 0);
+                } else {
+                    step(&level, pos);
+                }
+                steps.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        let mut lost = 0u64;
+        for _ in 0..iterations {
+            level.loaded_chunks.remove(&pos);
+            schedule(&chunk);
+            let has_ticks = chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks();
+            level.loaded_chunks.insert(pos, chunk.clone());
+            if has_ticks {
+                level.chunks_with_scheduled_ticks.insert(pos);
+            }
+            let wait_two_steps = || {
+                let start = steps.load(Ordering::SeqCst);
+                while steps.load(Ordering::SeqCst) < start + 2 {
+                    std::hint::spin_loop();
+                }
+            };
+            let missing = || {
+                chunk.block_ticks.has_ticks() && !level.chunks_with_scheduled_ticks.contains(&pos)
+            };
+            wait_two_steps();
+            // The step removes the entry and adds it again, so one read can fall in between.
+            // A lost registration stays lost.
+            if missing() && {
+                wait_two_steps();
+                missing()
+            } {
+                lost += 1;
+                level.chunks_with_scheduled_ticks.insert(pos);
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        lost
+    });
+    rt.block_on(level.shutdown());
+    assert_eq!(
+        lost, 0,
+        "{lost} of {iterations} publishes lost the registration"
+    );
+}
