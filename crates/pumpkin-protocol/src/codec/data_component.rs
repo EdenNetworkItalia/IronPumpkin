@@ -1793,6 +1793,9 @@ fn deserialize_adventure_predicate(seq: &mut impl NetworkReadExt) -> Result<NbtT
     let count = seq.get_var_int()?.0.max(0) as usize;
     let mut preds = Vec::with_capacity(count.min(64));
     for _ in 0..count {
+        // The exact components of a predicate can hold another predicate, so each predicate is
+        // one level of the item stack nesting limit.
+        let _nesting = crate::codec::item_stack_seralizer::enter_item_nesting()?;
         let mut comp = pumpkin_nbt::compound::NbtCompound::new();
         let has_blocks = seq.get_bool()?;
         if has_blocks {

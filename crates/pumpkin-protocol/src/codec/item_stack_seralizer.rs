@@ -1144,6 +1144,32 @@ mod tests {
         assert!(read_creative_stack(&nested_bundles(2)).is_ok());
     }
 
+    /// A creative slot stick whose `can_place_on` holds a block predicate whose exact components
+    /// hold `can_place_on` again, `levels` predicates deep.
+    fn nested_block_predicates(levels: usize) -> Vec<u8> {
+        let can_place_on = i32::from(DataComponent::CanPlaceOn.to_id());
+        // One predicate: no blocks, no properties, no nbt, one exact component.
+        let level = var_ints(&[1, 0, 0, 0, 1, can_place_on]);
+        let mut data = level.repeat(levels);
+        data.push(0);
+        // The partial predicates of each level.
+        data.extend(std::iter::repeat_n(0, levels));
+        let stick = i32::from(Item::STICK.id);
+        let mut bytes = var_ints(&[1, stick, 1, 0, can_place_on, data.len() as i32]);
+        bytes.extend(data);
+        bytes
+    }
+
+    #[test]
+    fn block_predicates_count_in_the_nesting_limit() {
+        use pumpkin_data::item_stack::nesting::MAX_ITEM_NESTING;
+        // The stick is one level, and each predicate is one more.
+        let within = nested_block_predicates(MAX_ITEM_NESTING as usize - 1);
+        assert!(read_creative_stack(&within).is_ok());
+        assert!(read_creative_stack(&nested_block_predicates(MAX_ITEM_NESTING as usize)).is_err());
+        assert!(read_creative_stack(&within).is_ok());
+    }
+
     fn var_ints(values: &[i32]) -> Vec<u8> {
         let mut bytes = Vec::new();
         for value in values {
