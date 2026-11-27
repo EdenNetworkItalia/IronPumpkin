@@ -1,14 +1,16 @@
-//! A limit on nested item stacks. A bundle, a container or another template component holds
-//! stacks that hold more stacks, and each decoder of a stack recurses into its components. A
-//! crafted value with many levels would otherwise exhaust the thread stack.
+//! A limit on nested item stacks. A bundle, a container, a charged projectile or another
+//! template component holds stacks that hold more stacks, and a block predicate holds expected
+//! components that hold more predicates. Each decoder of a stack or a predicate counts one
+//! level, and a value nested deeper than the limit does not decode.
 
 use std::cell::Cell;
 use std::marker::PhantomData;
 
-/// The maximum number of item stacks inside each other in one decoded value. Vanilla
-/// survival play nests about 16 bundles at most, because of the bundle weight. One level of the
-/// network decoder takes less than 8 KiB of stack in a release build and about 25 KiB in a
-/// debug build, so 32 levels fit a 1 MiB stack in both.
+/// The maximum number of item stacks and block predicates inside each other in one decoded
+/// value. Survival play nests about 18 stacks at most: a shulker box, a bundle and 16 bundles in
+/// it, because of the bundle weight. One level of the network decoder takes at most 4.1 KiB of
+/// stack in a debug build and 0.4 KiB in a release build without LTO. The deepest value that
+/// the decoders accept, with the deepest NBT and text inside, decodes in 1.1 MiB and 0.33 MiB.
 pub const MAX_ITEM_NESTING: u32 = 32;
 
 thread_local! {

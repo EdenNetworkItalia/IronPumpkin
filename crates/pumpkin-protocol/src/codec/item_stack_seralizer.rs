@@ -1128,7 +1128,7 @@ mod tests {
             .spawn(move || read_creative_stack(&bytes).map(super::ItemStackSerializer::to_stack))
             .unwrap()
             .join()
-            .expect("decode does not overflow a 1 MiB stack");
+            .expect("the decode fits a 1 MiB stack");
         assert_eq!(decoded.unwrap().item, &Item::BUNDLE);
         assert!(read_creative_stack(&nested_bundles(MAX_ITEM_NESTING as usize)).is_err());
     }
