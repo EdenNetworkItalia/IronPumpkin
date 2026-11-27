@@ -201,7 +201,8 @@ enum Bytes {
     /// A codec value saved through `NbtOps`, which writes `Codec.BOOL` as a byte tag and a list
     /// of booleans as a byte array.
     Booleans,
-    /// A byte 0 or 1 is a boolean, any other byte stays a byte.
+    /// A byte 0 or 1 is a boolean, any other byte stays a byte. A byte array of zeros and ones is
+    /// a list of booleans, any other byte array stays a byte array.
     ZeroOneBooleans,
 }
 
@@ -220,6 +221,11 @@ fn tag(value: &NbtTag, bytes: Bytes) -> u32 {
         NbtTag::Float(value) => float(*value),
         NbtTag::Double(value) => double(*value),
         NbtTag::ByteArray(values) => match bytes {
+            Bytes::ZeroOneBooleans
+                if !values.is_empty() && values.iter().all(|value| matches!(value, 0 | 1)) =>
+            {
+                list(values.iter().map(|value| boolean(*value != 0)))
+            }
             Bytes::Nbt | Bytes::ZeroOneBooleans => byte_array(values),
             Bytes::Booleans => list(values.iter().map(|value| boolean(*value != 0))),
         },
@@ -430,8 +436,9 @@ fn component_patch(stack: &ItemStack) -> Vec<(u32, u32)> {
 
 /// The hash of a mod component value. Only its NBT form is known. A NeoForge client hashes the
 /// value with the codec of the mod, where a `Codec.BOOL` flag is a boolean, but the save stores
-/// it as a byte. Flags are more common than byte fields that hold only 0 or 1, so a byte 0 or 1
-/// hashes as a boolean.
+/// it as a byte, and a list of flags as a byte array. Flags are more common than byte fields
+/// that hold only 0 or 1, so a byte 0 or 1 hashes as a boolean, and a byte array of zeros and
+/// ones as a list of booleans.
 #[must_use]
 pub fn mod_component(value: &NbtTag) -> u32 {
     tag(value, Bytes::ZeroOneBooleans)
@@ -643,6 +650,20 @@ mod tests {
         let container = ContainerImpl::read_data(&saved).unwrap();
         let slots: Vec<u8> = container.items.iter().map(|(slot, _)| *slot).collect();
         assert_eq!(slots, [3]);
+    }
+
+    /// `NbtOps` saves a list of booleans as a byte array. A mod client hashes the list with the
+    /// codec of the mod, so a byte array of zeros and ones hashes as a list of booleans.
+    #[test]
+    fn mod_byte_arrays_of_zeros_and_ones_hash_as_lists_of_booleans() {
+        use pumpkin_nbt::tag::NbtTag;
+        let flags = NbtTag::ByteArray(vec![1, 0, 1].into());
+        let (yes, no) = (vanilla::boolean(true), vanilla::boolean(false));
+        assert_eq!(mod_component(&flags), vanilla::list(&[yes, no, yes]));
+        let bytes = NbtTag::ByteArray(vec![1, 2].into());
+        assert_eq!(mod_component(&bytes), byte_array(&[1, 2]));
+        let empty = NbtTag::ByteArray(Vec::new().into());
+        assert_eq!(mod_component(&empty), byte_array(&[]));
     }
 
     #[test]
