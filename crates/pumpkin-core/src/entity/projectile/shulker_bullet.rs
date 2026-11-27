@@ -260,13 +260,18 @@ impl ShulkerBulletEntity {
     /// Removes the bullet and lets vibration listeners know.
     fn destroy(&self) {
         let entity = &self.entity;
+        let world = entity.world.load();
+        // The world no longer lists the bullet after the removal, so the cause is the owner that
+        // the world gave before it.
+        let owner = world.get_entity_by_id(entity.entity_id);
         entity.remove();
-        entity.world.load().emit_game_event_with_context(
+        world.emit_game_event_with_context(
             GameEvent::EntityDamage.name(),
             entity.pos.load(),
-            &GameEventContext {
-                source_entity: Some(self),
-            },
+            &owner.as_ref().map_or_else(
+                || GameEventContext::of_entity(Some(self)),
+                GameEventContext::of_owner,
+            ),
         );
     }
 

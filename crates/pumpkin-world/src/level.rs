@@ -659,11 +659,18 @@ impl Level {
                     .append(&mut chunk.fluid_ticks.step_tick(ticking));
 
                 // Remove from set if it no longer has ticks
-                if !chunk.block_ticks.has_ticks() && !chunk.fluid_ticks.has_ticks() {
-                    self.chunks_with_scheduled_ticks.remove(&pos);
+                if chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks() {
+                    continue;
                 }
-            } else {
-                self.chunks_with_scheduled_ticks.remove(&pos); // Chunk unloaded
+            }
+            // The chunk is unloaded or has no ticks left.
+            self.chunks_with_scheduled_ticks.remove(&pos);
+            // A publish or a schedule between the check and the remove found the entry still
+            // in the set and added nothing, so the remove would lose its registration.
+            if let Some(chunk) = self.loaded_chunks.get(&pos)
+                && (chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks())
+            {
+                self.chunks_with_scheduled_ticks.insert(pos);
             }
         }
 

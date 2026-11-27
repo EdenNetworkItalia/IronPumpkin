@@ -1,4 +1,4 @@
-use pumpkin_data::{Block, BlockState};
+use pumpkin_data::{Block, BlockDirection, BlockId, BlockState};
 use pumpkin_util::{
     DoublePerlinNoiseParametersCodec,
     math::{
@@ -21,7 +21,8 @@ pub enum BlockStateProvider {
     NoiseThreshold(NoiseThresholdBlockStateProvider),
     NoiseProvider(NoiseBlockStateProvider),
     DualNoise(DualNoiseBlockStateProvider),
-    Pillar(PillarBlockStateProvider),
+    Rotated(RotatedBlockProvider),
+    RandomBlock(RandomBlockProvider),
     RandomizedInt(RandomizedIntBlockStateProvider),
     Rule(RuleBasedBlockStateProvider),
 }
@@ -38,7 +39,8 @@ impl BlockStateProvider {
             Self::Simple(provider) => Some(provider.get(pos)),
             Self::Weighted(provider) => Some(provider.get(random)),
             Self::DualNoise(provider) => Some(provider.get(pos)),
-            Self::Pillar(provider) => Some(provider.get_with_random(random, pos)),
+            Self::Rotated(provider) => provider.get_for_bonemeal(random, pos),
+            Self::RandomBlock(provider) => provider.get(random),
             Self::RandomizedInt(provider) => provider.get_for_bonemeal(random, pos),
             Self::Rule(_) => None,
         }
@@ -56,7 +58,10 @@ impl BlockStateProvider {
             Self::NoiseThreshold(provider) => provider.get(random, pos),
             Self::NoiseProvider(provider) => provider.get(pos),
             Self::DualNoise(provider) => provider.get(pos),
-            Self::Pillar(provider) => provider.get_with_random(random, pos),
+            Self::Rotated(provider) => provider.get_state_for_world(world, random, pos),
+            Self::RandomBlock(provider) => provider
+                .get(random)
+                .unwrap_or_else(|| world.get_block_state(&pos)),
             Self::RandomizedInt(provider) => provider.get_state_for_world(world, random, pos),
             Self::Rule(provider) => {
                 for rule in &provider.rules {
@@ -85,7 +90,10 @@ impl BlockStateProvider {
             Self::Simple(provider) => provider.get(pos),
             Self::Weighted(provider) => provider.get(random),
             Self::DualNoise(provider) => provider.get(pos),
-            Self::Pillar(provider) => provider.get_with_random(random, pos),
+            Self::Rotated(provider) => provider.get(random, pos, chunk, block_registry),
+            Self::RandomBlock(provider) => provider
+                .get(random)
+                .unwrap_or_else(|| GenerationCache::get_block_state(chunk, &pos.0).to_state()),
             Self::RandomizedInt(provider) => provider.get(random, pos, chunk, block_registry),
             Self::Rule(provider) => provider.get(block_registry, chunk, random, pos),
         }
@@ -113,6 +121,7 @@ impl BlockStateProvider {
     ) -> Option<&'static BlockState> {
         match self {
             Self::Rule(provider) => provider.get_optional(block_registry, chunk, random, pos),
+            Self::RandomBlock(provider) => provider.get(random),
             _ => Some(self.get(random, pos, chunk, block_registry)),
         }
     }
@@ -223,55 +232,109 @@ impl RandomizedIntBlockStateProvider {
     }
 }
 
-pub struct PillarBlockStateProvider {
-    pub state: &'static BlockState,
+/// Vanilla `RandomBlockProvider`: the default state of a random block of a block set.
+pub struct RandomBlockProvider {
+    pub blocks: &'static [u16],
 }
 
-impl PillarBlockStateProvider {
-    #[must_use]
-    pub const fn get(&self, _pos: BlockPos) -> &'static BlockState {
-        self.state
+impl RandomBlockProvider {
+    /// Returns `None` for an empty set, where vanilla `getState` keeps the block in the world.
+    pub fn get(&self, random: &mut RandomGenerator) -> Option<&'static BlockState> {
+        if self.blocks.is_empty() {
+            return None;
+        }
+        let index = random.next_bounded_i32(self.blocks.len() as i32) as usize;
+        Some(
+            BlockId::new_or_air(self.blocks[index])
+                .to_block()
+                .default_state,
+        )
+    }
+}
+
+/// Vanilla `RotatedBlockProvider`: the state of `state` turned to `direction`, or to a random
+/// direction when it has none.
+pub struct RotatedBlockProvider {
+    pub state: Box<BlockStateProvider>,
+    pub direction: Option<BlockDirection>,
+}
+
+impl RotatedBlockProvider {
+    // Vanilla draws the direction before it asks the inner provider for its state.
+    fn direction(&self, random: &mut RandomGenerator) -> BlockDirection {
+        self.direction
+            .unwrap_or_else(|| BlockDirection::random(random))
     }
 
-    #[must_use]
-    pub fn get_with_random(
+    pub fn get_for_bonemeal(
         &self,
         random: &mut RandomGenerator,
-        _pos: BlockPos,
-    ) -> &'static BlockState {
-        use pumpkin_data::block_properties::{Axis, Facing};
-        let (axis, facing) = match random.next_bounded_i32(6) {
-            0 => (Axis::Y, Facing::Down),
-            1 => (Axis::Y, Facing::Up),
-            2 => (Axis::Z, Facing::North),
-            3 => (Axis::Z, Facing::South),
-            4 => (Axis::X, Facing::West),
-            _ => (Axis::X, Facing::East),
-        };
-        let block = Block::from_id(self.state.id.to_block_id());
-        if let Some(props_source) = block.properties(self.state.id) {
-            let mut prop_list = props_source.to_props();
-            let mut modified = false;
-            for p in &mut prop_list {
-                match p {
-                    pumpkin_data::Property::Axis(a) => {
-                        *a = axis;
-                        modified = true;
-                    }
-                    pumpkin_data::Property::Facing(f) => {
-                        *f = facing;
-                        modified = true;
-                    }
-                    _ => {}
-                }
-            }
-            if modified {
-                let new_props_obj = block.from_properties(prop_list.as_slice());
-                let new_state_id = new_props_obj.to_state_id(block);
-                return BlockState::from_id(new_state_id);
-            }
-        }
+        pos: BlockPos,
+    ) -> Option<&'static BlockState> {
+        let direction = self.direction(random);
         self.state
+            .get_for_bonemeal(random, pos)
+            .map(|state| Self::rotate(state, direction))
+    }
+
+    pub fn get_state_for_world(
+        &self,
+        world: &dyn BlockAccessor,
+        random: &mut RandomGenerator,
+        pos: BlockPos,
+    ) -> &'static BlockState {
+        let direction = self.direction(random);
+        Self::rotate(
+            self.state.get_state_for_world(world, random, pos),
+            direction,
+        )
+    }
+
+    pub fn get<T: GenerationCache>(
+        &self,
+        random: &mut RandomGenerator,
+        pos: BlockPos,
+        chunk: &T,
+        block_registry: &dyn WorldPortalExt,
+    ) -> &'static BlockState {
+        let direction = self.direction(random);
+        Self::rotate(
+            self.state.get(random, pos, chunk, block_registry),
+            direction,
+        )
+    }
+
+    /// Sets the `axis` and `facing` properties of the state, as vanilla `trySetValue` with
+    /// `AXIS`, `FACING` and `HORIZONTAL_FACING` does.
+    ///
+    /// The property kind is read from the values that the block accepts. Vanilla matches the
+    /// property object, so it skips a mod block with its own `axis` or `facing` object; this
+    /// rotates such a block when its values equal those of a vanilla kind.
+    fn rotate(state: &'static BlockState, direction: BlockDirection) -> &'static BlockState {
+        let block = Block::from_id(state.id.to_block_id());
+        if block.properties(state.id).is_none() {
+            return state;
+        }
+        // Vanilla matches the property object, not its name. Pumpkin keeps every `axis` in
+        // `Property::Axis` and every `facing` in `Property::Facing`, so the values that the
+        // block accepts tell the vanilla property: `HORIZONTAL_AXIS` (nether portal) has no
+        // `y`, `HORIZONTAL_FACING` has no `down`, `FACING_HOPPER` has no `up`.
+        let accepts = |key, value| block.parse_property(key, value).is_ok();
+        let mut overrides = Vec::with_capacity(2);
+        if accepts("axis", "y") {
+            overrides.push(pumpkin_data::Property::Axis(direction.to_axis()));
+        }
+        let facing = accepts("facing", "up")
+            || (direction.is_horizontal()
+                && accepts("facing", "north")
+                && !accepts("facing", "down"));
+        if facing {
+            overrides.push(pumpkin_data::Property::Facing(direction.to_facing()));
+        }
+        if overrides.is_empty() {
+            return state;
+        }
+        BlockState::from_id(block.apply_properties(state.id, &overrides))
     }
 }
 
@@ -410,5 +473,51 @@ impl NoiseThresholdBlockStateProvider {
                 [random.next_bounded_i32(self.high_states.len() as i32) as usize];
         }
         self.default_state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pumpkin_data::{Block, BlockDirection, BlockState, Property};
+
+    use super::RotatedBlockProvider;
+
+    fn property(state: &'static BlockState, key: &str) -> Option<&'static str> {
+        Block::from_state_id(state.id)
+            .properties(state.id)?
+            .to_props()
+            .into_iter()
+            .find(|p| p.key().to_str() == key)
+            .map(Property::value_str)
+    }
+
+    /// Vanilla `trySetValue` sets `AXIS`, `FACING` and `HORIZONTAL_FACING` only, so the
+    /// horizontal axis of the nether portal and the hopper facing keep their value.
+    #[test]
+    fn rotated_sets_the_vanilla_axis_and_facing_properties() {
+        let rotate =
+            |block: &Block, direction| RotatedBlockProvider::rotate(block.default_state, direction);
+        let log = rotate(&Block::OAK_LOG, BlockDirection::North);
+        assert_eq!(property(log, "axis"), Some("z"));
+        let hay = rotate(&Block::HAY_BLOCK, BlockDirection::Up);
+        assert_eq!(property(hay, "axis"), Some("y"));
+
+        let portal = Block::NETHER_PORTAL.default_state;
+        assert_eq!(property(portal, "axis"), Some("x"));
+        for direction in [BlockDirection::Up, BlockDirection::South] {
+            assert_eq!(rotate(&Block::NETHER_PORTAL, direction).id, portal.id);
+        }
+
+        let dispenser = rotate(&Block::DISPENSER, BlockDirection::Up);
+        assert_eq!(property(dispenser, "facing"), Some("up"));
+        let fan = rotate(&Block::TUBE_CORAL_WALL_FAN, BlockDirection::West);
+        assert_eq!(property(fan, "facing"), Some("west"));
+        let fan_default = Block::TUBE_CORAL_WALL_FAN.default_state;
+        assert_eq!(
+            rotate(&Block::TUBE_CORAL_WALL_FAN, BlockDirection::Down).id,
+            fan_default.id
+        );
+        let hopper = Block::HOPPER.default_state;
+        assert_eq!(rotate(&Block::HOPPER, BlockDirection::East).id, hopper.id);
     }
 }

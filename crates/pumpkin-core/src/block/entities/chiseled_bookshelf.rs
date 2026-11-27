@@ -183,14 +183,12 @@ impl ChiseledBookshelfBlockEntity {
         };
         self.last_interacted_slot
             .store(slot as i8, Ordering::Relaxed);
-        world.set_block_state(
-            &self.position,
-            properties.to_state_id(&Block::CHISELED_BOOKSHELF),
-            BlockFlags::NOTIFY_ALL,
-        );
-        world.emit_game_event(
+        let new_state = properties.to_state_id(&Block::CHISELED_BOOKSHELF);
+        world.set_block_state(&self.position, new_state, BlockFlags::NOTIFY_ALL);
+        world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::BlockChange.name(),
             self.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_state(new_state),
         );
     }
 
@@ -220,14 +218,12 @@ impl ChiseledBookshelfBlockEntity {
                 _ => {}
             }
 
-            world.set_block_state(
-                &self.position,
-                properties.to_state_id(&Block::CHISELED_BOOKSHELF),
-                BlockFlags::NOTIFY_ALL,
-            );
-            world.emit_game_event(
+            let new_state = properties.to_state_id(&Block::CHISELED_BOOKSHELF);
+            world.set_block_state(&self.position, new_state, BlockFlags::NOTIFY_ALL);
+            world.emit_game_event_with_context(
                 pumpkin_data::game_event::GameEvent::BlockChange.name(),
                 self.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext::of_state(new_state),
             );
             if let Some(be) = world.get_block_entity(&self.position) {
                 world.update_block_entity(&be);

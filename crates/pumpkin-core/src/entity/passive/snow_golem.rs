@@ -269,9 +269,7 @@ impl Mob for SnowGolemEntity {
                 world.emit_game_event_with_context(
                     GameEvent::BlockPlace.name(),
                     snow_pos.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(self),
-                    },
+                    &GameEventContext::of_entity_state(Some(self), new_state),
                 );
             }
         }

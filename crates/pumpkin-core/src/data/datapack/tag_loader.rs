@@ -10,6 +10,9 @@ pub struct DynamicTagEntry {
     pub values: Vec<String>,
     /// A pack replaced the tag: its built-in values no longer apply.
     pub replace: bool,
+    /// The values that no pack lists as required (`"required": false`): the tag still builds
+    /// when one of them names nothing.
+    pub optional: Vec<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -24,7 +27,15 @@ struct RawTagFile {
 #[serde(untagged)]
 enum RawTagValue {
     String(String),
-    Object { id: String },
+    Object {
+        id: String,
+        #[serde(default = "required_by_default")]
+        required: bool,
+    },
+}
+
+const fn required_by_default() -> bool {
+    true
 }
 
 pub fn load_tags_from_dir<S1: std::hash::BuildHasher + Default, S2: std::hash::BuildHasher>(
@@ -100,10 +111,16 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                 && let Ok(raw) = serde_json::from_str::<RawTagFile>(&content)
             {
                 let mut string_values = Vec::with_capacity(raw.values.len());
+                let mut optional = Vec::new();
                 for val in raw.values {
                     match val {
                         RawTagValue::String(s) => string_values.push(s),
-                        RawTagValue::Object { id } => string_values.push(id),
+                        RawTagValue::Object { id, required } => {
+                            if !required {
+                                optional.push(id.clone());
+                            }
+                            string_values.push(id);
+                        }
                     }
                 }
 
@@ -114,6 +131,7 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                             id: tag_id,
                             values: string_values,
                             replace: true,
+                            optional,
                         },
                     );
                 } else {
@@ -124,10 +142,17 @@ fn load_tag_category_recursive<S: std::hash::BuildHasher>(
                                 id: tag_id,
                                 values: Vec::new(),
                                 replace: false,
+                                optional: Vec::new(),
                             });
                     for val in string_values {
                         if !entry.values.contains(&val) {
-                            entry.values.push(val);
+                            entry.values.push(val.clone());
+                            if optional.contains(&val) {
+                                entry.optional.push(val);
+                            }
+                        } else if !optional.contains(&val) {
+                            // A pack that requires the value makes it required.
+                            entry.optional.retain(|v| *v != val);
                         }
                     }
                 }

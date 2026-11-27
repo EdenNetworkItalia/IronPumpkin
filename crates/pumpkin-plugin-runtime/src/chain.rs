@@ -1,7 +1,7 @@
 use std::{
     future::Future,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicU64, Ordering},
     },
     time::Instant,
@@ -12,6 +12,9 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 pub const MAX_SYNC_REENTRY_DEPTH: usize = 64;
 
 static NEXT_ROOT_ADMISSION_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Runs on the thread that admits a root call, after the permit (an `IronPumpkin` hook).
+pub static ON_ROOT_ADMITTED: OnceLock<fn()> = OnceLock::new();
 
 #[derive(Clone, Debug)]
 pub struct RootAdmission {
@@ -68,6 +71,9 @@ impl RootAdmission {
             .await
             .map_err(|_| wasmtime::Error::msg("Wasm plugin root admission is closed"))?;
         let acquired_at = Instant::now();
+        if let Some(hook) = ON_ROOT_ADMITTED.get() {
+            hook();
+        }
         tracing::trace!(
             wasm_plugin_admission_id = context.admission_id,
             wasm_plugin_chain_id = context.chain_id,

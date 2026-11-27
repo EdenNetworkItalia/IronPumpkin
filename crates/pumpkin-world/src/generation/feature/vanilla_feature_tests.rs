@@ -1,8 +1,9 @@
 //! Configured features compared with vanilla 26.3.
 //!
-//! Each file in `testdata/` is the output of a Java oracle. The oracle runs the vanilla configured
-//! feature from `VanillaRegistries.createWorldLookup()` of the 26.3 server jar with
-//! `new XoroshiroRandomSource(seed)` and the block tags of the vanilla data pack. Its level is one
+//! Each file in `testdata/` is the output of a Java oracle. The oracle loads the world registries
+//! and the block tags from the vanilla data pack of the 26.3 server jar, as a server does, and runs
+//! the vanilla configured feature with `new XoroshiroRandomSource(seed)`. A `<feature>:<index>`
+//! capture runs entry `<index>` of a simple random selector through `FeaturePlacer`. Its level is one
 //! vanilla `ProtoChunk` at chunk (0, 0) for every chunk position, as the Pumpkin `ProtoChunk` of the
 //! test wraps x and z with `& 15`. The biome is plains and the sea level is 63. The first line gives
 //! the result of `place` and the next `nextInt()` of the random. Each other line is a block that
@@ -12,7 +13,7 @@ use pumpkin_data::{Block, BlockState, BlockStateId};
 use pumpkin_util::math::{position::BlockPos, vector3::Vector3};
 use pumpkin_util::random::{RandomGenerator, RandomImpl, xoroshiro128::Xoroshiro};
 
-use super::configured_features::CONFIGURED_FEATURES;
+use super::configured_features::{CONFIGURED_FEATURES, ConfiguredFeature};
 use super::placed_features::tests::{TestPortal, empty_chunk};
 use crate::ProtoChunk;
 use crate::generation::proto_chunk::GenerationCache;
@@ -25,6 +26,8 @@ enum World {
     Cave,
     /// Air from y -30 to -20, deepslate elsewhere.
     DeepDark,
+    /// Sand up to y 50, water up to y 62, air above.
+    Ocean,
 }
 
 impl World {
@@ -33,6 +36,8 @@ impl World {
             Self::Desert if y <= 63 => Block::SAND.default_state,
             Self::Cave if !(60..=72).contains(&y) => Block::STONE.default_state,
             Self::DeepDark if !(-30..=-20).contains(&y) => Block::DEEPSLATE.default_state,
+            Self::Ocean if y <= 50 => Block::SAND.default_state,
+            Self::Ocean if y <= 62 => Block::WATER.default_state,
             _ => Block::AIR.default_state,
         }
     }
@@ -100,18 +105,67 @@ fn assert_matches_vanilla(
     origin: BlockPos,
     data: &str,
 ) {
+    assert_place_matches_vanilla(
+        &format!("{feature:?}"),
+        world,
+        seed,
+        data,
+        |chunk, random| {
+            CONFIGURED_FEATURES[&feature].generate(
+                chunk,
+                &TestPortal,
+                -64,
+                384,
+                pumpkin_data::placed_feature::PlacedFeature::DesertWell,
+                random,
+                origin,
+            )
+        },
+    );
+}
+
+/// Compares one entry of a simple random selector with a `<feature>:<index>` capture.
+fn assert_selector_entry_matches_vanilla(
+    feature: pumpkin_data::configured_feature::ConfiguredFeature,
+    index: usize,
+    world: World,
+    seed: u64,
+    origin: BlockPos,
+    data: &str,
+) {
+    let ConfiguredFeature::SimpleRandomSelector(selector) = &CONFIGURED_FEATURES[&feature] else {
+        panic!("{feature:?} is not a simple random selector");
+    };
+    assert_place_matches_vanilla(
+        &format!("{feature:?}:{index}"),
+        world,
+        seed,
+        data,
+        |chunk, random| {
+            selector.features[index].generate(
+                chunk,
+                &TestPortal,
+                -64,
+                384,
+                pumpkin_data::placed_feature::PlacedFeature::WarmOceanVegetation,
+                random,
+                origin,
+            )
+        },
+    );
+}
+
+fn assert_place_matches_vanilla(
+    feature: &str,
+    world: World,
+    seed: u64,
+    data: &str,
+    place: impl FnOnce(&mut ProtoChunk, &mut RandomGenerator) -> bool,
+) {
     let expected = parse(data);
     let mut chunk = world.chunk();
     let mut random = RandomGenerator::Xoroshiro(Xoroshiro::from_seed(seed));
-    let placed = CONFIGURED_FEATURES[&feature].generate(
-        &mut chunk,
-        &TestPortal,
-        -64,
-        384,
-        pumpkin_data::placed_feature::PlacedFeature::DesertWell,
-        &mut random,
-        origin,
-    );
+    let placed = place(&mut chunk, &mut random);
 
     let mut blocks = Vec::new();
     for x in 0..16 {
@@ -138,19 +192,20 @@ fn assert_matches_vanilla(
         .collect();
     assert!(
         differences.is_empty(),
-        "{feature:?} seed {seed}: {differences:?}"
+        "{feature} seed {seed}: {differences:?}"
     );
-    assert_eq!(placed, expected.placed, "{feature:?} seed {seed}: result");
+    assert_eq!(placed, expected.placed, "{feature} seed {seed}: result");
     assert_eq!(
         random.next_i32(),
         expected.next_int,
-        "{feature:?} seed {seed}: random"
+        "{feature} seed {seed}: random"
     );
 }
 
 const DESERT_ORIGIN: BlockPos = BlockPos(Vector3::new(8, 63, 8));
 const CAVE_ORIGIN: BlockPos = BlockPos(Vector3::new(8, 60, 8));
 const DEEP_DARK_ORIGIN: BlockPos = BlockPos(Vector3::new(8, -30, 8));
+const OCEAN_ORIGIN: BlockPos = BlockPos(Vector3::new(8, 51, 8));
 
 #[test]
 fn desert_well_matches_vanilla() {
@@ -206,5 +261,67 @@ fn sculk_patch_matches_vanilla() {
         ),
     ] {
         assert_matches_vanilla(feature, World::DeepDark, seed, DEEP_DARK_ORIGIN, data);
+    }
+}
+
+/// The coral block feature places its block and the coral decoration: `random_block` providers
+/// in a `rotated` provider.
+#[test]
+fn coral_block_matches_vanilla() {
+    use pumpkin_data::configured_feature::ConfiguredFeature::CoralHornBlock;
+    for (seed, data) in [
+        (1, include_str!("testdata/coral_horn_block_seed_1.txt")),
+        (2, include_str!("testdata/coral_horn_block_seed_2.txt")),
+        (3, include_str!("testdata/coral_horn_block_seed_3.txt")),
+    ] {
+        assert_matches_vanilla(CoralHornBlock, World::Ocean, seed, OCEAN_ORIGIN, data);
+    }
+}
+
+/// The coral tree and the coral claw entries of `warm_ocean_vegetation` place through their
+/// `feature` field.
+#[test]
+fn coral_tree_and_claw_match_vanilla() {
+    use pumpkin_data::configured_feature::ConfiguredFeature::WarmOceanVegetation;
+    for (index, seed, data) in [
+        (
+            0,
+            1,
+            include_str!("testdata/warm_ocean_vegetation_0_seed_1.txt"),
+        ),
+        (
+            0,
+            2,
+            include_str!("testdata/warm_ocean_vegetation_0_seed_2.txt"),
+        ),
+        (
+            1,
+            1,
+            include_str!("testdata/warm_ocean_vegetation_1_seed_1.txt"),
+        ),
+        (
+            1,
+            2,
+            include_str!("testdata/warm_ocean_vegetation_1_seed_2.txt"),
+        ),
+        (
+            1,
+            3,
+            include_str!("testdata/warm_ocean_vegetation_1_seed_3.txt"),
+        ),
+        (
+            2,
+            1,
+            include_str!("testdata/warm_ocean_vegetation_2_seed_1.txt"),
+        ),
+    ] {
+        assert_selector_entry_matches_vanilla(
+            WarmOceanVegetation,
+            index,
+            World::Ocean,
+            seed,
+            OCEAN_ORIGIN,
+            data,
+        );
     }
 }

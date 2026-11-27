@@ -67,6 +67,8 @@ fn active_plugin(
 ///
 /// Callbacks from `operation` inherit the active guest call's chain and root admission
 /// The reentry depth is checked before the operation is spawned
+/// `operation` runs inside the guest call mark of the store, so that its packet sends go to the
+/// deferred queue in call order with the sends of the synchronous imports
 pub(crate) async fn run_blocking<R: Send + 'static>(
     accessor: &Accessor<PluginHostState, HasSelf<PluginHostState>>,
     operation: impl FnOnce() -> R + Send + 'static,
@@ -77,13 +79,20 @@ pub(crate) async fn run_blocking<R: Send + 'static>(
             .load(std::sync::atomic::Ordering::Relaxed)
             > 0
     });
+    let guest_call = pumpkin_core::plugin::guest_call::current();
     active_plugin(accessor)?
         .store
         .spawn_blocking_in_active_context(move || {
-            if item_hooks_off {
-                pumpkin_core::plugin::without_item_hooks(operation)
-            } else {
-                operation()
+            let operation = move || {
+                if item_hooks_off {
+                    pumpkin_core::plugin::without_item_hooks(operation)
+                } else {
+                    operation()
+                }
+            };
+            match guest_call {
+                Some(call) => pumpkin_core::plugin::guest_call::enter(&call, operation),
+                None => operation(),
             }
         })
         .await

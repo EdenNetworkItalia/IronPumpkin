@@ -1051,7 +1051,7 @@ pub fn match_crafting_recipe(
 
     if let Some(provider) = provider {
         let dynamic = provider.get_dynamic_recipes();
-        for recipe in &dynamic {
+        for recipe in dynamic.iter() {
             if let DynamicRecipe::Crafting(crafting) = recipe
                 && let Some(result) = recipe_matches(
                     GenericRecipe::Dynamic(crafting),
@@ -1851,8 +1851,8 @@ mod tests {
     struct Recipes(Vec<DynamicRecipe>);
 
     impl RecipeProvider for Recipes {
-        fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe> {
-            self.0.clone()
+        fn get_dynamic_recipes(&self) -> Arc<[DynamicRecipe]> {
+            self.0.clone().into()
         }
     }
 

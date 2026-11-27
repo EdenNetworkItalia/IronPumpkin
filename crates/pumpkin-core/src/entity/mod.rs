@@ -3648,9 +3648,7 @@ impl Entity {
         self.world.load().emit_game_event_with_context(
             event.name(),
             self.pos.load(),
-            &crate::world::game_event::GameEventContext {
-                source_entity: Some(caller),
-            },
+            &crate::world::game_event::GameEventContext::of_entity(Some(caller)),
         );
     }
 
@@ -5172,9 +5170,9 @@ impl Entity {
             world.emit_game_event_with_context(
                 GameEvent::Shear.name(),
                 self.pos.load(),
-                &crate::world::game_event::GameEventContext {
-                    source_entity: player.map(|player| player.as_ref() as &dyn EntityBase),
-                },
+                &crate::world::game_event::GameEventContext::of_entity(
+                    player.map(|player| player.as_ref() as &dyn EntityBase),
+                ),
             );
             world.play_sound(
                 Sound::ItemShearsSnip,
@@ -5277,7 +5275,8 @@ impl Entity {
             .collect()
     }
 
-    pub fn drop_all_leash_connections(&self) -> bool {
+    /// Vanilla `Entity.dropAllLeashConnections`: `player` is the cause of the `shear` game event.
+    pub fn drop_all_leash_connections(&self, player: Option<&Self>) -> bool {
         let world = self.world.load();
         let mut dropped = self.drop_leash();
         for other in self.leashable_leashed_to() {
@@ -5295,9 +5294,10 @@ impl Entity {
             if self.entity_type == &EntityType::LEASH_KNOT {
                 self.remove();
             }
-            world.emit_game_event(
+            world.emit_game_event_by(
                 pumpkin_data::game_event::GameEvent::Shear.name(),
                 self.pos.load(),
+                player,
             );
         }
         dropped

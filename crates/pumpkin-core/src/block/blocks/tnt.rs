@@ -69,7 +69,7 @@ impl TNTBlock {
         let Some(tnt) = Self::prepare(world, location, source) else {
             return false;
         };
-        Self::ignite(world, location, tnt);
+        Self::ignite(world, location, tnt, source);
         true
     }
 
@@ -112,7 +112,12 @@ impl TNTBlock {
         Some(tnt)
     }
 
-    fn ignite(world: &Arc<World>, location: &BlockPos, tnt: Arc<TNTEntity>) {
+    fn ignite(
+        world: &Arc<World>,
+        location: &BlockPos,
+        tnt: Arc<TNTEntity>,
+        source: Option<&Entity>,
+    ) {
         let pos = tnt.get_entity().pos.load();
         world.spawn_entity(tnt);
         world.play_sound(
@@ -120,7 +125,11 @@ impl TNTBlock {
             SoundCategory::Blocks,
             &pos,
         );
-        world.emit_game_event(GameEvent::PrimeFuse.name(), location.to_centered_f64());
+        world.emit_game_event_by(
+            GameEvent::PrimeFuse.name(),
+            location.to_centered_f64(),
+            source,
+        );
     }
 }
 

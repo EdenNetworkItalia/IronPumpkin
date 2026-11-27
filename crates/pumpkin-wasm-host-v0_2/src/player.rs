@@ -1342,7 +1342,8 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         player: Resource<Player>,
     ) -> wasmtime::Result<Option<Resource<pumpkin::plugin::text::TextComponent>>> {
         let player = self.get(&player)?;
-        let tab_list_name = player.get_tab_list_name();
+        let tab_list_name =
+            pumpkin_core::plugin::guest_call::native_handlers_only(|| player.get_tab_list_name());
         tab_list_name.map_or_else(
             || Ok(None),
             |name| {
@@ -1721,14 +1722,11 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         pos: pumpkin::plugin::common::BlockPos,
         is_front_text: bool,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.open_sign_editor(
-            pumpkin_util::math::position::BlockPos(pumpkin_util::math::vector3::Vector3::new(
-                pos.x, pos.y, pos.z,
-            )),
-            is_front_text,
-        );
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let pos = pumpkin_util::math::position::BlockPos::new(pos.x, pos.y, pos.z);
+        self.defer("player open-sign-editor", move || {
+            player.open_sign_editor(pos, is_front_text);
+        })
     }
 
     fn set_velocity(
@@ -1736,11 +1734,10 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         player: Resource<Player>,
         velocity: pumpkin::plugin::common::Position,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.set_velocity(pumpkin_util::math::vector3::Vector3::new(
-            velocity.0, velocity.1, velocity.2,
-        ));
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let velocity =
+            pumpkin_util::math::vector3::Vector3::new(velocity.0, velocity.1, velocity.2);
+        self.defer("player set-velocity", move || player.set_velocity(velocity))
     }
 
     fn apply_knockback(
@@ -1750,9 +1747,10 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         x: f64,
         z: f64,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.apply_knockback(strength, x, z);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        self.defer("player apply-knockback", move || {
+            player.apply_knockback(strength, x, z);
+        })
     }
 
     fn is_sneaking(&mut self, player: Resource<Player>) -> wasmtime::Result<bool> {
@@ -1842,12 +1840,13 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         for link in links {
             converted.push(from_wit_server_link(self, link)?);
         }
-        let protocol_links: Vec<pumpkin_protocol::Link<'_>> = converted
-            .iter()
-            .map(|(label, url)| pumpkin_protocol::Link::new(label.clone(), url))
-            .collect();
-        player.set_server_links(&protocol_links);
-        Ok(())
+        self.defer("player set-server-links", move || {
+            let protocol_links: Vec<pumpkin_protocol::Link<'_>> = converted
+                .iter()
+                .map(|(label, url)| pumpkin_protocol::Link::new(label.clone(), url))
+                .collect();
+            player.set_server_links(&protocol_links);
+        })
     }
 
     fn remove_effect(
@@ -1855,20 +1854,23 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         player: Resource<Player>,
         effect: pumpkin::plugin::status_effect::StatusEffectType,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
+        let player = self.get(&player)?.clone();
         let effect_type = super::status_effect::from_wasm_status_effect_type(effect);
-        if let Some(status_effect) =
+        let Some(status_effect) =
             pumpkin_data::effect::StatusEffect::from_name(effect_type.to_name())
-        {
+        else {
+            return Ok(());
+        };
+        self.defer("player remove-effect", move || {
             player.remove_effect(status_effect);
-        }
-        Ok(())
+        })
     }
 
     fn clear_effects(&mut self, player: Resource<Player>) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.remove_all_effects();
-        Ok(())
+        let player = self.get(&player)?.clone();
+        self.defer("player clear-effects", move || {
+            player.remove_all_effects();
+        })
     }
 
     fn has_effect(
@@ -1946,9 +1948,11 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         stat_id: i32,
         value: i32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.set_stat(from_wit_statistic_category(category), stat_id, value);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let category = from_wit_statistic_category(category);
+        self.defer("player set-statistic", move || {
+            player.set_stat(category, stat_id, value);
+        })
     }
 
     fn increment_statistic(
@@ -1958,9 +1962,11 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         stat_id: i32,
         amount: i32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.increment_stat(from_wit_statistic_category(category), stat_id, amount);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let category = from_wit_statistic_category(category);
+        self.defer("player increment-statistic", move || {
+            player.increment_stat(category, stat_id, amount);
+        })
     }
 
     fn get_custom_statistic(
@@ -1978,9 +1984,11 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         stat: WitCustomStatistic,
         value: i32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.set_custom_stat(from_wit_custom_statistic(stat), value);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let stat = from_wit_custom_statistic(stat);
+        self.defer("player set-custom-statistic", move || {
+            player.set_custom_stat(stat, value);
+        })
     }
 
     fn increment_custom_statistic(
@@ -1989,9 +1997,11 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         stat: WitCustomStatistic,
         amount: i32,
     ) -> wasmtime::Result<()> {
-        let player = self.get(&player)?;
-        player.increment_custom_stat(from_wit_custom_statistic(stat), amount);
-        Ok(())
+        let player = self.get(&player)?.clone();
+        let stat = from_wit_custom_statistic(stat);
+        self.defer("player increment-custom-statistic", move || {
+            player.increment_custom_stat(stat, amount);
+        })
     }
 
     fn send_stats(&mut self, player: Resource<Player>) -> wasmtime::Result<()> {
@@ -2916,7 +2926,9 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         let player = self.get(&player)?;
         let internal_pos = pumpkin_util::math::position::BlockPos::new(pos.x, pos.y, pos.z);
         let (block, state) = player.world().get_block_and_state(&internal_pos);
-        Ok(player.can_harvest(state, block, &internal_pos))
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || player.can_harvest(state, block, &internal_pos),
+        ))
     }
 
     fn get_mining_speed(
@@ -2927,7 +2939,10 @@ impl pumpkin::plugin::player::HostPlayer for PluginHostState {
         let player = self.get(&player)?;
         let internal_pos = pumpkin_util::math::position::BlockPos::new(pos.x, pos.y, pos.z);
         let block = player.world().get_block(&internal_pos);
-        Ok(player.get_mining_speed(block))
+        // The enchantment level read fires `GetEnchantmentLevelEvent`.
+        Ok(pumpkin_core::plugin::guest_call::native_handlers_only(
+            || player.get_mining_speed(block),
+        ))
     }
 
     fn drop(&mut self, rep: Resource<Player>) -> wasmtime::Result<()> {

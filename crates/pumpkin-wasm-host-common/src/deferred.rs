@@ -6,8 +6,16 @@
 //! run the work itself. The import pushes the work here instead. One blocking task drains the
 //! queue in push order, so two sounds, or a sound and a stop of that sound, keep the order of the
 //! calls. A store has one queue and at most one drain task.
+//!
+//! The depth of work counts the chain of causes across all stores. Work that a guest call defers
+//! has the depth of that call. A root guest call that deferred work causes, on the drain thread,
+//! has the depth of that work plus one: the root admission reads it from this thread
+//! ([`pumpkin_plugin_runtime::ON_ROOT_ADMITTED`]). A root call that no deferred work causes
+//! has depth 0, and a nested call keeps the depth of its root. Thus two plugins that answer each
+//! other's work stop at the limit, and unrelated work does not add depth.
 
 use std::{
+    cell::Cell,
     collections::VecDeque,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{
@@ -34,13 +42,36 @@ struct Inner {
     draining: bool,
 }
 
+thread_local! {
+    /// The depth of the deferred work that runs on this thread, while a drain task runs it.
+    static RUNNING_DEPTH: Cell<Option<usize>> = const { Cell::new(None) };
+}
+
+/// The depth of the root guest call that holds the root admission. Only one root call runs at a
+/// time across all stores, and a nested call keeps the depth of its root.
+static ROOT_DEPTH: AtomicUsize = AtomicUsize::new(0);
+
+/// The depth of a root guest call that this thread admits: one more than the deferred work that
+/// runs on this thread, or 0 when no deferred work runs on it.
+fn admitted_depth() -> usize {
+    RUNNING_DEPTH.get().map_or(0, |depth| depth + 1)
+}
+
+/// Records the depth of the root call that this thread admits.
+fn on_root_admitted() {
+    ROOT_DEPTH.store(admitted_depth(), Ordering::Release);
+}
+
+/// Installs the hook that records the depth of each root call. Call it before the first store
+/// starts.
+pub fn install_depth_hook() {
+    let _ = pumpkin_plugin_runtime::ON_ROOT_ADMITTED.set(on_root_admitted);
+}
+
 /// See the [module documentation](self).
 #[derive(Clone, Default)]
 pub struct DeferredQueue {
     inner: Arc<Mutex<Inner>>,
-    /// The depth of the work that the drain task runs now, plus one: the depth of work that this
-    /// work defers. Zero while the drain task is idle.
-    next_depth: Arc<AtomicUsize>,
 }
 
 impl DeferredQueue {
@@ -53,7 +84,7 @@ impl DeferredQueue {
         run: impl FnOnce() + Send + 'static,
     ) {
         let label = label.into();
-        let depth = self.next_depth.load(Ordering::Acquire);
+        let depth = ROOT_DEPTH.load(Ordering::Acquire);
         if depth >= MAX_DEFERRED_DEPTH {
             error!(
                 "Dropped the deferred host work `{label}`: it exceeds the depth of {MAX_DEFERRED_DEPTH}"
@@ -79,14 +110,15 @@ impl DeferredQueue {
                 let mut inner = self.inner.lock().unwrap_or_else(PoisonError::into_inner);
                 let Some(task) = inner.tasks.pop_front() else {
                     inner.draining = false;
-                    self.next_depth.store(0, Ordering::Release);
                     return;
                 };
                 task
             };
-            self.next_depth.store(task.depth + 1, Ordering::Release);
+            RUNNING_DEPTH.set(Some(task.depth));
             // A panic of the work must not stop the drain: the later work still runs.
-            if let Err(payload) = catch_unwind(AssertUnwindSafe(task.run)) {
+            let outcome = catch_unwind(AssertUnwindSafe(task.run));
+            RUNNING_DEPTH.set(None);
+            if let Err(payload) = outcome {
                 let message = payload
                     .downcast_ref::<&str>()
                     .map(|message| (*message).to_owned())
@@ -98,5 +130,19 @@ impl DeferredQueue {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_root_call_has_the_depth_of_the_work_that_runs_on_its_thread_plus_one() {
+        assert_eq!(admitted_depth(), 0);
+        RUNNING_DEPTH.set(Some(3));
+        assert_eq!(admitted_depth(), 4);
+        RUNNING_DEPTH.set(None);
+        assert_eq!(admitted_depth(), 0);
     }
 }

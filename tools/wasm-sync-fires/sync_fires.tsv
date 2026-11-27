@@ -1,0 +1,23 @@
+import	disposition
+HostContext.register_command	ok: the command resend defers; the scan follows the requirement closure, which runs at dispatch
+HostLivingEntity.remove_effect	ok: native handlers only inside a guest call
+HostPlayer.can_harvest_block	ok: native handlers only inside a guest call
+HostPlayer.get_mining_speed	ok: native handlers only inside a guest call
+HostPlayer.get_tab_list_name	ok: native handlers only inside a guest call
+async HostInventory.add_item	open: async import outside run_blocking, follow-up issue
+async HostInventory.add_items	open: async import outside run_blocking, follow-up issue
+async HostInventory.clear	open: async import outside run_blocking, follow-up issue
+async HostInventory.remove_all_by_id	open: async import outside run_blocking, follow-up issue
+async HostInventory.remove_by_id	open: async import outside run_blocking, follow-up issue
+async HostInventory.remove_item	open: async import outside run_blocking, follow-up issue
+async HostInventory.remove_item_stack	open: async import outside run_blocking, follow-up issue
+async HostInventory.remove_matching	open: async import outside run_blocking, follow-up issue
+async HostInventory.set_item	open: async import outside run_blocking, follow-up issue
+async HostLivingEntity.add_effect	open: async import outside run_blocking, follow-up issue
+async HostLivingEntity.clear_effects	open: async import outside run_blocking, follow-up issue
+async HostPlayer.chat	open: async import outside run_blocking, follow-up issue
+async HostPlayer.set_inventory_item	open: async import outside run_blocking, follow-up issue
+async HostPlayer.set_item_in_hand	open: async import outside run_blocking, follow-up issue
+async HostPlayerInventory.give_item	open: async import outside run_blocking, follow-up issue
+async HostPlayerInventory.set_item_in_hand	open: async import outside run_blocking, follow-up issue
+async HostPlayerInventory.set_storage_contents	open: async import outside run_blocking, follow-up issue

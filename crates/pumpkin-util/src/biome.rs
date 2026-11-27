@@ -46,13 +46,14 @@ impl TemperatureModifier {
         match self {
             Self::None => temperature,
             Self::Frozen => {
+                // Vanilla samples in `f32` and compares in `f64`.
                 let frozen_ocean_sample =
-                    FROZEN_OCEAN_NOISE.sample(x * 0.05, z * 0.05, false) * 7.0;
-                let foliage_sample = FOLIAGE_NOISE.sample(x * 0.2, z * 0.2, false);
+                    f64::from(FROZEN_OCEAN_NOISE.sample_f32(x * 0.05, z * 0.05) * 7.0);
+                let foliage_sample = f64::from(FOLIAGE_NOISE.sample_f32(x * 0.2, z * 0.2));
 
                 let threshold = frozen_ocean_sample + foliage_sample;
                 if threshold < 0.3 {
-                    let foliage_sample = FOLIAGE_NOISE.sample(x * 0.09, z * 0.09, false);
+                    let foliage_sample = f64::from(FOLIAGE_NOISE.sample_f32(x * 0.09, z * 0.09));
                     if foliage_sample < 0.8 {
                         return 0.2f32;
                     }
@@ -131,8 +132,10 @@ impl Weather {
         let offset_sea_level = sea_level + 17;
 
         if y > offset_sea_level {
-            let temperature_noise =
-                (TEMPERATURE_NOISE.sample(x / 8.0, z / 8.0, false) * 8.0) as f32;
+            // Vanilla divides the block coordinates as `f32`.
+            let temperature_noise = TEMPERATURE_NOISE
+                .sample_f32(f64::from(x as f32 / 8.0), f64::from(z as f32 / 8.0))
+                * 8.0;
 
             modified_temperature
                 - (temperature_noise + y as f32 - offset_sea_level as f32) * 0.05f32 / 40.0f32
@@ -155,6 +158,52 @@ impl Weather {
 #[cfg(test)]
 mod tests {
     use super::{TemperatureModifier, Weather};
+
+    /// The bits of the vanilla 26.3 floats `BIOME_INFO_NOISE.get(x / 400.0, z / 400.0)`,
+    /// `FROZEN_TEMPERATURE_NOISE.get(x * 0.05, z * 0.05)` and
+    /// `TEMPERATURE_NOISE.get(x / 8.0F, z / 8.0F)`, from the server jar.
+    #[test]
+    fn noise_matches_the_vanilla_floats() {
+        use super::{FOLIAGE_NOISE, FROZEN_OCEAN_NOISE, TEMPERATURE_NOISE};
+        for (x, z, info, frozen, temperature) in [
+            (768, -1824, 0x3ee9_c199, 0x3bb8_9f00, 0x3f5e_1d57),
+            (-12345, 6789, 0xbe83_2e19, 0xbe34_9962, 0xbedb_c560),
+            (
+                29_999_983,
+                -29_999_977,
+                0x3e77_3983,
+                0xbe73_b02f,
+                0xbefd_7cfd,
+            ),
+            (
+                16_777_217,
+                -20_000_001,
+                0x3e35_2f57,
+                0xbeec_1367,
+                0x3f62_fe11,
+            ),
+            (-79070, 1786, 0x3f00_0000, 0x3e8e_74ae, 0x3f64_143b),
+        ] {
+            let (fx, fz) = (f64::from(x), f64::from(z));
+            let bits = |value: f32| value.to_bits();
+            assert_eq!(
+                bits(FOLIAGE_NOISE.sample_f32(fx / 400.0, fz / 400.0)),
+                info,
+                "{x} {z}"
+            );
+            assert_eq!(
+                bits(FROZEN_OCEAN_NOISE.sample_f32(fx * 0.05, fz * 0.05)),
+                frozen,
+                "{x} {z}"
+            );
+            let (tx, tz) = (f64::from(x as f32 / 8.0), f64::from(z as f32 / 8.0));
+            assert_eq!(
+                bits(TEMPERATURE_NOISE.sample_f32(tx, tz)),
+                temperature,
+                "{x} {z}"
+            );
+        }
+    }
 
     #[test]
     fn precipitation_controls_rain() {

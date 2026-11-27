@@ -1426,6 +1426,7 @@ pub struct ConsumeEffect {
     r#type: String,
     probability: Option<f32>,
     diameter: Option<f32>,
+    directional_particles: Option<bool>,
     sound: Option<String>,
     effects: Option<StringOrStatusEffects>,
 }
@@ -1583,7 +1584,13 @@ fn consume_effects_tokens(effects: &[ConsumeEffect]) -> TokenStream {
             }
             "minecraft:teleport_randomly" => {
                 let diameter = float_literal(effect.diameter.unwrap_or(16.0));
-                effect_tokens.extend(quote! { ConsumeEffect::TeleportRandomly(#diameter), });
+                let directional_particles = effect.directional_particles.unwrap_or(true);
+                effect_tokens.extend(quote! {
+                    ConsumeEffect::TeleportRandomly {
+                        diameter: #diameter,
+                        directional_particles: #directional_particles,
+                    },
+                });
             }
             "minecraft:play_sound" => {
                 let s = effect.sound.as_deref().expect("play_sound missing sound");
@@ -1613,7 +1620,8 @@ fn consume_effects_tokens(effects: &[ConsumeEffect]) -> TokenStream {
                                 duration: #duration,
                                 ambient: #ambient,
                                 show_particles: #show_particles,
-                                show_icon: #show_icon
+                                show_icon: #show_icon,
+                                hidden_effect: None
                             },
                         });
                     }

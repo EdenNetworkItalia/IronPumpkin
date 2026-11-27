@@ -489,10 +489,11 @@ pub trait AbstractHorse: Animal + AgeableMob {
         if item_used {
             self.eating();
             let entity = self.get_entity();
-            entity
-                .world
-                .load()
-                .emit_game_event(GameEvent::Eat.name(), entity.pos.load());
+            entity.world.load().emit_game_event_by(
+                GameEvent::Eat.name(),
+                entity.pos.load(),
+                entity,
+            );
         }
         item_used
     }
@@ -528,7 +529,7 @@ pub trait AbstractHorse: Animal + AgeableMob {
         {
             world.play_sound_event(&sound, self.sound_source(), &entity.pos.load());
         }
-        world.emit_game_event(GameEvent::Equip.name(), entity.pos.load());
+        world.emit_game_event_by(GameEvent::Equip.name(), entity.pos.load(), entity);
     }
 
     fn do_player_ride(&self, player: &Arc<Player>) {

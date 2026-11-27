@@ -114,8 +114,11 @@ impl BeehiveBlock {
             &args.player.position(),
         );
         args.player.damage_item_in_slot(args.equipment_slot, 1);
-        args.world
-            .emit_game_event(GameEvent::Shear.name(), args.position.to_centered_f64());
+        args.world.emit_game_event_by(
+            GameEvent::Shear.name(),
+            args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
+        );
         true
     }
 
@@ -162,9 +165,10 @@ impl BeehiveBlock {
             args.player.sync_inventory_to_client();
         }
 
-        args.world.emit_game_event(
+        args.world.emit_game_event_by(
             GameEvent::FluidPickup.name(),
             args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
         );
         true
     }

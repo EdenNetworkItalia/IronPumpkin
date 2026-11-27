@@ -153,9 +153,10 @@ impl PistonBlock {
                 return false;
             }
             props.extended = true;
+            let extended_state = props.to_state_id(block);
             world.set_block_state(
                 pos,
-                props.to_state_id(block),
+                extended_state,
                 BlockFlags::NOTIFY_ALL | BlockFlags::MOVED,
             );
             // Play piston extend sound
@@ -167,9 +168,10 @@ impl PistonBlock {
                 0.5,
                 pitch,
             );
-            world.emit_game_event(
+            world.emit_game_event_with_context(
                 pumpkin_data::game_event::GameEvent::BlockActivate.name(),
                 pos.to_centered_f64(),
+                &crate::world::game_event::GameEventContext::of_state(extended_state),
             );
             level_events::piston_post(world, pos, dir, PistonMoveType::Extend);
             return true;
@@ -204,9 +206,10 @@ impl PistonBlock {
             PistonType::Normal
         };
 
+        let moving_piston_state = props.to_state_id(&Block::MOVING_PISTON);
         world.set_block_state(
             pos,
-            props.to_state_id(&Block::MOVING_PISTON),
+            moving_piston_state,
             BlockFlags::NOTIFY_ALL | BlockFlags::FORCE_STATE,
         );
 
@@ -277,9 +280,10 @@ impl PistonBlock {
             0.5,
             pitch,
         );
-        world.emit_game_event(
+        world.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::BlockDeactivate.name(),
             pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_state(moving_piston_state),
         );
         level_events::piston_post(world, pos, dir, PistonMoveType::Retract);
         true

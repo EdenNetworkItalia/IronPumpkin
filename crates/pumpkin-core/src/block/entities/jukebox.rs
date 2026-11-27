@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
@@ -19,8 +20,14 @@ pub struct JukeboxBlockEntity {
     world: OnceLock<Weak<World>>,
     /// The record item stored in the jukebox (`RecordItem` in NBT)
     record_stack: Arc<Mutex<ItemStack>>,
-    /// Serializes record snapshots, storage, playback, and `has_record` updates.
+    /// Serializes record snapshots and storage. A change pushes its effect under this lock.
     record_transition: Mutex<()>,
+    /// The effects of the record changes, in storage order. One drainer applies them with no lock
+    /// held, so a mod handler can touch the jukebox, and two threads cannot apply them out of
+    /// order.
+    effects: Mutex<VecDeque<RecordEffect>>,
+    /// Whether a thread drains `effects`.
+    draining: AtomicBool,
     /// Ticks since the current song started playing
     ticks_since_song_started: AtomicU64,
     /// Length of the current song in ticks (0 if not playing)
@@ -31,6 +38,41 @@ pub struct JukeboxBlockEntity {
 
 const RECORD_ITEM_NBT_KEY: &str = "RecordItem";
 const TICKS_SINCE_SONG_STARTED_NBT_KEY: &str = "ticks_since_song_started";
+
+/// Emits a jukebox game event with the block state of the jukebox as its context, as vanilla
+/// `Context.of(getBlockState())`.
+fn emit_jukebox_event(
+    world: &World,
+    event: pumpkin_data::game_event::GameEvent,
+    position: &pumpkin_util::math::position::BlockPos,
+) {
+    // A jukebox that the world replaced is no longer at the position: its state is the one of a
+    // jukebox without a record, as the state that vanilla caches in the block entity.
+    let state = world.get_block_state_id(position);
+    let state = if pumpkin_data::Block::from_state_id(state) == &pumpkin_data::Block::JUKEBOX {
+        state
+    } else {
+        pumpkin_data::block_properties::JukeboxLikeProperties { has_record: false }
+            .to_state_id(&pumpkin_data::Block::JUKEBOX)
+    };
+    world.emit_game_event_with_context(
+        event.name(),
+        position.to_centered_f64(),
+        &crate::world::game_event::GameEventContext::of_state(state),
+    );
+}
+
+/// What a record change does once the record transition lock is released.
+enum RecordEffect {
+    /// Vanilla `itemChanged`: `has_record` and `block_change`, then the song of the record.
+    Changed {
+        has_record: bool,
+        /// The id and the length in ticks of the song that starts.
+        song: Option<(i32, u64)>,
+    },
+    /// The song stops.
+    Stop,
+}
 
 impl BlockEntity for JukeboxBlockEntity {
     fn resource_location(&self) -> &'static str {
@@ -74,6 +116,8 @@ impl BlockEntity for JukeboxBlockEntity {
             world: OnceLock::new(),
             record_stack: Arc::new(Mutex::new(record_stack)),
             record_transition: Mutex::new(()),
+            effects: Mutex::new(VecDeque::new()),
+            draining: AtomicBool::new(false),
             ticks_since_song_started: AtomicU64::new(ticks_since_song_started),
             song_length_ticks: AtomicU64::new(song_length_ticks),
             dirty: AtomicBool::new(false),
@@ -105,9 +149,10 @@ impl BlockEntity for JukeboxBlockEntity {
                 self.stop_playing();
             } else {
                 if ticks.is_multiple_of(20) {
-                    world.emit_game_event(
-                        pumpkin_data::game_event::GameEvent::JukeboxPlay.name(),
-                        self.position.to_centered_f64(),
+                    emit_jukebox_event(
+                        world,
+                        pumpkin_data::game_event::GameEvent::JukeboxPlay,
+                        &self.position,
                     );
                     let random_color = rand::rng().random_range(0..4) as f32 / 24.0;
                     world.spawn_particle(
@@ -182,9 +227,10 @@ impl BlockEntity for JukeboxBlockEntity {
             let item_entity = Arc::new(crate::entity::item::ItemEntity::new(entity, record));
             world.spawn_entity(item_entity);
         }
-        world.emit_game_event(
-            pumpkin_data::game_event::GameEvent::JukeboxStopPlay.name(),
-            position.to_centered_f64(),
+        emit_jukebox_event(
+            world,
+            pumpkin_data::game_event::GameEvent::JukeboxStopPlay,
+            position,
         );
         world.sync_world_event(
             pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
@@ -205,6 +251,8 @@ impl JukeboxBlockEntity {
             world: OnceLock::new(),
             record_stack: Arc::new(Mutex::new(ItemStack::EMPTY.clone())),
             record_transition: Mutex::new(()),
+            effects: Mutex::new(VecDeque::new()),
+            draining: AtomicBool::new(false),
             ticks_since_song_started: AtomicU64::new(0),
             song_length_ticks: AtomicU64::new(0),
             dirty: AtomicBool::new(false),
@@ -233,17 +281,24 @@ impl JukeboxBlockEntity {
         self.mark_dirty();
     }
 
-    /// Clear the stack and return what was there - used for dropping
+    /// Clear the stack and return what was there - used for dropping. As vanilla `setTheItem`
+    /// with an empty stack: `has_record` and `block_change`, then the stop of the song.
     pub fn clear_record(&self) -> ItemStack {
-        let _transition = self.lock_record_transition();
-        self.stop_playing();
-        let mut record = self
-            .record_stack
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let taken = record.clone();
-        *record = ItemStack::EMPTY.clone();
+        let transition = self.lock_record_transition();
+        let taken = std::mem::replace(
+            &mut *self
+                .record_stack
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ItemStack::EMPTY.clone(),
+        );
+        self.push_effect(RecordEffect::Changed {
+            has_record: false,
+            song: None,
+        });
         self.mark_dirty();
+        drop(transition);
+        self.drain_effects();
         taken
     }
 
@@ -261,61 +316,131 @@ impl JukeboxBlockEntity {
         self.mark_dirty();
     }
 
-    /// Block state, song and world events for the record now in the slot.
-    fn sync_record_state(&self, record: &ItemStack) {
-        let inserted = !record.is_empty();
-        let playable_song = record
-            .get_data_component::<pumpkin_data::data_component_impl::JukeboxPlayableImpl>()
+    /// The song of `record`, as vanilla `JukeboxSong.fromStack`.
+    fn song_of(record: &ItemStack) -> Option<JukeboxSong> {
+        record
+            .get_data_component::<JukeboxPlayableImpl>()
             .and_then(|playable| playable.song.rsplit(':').next())
-            .and_then(pumpkin_data::jukebox_song::JukeboxSong::from_name);
-        if let Some(world) = self.world.get().and_then(Weak::upgrade) {
-            let (block, _) = world.get_block_and_state(&self.position);
-            if block == &pumpkin_data::Block::JUKEBOX {
-                let state_id = pumpkin_data::block_properties::JukeboxLikeProperties {
-                    has_record: inserted,
-                }
-                .to_state_id(block);
-                world.set_block_state(
-                    &self.position,
-                    state_id,
-                    pumpkin_world::world::BlockFlags::NOTIFY_ALL,
-                );
-                world.emit_game_event(
-                    pumpkin_data::game_event::GameEvent::BlockChange.name(),
-                    self.position.to_centered_f64(),
-                );
-                if inserted && let Some(song) = playable_song {
-                    self.start_playing(song.length_in_ticks() + Self::SONG_END_PADDING_TICKS);
-                    world.sync_world_event(
-                        pumpkin_data::world::WorldEvent::SoundPlayJukeboxSong,
-                        self.position,
+            .and_then(JukeboxSong::from_name)
+    }
+
+    /// The effect of the record now in the slot, as vanilla `itemChanged`: a record with a song
+    /// starts it, anything else stops the playing song.
+    fn changed_effect(record: &ItemStack) -> RecordEffect {
+        RecordEffect::Changed {
+            has_record: !record.is_empty(),
+            song: if record.is_empty() {
+                None
+            } else {
+                Self::song_of(record).map(|song| {
+                    (
                         song.get_id() as i32,
-                    );
-                    world.update_neighbors(&self.position, None);
-                } else {
-                    self.stop_playing();
-                    world.sync_world_event(
-                        pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
-                        self.position,
-                        0,
-                    );
-                }
-            }
-        } else if inserted && let Some(song) = playable_song {
-            self.start_playing(song.length_in_ticks() + Self::SONG_END_PADDING_TICKS);
-        } else {
-            self.stop_playing();
+                        song.length_in_ticks() + Self::SONG_END_PADDING_TICKS,
+                    )
+                })
+            },
         }
     }
 
-    /// Stop playing the current song
-    pub fn stop_playing(&self) {
+    /// Queues `effect` after the effects of the earlier changes. The caller holds the record
+    /// transition lock, so the queue order is the storage order.
+    fn push_effect(&self, effect: RecordEffect) {
+        self.effects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push_back(effect);
+    }
+
+    /// Applies the queued effects in order, with no lock held. When another thread drains, it
+    /// applies the effects that this call queued, and a handler that changes the record while the
+    /// drainer applies an effect only queues its own effect.
+    fn drain_effects(&self) {
+        loop {
+            if self
+                .draining
+                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .is_err()
+            {
+                return;
+            }
+            loop {
+                // The guard of the queue ends with this statement: a handler queues an effect
+                // while the drainer applies one.
+                let next = self
+                    .effects
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .pop_front();
+                let Some(effect) = next else { break };
+                self.apply_effect(&effect);
+            }
+            self.draining.store(false, Ordering::Release);
+            // An effect that was queued after the last pop needs a drainer.
+            if self
+                .effects
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .is_empty()
+            {
+                return;
+            }
+        }
+    }
+
+    /// Resets the song state and tells whether a song was playing.
+    fn stop_song(&self) -> bool {
         self.ticks_since_song_started.store(0, Ordering::Relaxed);
         let playing = self.song_length_ticks.swap(0, Ordering::Relaxed) != 0;
-        if playing && let Some(world) = self.world.get().and_then(Weak::upgrade) {
-            world.emit_game_event(
-                pumpkin_data::game_event::GameEvent::JukeboxStopPlay.name(),
-                self.position.to_centered_f64(),
+        self.mark_dirty();
+        playing
+    }
+
+    /// Runs an effect in the order of vanilla `itemChanged`: `has_record` and `block_change`
+    /// first, then the start or the stop of the song. The block state change, the world events,
+    /// the neighbor updates and the game events run mod handlers, so no lock is held.
+    fn apply_effect(&self, effect: &RecordEffect) {
+        let world = self.world.get().and_then(Weak::upgrade);
+        let song = match effect {
+            RecordEffect::Changed { has_record, song } => {
+                if let Some(world) = &world {
+                    let (block, _) = world.get_block_and_state(&self.position);
+                    if block == &pumpkin_data::Block::JUKEBOX {
+                        world.set_block_state(
+                            &self.position,
+                            pumpkin_data::block_properties::JukeboxLikeProperties {
+                                has_record: *has_record,
+                            }
+                            .to_state_id(block),
+                            pumpkin_world::world::BlockFlags::NOTIFY_LISTENERS,
+                        );
+                        emit_jukebox_event(
+                            world,
+                            pumpkin_data::game_event::GameEvent::BlockChange,
+                            &self.position,
+                        );
+                    }
+                }
+                *song
+            }
+            RecordEffect::Stop => None,
+        };
+        if let Some((song_id, length_in_ticks)) = song {
+            self.start_playing(length_in_ticks);
+            if let Some(world) = &world {
+                world.sync_world_event(
+                    pumpkin_data::world::WorldEvent::SoundPlayJukeboxSong,
+                    self.position,
+                    song_id,
+                );
+                world.update_neighbors(&self.position, None);
+            }
+        } else if self.stop_song()
+            && let Some(world) = &world
+        {
+            emit_jukebox_event(
+                world,
+                pumpkin_data::game_event::GameEvent::JukeboxStopPlay,
+                &self.position,
             );
             world.sync_world_event(
                 pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
@@ -324,7 +449,14 @@ impl JukeboxBlockEntity {
             );
             world.update_neighbors(&self.position, None);
         }
-        self.mark_dirty();
+    }
+
+    /// Stop playing the current song
+    pub fn stop_playing(&self) {
+        let transition = self.lock_record_transition();
+        self.push_effect(RecordEffect::Stop);
+        drop(transition);
+        self.drain_effects();
     }
 
     /// Check if a song is currently playing
@@ -366,42 +498,25 @@ impl Inventory for JukeboxBlockEntity {
     }
 
     fn remove_stack(&self, _slot: usize) -> ItemStack {
-        let _transition = self.lock_record_transition();
-        self.stop_playing();
-        let taken = {
-            let mut record = self
+        let transition = self.lock_record_transition();
+        let taken = std::mem::replace(
+            &mut *self
                 .record_stack
                 .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let taken = record.clone();
-            *record = ItemStack::EMPTY.clone();
-            taken
-        };
-        if !taken.is_empty()
-            && let Some(world) = self.world.get().and_then(Weak::upgrade)
-        {
-            let (block, _) = world.get_block_and_state(&self.position);
-            if block == &pumpkin_data::Block::JUKEBOX {
-                let state_id =
-                    pumpkin_data::block_properties::JukeboxLikeProperties { has_record: false }
-                        .to_state_id(block);
-                world.set_block_state(
-                    &self.position,
-                    state_id,
-                    pumpkin_world::world::BlockFlags::NOTIFY_ALL,
-                );
-                world.sync_world_event(
-                    pumpkin_data::world::WorldEvent::SoundStopJukeboxSong,
-                    self.position,
-                    0,
-                );
-                world.emit_game_event(
-                    pumpkin_data::game_event::GameEvent::BlockChange.name(),
-                    self.position.to_centered_f64(),
-                );
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            ItemStack::EMPTY.clone(),
+        );
+        self.push_effect(if taken.is_empty() {
+            RecordEffect::Stop
+        } else {
+            RecordEffect::Changed {
+                has_record: false,
+                song: None,
             }
-        }
+        });
         self.mark_dirty();
+        drop(transition);
+        self.drain_effects();
         taken
     }
 
@@ -411,21 +526,23 @@ impl Inventory for JukeboxBlockEntity {
     }
 
     fn set_stack(&self, _slot: usize, stack: ItemStack) {
-        let _transition = self.lock_record_transition();
-        let record = stack.clone();
+        let transition = self.lock_record_transition();
+        let effect = Self::changed_effect(&stack);
         *self
             .record_stack
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = stack;
-        self.sync_record_state(&record);
+        self.push_effect(effect);
         self.mark_dirty();
+        drop(transition);
+        self.drain_effects();
     }
 
     fn update_stack(&self, slot: usize, update: &mut dyn FnMut(&mut ItemStack) -> bool) -> bool {
         if slot >= self.size() {
             return false;
         }
-        let _transition = self.lock_record_transition();
+        let transition = self.lock_record_transition();
         let (updated, inserted_or_removed, record) = {
             let mut record = self
                 .record_stack
@@ -437,12 +554,10 @@ impl Inventory for JukeboxBlockEntity {
             (updated, changed, record.clone())
         };
         if inserted_or_removed {
-            // Taking the record out stops the song, like `remove_stack`.
-            if record.is_empty() {
-                self.stop_playing();
-            }
-            self.sync_record_state(&record);
+            self.push_effect(Self::changed_effect(&record));
         }
+        drop(transition);
+        self.drain_effects();
         updated
     }
 
@@ -480,13 +595,15 @@ impl Inventory for JukeboxBlockEntity {
 
 impl Clearable for JukeboxBlockEntity {
     fn clear(&self) {
-        let _transition = self.lock_record_transition();
-        self.stop_playing();
+        let transition = self.lock_record_transition();
         *self
             .record_stack
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = ItemStack::EMPTY.clone();
+        self.push_effect(RecordEffect::Stop);
         self.mark_dirty();
+        drop(transition);
+        self.drain_effects();
     }
 }
 

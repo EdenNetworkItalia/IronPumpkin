@@ -112,6 +112,17 @@ impl World {
         self.weak_self().and_then(|world| world.upgrade())
     }
 
+    /// This world for a queued fire. A world of the server must be in the server list: a world
+    /// without a server (a test world) fires nothing that a handler could see.
+    fn arc_self_for_fire(&self) -> Option<Arc<Self>> {
+        let world = self.arc_self();
+        debug_assert!(
+            world.is_some() || self.server.upgrade().is_none(),
+            "a world of the server cannot queue a fire when the server does not list it"
+        );
+        world
+    }
+
     /// Fires the event that `make` builds from this world, or returns `None` without a call to
     /// `make` when no plugin listens.
     pub fn plugin_event_in_world<E: crate::plugin::Payload + Send + Sync + 'static>(
@@ -135,8 +146,46 @@ impl World {
     /// volume and the pitch, and a cancel or an empty sound sends nothing. The range is
     /// [`sound_range`] of the sound with the volume after the handlers. `PlayerList.broadcast`
     /// sends to the players closer than the range, in this world.
+    ///
+    /// An active [`FireDeferral`](super::fire_deferral::FireDeferral) queues the sound and
+    /// returns 0.
     #[allow(clippy::too_many_arguments)]
     pub fn play_seeded_sound(
+        &self,
+        except: Option<&Player>,
+        position: &Vector3<f64>,
+        sound: SoundHolder,
+        category: SoundCategory,
+        volume: f32,
+        pitch: f32,
+        seed: i64,
+    ) -> usize {
+        if super::fire_deferral::is_active()
+            && let Some(world) = self.arc_self_for_fire()
+        {
+            let except_id = except.map(|player| player.gameprofile.id);
+            let position = *position;
+            if let Some(fire) = super::fire_deferral::defer(move || {
+                let except = except_id.and_then(|id| world.get_player_by_uuid(id));
+                world.play_seeded_sound_now(
+                    except.as_deref(),
+                    &position,
+                    sound,
+                    category,
+                    volume,
+                    pitch,
+                    seed,
+                );
+            }) {
+                fire();
+            }
+            return 0;
+        }
+        self.play_seeded_sound_now(except, position, sound, category, volume, pitch, seed)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn play_seeded_sound_now(
         &self,
         except: Option<&Player>,
         position: &Vector3<f64>,
@@ -173,7 +222,8 @@ impl World {
 
     /// Plays `sound` at `position` to all players in range with a random seed, like vanilla
     /// `Level.playSound(null, x, y, z, sound, source, volume, pitch)`. Returns how many Java
-    /// players got it.
+    /// players got it, or 0 when an active [`FireDeferral`](super::fire_deferral::FireDeferral)
+    /// queued the sound.
     pub fn play_sound_holder(
         &self,
         position: &Vector3<f64>,
@@ -200,6 +250,9 @@ impl World {
     /// [`PlayLevelSoundEventAtEntity`], with the rules of [`Self::play_seeded_sound`]. The event
     /// carries the entity that the world lists under the id of `entity`; an entity that the world
     /// does not list plays the sound without the event.
+    ///
+    /// An active [`FireDeferral`](super::fire_deferral::FireDeferral) queues the sound and
+    /// returns 0.
     #[allow(clippy::too_many_arguments)]
     pub fn play_seeded_sound_at_entity(
         &self,
@@ -211,7 +264,49 @@ impl World {
         pitch: f32,
         seed: i64,
     ) -> usize {
-        let fired = self.get_entity_by_id(entity.entity_id).and_then(|listed| {
+        let listed = self.get_entity_by_id(entity.entity_id);
+        let (entity_id, position) = (entity.entity_id, entity.pos.load());
+        if super::fire_deferral::is_active()
+            && let Some(world) = self.arc_self_for_fire()
+        {
+            let except_id = except.map(|player| player.gameprofile.id);
+            if let Some(fire) = super::fire_deferral::defer(move || {
+                let except = except_id.and_then(|id| world.get_player_by_uuid(id));
+                world.play_seeded_sound_at_entity_now(
+                    except.as_deref(),
+                    entity_id,
+                    &position,
+                    listed,
+                    sound,
+                    category,
+                    volume,
+                    pitch,
+                    seed,
+                );
+            }) {
+                fire();
+            }
+            return 0;
+        }
+        self.play_seeded_sound_at_entity_now(
+            except, entity_id, &position, listed, sound, category, volume, pitch, seed,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn play_seeded_sound_at_entity_now(
+        &self,
+        except: Option<&Player>,
+        entity_id: i32,
+        position: &Vector3<f64>,
+        listed: Option<Arc<dyn crate::entity::EntityBase>>,
+        sound: SoundHolder,
+        category: SoundCategory,
+        volume: f32,
+        pitch: f32,
+        seed: i64,
+    ) -> usize {
+        let fired = listed.and_then(|listed| {
             self.plugin_event_in_world(|world| {
                 PlayLevelSoundEventAtEntity::new(
                     world,
@@ -235,16 +330,17 @@ impl World {
         let packet = CEntitySoundEffect::new(
             sound,
             category,
-            pumpkin_protocol::VarInt(entity.entity_id),
+            pumpkin_protocol::VarInt(entity_id),
             volume,
             pitch,
             seed,
         );
-        self.send_to_players_in_range(except, &entity.pos.load(), range, &packet)
+        self.send_to_players_in_range(except, position, range, &packet)
     }
 
     /// Plays the vanilla `sound` so that it follows `entity`, with a random seed, like
-    /// `Level.playSound(except, entity, sound, source, volume, pitch)`.
+    /// `Level.playSound(except, entity, sound, source, volume, pitch)`. Returns 0 when an active
+    /// [`FireDeferral`](super::fire_deferral::FireDeferral) queued the sound.
     pub fn play_sound_at_entity(
         &self,
         except: Option<&Player>,

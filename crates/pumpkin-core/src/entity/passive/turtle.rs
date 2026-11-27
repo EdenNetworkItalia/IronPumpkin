@@ -695,9 +695,7 @@ impl TurtleLayEggGoal {
         world.emit_game_event_with_context(
             GameEvent::BlockPlace.name(),
             egg_pos.to_centered_f64(),
-            &GameEventContext {
-                source_entity: Some(source),
-            },
+            &GameEventContext::of_entity_state(Some(source), egg_state),
         );
         turtle.set_has_egg(false);
         turtle.set_laying_egg(false);

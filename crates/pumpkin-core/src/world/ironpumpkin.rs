@@ -197,9 +197,10 @@ impl World {
         // `getFluidState(pos).createLegacyBlock()`: kelp, seagrass and bubble columns leave water.
         let (_, fluid_state) = self.get_fluid_and_fluid_state(position);
         self.set_block_state(position, fluid_state.block_state_id, BlockFlags::NOTIFY_ALL);
-        self.emit_game_event(
+        self.emit_game_event_with_context(
             pumpkin_data::game_event::GameEvent::BlockDestroy.name(),
             position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_entity_state(breaker, state.id),
         );
         true
     }

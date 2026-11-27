@@ -59,13 +59,13 @@ pub fn try_parse_recipe(
                 category,
             }))
         }
-        "smelting" => parse_cooking(recipe_id, &value, 200)
+        "smelting" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(c))),
-        "blasting" => parse_cooking(recipe_id, &value, 100)
+        "blasting" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Blasting(c))),
-        "smoking" => parse_cooking(recipe_id, &value, 100)
+        "smoking" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Smoking(c))),
-        "campfire_cooking" => parse_cooking(recipe_id, &value, 600)
+        "campfire_cooking" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(c))),
         "brewing" => parse_brewing(recipe_id, &value).map(DynamicRecipe::Brewing),
         _ => {
@@ -88,34 +88,19 @@ fn normalize_id(id: &str) -> String {
 
 fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
     match value {
-        // `HolderSetCodec` reads a string that starts with `#` as a tag.
+        // `HolderSetCodec` reads a string that starts with `#` as a tag. A legacy `{"item": ..}`
+        // or `{"tag": ..}` object is no ingredient in vanilla 26.3.
         Value::String(s) => Some(s.strip_prefix('#').map_or_else(
             || OwnedRecipeIngredient::Simple(normalize_id(s)),
             |tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)),
         )),
-        Value::Object(map) => map
-            .get("tag")
-            .and_then(Value::as_str)
-            .map(|tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)))
-            .or_else(|| {
-                map.get("item")
-                    .and_then(Value::as_str)
-                    .map(|item| OwnedRecipeIngredient::Simple(normalize_id(item)))
-            }),
         Value::Array(arr) => {
             let mut ids = Vec::new();
             for item in arr {
-                if let Some(s) = item.as_str() {
-                    // `HolderSetCodec` reads a list of item ids only: a tag in it fails the
-                    // recipe.
-                    if s.starts_with('#') {
-                        return None;
-                    }
-                    ids.push(normalize_id(s));
-                } else {
-                    // A `{"tag": ..}` object or a value that is no item id fails the recipe.
-                    ids.push(normalize_id(item.get("item").and_then(Value::as_str)?));
-                }
+                // `HolderSetCodec` reads a list of item ids only: a tag, an object (the legacy
+                // `{"item": ..}` form too) or any other value in it fails the recipe.
+                let id = item.as_str().filter(|id| !id.starts_with('#'))?;
+                ids.push(normalize_id(id));
             }
             if ids.is_empty() {
                 None
@@ -276,11 +261,7 @@ fn parse_shapeless(recipe_id: String, value: &Value) -> Option<OwnedCraftingReci
     })
 }
 
-fn parse_cooking(
-    recipe_id: String,
-    value: &Value,
-    default_cooking_time: i32,
-) -> Option<OwnedCookingRecipe> {
+fn parse_cooking(recipe_id: String, value: &Value) -> Option<OwnedCookingRecipe> {
     let ingredient = parse_ingredient(value.get("ingredient")?)?;
     let result = parse_result(value.get("result")?)?;
     let category = parse_category(value.get("category"));
@@ -288,10 +269,8 @@ fn parse_cooking(
         .get("group")
         .and_then(Value::as_str)
         .map(ToString::to_string);
-    let cooking_time = value
-        .get("cookingtime")
-        .and_then(Value::as_i64)
-        .map_or(default_cooking_time, |t| t as i32);
+    // `AbstractCookingRecipe.cookingMapCodec` requires `cookingtime`.
+    let cooking_time = value.get("cookingtime")?.as_f64()? as i32;
     let experience = value
         .get("experience")
         .and_then(Value::as_f64)
@@ -635,6 +614,7 @@ mod tests {
     fn a_tag_inside_an_ingredient_list_fails_the_recipe() {
         let json = r##"{
             "type": "minecraft:smelting",
+            "cookingtime": 200,
             "ingredient": ["#c:ingots", "minecraft:stick"],
             "result": { "id": "minecraft:iron_nugget" }
         }"##;
@@ -647,6 +627,7 @@ mod tests {
             let json = format!(
                 r#"{{
                     "type": "minecraft:smelting",
+                    "cookingtime": 200,
                     "ingredient": ["minecraft:stick", {entry}],
                     "result": {{ "id": "minecraft:iron_nugget" }}
                 }}"#
@@ -658,12 +639,64 @@ mod tests {
         }
     }
 
+    /// The ingredient codec of vanilla 26.3 takes an id, a tag string or a list of ids. The
+    /// legacy `{"item": ..}` object is none of them.
+    #[test]
+    fn a_legacy_item_object_inside_an_ingredient_list_fails_the_recipe() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": ["minecraft:stick", { "item": "minecraft:dirt" }],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"#;
+        assert!(parse_recipe("test", "legacy_list", json).is_none());
+    }
+
+    #[test]
+    fn a_legacy_object_as_an_ingredient_fails_the_recipe() {
+        for ingredient in [
+            r#"{ "item": "minecraft:dirt" }"#,
+            r#"{ "tag": "minecraft:planks" }"#,
+        ] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "cookingtime": 200,
+                    "ingredient": {ingredient},
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(
+                parse_recipe("test", "legacy", &json).is_none(),
+                "{ingredient}"
+            );
+        }
+    }
+
+    /// `AbstractCookingRecipe.cookingMapCodec` has no default for `cookingtime`.
+    #[test]
+    fn a_cooking_recipe_without_a_cooking_time_fails() {
+        for kind in ["smelting", "blasting", "smoking", "campfire_cooking"] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:{kind}",
+                    "ingredient": "minecraft:dirt",
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(parse_recipe("test", "no_time", &json).is_none(), "{kind}");
+            let json = json.replace("\"ingredient\"", "\"cookingtime\": 7, \"ingredient\"");
+            assert!(parse_recipe("test", "time", &json).is_some(), "{kind}");
+        }
+    }
+
     #[test]
     fn a_result_count_outside_1_to_99_fails_the_recipe() {
         let recipe = |count: &str| {
             let json = format!(
                 r#"{{
                     "type": "minecraft:smelting",
+                    "cookingtime": 200,
                     "ingredient": "minecraft:dirt",
                     "result": {{ "id": "minecraft:diamond", "count": {count} }}
                 }}"#
@@ -702,6 +735,7 @@ mod tests {
     fn a_result_keeps_its_components() {
         let json = r#"{
             "type": "minecraft:smelting",
+            "cookingtime": 200,
             "ingredient": "minecraft:dirt",
             "result": {
                 "id": "minecraft:diamond",
@@ -726,6 +760,7 @@ mod tests {
     fn json_numbers_decode_as_the_component_types_expect() {
         let json = r#"{
             "type": "minecraft:smelting",
+            "cookingtime": 200,
             "ingredient": "minecraft:dirt",
             "result": {
                 "id": "minecraft:diamond",
@@ -754,6 +789,7 @@ mod tests {
     fn tag_string_ingredient_is_a_tag() {
         let json = r##"{
             "type": "minecraft:smelting",
+            "cookingtime": 200,
             "ingredient": "#c:ingots",
             "result": { "id": "minecraft:iron_nugget" }
         }"##;

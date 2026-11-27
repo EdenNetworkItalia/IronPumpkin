@@ -11,26 +11,6 @@ use pumpkin_nbt::tag::NbtTag;
 use std::any::Any;
 use std::borrow::Cow;
 
-/// CRC-32C state for vanilla's data component hashes.
-#[derive(Default)]
-pub struct Digest(u32);
-
-impl Digest {
-    #[must_use]
-    pub const fn new() -> Self {
-        Self(0)
-    }
-
-    pub fn update(&mut self, bytes: &[u8]) {
-        self.0 = crc32c::crc32c_append(self.0, bytes);
-    }
-
-    #[must_use]
-    pub const fn finalize(&self) -> u64 {
-        self.0 as u64
-    }
-}
-
 pub trait DataComponentImpl: Send + Sync {
     fn write_data(&self) -> NbtTag {
         NbtTag::End
@@ -131,50 +111,15 @@ macro_rules! default_impl {
 }
 
 pub fn get_str_hash(val: &str) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[12u8]);
-    digest.update(&(val.len() as u32).to_le_bytes());
-    let byte = val.as_bytes();
-    for i in byte {
-        digest.update(&[*i, 0u8]);
-    }
-    digest.finalize() as u32
+    hash_ops::string(val)
 }
 
 pub fn get_i32_hash(val: i32) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[8u8]);
-    digest.update(&val.to_le_bytes());
-    digest.finalize() as u32
+    hash_ops::int(val)
 }
 
 pub fn get_f32_hash(val: f32) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[7u8]);
-    digest.update(&val.to_bits().to_le_bytes());
-    digest.finalize() as u32
-}
-
-pub fn get_idor_hash(val: &IdOr<basic::SoundEvent>) -> u32 {
-    let mut digest = Digest::new();
-    digest.update(&[6u8]);
-    match val {
-        IdOr::Id(sound) => {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(sound.to_name()).to_le_bytes());
-        }
-        IdOr::Value(sound) => {
-            digest.update(&[2u8]);
-            digest.update(&get_str_hash(sound.sound_name.as_str()).to_le_bytes());
-            if let Some(range) = sound.range {
-                digest.update(&[1u8]);
-                digest.update(&get_f32_hash(range).to_le_bytes());
-            } else {
-                digest.update(&[0u8]);
-            }
-        }
-    }
-    digest.finalize() as u32
+    hash_ops::float(val)
 }
 
 pub fn put_idor(nbt: &mut NbtCompound, key: &str, val: &IdOr<basic::SoundEvent>) {
@@ -208,29 +153,6 @@ pub fn get_idor(nbt: &NbtCompound, key: &str, default: Sound) -> IdOr<basic::Sou
     } else {
         IdOr::Id(default)
     }
-}
-
-pub fn get_idset_hash<T: IDSetContent>(val: &IDSet<T>) -> u32 {
-    let mut digest = Digest::new();
-    match val {
-        IDSet::Tag(tag) => {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(tag).to_le_bytes());
-        }
-        IDSet::IDs(ids) => {
-            digest.update(&[2u8]);
-            for id in ids.iter() {
-                digest.update(&[3u8]);
-                // The hash a `Display` client computes. Custom ids in a set are rare, and a
-                // mismatch only resends the slot.
-                digest.update(
-                    &get_i32_hash(id.registry_id(crate::dynamic::ContentIds::Display) as i32)
-                        .to_le_bytes(),
-                );
-            }
-        }
-    }
-    digest.finalize() as u32
 }
 
 pub trait IDSetContent {
@@ -696,6 +618,7 @@ pub mod book;
 pub mod combat;
 pub mod entity_variant;
 pub mod food;
+pub mod hash_ops;
 pub mod utility;
 
 // Re-export all component implementations
@@ -710,169 +633,142 @@ pub use utility::*;
 #[must_use]
 pub fn read_data(id: DataComponent, data: &NbtTag) -> Option<Box<dyn DataComponentImpl>> {
     match id {
-        DataComponent::MaxStackSize => Some(MaxStackSizeImpl::read_data(data)?.to_dyn()),
-        DataComponent::CustomData => Some(CustomDataImpl::read_data(data)?.to_dyn()),
-        DataComponent::Enchantments => Some(EnchantmentsImpl::read_data(data)?.to_dyn()),
-        DataComponent::Damage => Some(DamageImpl::read_data(data)?.to_dyn()),
-        DataComponent::MaxDamage => Some(MaxDamageImpl::read_data(data)?.to_dyn()),
-        DataComponent::Unbreakable => Some(UnbreakableImpl::read_data(data)?.to_dyn()),
-        DataComponent::Food => Some(FoodImpl::read_data(data)?.to_dyn()),
-        DataComponent::Tool => Some(ToolImpl::read_data(data)?.to_dyn()),
-        DataComponent::Enchantable => Some(EnchantableImpl::read_data(data)?.to_dyn()),
-        DataComponent::DamageResistant => Some(DamageResistantImpl::read_data(data)?.to_dyn()),
-        DataComponent::PotionContents => Some(PotionContentsImpl::read_data(data)?.to_dyn()),
-        DataComponent::PotionDurationScale => {
-            Some(PotionDurationScaleImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::SuspiciousStewEffects => {
-            Some(SuspiciousStewEffectsImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::Fireworks => Some(FireworksImpl::read_data(data)?.to_dyn()),
-        DataComponent::FireworkExplosion => Some(FireworkExplosionImpl::read_data(data)?.to_dyn()),
-        DataComponent::CustomName => Some(CustomNameImpl::read_data(data)?.to_dyn()),
-        DataComponent::Lore => Some(LoreImpl::read_data(data)?.to_dyn()),
-        DataComponent::ItemName => Some(ItemNameImpl::read_data(data)?.to_dyn()),
-        DataComponent::ItemModel => Some(ItemModelImpl::read_data(data)?.to_dyn()),
-        DataComponent::Consumable => Some(ConsumableImpl::read_data(data)?.to_dyn()),
-        DataComponent::Equippable => Some(EquippableImpl::read_data(data)?.to_dyn()),
-        DataComponent::AttackRange => Some(AttackRangeImpl::read_data(data)?.to_dyn()),
-        DataComponent::KineticWeapon => Some(KineticWeaponImpl::read_data(data)?.to_dyn()),
-        DataComponent::PiercingWeapon => Some(PiercingWeaponImpl::read_data(data)?.to_dyn()),
-        DataComponent::MinimumAttackCharge => {
-            Some(MinimumAttackChargeImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::DamageType => Some(DamageTypeImpl::read_data(data)?.to_dyn()),
-        DataComponent::StoredEnchantments => {
-            Some(StoredEnchantmentsImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::UseCooldown => Some(UseCooldownImpl::read_data(data)?.to_dyn()),
-        DataComponent::RepairCost => Some(RepairCostImpl::read_data(data)?.to_dyn()),
-        DataComponent::Repairable => Some(RepairableImpl::read_data(data)?.to_dyn()),
-        DataComponent::MapId => Some(MapIdImpl::read_data(data)?.to_dyn()),
-        DataComponent::MapPostProcessing => Some(MapPostProcessingImpl::read_data(data)?.to_dyn()),
-        DataComponent::ChargedProjectiles => {
-            Some(ChargedProjectilesImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::BlockEntityData => Some(BlockEntityDataImpl::read_data(data)?.to_dyn()),
-        DataComponent::BundleContents => Some(BundleContentsImpl::read_data(data)?.to_dyn()),
-        DataComponent::Container => Some(ContainerImpl::read_data(data)?.to_dyn()),
-        DataComponent::WrittenBookContent => {
-            Some(WrittenBookContentImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::WritableBookContent => {
-            Some(WritableBookContentImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::OminousBottleAmplifier => {
-            Some(OminousBottleAmplifierImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::BlockState => Some(BlockStateImpl::read_data(data)?.to_dyn()),
-        DataComponent::Profile => Some(ProfileImpl::read_data(data)?.to_dyn()),
-        DataComponent::ChickenVariant => Some(ChickenVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::VillagerVariant => Some(VillagerVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::WolfVariant => Some(WolfVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::WolfSoundVariant => Some(WolfSoundVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::WolfCollar => Some(WolfCollarImpl::read_data(data)?.to_dyn()),
-        DataComponent::FoxVariant => Some(FoxVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::SalmonSize => Some(SalmonSizeImpl::read_data(data)?.to_dyn()),
-        DataComponent::ParrotVariant => Some(ParrotVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::TropicalFishPattern => {
-            Some(TropicalFishPatternImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::TropicalFishBaseColor => {
-            Some(TropicalFishBaseColorImpl::read_data(data)?.to_dyn())
-        }
+        DataComponent::MaxStackSize => boxed(MaxStackSizeImpl::read_data, data),
+        DataComponent::CustomData => boxed(CustomDataImpl::read_data, data),
+        DataComponent::Enchantments => boxed(EnchantmentsImpl::read_data, data),
+        DataComponent::Damage => boxed(DamageImpl::read_data, data),
+        DataComponent::MaxDamage => boxed(MaxDamageImpl::read_data, data),
+        DataComponent::Unbreakable => boxed(UnbreakableImpl::read_data, data),
+        DataComponent::Food => boxed(FoodImpl::read_data, data),
+        DataComponent::Tool => boxed(ToolImpl::read_data, data),
+        DataComponent::Enchantable => boxed(EnchantableImpl::read_data, data),
+        DataComponent::DamageResistant => boxed(DamageResistantImpl::read_data, data),
+        DataComponent::PotionContents => boxed(PotionContentsImpl::read_data, data),
+        DataComponent::PotionDurationScale => boxed(PotionDurationScaleImpl::read_data, data),
+        DataComponent::SuspiciousStewEffects => boxed(SuspiciousStewEffectsImpl::read_data, data),
+        DataComponent::Fireworks => boxed(FireworksImpl::read_data, data),
+        DataComponent::FireworkExplosion => boxed(FireworkExplosionImpl::read_data, data),
+        DataComponent::CustomName => boxed(CustomNameImpl::read_data, data),
+        DataComponent::Lore => boxed(LoreImpl::read_data, data),
+        DataComponent::ItemName => boxed(ItemNameImpl::read_data, data),
+        DataComponent::ItemModel => boxed(ItemModelImpl::read_data, data),
+        DataComponent::Consumable => boxed(ConsumableImpl::read_data, data),
+        DataComponent::Equippable => boxed(EquippableImpl::read_data, data),
+        DataComponent::AttackRange => boxed(AttackRangeImpl::read_data, data),
+        DataComponent::KineticWeapon => boxed(KineticWeaponImpl::read_data, data),
+        DataComponent::PiercingWeapon => boxed(PiercingWeaponImpl::read_data, data),
+        DataComponent::MinimumAttackCharge => boxed(MinimumAttackChargeImpl::read_data, data),
+        DataComponent::DamageType => boxed(DamageTypeImpl::read_data, data),
+        DataComponent::StoredEnchantments => boxed(StoredEnchantmentsImpl::read_data, data),
+        DataComponent::UseCooldown => boxed(UseCooldownImpl::read_data, data),
+        DataComponent::RepairCost => boxed(RepairCostImpl::read_data, data),
+        DataComponent::Repairable => boxed(RepairableImpl::read_data, data),
+        DataComponent::MapId => boxed(MapIdImpl::read_data, data),
+        DataComponent::MapPostProcessing => boxed(MapPostProcessingImpl::read_data, data),
+        DataComponent::ChargedProjectiles => boxed(ChargedProjectilesImpl::read_data, data),
+        DataComponent::BlockEntityData => boxed(BlockEntityDataImpl::read_data, data),
+        DataComponent::BundleContents => boxed(BundleContentsImpl::read_data, data),
+        DataComponent::Container => boxed(ContainerImpl::read_data, data),
+        DataComponent::WrittenBookContent => boxed(WrittenBookContentImpl::read_data, data),
+        DataComponent::WritableBookContent => boxed(WritableBookContentImpl::read_data, data),
+        DataComponent::OminousBottleAmplifier => boxed(OminousBottleAmplifierImpl::read_data, data),
+        DataComponent::BlockState => boxed(BlockStateImpl::read_data, data),
+        DataComponent::Profile => boxed(ProfileImpl::read_data, data),
+        DataComponent::ChickenVariant => boxed(ChickenVariantImpl::read_data, data),
+        DataComponent::VillagerVariant => boxed(VillagerVariantImpl::read_data, data),
+        DataComponent::WolfVariant => boxed(WolfVariantImpl::read_data, data),
+        DataComponent::WolfSoundVariant => boxed(WolfSoundVariantImpl::read_data, data),
+        DataComponent::WolfCollar => boxed(WolfCollarImpl::read_data, data),
+        DataComponent::FoxVariant => boxed(FoxVariantImpl::read_data, data),
+        DataComponent::SalmonSize => boxed(SalmonSizeImpl::read_data, data),
+        DataComponent::ParrotVariant => boxed(ParrotVariantImpl::read_data, data),
+        DataComponent::TropicalFishPattern => boxed(TropicalFishPatternImpl::read_data, data),
+        DataComponent::TropicalFishBaseColor => boxed(TropicalFishBaseColorImpl::read_data, data),
         DataComponent::TropicalFishPatternColor => {
-            Some(TropicalFishPatternColorImpl::read_data(data)?.to_dyn())
+            boxed(TropicalFishPatternColorImpl::read_data, data)
         }
-        DataComponent::MooshroomVariant => Some(MooshroomVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::RabbitVariant => Some(RabbitVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::PigVariant => Some(PigVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::PigSoundVariant => Some(PigSoundVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::CowVariant => Some(CowVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::CowSoundVariant => Some(CowSoundVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::ChickenSoundVariant => {
-            Some(ChickenSoundVariantImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::ZombieNautilusVariant => {
-            Some(ZombieNautilusVariantImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::FrogVariant => Some(FrogVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::HorseVariant => Some(HorseVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::PaintingVariant => Some(PaintingVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::LlamaVariant => Some(LlamaVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::AxolotlVariant => Some(AxolotlVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::CatVariant => Some(CatVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::CatSoundVariant => Some(CatSoundVariantImpl::read_data(data)?.to_dyn()),
-        DataComponent::CatCollar => Some(CatCollarImpl::read_data(data)?.to_dyn()),
-        DataComponent::SheepColor => Some(SheepColorImpl::read_data(data)?.to_dyn()),
-        DataComponent::ShulkerColor => Some(ShulkerColorImpl::read_data(data)?.to_dyn()),
-        DataComponent::DyedColor => Some(DyedColorImpl::read_data(data)?.to_dyn()),
-        DataComponent::BaseColor => Some(BaseColorImpl::read_data(data)?.to_dyn()),
-        DataComponent::NoteBlockSound => Some(NoteBlockSoundImpl::read_data(data)?.to_dyn()),
-        DataComponent::TooltipStyle => Some(TooltipStyleImpl::read_data(data)?.to_dyn()),
-        DataComponent::Lock => Some(LockImpl::read_data(data)?.to_dyn()),
-        DataComponent::ContainerLoot => Some(ContainerLootImpl::read_data(data)?.to_dyn()),
-        DataComponent::CustomModelData => Some(CustomModelDataImpl::read_data(data)?.to_dyn()),
-        DataComponent::LodestoneTracker => Some(LodestoneTrackerImpl::read_data(data)?.to_dyn()),
-        DataComponent::Glider => Some(GliderImpl::read_data(data)?.to_dyn()),
-        DataComponent::IntangibleProjectile => {
-            Some(IntangibleProjectileImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::Trim => Some(TrimImpl::read_data(data)?.to_dyn()),
-        DataComponent::CanPlaceOn => Some(CanPlaceOnImpl::read_data(data)?.to_dyn()),
-        DataComponent::CanBreak => Some(CanBreakImpl::read_data(data)?.to_dyn()),
-        DataComponent::AttackAnimation => Some(SwingAnimationImpl::read_data(data)?.to_dyn()),
-        DataComponent::Rarity => Some(RarityImpl::read_data(data)?.to_dyn()),
-        DataComponent::BannerPatterns => Some(BannerPatternsImpl::read_data(data)?.to_dyn()),
-        DataComponent::UseEffects => Some(UseEffectsImpl::read_data(data)?.to_dyn()),
-        DataComponent::UseRemainder => Some(UseRemainderImpl::read_data(data)?.to_dyn()),
-        DataComponent::Weapon => Some(WeaponImpl::read_data(data)?.to_dyn()),
-        DataComponent::TooltipDisplay => Some(TooltipDisplayImpl::read_data(data)?.to_dyn()),
-        DataComponent::CreativeSlotLock => Some(CreativeSlotLockImpl::read_data(data)?.to_dyn()),
+        DataComponent::MooshroomVariant => boxed(MooshroomVariantImpl::read_data, data),
+        DataComponent::RabbitVariant => boxed(RabbitVariantImpl::read_data, data),
+        DataComponent::PigVariant => boxed(PigVariantImpl::read_data, data),
+        DataComponent::PigSoundVariant => boxed(PigSoundVariantImpl::read_data, data),
+        DataComponent::CowVariant => boxed(CowVariantImpl::read_data, data),
+        DataComponent::CowSoundVariant => boxed(CowSoundVariantImpl::read_data, data),
+        DataComponent::ChickenSoundVariant => boxed(ChickenSoundVariantImpl::read_data, data),
+        DataComponent::ZombieNautilusVariant => boxed(ZombieNautilusVariantImpl::read_data, data),
+        DataComponent::FrogVariant => boxed(FrogVariantImpl::read_data, data),
+        DataComponent::HorseVariant => boxed(HorseVariantImpl::read_data, data),
+        DataComponent::PaintingVariant => boxed(PaintingVariantImpl::read_data, data),
+        DataComponent::LlamaVariant => boxed(LlamaVariantImpl::read_data, data),
+        DataComponent::AxolotlVariant => boxed(AxolotlVariantImpl::read_data, data),
+        DataComponent::CatVariant => boxed(CatVariantImpl::read_data, data),
+        DataComponent::CatSoundVariant => boxed(CatSoundVariantImpl::read_data, data),
+        DataComponent::CatCollar => boxed(CatCollarImpl::read_data, data),
+        DataComponent::SheepColor => boxed(SheepColorImpl::read_data, data),
+        DataComponent::ShulkerColor => boxed(ShulkerColorImpl::read_data, data),
+        DataComponent::DyedColor => boxed(DyedColorImpl::read_data, data),
+        DataComponent::BaseColor => boxed(BaseColorImpl::read_data, data),
+        DataComponent::NoteBlockSound => boxed(NoteBlockSoundImpl::read_data, data),
+        DataComponent::TooltipStyle => boxed(TooltipStyleImpl::read_data, data),
+        DataComponent::Lock => boxed(LockImpl::read_data, data),
+        DataComponent::ContainerLoot => boxed(ContainerLootImpl::read_data, data),
+        DataComponent::CustomModelData => boxed(CustomModelDataImpl::read_data, data),
+        DataComponent::LodestoneTracker => boxed(LodestoneTrackerImpl::read_data, data),
+        DataComponent::Glider => boxed(GliderImpl::read_data, data),
+        DataComponent::IntangibleProjectile => boxed(IntangibleProjectileImpl::read_data, data),
+        DataComponent::Trim => boxed(TrimImpl::read_data, data),
+        DataComponent::CanPlaceOn => boxed(CanPlaceOnImpl::read_data, data),
+        DataComponent::CanBreak => boxed(CanBreakImpl::read_data, data),
+        DataComponent::AttackAnimation => boxed(SwingAnimationImpl::read_data, data),
+        DataComponent::Rarity => boxed(RarityImpl::read_data, data),
+        DataComponent::BannerPatterns => boxed(BannerPatternsImpl::read_data, data),
+        DataComponent::UseEffects => boxed(UseEffectsImpl::read_data, data),
+        DataComponent::UseRemainder => boxed(UseRemainderImpl::read_data, data),
+        DataComponent::Weapon => boxed(WeaponImpl::read_data, data),
+        DataComponent::TooltipDisplay => boxed(TooltipDisplayImpl::read_data, data),
+        DataComponent::CreativeSlotLock => boxed(CreativeSlotLockImpl::read_data, data),
         DataComponent::EnchantmentGlintOverride => {
-            Some(EnchantmentGlintOverrideImpl::read_data(data)?.to_dyn())
+            boxed(EnchantmentGlintOverrideImpl::read_data, data)
         }
-        DataComponent::DeathProtection => Some(DeathProtectionImpl::read_data(data)?.to_dyn()),
-        DataComponent::BlocksAttacks => Some(BlocksAttacksImpl::read_data(data)?.to_dyn()),
-        DataComponent::AdditionalTradeCost => {
-            Some(AdditionalTradeCostImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::Dye => Some(DyeImpl::read_data(data)?.to_dyn()),
-        DataComponent::MapDecorations => Some(MapDecorationsImpl::read_data(data)?.to_dyn()),
-        DataComponent::DebugStickState => Some(DebugStickStateImpl::read_data(data)?.to_dyn()),
-        DataComponent::EntityData => Some(EntityDataImpl::read_data(data)?.to_dyn()),
-        DataComponent::BucketEntityData => Some(BucketEntityDataImpl::read_data(data)?.to_dyn()),
-        DataComponent::Instrument => Some(InstrumentImpl::read_data(data)?.to_dyn()),
-        DataComponent::ProvidesTrimMaterial => {
-            Some(ProvidesTrimMaterialImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::JukeboxPlayable => Some(JukeboxPlayableImpl::read_data(data)?.to_dyn()),
-        DataComponent::ProvidesBannerPatterns => {
-            Some(ProvidesBannerPatternsImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::Recipes => Some(RecipesImpl::read_data(data)?.to_dyn()),
-        DataComponent::PotDecorations => Some(PotDecorationsImpl::read_data(data)?.to_dyn()),
-        DataComponent::Bees => Some(BeesImpl::read_data(data)?.to_dyn()),
-        DataComponent::SulfurCubeContent => Some(SulfurCubeContentImpl::read_data(data)?.to_dyn()),
-        DataComponent::BreakSound => Some(BreakSoundImpl::read_data(data)?.to_dyn()),
-        DataComponent::AttributeModifiers => {
-            Some(AttributeModifiersImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::BrewingFuel => Some(BrewingFuelImpl::read_data(data)?.to_dyn()),
-        DataComponent::CookingFuel => Some(CookingFuelImpl::read_data(data)?.to_dyn()),
-        DataComponent::Compostable => Some(CompostableImpl::read_data(data)?.to_dyn()),
-        DataComponent::Waxed => Some(WaxedImpl::read_data(data)?.to_dyn()),
-        DataComponent::InteractAnimation => Some(InteractAnimationImpl::read_data(data)?.to_dyn()),
-        DataComponent::BlockTransformer => Some(BlockTransformerImpl::read_data(data)?.to_dyn()),
-        DataComponent::VillagerFood => Some(VillagerFoodImpl::read_data(data)?.to_dyn()),
-        DataComponent::MobVisibility => Some(MobVisibilityImpl::read_data(data)?.to_dyn()),
-        DataComponent::ProvidesPotteryPattern => {
-            Some(ProvidesPotteryPatternImpl::read_data(data)?.to_dyn())
-        }
-        DataComponent::SignTextFront => Some(SignTextFrontImpl::read_data(data)?.to_dyn()),
-        DataComponent::SignTextBack => Some(SignTextBackImpl::read_data(data)?.to_dyn()),
-        DataComponent::CushionColor => Some(CushionColorImpl::read_data(data)?.to_dyn()),
+        DataComponent::DeathProtection => boxed(DeathProtectionImpl::read_data, data),
+        DataComponent::BlocksAttacks => boxed(BlocksAttacksImpl::read_data, data),
+        DataComponent::AdditionalTradeCost => boxed(AdditionalTradeCostImpl::read_data, data),
+        DataComponent::Dye => boxed(DyeImpl::read_data, data),
+        DataComponent::MapDecorations => boxed(MapDecorationsImpl::read_data, data),
+        DataComponent::DebugStickState => boxed(DebugStickStateImpl::read_data, data),
+        DataComponent::EntityData => boxed(EntityDataImpl::read_data, data),
+        DataComponent::BucketEntityData => boxed(BucketEntityDataImpl::read_data, data),
+        DataComponent::Instrument => boxed(InstrumentImpl::read_data, data),
+        DataComponent::ProvidesTrimMaterial => boxed(ProvidesTrimMaterialImpl::read_data, data),
+        DataComponent::JukeboxPlayable => boxed(JukeboxPlayableImpl::read_data, data),
+        DataComponent::ProvidesBannerPatterns => boxed(ProvidesBannerPatternsImpl::read_data, data),
+        DataComponent::Recipes => boxed(RecipesImpl::read_data, data),
+        DataComponent::PotDecorations => boxed(PotDecorationsImpl::read_data, data),
+        DataComponent::Bees => boxed(BeesImpl::read_data, data),
+        DataComponent::SulfurCubeContent => boxed(SulfurCubeContentImpl::read_data, data),
+        DataComponent::BreakSound => boxed(BreakSoundImpl::read_data, data),
+        DataComponent::AttributeModifiers => boxed(AttributeModifiersImpl::read_data, data),
+        DataComponent::BrewingFuel => boxed(BrewingFuelImpl::read_data, data),
+        DataComponent::CookingFuel => boxed(CookingFuelImpl::read_data, data),
+        DataComponent::Compostable => boxed(CompostableImpl::read_data, data),
+        DataComponent::Waxed => boxed(WaxedImpl::read_data, data),
+        DataComponent::InteractAnimation => boxed(InteractAnimationImpl::read_data, data),
+        DataComponent::BlockTransformer => boxed(BlockTransformerImpl::read_data, data),
+        DataComponent::VillagerFood => boxed(VillagerFoodImpl::read_data, data),
+        DataComponent::MobVisibility => boxed(MobVisibilityImpl::read_data, data),
+        DataComponent::ProvidesPotteryPattern => boxed(ProvidesPotteryPatternImpl::read_data, data),
+        DataComponent::SignTextFront => boxed(SignTextFrontImpl::read_data, data),
+        DataComponent::SignTextBack => boxed(SignTextBackImpl::read_data, data),
+        DataComponent::CushionColor => boxed(CushionColorImpl::read_data, data),
     }
+}
+/// Loads one component into a box, in a frame of its own. A nested saved stack loads through
+/// [`read_data`] once per level, so its frame must not hold a value of every component type.
+#[inline(never)]
+fn boxed<T: DataComponentImpl>(
+    read: fn(&NbtTag) -> Option<T>,
+    data: &NbtTag,
+) -> Option<Box<dyn DataComponentImpl>> {
+    Some(read(data)?.to_dyn())
 }
 
 #[cfg(test)]

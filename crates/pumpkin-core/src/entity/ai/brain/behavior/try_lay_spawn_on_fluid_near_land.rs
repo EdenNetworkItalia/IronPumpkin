@@ -47,10 +47,11 @@ pub fn create(spawn_block: &'static Block) -> OneShot {
                         let source: &dyn EntityBase = tick.mob;
                         tick.world.emit_game_event_with_context(
                             pumpkin_data::game_event::GameEvent::BlockPlace.name(),
-                            spawn_pos.to_f64(),
-                            &GameEventContext {
-                                source_entity: Some(source),
-                            },
+                            spawn_pos.to_centered_f64(),
+                            &GameEventContext::of_entity_state(
+                                Some(source),
+                                spawn_block.default_state.id,
+                            ),
                         );
                         tick.world.play_sound(
                             Sound::EntityFrogLaySpawn,

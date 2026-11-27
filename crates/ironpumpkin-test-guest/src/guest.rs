@@ -25,15 +25,25 @@ use bindings::{
 use bindings::pumpkin::plugin::{
     common::BlockPos,
     entity_types::EntityType,
+    event::{EventPriority, EventType, RawPacket},
     item_stack::ItemStack,
-    event::{EventPriority, EventType},
     gametest::{
         AsyncTestCallbackId, BlockPermutation, BlockPredicateCallbackId, EntityPredicateCallbackId,
         Test, TestCallbackId, VoidCallbackId,
     },
+    game_rules::{GameRule, GameRuleValue},
     neoforge_events::MobEffectEventApplicableResult,
+    player::{
+        BanPlayerOptions, JavaKickOptions, KnownServerLink, ServerLink, ServerLinkLabel,
+        SocketTeardownPolicy,
+    },
     sounds::{Sound, SoundCategory},
-    world::EquipmentSlot,
+    statistics::{CustomStatistic, StatisticCategory},
+    status_effect::StatusEffectType,
+    world::{BlockDirection, EquipmentSlot, MobData, ShulkerData},
+};
+use bindings::pumpkin::plugin::{
+    block_entity::BlockEntityType, command::Command, text::TextComponent,
 };
 
 /// The events of the table "Mutators and their events" of
@@ -71,6 +81,24 @@ const EVENTS: [EventType; 32] = [
     EventType::PlayLevelSoundEventAtPosition,
     EventType::ItemAttributeModifierEvent,
     EventType::GetEnchantmentLevelEvent,
+];
+
+/// The events that synchronous imports fire, through the queue of the host. Only the first
+/// handler listens, and it logs only while the test arms it: other tests also fire these events.
+const IMPORT_EVENTS: [EventType; 13] = [
+    EventType::PlayerOpenSignEvent,
+    EventType::PlayerVelocityEvent,
+    EventType::EntityKnockbackEvent,
+    EventType::PlayerLinksSendEvent,
+    EventType::PlayerStatisticIncrementEvent,
+    EventType::GameRuleChangedEvent,
+    EventType::GenericGameEvent,
+    EventType::ChunkLoadEvent,
+    EventType::EffectParticleModificationEvent,
+    EventType::PacketSentEvent,
+    EventType::PlayerEventHarvestCheck,
+    EventType::PlayerEventTabListNameFormat,
+    EventType::PlayerPermissionCheckEvent,
 ];
 
 /// A field that the test reads and sets as text, the same text as the native side.
@@ -275,6 +303,40 @@ fn view(event: &mut Event) -> Option<View<'_>> {
         ),
         Event::ItemAttributeModifierEvent(_) => ("ItemAttributeModifierEvent", None, None),
         Event::GetEnchantmentLevelEvent(_) => ("GetEnchantmentLevelEvent", None, None),
+        _ => return import_view(event),
+    })
+}
+
+/// The arms of [`view`] for [`IMPORT_EVENTS`].
+fn import_view(event: &mut Event) -> Option<View<'_>> {
+    Some(match event {
+        Event::PlayerOpenSignEvent(data) => ("PlayerOpenSignEvent", None, Some(&mut data.cancelled)),
+        Event::PlayerVelocityEvent(data) => {
+            ("PlayerVelocityEvent", Some(&mut data.velocity), Some(&mut data.cancelled))
+        }
+        Event::EntityKnockbackEvent(data) => {
+            ("EntityKnockbackEvent", Some(&mut data.knockback), Some(&mut data.cancelled))
+        }
+        Event::PlayerLinksSendEvent(data) => {
+            ("PlayerLinksSendEvent", None, Some(&mut data.cancelled))
+        }
+        Event::PlayerStatisticIncrementEvent(data) => (
+            "PlayerStatisticIncrementEvent",
+            Some(&mut data.amount),
+            Some(&mut data.cancelled),
+        ),
+        Event::GameRuleChangedEvent(_) => ("GameRuleChangedEvent", None, None),
+        Event::GenericGameEvent(data) => ("GenericGameEvent", None, Some(&mut data.cancelled)),
+        Event::ChunkLoadEvent(data) => ("ChunkLoadEvent", None, Some(&mut data.cancelled)),
+        Event::EffectParticleModificationEvent(_) => ("EffectParticleModificationEvent", None, None),
+        Event::PacketSentEvent(data) => {
+            ("PacketSentEvent", Some(&mut data.packet_id), Some(&mut data.cancelled))
+        }
+        Event::PlayerEventHarvestCheck(data) => {
+            ("PlayerEventHarvestCheck", Some(&mut data.can_harvest), None)
+        }
+        Event::PlayerEventTabListNameFormat(_) => ("PlayerEventTabListNameFormat", None, None),
+        Event::PlayerPermissionCheckEvent(_) => ("PlayerPermissionCheckEvent", None, None),
         _ => return None,
     })
 }
@@ -298,6 +360,17 @@ struct State {
     actions: HashMap<(String, u32), Action>,
     /// Whether a handler of the sound event plays one more sound.
     replay: bool,
+    /// Whether the handler of [`IMPORT_EVENTS`] logs.
+    armed: bool,
+    /// `(id, extra)`: the handler of `PacketSentEvent` cancels the packets with the id `id` and
+    /// adds a packet with the id `extra` after each.
+    packet_rule: Option<(i32, i32)>,
+    /// Whether the handler of `PacketSentEvent` answers a packet with the text `reply-me` with a
+    /// title.
+    packet_reply: bool,
+    /// `(on, reply)`: the handler of `PacketSentEvent` answers a packet with the text `on` with a
+    /// message `reply`.
+    relay: Option<(String, String)>,
     fires: HashMap<(String, u32), u32>,
     log: Vec<String>,
 }
@@ -308,6 +381,40 @@ thread_local! {
 
 /// Logs what handler `slot` sees, then runs its action.
 fn handle(slot: u32, event: &mut Event) -> Result<(bool, bool), String> {
+    let (armed, packet_rule, packet_reply, relay) = STATE.with_borrow(|state| {
+        (
+            state.armed,
+            state.packet_rule,
+            state.packet_reply,
+            state.relay.clone(),
+        )
+    });
+    if let (Some((on, reply)), Event::PacketSentEvent(data)) = (&relay, &*event)
+        && data
+            .raw_payload
+            .windows(on.len())
+            .any(|window| window == on.as_bytes())
+    {
+        data.player
+            .send_system_message(TextComponent::text(reply), false);
+    }
+    if !armed && import_view(event).is_some() {
+        return Ok((false, false));
+    }
+    if let (true, Event::PacketSentEvent(data)) = (packet_reply, &*event)
+        && data.raw_payload.windows(8).any(|window| window == b"reply-me")
+    {
+        data.player.show_title(TextComponent::text("replied"));
+    }
+    if let (Some((id, extra)), Event::PacketSentEvent(data)) = (packet_rule, &mut *event)
+        && data.packet_id == id
+    {
+        data.cancelled = true;
+        data.extra_packets.push(RawPacket {
+            packet_id: extra,
+            payload: vec![7],
+        });
+    }
     let Some((name, mut field, mut cancelled)) = view(event) else {
         return Ok((false, false));
     };
@@ -475,6 +582,300 @@ async fn equip(words: &[&str]) -> Result<String, String> {
     Ok(pig.get_id().to_string())
 }
 
+/// `ordered <case> <name>`: synchronous and asynchronous imports that send packets to player
+/// `name` in one guest call. The packets must reach the client in call order.
+async fn ordered(words: &[&str]) -> Result<String, String> {
+    let [case, name, ..] = words else {
+        return Err("ordered <case> <name>".to_owned());
+    };
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let player = server
+        .get_player_by_name(name)
+        .ok_or_else(|| format!("no player {name}"))?;
+    let say = |text: &str| player.send_system_message(TextComponent::text(text), false);
+    match *case {
+        // A message, then a ban that kicks the player: the message arrives before the kick.
+        "ban" => {
+            say("ordered-banned");
+            player
+                .ban(BanPlayerOptions {
+                    reason: Some(TextComponent::text("ordered-ban-reason")),
+                    source: None,
+                    expires_at_utc: None,
+                    duration_seconds: None,
+                    kick_if_online: true,
+                    log_to_console: false,
+                })
+                .await;
+        }
+        // A synchronous message, an asynchronous broadcast, a synchronous message.
+        "broadcast" => {
+            say("ordered-one");
+            server.broadcast("ordered-two".to_owned()).await;
+            say("ordered-three");
+        }
+        // A kick of the player, then a game rule change `value`: the change does not wait for
+        // the flush of the disconnect packet.
+        "kick" => {
+            let value = words.get(2) == Some(&"true");
+            let java = player.as_java().ok_or("not a java player")?;
+            java.kick(JavaKickOptions {
+                reason: TextComponent::text("ordered-kick"),
+                log_to_console: false,
+                teardown_policy: SocketTeardownPolicy::Graceful,
+            })
+            .await;
+            let world = server
+                .get_all_worlds()
+                .into_iter()
+                .next()
+                .ok_or("no world")?;
+            world.set_game_rule(GameRule::SpawnPhantoms, GameRuleValue::Bool(value));
+        }
+        // `count` messages `bulk-0` to `bulk-<count - 1>`.
+        "bulk" => {
+            let count: u32 = words
+                .get(2)
+                .and_then(|count| count.parse().ok())
+                .ok_or("bulk <name> <count>")?;
+            for index in 0..count {
+                say(&format!("bulk-{index};"));
+            }
+        }
+        // The message `text`.
+        "say" => say(words.get(2).ok_or("say <name> <text>")?),
+        // A message, then a kick that drops the connection without a disconnect packet.
+        "drop-kick" => {
+            say("drop-kick-message");
+            let java = player.as_java().ok_or("not a java player")?;
+            java.kick(JavaKickOptions {
+                reason: TextComponent::text("drop-kick"),
+                log_to_console: false,
+                teardown_policy: SocketTeardownPolicy::DropConnection,
+            })
+            .await;
+        }
+        // A message that the handler of `PacketSentEvent` answers with a title, after `packet-reply`.
+        "reply" => say("reply-me"),
+        // `container <x> <y> <z>`: a clear, then a stack in slot 0, of the container at the
+        // position.
+        "container" => {
+            let number = |index: usize| {
+                words
+                    .get(index)
+                    .and_then(|text| text.parse::<i32>().ok())
+                    .ok_or("container <name> <x> <y> <z>")
+            };
+            let pos = BlockPos {
+                x: number(2)?,
+                y: number(3)?,
+                z: number(4)?,
+            };
+            let world = server
+                .get_all_worlds()
+                .into_iter()
+                .next()
+                .ok_or("no world")?;
+            let container = match world.get_block_entity(pos) {
+                Some(BlockEntityType::ChestBlockEntity(chest)) => chest.get_container(),
+                Some(BlockEntityType::JukeboxBlockEntity(jukebox)) => {
+                    // A stop, then a start: the jukebox plays at the end.
+                    jukebox.stop_playing();
+                    jukebox.start_playing(1000);
+                    return Ok(String::new());
+                }
+                _ => return Err("no container".to_owned()),
+            };
+            container.clear();
+            container
+                .set_stack(0, Some(ItemStack::new("minecraft:stone", 1)))
+                .await;
+        }
+        _ => return Err(format!("not an ordered case: {case}")),
+    }
+    Ok(String::new())
+}
+
+/// `import <name> <args...>`: calls one group of synchronous imports in one guest call. Each
+/// import fires an event that a Wasm handler listens to, so the call hangs unless the host defers
+/// the work until the guest call ends.
+fn import(words: &[&str]) -> Result<String, String> {
+    let number = |text: &str| text.parse::<i32>().map_err(|_| format!("not a number: {text}"));
+    let server = STATE
+        .with_borrow(|state| state.context.as_ref().map(Context::get_server))
+        .ok_or("no context")?;
+    let world = server
+        .get_all_worlds()
+        .into_iter()
+        .next()
+        .ok_or("no world")?;
+    let player = |name: &str| {
+        server
+            .get_player_by_name(name)
+            .ok_or_else(|| format!("no player {name}"))
+    };
+    let links = || {
+        vec![ServerLink {
+            label: ServerLinkLabel::Known(KnownServerLink::Support),
+            url: "https://example.org".to_owned(),
+        }]
+    };
+    match words {
+        ["sign", name, x, y, z] => player(name)?.open_sign_editor(
+            BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            },
+            true,
+        ),
+        // One guest call sends three packets: a message, a title and a message.
+        ["messages", name] => {
+            let player = player(name)?;
+            player.send_system_message(TextComponent::text("one"), false);
+            player.show_title(TextComponent::text("two"));
+            player.send_system_message(TextComponent::text("three"), false);
+        }
+        // A raw packet with the id `id` between two messages, in one guest call.
+        ["raw-between", name, id] => {
+            let player = player(name)?;
+            let java = player.as_java().ok_or("not a java player")?;
+            player.send_system_message(TextComponent::text("one"), false);
+            java.send_raw_packet(number(id)?, &[9]);
+            player.send_system_message(TextComponent::text("three"), false);
+        }
+        ["harvest", name, x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            return Ok(player(name)?.can_harvest_block(pos).to_string());
+        }
+        ["tab-name", name] => {
+            return Ok(player(name)?
+                .get_tab_list_name()
+                .map_or_else(|| "none".to_owned(), |name| name.get_text()));
+        }
+        ["remove-effect", name] => {
+            let living = player(name)?.as_entity().as_living().ok_or("not living")?;
+            return Ok(living.remove_effect(StatusEffectType::Speed).to_string());
+        }
+        ["remove-stack", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            let removed = jukebox.get_container().remove_stack(0);
+            return Ok(if removed.is_some() { "some" } else { "none" }.to_owned());
+        }
+        // A peek of a shulker from 0 plays the open sound.
+        ["mob-data", id] => {
+            let mob = world
+                .get_entity_by_id(number(id)?)
+                .ok_or("no entity")?
+                .as_mob()
+                .ok_or("not a mob")?;
+            return Ok(mob
+                .set_mob_data(MobData::Shulker(ShulkerData {
+                    attached_face: BlockDirection::Down,
+                    peek_amount: 100,
+                    color: None,
+                }))
+                .to_string());
+        }
+        ["remove", id] => world
+            .get_entity_by_id(number(id)?)
+            .ok_or("no entity")?
+            .remove(),
+        ["clear", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            jukebox.get_container().clear();
+        }
+        ["mining", name, x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            return Ok(player(name)?.get_mining_speed(pos).to_string());
+        }
+        // A command that needs a permission, registered while a player is online.
+        ["register-command", name] => {
+            let command = Command::new(&[(*name).to_owned()], "a test command");
+            STATE
+                .with_borrow(|state| {
+                    state
+                        .context
+                        .as_ref()
+                        .map(|context| context.register_command(command, "test.command"))
+                })
+                .ok_or("no context")?;
+        }
+        ["clear-equipment", id] => world
+            .get_entity_by_id(number(id)?)
+            .ok_or("no entity")?
+            .as_living()
+            .ok_or("not living")?
+            .clear_equipment(),
+        ["velocity", name] => player(name)?.set_velocity((0.0, 0.5, 0.0)),
+        ["knockback", name] => player(name)?.apply_knockback(0.4, 1.0, 0.0),
+        ["links", name] => player(name)?.set_server_links(links()),
+        // The set and the increment of each statistic fire in call order: 5, then 2.
+        ["statistics", name] => {
+            let player = player(name)?;
+            player.set_statistic(StatisticCategory::Mined, 1, 5);
+            player.increment_statistic(StatisticCategory::Mined, 1, 2);
+            player.set_custom_statistic(CustomStatistic::Jump, 5);
+            player.increment_custom_statistic(CustomStatistic::Jump, 2);
+        }
+        ["game-rule", value] => world.set_game_rule(
+            GameRule::SpawnPhantoms,
+            GameRuleValue::Bool(*value == "true"),
+        ),
+        ["jukebox", x, y, z] => {
+            let pos = BlockPos {
+                x: number(x)?,
+                y: number(y)?,
+                z: number(z)?,
+            };
+            let Some(BlockEntityType::JukeboxBlockEntity(jukebox)) = world.get_block_entity(pos)
+            else {
+                return Err("no jukebox".to_owned());
+            };
+            jukebox.stop_playing();
+        }
+        ["force", x, z] => world.set_chunk_force_loaded(number(x)?, number(z)?, true),
+        ["effects", name] => {
+            let player = player(name)?;
+            player.remove_effect(StatusEffectType::Speed);
+            player.clear_effects();
+            player
+                .as_entity()
+                .as_living()
+                .ok_or("not living")?
+                .reset_all_attributes();
+        }
+        _ => return Err(format!("not an import: {words:?}")),
+    }
+    Ok(String::new())
+}
+
 struct Component;
 
 impl Guest for Component {
@@ -484,6 +885,9 @@ impl Guest for Component {
         for event in EVENTS {
             context.register_event(0, event, EventPriority::High, true);
             context.register_event(1, event, EventPriority::Normal, true);
+        }
+        for event in IMPORT_EVENTS {
+            context.register_event(0, event, EventPriority::High, true);
         }
         STATE.with_borrow_mut(|state| state.context = Some(context));
         Ok(())
@@ -560,6 +964,10 @@ impl Guest for Component {
                     state.actions.clear();
                     state.fires.clear();
                     state.log.clear();
+                    state.armed = false;
+                    state.packet_rule = None;
+                    state.packet_reply = false;
+                    state.relay = None;
                 });
                 String::new()
             }
@@ -572,11 +980,36 @@ impl Guest for Component {
             ["perform", rest @ ..] => perform(rest).await?,
             ["sound", rest @ ..] => sound(rest).await?,
             ["order", rest @ ..] => order(rest).await?,
+            ["import", rest @ ..] => import(rest)?,
+            ["arm"] => {
+                STATE.with_borrow_mut(|state| state.armed = true);
+                String::new()
+            }
+            ["packet-rule", id, extra] => {
+                let parse = |text: &str| text.parse::<i32>().map_err(|_| format!("not a number: {text}"));
+                let rule = (parse(id)?, parse(extra)?);
+                STATE.with_borrow_mut(|state| state.packet_rule = Some(rule));
+                String::new()
+            }
             ["replay", flag] => {
                 STATE.with_borrow_mut(|state| state.replay = *flag == "on");
                 String::new()
             }
             ["equip", rest @ ..] => equip(rest).await?,
+            ["ordered", rest @ ..] => ordered(rest).await?,
+            ["relay", on, reply] => {
+                let relay = Some(((*on).to_owned(), (*reply).to_owned()));
+                STATE.with_borrow_mut(|state| state.relay = relay);
+                String::new()
+            }
+            ["relay-off"] => {
+                STATE.with_borrow_mut(|state| state.relay = None);
+                String::new()
+            }
+            ["packet-reply"] => {
+                STATE.with_borrow_mut(|state| state.packet_reply = true);
+                String::new()
+            }
             _ => return Err(format!("unknown message: {message}")),
         };
         Ok(reply.into_bytes())

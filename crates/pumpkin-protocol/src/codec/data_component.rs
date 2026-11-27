@@ -2,6 +2,10 @@
 
 use std::borrow::Cow;
 
+use crate::codec::item_stack_seralizer::{
+    DecodedPatch, component_id, custom_component_type, item_component_counts,
+    read_custom_component, read_id, write_custom_components,
+};
 use crate::codec::var_int::VarInt;
 use crate::ser::{NetworkReadExt, NetworkWriteExt, ReadingError, WritingError};
 use pumpkin_data::Enchantment;
@@ -72,9 +76,7 @@ fn deserialize_idset<T: IDSetContent>(
                 Vec::with_capacity((len as usize).min(MAX_INITIAL_COLLECTION_SIZE));
 
             for _ in 0..len {
-                let varint_id = seq.get_var_int()?.0;
-
-                let elmt = T::from_id(varint_id as u16).ok_or(ReadingError::Message(
+                let elmt = T::from_id(read_id(seq)?).ok_or(ReadingError::Message(
                     "Invalid registry id VarInt in IDSet".into(),
                 ))?;
                 content_vec.push(elmt);
@@ -116,34 +118,44 @@ fn deserialize_status_effects(
     }
     let mut custom_effects = Vec::with_capacity(effects_len);
     for _ in 0..effects_len {
-        let effect_registry_id = seq.get_var_int()?.0;
-        let effect_name = StatusEffect::from_id(effect_registry_id as u16)
+        let effect_name = StatusEffect::from_id(read_id(seq)?)
             .ok_or(ReadingError::Message("Invalid effect_id!".into()))?
             .minecraft_name;
         let effect_id = Cow::Borrowed(effect_name);
 
-        // Effect parameters
-        let amplifier = seq.get_var_int()?.0;
-        let duration = seq.get_var_int()?.0;
-        let ambient = seq.get_bool()?;
-        let show_particles = seq.get_bool()?;
-        let show_icon = seq.get_bool()?;
-
-        // Hidden effect (optional, recursive) - we skip it for now
-        let has_hidden = seq.get_bool()?;
-        if has_hidden {
-            // Skip hidden effect parameters recursively
-            skip_effect_parameters(seq)?;
+        // `MobEffectInstance.Details.STREAM_CODEC`, then each optional hidden effect.
+        let mut levels = Vec::new();
+        loop {
+            let amplifier = seq.get_var_int()?.0;
+            let duration = seq.get_var_int()?.0;
+            let ambient = seq.get_bool()?;
+            let show_particles = seq.get_bool()?;
+            let show_icon = seq.get_bool()?;
+            levels.push((amplifier, duration, ambient, show_particles, show_icon));
+            if !seq.get_bool()? {
+                break;
+            }
+            if levels.len() > MAX_HIDDEN_EFFECTS {
+                return Err(ReadingError::TooLarge(
+                    "Potion effect hidden depth exceeded".into(),
+                ));
+            }
         }
-
-        custom_effects.push(StatusEffectInstance {
-            effect_id,
-            amplifier,
-            duration,
-            ambient,
-            show_particles,
-            show_icon,
-        });
+        let mut effect = None;
+        for (amplifier, duration, ambient, show_particles, show_icon) in levels.into_iter().rev() {
+            effect = Some(Box::new(StatusEffectInstance {
+                effect_id: effect_id.clone(),
+                amplifier,
+                duration,
+                ambient,
+                show_particles,
+                show_icon,
+                hidden_effect: effect,
+            }));
+        }
+        if let Some(effect) = effect {
+            custom_effects.push(*effect);
+        }
     }
 
     Ok(custom_effects)
@@ -174,14 +186,16 @@ fn serialize_status_effects(
 
     for (effect_id, effect) in known {
         seq.write_var_int(&VarInt(i32::from(effect_id)))?;
-        // Effect parameters
-        seq.write_var_int(&VarInt::from(effect.amplifier))?;
-        seq.write_var_int(&VarInt::from(effect.duration))?;
-        seq.write_bool(effect.ambient)?;
-        seq.write_bool(effect.show_particles)?;
-        seq.write_bool(effect.show_icon)?;
-        // No hidden effect for now
-        seq.write_bool(false)?;
+        let mut details = Some(effect);
+        while let Some(effect) = details {
+            seq.write_var_int(&VarInt::from(effect.amplifier))?;
+            seq.write_var_int(&VarInt::from(effect.duration))?;
+            seq.write_bool(effect.ambient)?;
+            seq.write_bool(effect.show_particles)?;
+            seq.write_bool(effect.show_icon)?;
+            details = effect.hidden_effect.as_deref();
+            seq.write_bool(details.is_some())?;
+        }
     }
     Ok(())
 }
@@ -203,7 +217,11 @@ fn deserialize_consume_effect(
         2 => Ok(ConsumeEffect::ClearAllEffects),
         3 => {
             let diameter = seq.get_f32()?;
-            Ok(ConsumeEffect::TeleportRandomly(diameter))
+            let directional_particles = seq.get_bool()?;
+            Ok(ConsumeEffect::TeleportRandomly {
+                diameter,
+                directional_particles,
+            })
         }
         4 => {
             // Need to read IdOr<SoundEvent> manually. This depends on how it is serialized.
@@ -251,7 +269,13 @@ fn serialize_consume_effect(
         }
         ConsumeEffect::RemoveEffects(idset) => serialize_idset(idset, seq, ids)?,
         ConsumeEffect::ClearAllEffects => (),
-        ConsumeEffect::TeleportRandomly(diameter) => seq.write_f32(*diameter)?,
+        ConsumeEffect::TeleportRandomly {
+            diameter,
+            directional_particles,
+        } => {
+            seq.write_f32(*diameter)?;
+            seq.write_bool(*directional_particles)?;
+        }
         ConsumeEffect::PlaySound(id_or) => {
             crate::IdOr::<crate::SoundEvent>::write(&data_to_proto_sound(id_or), seq, |w, e| {
                 w.write_string(&e.sound_name)?;
@@ -326,7 +350,7 @@ impl DataComponentCodec<Self> for EnchantmentsImpl {
         }
         let mut enc = Vec::with_capacity(len);
         for _ in 0..len {
-            let id = seq.get_var_int()?.0 as u8;
+            let id: u8 = read_id(seq)?;
             let level = seq.get_var_int()?.0;
             if !(1..=MAX_ENCHANTMENT_LEVEL).contains(&level) {
                 return Err(ReadingError::Message(format!(
@@ -392,8 +416,10 @@ impl DataComponentCodec<Self> for LoreImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
         seq.write_var_int(&VarInt(self.lines.len() as i32))?;
         for line in &self.lines {
+            // The hash of a clicked stack reads the same encoding.
             seq.write_slice(
-                &line.encode_for_version(&pumpkin_util::version::JavaMinecraftVersion::V_26_2),
+                &line
+                    .encode_for_version(&pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION),
             )?;
         }
         Ok(())
@@ -795,36 +821,6 @@ impl DataComponentCodec<Self> for PotionContentsImpl {
     }
 }
 
-/// Helper to skip hidden effect parameters iteratively with a depth cap
-fn skip_effect_parameters(seq: &mut impl NetworkReadExt) -> Result<(), ReadingError> {
-    const MAX_EFFECT_DEPTH: usize = 32;
-    let mut depth = 0;
-    loop {
-        // amplifier
-        seq.get_var_int()?;
-        // duration
-        seq.get_var_int()?;
-        // ambient
-        seq.get_bool()?;
-        // show_particles
-        seq.get_bool()?;
-        // show_icon
-        seq.get_bool()?;
-        // has_hidden
-        let has_hidden = seq.get_bool()?;
-        if !has_hidden {
-            break;
-        }
-        depth += 1;
-        if depth > MAX_EFFECT_DEPTH {
-            return Err(ReadingError::TooLarge(
-                "Potion effect hidden depth exceeded".into(),
-            ));
-        }
-    }
-    Ok(())
-}
-
 impl DataComponentCodec<Self> for FireworkExplosionImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
         // Shape (VarInt enum)
@@ -966,7 +962,7 @@ impl DataComponentCodec<Self> for StoredEnchantmentsImpl {
 
         let mut stored_enchantments = Vec::with_capacity(len);
         for _ in 0..len {
-            let id = seq.get_var_int()?.0 as u8;
+            let id: u8 = read_id(seq)?;
             let level = seq.get_var_int()?.0;
             if !(1..=MAX_ENCHANTMENT_LEVEL).contains(&level) {
                 return Err(ReadingError::Message(format!(
@@ -1043,161 +1039,137 @@ pub fn deserialize(
     seq: &mut impl NetworkReadExt,
 ) -> Result<Box<dyn DataComponentImpl>, ReadingError> {
     match id {
-        DataComponent::CustomData => Ok(CustomDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MaxStackSize => Ok(MaxStackSizeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MaxDamage => Ok(MaxDamageImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Damage => Ok(DamageImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Unbreakable => Ok(UnbreakableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseEffects => Ok(UseEffectsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CustomName => Ok(CustomNameImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MinimumAttackCharge => {
-            Ok(MinimumAttackChargeImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::DamageType => Ok(DamageTypeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ItemName => Ok(ItemNameImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ItemModel => Ok(ItemModelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Lore => Ok(LoreImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Rarity => Ok(RarityImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Enchantments => Ok(EnchantmentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CanPlaceOn => Ok(CanPlaceOnImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CanBreak => Ok(CanBreakImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttributeModifiers => Ok(AttributeModifiersImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CustomModelData => Ok(CustomModelDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TooltipDisplay => Ok(TooltipDisplayImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::RepairCost => Ok(RepairCostImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CreativeSlotLock => Ok(CreativeSlotLockImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::EnchantmentGlintOverride => {
-            Ok(EnchantmentGlintOverrideImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::IntangibleProjectile => {
-            Ok(IntangibleProjectileImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::Food => Ok(FoodImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Consumable => Ok(ConsumableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseRemainder => Ok(UseRemainderImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseCooldown => Ok(UseCooldownImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DamageResistant => Ok(DamageResistantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Tool => Ok(ToolImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Weapon => Ok(WeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttackRange => Ok(AttackRangeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Enchantable => Ok(EnchantableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Equippable => Ok(EquippableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Repairable => Ok(RepairableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Glider => Ok(GliderImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TooltipStyle => Ok(TooltipStyleImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DeathProtection => Ok(DeathProtectionImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlocksAttacks => Ok(BlocksAttacksImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PiercingWeapon => Ok(PiercingWeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::KineticWeapon => Ok(KineticWeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttackAnimation => Ok(SwingAnimationImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AdditionalTradeCost => {
-            Ok(AdditionalTradeCostImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::StoredEnchantments => Ok(StoredEnchantmentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Dye => Ok(DyeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DyedColor => Ok(DyedColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapId => Ok(MapIdImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapDecorations => Ok(MapDecorationsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapPostProcessing => Ok(MapPostProcessingImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChargedProjectiles => Ok(ChargedProjectilesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BundleContents => Ok(BundleContentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotionContents => Ok(PotionContentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotionDurationScale => {
-            Ok(PotionDurationScaleImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::SuspiciousStewEffects => {
-            Ok(SuspiciousStewEffectsImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::WritableBookContent => {
-            Ok(WritableBookContentImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::WrittenBookContent => Ok(WrittenBookContentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Trim => Ok(TrimImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DebugStickState => Ok(DebugStickStateImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::EntityData => Ok(EntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BucketEntityData => Ok(BucketEntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockEntityData => Ok(BlockEntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Instrument => Ok(InstrumentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesTrimMaterial => {
-            Ok(ProvidesTrimMaterialImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::OminousBottleAmplifier => {
-            Ok(OminousBottleAmplifierImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::JukeboxPlayable => Ok(JukeboxPlayableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesBannerPatterns => {
-            Ok(ProvidesBannerPatternsImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::Recipes => Ok(RecipesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::LodestoneTracker => Ok(LodestoneTrackerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::FireworkExplosion => Ok(FireworkExplosionImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Fireworks => Ok(FireworksImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Profile => Ok(ProfileImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::NoteBlockSound => Ok(NoteBlockSoundImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BannerPatterns => Ok(BannerPatternsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BaseColor => Ok(BaseColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotDecorations => Ok(PotDecorationsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Container => Ok(ContainerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockState => Ok(BlockStateImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Bees => Ok(BeesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SulfurCubeContent => Ok(SulfurCubeContentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Lock => Ok(LockImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ContainerLoot => Ok(ContainerLootImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BreakSound => Ok(BreakSoundImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::VillagerVariant => Ok(VillagerVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfVariant => Ok(WolfVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfSoundVariant => Ok(WolfSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfCollar => Ok(WolfCollarImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::FoxVariant => Ok(FoxVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SalmonSize => Ok(SalmonSizeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ParrotVariant => Ok(ParrotVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TropicalFishPattern => {
-            Ok(TropicalFishPatternImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::TropicalFishBaseColor => {
-            Ok(TropicalFishBaseColorImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::TropicalFishPatternColor => {
-            Ok(TropicalFishPatternColorImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::MooshroomVariant => Ok(MooshroomVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::RabbitVariant => Ok(RabbitVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PigVariant => Ok(PigVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PigSoundVariant => Ok(PigSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CowVariant => Ok(CowVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CowSoundVariant => Ok(CowSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChickenVariant => Ok(ChickenVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChickenSoundVariant => {
-            Ok(ChickenSoundVariantImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::ZombieNautilusVariant => {
-            Ok(ZombieNautilusVariantImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::FrogVariant => Ok(FrogVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::HorseVariant => Ok(HorseVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PaintingVariant => Ok(PaintingVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::LlamaVariant => Ok(LlamaVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AxolotlVariant => Ok(AxolotlVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatVariant => Ok(CatVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatSoundVariant => Ok(CatSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatCollar => Ok(CatCollarImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SheepColor => Ok(SheepColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ShulkerColor => Ok(ShulkerColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::InteractAnimation => Ok(InteractAnimationImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockTransformer => Ok(BlockTransformerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::VillagerFood => Ok(VillagerFoodImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MobVisibility => Ok(MobVisibilityImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesPotteryPattern => {
-            Ok(ProvidesPotteryPatternImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::SignTextFront => Ok(SignTextFrontImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SignTextBack => Ok(SignTextBackImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CushionColor => Ok(CushionColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Compostable => Ok(CompostableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CookingFuel => Ok(CookingFuelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BrewingFuel => Ok(BrewingFuelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Waxed => Ok(WaxedImpl::deserialize(seq)?.to_dyn()),
+        DataComponent::CustomData => boxed::<CustomDataImpl>(seq),
+        DataComponent::MaxStackSize => boxed::<MaxStackSizeImpl>(seq),
+        DataComponent::MaxDamage => boxed::<MaxDamageImpl>(seq),
+        DataComponent::Damage => boxed::<DamageImpl>(seq),
+        DataComponent::Unbreakable => boxed::<UnbreakableImpl>(seq),
+        DataComponent::UseEffects => boxed::<UseEffectsImpl>(seq),
+        DataComponent::CustomName => boxed::<CustomNameImpl>(seq),
+        DataComponent::MinimumAttackCharge => boxed::<MinimumAttackChargeImpl>(seq),
+        DataComponent::DamageType => boxed::<DamageTypeImpl>(seq),
+        DataComponent::ItemName => boxed::<ItemNameImpl>(seq),
+        DataComponent::ItemModel => boxed::<ItemModelImpl>(seq),
+        DataComponent::Lore => boxed::<LoreImpl>(seq),
+        DataComponent::Rarity => boxed::<RarityImpl>(seq),
+        DataComponent::Enchantments => boxed::<EnchantmentsImpl>(seq),
+        DataComponent::CanPlaceOn => boxed::<CanPlaceOnImpl>(seq),
+        DataComponent::CanBreak => boxed::<CanBreakImpl>(seq),
+        DataComponent::AttributeModifiers => boxed::<AttributeModifiersImpl>(seq),
+        DataComponent::CustomModelData => boxed::<CustomModelDataImpl>(seq),
+        DataComponent::TooltipDisplay => boxed::<TooltipDisplayImpl>(seq),
+        DataComponent::RepairCost => boxed::<RepairCostImpl>(seq),
+        DataComponent::CreativeSlotLock => boxed::<CreativeSlotLockImpl>(seq),
+        DataComponent::EnchantmentGlintOverride => boxed::<EnchantmentGlintOverrideImpl>(seq),
+        DataComponent::IntangibleProjectile => boxed::<IntangibleProjectileImpl>(seq),
+        DataComponent::Food => boxed::<FoodImpl>(seq),
+        DataComponent::Consumable => boxed::<ConsumableImpl>(seq),
+        DataComponent::UseRemainder => boxed::<UseRemainderImpl>(seq),
+        DataComponent::UseCooldown => boxed::<UseCooldownImpl>(seq),
+        DataComponent::DamageResistant => boxed::<DamageResistantImpl>(seq),
+        DataComponent::Tool => boxed::<ToolImpl>(seq),
+        DataComponent::Weapon => boxed::<WeaponImpl>(seq),
+        DataComponent::AttackRange => boxed::<AttackRangeImpl>(seq),
+        DataComponent::Enchantable => boxed::<EnchantableImpl>(seq),
+        DataComponent::Equippable => boxed::<EquippableImpl>(seq),
+        DataComponent::Repairable => boxed::<RepairableImpl>(seq),
+        DataComponent::Glider => boxed::<GliderImpl>(seq),
+        DataComponent::TooltipStyle => boxed::<TooltipStyleImpl>(seq),
+        DataComponent::DeathProtection => boxed::<DeathProtectionImpl>(seq),
+        DataComponent::BlocksAttacks => boxed::<BlocksAttacksImpl>(seq),
+        DataComponent::PiercingWeapon => boxed::<PiercingWeaponImpl>(seq),
+        DataComponent::KineticWeapon => boxed::<KineticWeaponImpl>(seq),
+        DataComponent::AttackAnimation => boxed::<SwingAnimationImpl>(seq),
+        DataComponent::AdditionalTradeCost => boxed::<AdditionalTradeCostImpl>(seq),
+        DataComponent::StoredEnchantments => boxed::<StoredEnchantmentsImpl>(seq),
+        DataComponent::Dye => boxed::<DyeImpl>(seq),
+        DataComponent::DyedColor => boxed::<DyedColorImpl>(seq),
+        DataComponent::MapId => boxed::<MapIdImpl>(seq),
+        DataComponent::MapDecorations => boxed::<MapDecorationsImpl>(seq),
+        DataComponent::MapPostProcessing => boxed::<MapPostProcessingImpl>(seq),
+        DataComponent::ChargedProjectiles => boxed::<ChargedProjectilesImpl>(seq),
+        DataComponent::BundleContents => boxed::<BundleContentsImpl>(seq),
+        DataComponent::PotionContents => boxed::<PotionContentsImpl>(seq),
+        DataComponent::PotionDurationScale => boxed::<PotionDurationScaleImpl>(seq),
+        DataComponent::SuspiciousStewEffects => boxed::<SuspiciousStewEffectsImpl>(seq),
+        DataComponent::WritableBookContent => boxed::<WritableBookContentImpl>(seq),
+        DataComponent::WrittenBookContent => boxed::<WrittenBookContentImpl>(seq),
+        DataComponent::Trim => boxed::<TrimImpl>(seq),
+        DataComponent::DebugStickState => boxed::<DebugStickStateImpl>(seq),
+        DataComponent::EntityData => boxed::<EntityDataImpl>(seq),
+        DataComponent::BucketEntityData => boxed::<BucketEntityDataImpl>(seq),
+        DataComponent::BlockEntityData => boxed::<BlockEntityDataImpl>(seq),
+        DataComponent::Instrument => boxed::<InstrumentImpl>(seq),
+        DataComponent::ProvidesTrimMaterial => boxed::<ProvidesTrimMaterialImpl>(seq),
+        DataComponent::OminousBottleAmplifier => boxed::<OminousBottleAmplifierImpl>(seq),
+        DataComponent::JukeboxPlayable => boxed::<JukeboxPlayableImpl>(seq),
+        DataComponent::ProvidesBannerPatterns => boxed::<ProvidesBannerPatternsImpl>(seq),
+        DataComponent::Recipes => boxed::<RecipesImpl>(seq),
+        DataComponent::LodestoneTracker => boxed::<LodestoneTrackerImpl>(seq),
+        DataComponent::FireworkExplosion => boxed::<FireworkExplosionImpl>(seq),
+        DataComponent::Fireworks => boxed::<FireworksImpl>(seq),
+        DataComponent::Profile => boxed::<ProfileImpl>(seq),
+        DataComponent::NoteBlockSound => boxed::<NoteBlockSoundImpl>(seq),
+        DataComponent::BannerPatterns => boxed::<BannerPatternsImpl>(seq),
+        DataComponent::BaseColor => boxed::<BaseColorImpl>(seq),
+        DataComponent::PotDecorations => boxed::<PotDecorationsImpl>(seq),
+        DataComponent::Container => boxed::<ContainerImpl>(seq),
+        DataComponent::BlockState => boxed::<BlockStateImpl>(seq),
+        DataComponent::Bees => boxed::<BeesImpl>(seq),
+        DataComponent::SulfurCubeContent => boxed::<SulfurCubeContentImpl>(seq),
+        DataComponent::Lock => boxed::<LockImpl>(seq),
+        DataComponent::ContainerLoot => boxed::<ContainerLootImpl>(seq),
+        DataComponent::BreakSound => boxed::<BreakSoundImpl>(seq),
+        DataComponent::VillagerVariant => boxed::<VillagerVariantImpl>(seq),
+        DataComponent::WolfVariant => boxed::<WolfVariantImpl>(seq),
+        DataComponent::WolfSoundVariant => boxed::<WolfSoundVariantImpl>(seq),
+        DataComponent::WolfCollar => boxed::<WolfCollarImpl>(seq),
+        DataComponent::FoxVariant => boxed::<FoxVariantImpl>(seq),
+        DataComponent::SalmonSize => boxed::<SalmonSizeImpl>(seq),
+        DataComponent::ParrotVariant => boxed::<ParrotVariantImpl>(seq),
+        DataComponent::TropicalFishPattern => boxed::<TropicalFishPatternImpl>(seq),
+        DataComponent::TropicalFishBaseColor => boxed::<TropicalFishBaseColorImpl>(seq),
+        DataComponent::TropicalFishPatternColor => boxed::<TropicalFishPatternColorImpl>(seq),
+        DataComponent::MooshroomVariant => boxed::<MooshroomVariantImpl>(seq),
+        DataComponent::RabbitVariant => boxed::<RabbitVariantImpl>(seq),
+        DataComponent::PigVariant => boxed::<PigVariantImpl>(seq),
+        DataComponent::PigSoundVariant => boxed::<PigSoundVariantImpl>(seq),
+        DataComponent::CowVariant => boxed::<CowVariantImpl>(seq),
+        DataComponent::CowSoundVariant => boxed::<CowSoundVariantImpl>(seq),
+        DataComponent::ChickenVariant => boxed::<ChickenVariantImpl>(seq),
+        DataComponent::ChickenSoundVariant => boxed::<ChickenSoundVariantImpl>(seq),
+        DataComponent::ZombieNautilusVariant => boxed::<ZombieNautilusVariantImpl>(seq),
+        DataComponent::FrogVariant => boxed::<FrogVariantImpl>(seq),
+        DataComponent::HorseVariant => boxed::<HorseVariantImpl>(seq),
+        DataComponent::PaintingVariant => boxed::<PaintingVariantImpl>(seq),
+        DataComponent::LlamaVariant => boxed::<LlamaVariantImpl>(seq),
+        DataComponent::AxolotlVariant => boxed::<AxolotlVariantImpl>(seq),
+        DataComponent::CatVariant => boxed::<CatVariantImpl>(seq),
+        DataComponent::CatSoundVariant => boxed::<CatSoundVariantImpl>(seq),
+        DataComponent::CatCollar => boxed::<CatCollarImpl>(seq),
+        DataComponent::SheepColor => boxed::<SheepColorImpl>(seq),
+        DataComponent::ShulkerColor => boxed::<ShulkerColorImpl>(seq),
+        DataComponent::InteractAnimation => boxed::<InteractAnimationImpl>(seq),
+        DataComponent::BlockTransformer => boxed::<BlockTransformerImpl>(seq),
+        DataComponent::VillagerFood => boxed::<VillagerFoodImpl>(seq),
+        DataComponent::MobVisibility => boxed::<MobVisibilityImpl>(seq),
+        DataComponent::ProvidesPotteryPattern => boxed::<ProvidesPotteryPatternImpl>(seq),
+        DataComponent::SignTextFront => boxed::<SignTextFrontImpl>(seq),
+        DataComponent::SignTextBack => boxed::<SignTextBackImpl>(seq),
+        DataComponent::CushionColor => boxed::<CushionColorImpl>(seq),
+        DataComponent::Compostable => boxed::<CompostableImpl>(seq),
+        DataComponent::CookingFuel => boxed::<CookingFuelImpl>(seq),
+        DataComponent::BrewingFuel => boxed::<BrewingFuelImpl>(seq),
+        DataComponent::Waxed => boxed::<WaxedImpl>(seq),
     }
+}
+/// Decodes one component into a box, in a frame of its own. A nested stack decodes through
+/// [`deserialize`] once per level, so its frame must not hold a value of every component type.
+#[inline(never)]
+fn boxed<T: DataComponentCodec<T> + DataComponentImpl>(
+    seq: &mut impl NetworkReadExt,
+) -> Result<Box<dyn DataComponentImpl>, ReadingError> {
+    Ok(T::deserialize(seq)?.to_dyn())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1262,7 +1234,9 @@ pub fn serialize(
         DataComponent::MapId => get::<MapIdImpl>(value).serialize(seq),
         DataComponent::MapDecorations => get::<MapDecorationsImpl>(value).serialize(seq),
         DataComponent::MapPostProcessing => get::<MapPostProcessingImpl>(value).serialize(seq),
-        DataComponent::ChargedProjectiles => get::<ChargedProjectilesImpl>(value).serialize(seq),
+        DataComponent::ChargedProjectiles => {
+            get::<ChargedProjectilesImpl>(value).serialize_for(seq, ids)
+        }
         DataComponent::BundleContents => get::<BundleContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionContents => get::<PotionContentsImpl>(value).serialize_for(seq, ids),
         DataComponent::PotionDurationScale => get::<PotionDurationScaleImpl>(value).serialize(seq),
@@ -1397,7 +1371,8 @@ fn deserialize_item_stack_template(
 ) -> Result<pumpkin_data::item_stack::ItemStack, ReadingError> {
     const MAX_COMPONENTS: i32 = 256;
 
-    let item_id = seq.get_var_int()?.0 as u16;
+    let _nesting = crate::codec::item_stack_seralizer::enter_item_nesting()?;
+    let item_id: u16 = read_id(seq)?;
     let item = pumpkin_data::item::Item::from_id(item_id)
         .ok_or_else(|| ReadingError::Message(format!("Unknown item ID: {item_id}")))?;
     if item == &pumpkin_data::item::Item::AIR {
@@ -1435,27 +1410,29 @@ fn deserialize_item_stack_template(
         ));
     }
 
-    let mut patch = Vec::with_capacity((num_to_add + num_to_remove) as usize);
+    let mut patch = DecodedPatch::default();
 
+    // `DataComponentPatch.STREAM_CODEC`: the values have no length prefix.
     for _ in 0..num_to_add {
         let id_val = seq.get_var_int()?.0;
-        let id = DataComponent::try_from_id(id_val as u8)
-            .ok_or_else(|| ReadingError::Message(format!("Unknown component ID: {id_val}")))?;
-
+        if let Some(entry) = custom_component_type(id_val) {
+            patch.put_custom(entry.id, read_custom_component(entry, seq)?);
+            continue;
+        }
+        let id = component_id(id_val)?;
         let component_impl = deserialize(id, seq)?;
-        patch.push((id, Some(component_impl)));
+        patch.put(id, Some(component_impl));
     }
 
     for _ in 0..num_to_remove {
         let id_val = seq.get_var_int()?.0;
-        let id = DataComponent::try_from_id(id_val as u8)
-            .ok_or_else(|| ReadingError::Message("Unknown component ID".into()))?;
-        patch.push((id, None));
+        match custom_component_type(id_val) {
+            Some(entry) => patch.remove_custom(entry.id),
+            None => patch.put(component_id(id_val)?, None),
+        }
     }
 
-    Ok(pumpkin_data::item_stack::ItemStack::new_with_component(
-        count, item, patch,
-    ))
+    Ok(patch.into_stack(count, item))
 }
 
 fn serialize_item_stack_template(
@@ -1466,18 +1443,9 @@ fn serialize_item_stack_template(
     seq.write_var_int(&VarInt::from(stack.item.to_java_network_id(ids)))?;
     seq.write_var_int(&VarInt::from(stack.item_count))?;
 
-    let mut to_add = 0u8;
-    let mut to_remove = 0u8;
-    for (_id, data) in &stack.patch {
-        if data.is_none() {
-            to_remove += 1;
-        } else {
-            to_add += 1;
-        }
-    }
-
-    seq.write_var_int(&VarInt::from(to_add))?;
-    seq.write_var_int(&VarInt::from(to_remove))?;
+    let (to_add, to_remove) = item_component_counts(stack, ids)?;
+    seq.write_var_int(&to_add)?;
+    seq.write_var_int(&to_remove)?;
 
     for (id, data) in &stack.patch {
         if let Some(data) = data {
@@ -1485,6 +1453,7 @@ fn serialize_item_stack_template(
             serialize(*id, data.as_ref(), seq, ids)?;
         }
     }
+    write_custom_components(stack, ids, false, seq)?;
 
     for (id, data) in &stack.patch {
         if data.is_none() {
@@ -1755,7 +1724,7 @@ impl DataComponentCodec<Self> for DamageTypeImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let id = seq.get_var_int()?.0 as u8;
+        let id: u8 = read_id(seq)?;
         let damage_type = pumpkin_data::damage::DamageType::from_id(id)
             .ok_or_else(|| ReadingError::Message(format!("Invalid DamageType id {id}")))?;
         Ok(Self { damage_type })
@@ -1797,6 +1766,9 @@ fn deserialize_adventure_predicate(seq: &mut impl NetworkReadExt) -> Result<NbtT
     let count = seq.get_var_int()?.0.max(0) as usize;
     let mut preds = Vec::with_capacity(count.min(64));
     for _ in 0..count {
+        // The exact components of a predicate can hold another predicate, so each predicate is
+        // one level of the item stack nesting limit.
+        let _nesting = crate::codec::item_stack_seralizer::enter_item_nesting()?;
         let mut comp = pumpkin_nbt::compound::NbtCompound::new();
         let has_blocks = seq.get_bool()?;
         if has_blocks {
@@ -1827,7 +1799,7 @@ fn deserialize_adventure_predicate(seq: &mut impl NetworkReadExt) -> Result<NbtT
         }
         let exact_len = seq.get_var_int()?.0;
         for _ in 0..exact_len {
-            let comp_id = seq.get_var_int()?.0 as u8;
+            let comp_id: u8 = read_id(seq)?;
             if let Some(comp) = DataComponent::try_from_id(comp_id) {
                 let _ = deserialize(comp, seq)?;
             }
@@ -1912,7 +1884,9 @@ impl DataComponentCodec<Self> for AttributeModifiersImpl {
                 }
                 pumpkin_data::data_component_impl::ModifierDisplay::Override(text) => {
                     seq.write_var_int(&VarInt(2))?;
-                    seq.write_slice(&text.encode_for_version(&JavaMinecraftVersion::V_26_3))?;
+                    seq.write_slice(&text.encode_for_version(
+                        &pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION,
+                    ))?;
                 }
             }
         }
@@ -2642,14 +2616,22 @@ impl DataComponentCodec<Self> for MapPostProcessingImpl {
 
 impl DataComponentCodec<Self> for ChargedProjectilesImpl {
     fn serialize(&self, seq: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt::from(self.projectiles.len() as i32))?;
-        for _ in &self.projectiles {
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
-            seq.write_var_int(&VarInt(0))?;
-        }
-        Ok(())
+        self.serialize_for(seq, ContentIds::Display)
+    }
+    /// `ChargedProjectiles.STREAM_CODEC`: a list of templates. A saved projectile that does not
+    /// load as a stack is left out, because the client rejects an empty template.
+    fn serialize_for(
+        &self,
+        seq: &mut impl NetworkWriteExt,
+        ids: ContentIds,
+    ) -> Result<(), WritingError> {
+        self.with_stacks(|stacks| {
+            seq.write_var_int(&VarInt(stacks.len() as i32))?;
+            for stack in stacks {
+                serialize_item_stack_template(stack, seq, ids)?;
+            }
+            Ok(())
+        })
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
@@ -2657,8 +2639,10 @@ impl DataComponentCodec<Self> for ChargedProjectilesImpl {
         let len = read_count(seq, MAX_PROJECTILES)?;
         let mut projectiles = Vec::with_capacity(len);
         for _ in 0..len {
-            let _ = deserialize_item_stack_template(seq)?;
-            projectiles.push(pumpkin_nbt::compound::NbtCompound::new());
+            let stack = deserialize_item_stack_template(seq)?;
+            if let NbtTag::Compound(projectile) = stack.write_item_stack_template() {
+                projectiles.push(projectile);
+            }
         }
         Ok(Self { projectiles })
     }
@@ -2709,7 +2693,10 @@ impl DataComponentCodec<Self> for WrittenBookContentImpl {
         seq.write_var_int(&VarInt(self.generation))?;
         seq.write_var_int(&VarInt::from(self.pages.len() as i32))?;
         for page in &self.pages {
-            seq.write_slice(&page.encode_for_version(&JavaMinecraftVersion::V_26_3))?;
+            seq.write_slice(
+                &page
+                    .encode_for_version(&pumpkin_data::data_component_impl::hash_ops::TEXT_VERSION),
+            )?;
             seq.write_bool(false)?;
         }
         seq.write_bool(self.resolved)
@@ -3220,7 +3207,7 @@ impl DataComponentCodec<Self> for BannerPatternsImpl {
         let mut layers = Vec::with_capacity(len.min(MAX_INITIAL_COLLECTION_SIZE));
         for _ in 0..len {
             let _pattern = seq.get_var_int()?.0;
-            let color_id = seq.get_var_int()?.0 as u8;
+            let color_id: u8 = read_id(seq)?;
             let color = pumpkin_data::dye_color::DyeColor::by_id(color_id).unwrap_or_default();
             layers.push(pumpkin_data::data_component_impl::BannerPatternLayer {
                 pattern: String::new(),
@@ -3239,7 +3226,7 @@ impl DataComponentCodec<Self> for BaseColorImpl {
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {
-        let id = seq.get_var_int()?.0 as u8;
+        let id: u8 = read_id(seq)?;
         let color = pumpkin_data::dye_color::DyeColor::by_id(id)
             .map_or("white", |c| c.name())
             .to_string();
@@ -3296,10 +3283,20 @@ impl DataComponentCodec<Self> for ContainerImpl {
         seq: &mut impl NetworkWriteExt,
         ids: ContentIds,
     ) -> Result<(), WritingError> {
-        seq.write_var_int(&VarInt::from(self.items.len() as i32))?;
-        for (_slot, stack) in &self.items {
-            seq.write_bool(true)?;
-            serialize_item_stack_template(stack, seq, ids)?;
+        // `ItemContainerContents.STREAM_CODEC`: one optional template per slot, up to the last
+        // filled slot.
+        let filled = self.filled_slots();
+        let slots = filled.last().map_or(0, |(slot, _)| usize::from(*slot) + 1);
+        seq.write_var_int(&VarInt(slots as i32))?;
+        let mut filled = filled.into_iter().peekable();
+        for slot in 0..slots {
+            match filled.next_if(|(index, _)| usize::from(*index) == slot) {
+                Some((_, stack)) => {
+                    seq.write_bool(true)?;
+                    serialize_item_stack_template(stack, seq, ids)?;
+                }
+                None => seq.write_bool(false)?,
+            }
         }
         Ok(())
     }

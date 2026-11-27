@@ -373,6 +373,10 @@ impl WasmPluginEventHandler {
 }
 
 impl<E: Payload + ToFromWasmEvent + Clone + 'static> EventHandler<E> for WasmPluginEventHandler {
+    fn is_wasm_plugin(&self) -> bool {
+        true
+    }
+
     fn handle<'a>(&'a self, server: &'a Arc<Server>, event: &'a E) -> BoxFuture<'a, ()> {
         Box::pin(async {
             let pending = Box::new(NotifiedEvent(event.clone()));

@@ -348,8 +348,9 @@ impl HostInventoryWithStore<PluginHostState> for HasSelf<PluginHostState> {
 
         let provider = accessor.get_res(&res)?;
         match provider {
+            // A jukebox fires the game event of the record here.
             InventoryProvider::Generic(inv) => {
-                inv.set_stack(slot as usize, stack);
+                crate::run_blocking(accessor, move || inv.set_stack(slot as usize, stack)).await?;
             }
             InventoryProvider::PlayerMain(player) => {
                 if slot < 36 {
@@ -375,8 +376,10 @@ impl HostInventoryWithStore<PluginHostState> for HasSelf<PluginHostState> {
     ) -> wasmtime::Result<Option<Resource<WitHostItemStack>>> {
         let provider = accessor.get_res(&res)?;
         let old_stack = match provider {
+            // A jukebox fires the game event of the stop here.
             InventoryProvider::Generic(inv) => {
-                let s = inv.remove_stack(slot as usize);
+                let s =
+                    crate::run_blocking(accessor, move || inv.remove_stack(slot as usize)).await?;
                 if s.is_empty() { None } else { Some(s) }
             }
             InventoryProvider::PlayerMain(player) => {
@@ -422,8 +425,9 @@ impl HostInventoryWithStore<PluginHostState> for HasSelf<PluginHostState> {
     ) -> wasmtime::Result<()> {
         let provider = accessor.get_res(&res)?;
         match provider {
+            // A jukebox fires the game event of the stop here.
             InventoryProvider::Generic(inv) => {
-                inv.clear();
+                crate::run_blocking(accessor, move || inv.clear()).await?;
             }
             InventoryProvider::PlayerMain(player) => {
                 for slot in 0..36 {

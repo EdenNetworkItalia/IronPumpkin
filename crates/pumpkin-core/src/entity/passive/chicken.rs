@@ -388,10 +388,11 @@ impl Mob for ChickenEntity {
                     1.0,
                     (rng.random::<f32>() - rng.random::<f32>()).mul_add(0.2, 1.0),
                 );
-                entity
-                    .world
-                    .load()
-                    .emit_game_event(GameEvent::EntityPlace.name(), entity.pos.load());
+                entity.world.load().emit_game_event_by(
+                    GameEvent::EntityPlace.name(),
+                    entity.pos.load(),
+                    entity,
+                );
             }
             self.egg_lay_time
                 .store(rng.random_range(EGG_LAY_TIME), Ordering::Relaxed);

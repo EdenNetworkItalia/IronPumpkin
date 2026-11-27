@@ -339,6 +339,7 @@ fn try_place_powder_snow(
     world: &Arc<World>,
     pos: BlockPos,
     direction: BlockDirection,
+    player: Option<&Player>,
 ) -> Option<BlockPos> {
     let state = world.get_block_state(&pos);
     let target_pos = if state.replaceable() {
@@ -363,7 +364,11 @@ fn try_place_powder_snow(
         SoundCategory::Blocks,
         &target_pos.to_f64(),
     );
-    world.emit_game_event(GameEvent::FluidPlace.name(), target_pos.to_f64());
+    world.emit_game_event_by(
+        GameEvent::FluidPlace.name(),
+        target_pos.to_centered_f64(),
+        player.map(|player| &player.living_entity.entity),
+    );
     Some(target_pos)
 }
 
@@ -373,12 +378,13 @@ fn try_place_liquid(
     pos: BlockPos,
     direction: BlockDirection,
     is_sneaking: bool,
+    player: Option<&Player>,
 ) -> Option<BlockPos> {
     if item.id == Item::SULFUR_CUBE_BUCKET.id {
         return Some(pos.offset(direction.to_offset()));
     }
     if item.id == Item::POWDER_SNOW_BUCKET.id {
-        return try_place_powder_snow(world, pos, direction);
+        return try_place_powder_snow(world, pos, direction, player);
     }
 
     let (block, state) = world.get_block_and_state(&pos);
@@ -486,7 +492,11 @@ fn finish_empty_filled_bucket(
         };
 
         world.play_sound(get_empty_sound(item), sound_category, &place_pos.to_f64());
-        world.emit_game_event(GameEvent::FluidPlace.name(), place_pos.to_f64());
+        world.emit_game_event_by(
+            GameEvent::FluidPlace.name(),
+            place_pos.to_centered_f64(),
+            player.map(|player| &player.living_entity.entity),
+        );
     } else if get_mob_for_bucket(item).is_some() && should_evaporate_in_nether(item, world) {
         world.play_sound(
             get_empty_sound(item),
@@ -523,7 +533,11 @@ fn finish_empty_filled_bucket(
             apply_mob_bucket_components(bucket_stack, mob.as_ref(), player);
             world.spawn_entity(mob);
         }
-        world.emit_game_event(GameEvent::EntityPlace.name(), place_pos.to_f64());
+        world.emit_game_event_by(
+            GameEvent::EntityPlace.name(),
+            place_pos.to_centered_f64(),
+            player.map(|player| &player.living_entity.entity),
+        );
     }
 }
 
@@ -533,9 +547,14 @@ pub(crate) fn dispense_filled_bucket_at(
     direction: BlockDirection,
     bucket_stack: &ItemStack,
 ) -> bool {
-    let Some(place_pos) =
-        try_place_liquid(world, bucket_stack.item, dispenser_pos, direction, false)
-    else {
+    let Some(place_pos) = try_place_liquid(
+        world,
+        bucket_stack.item,
+        dispenser_pos,
+        direction,
+        false,
+        None,
+    ) else {
         return false;
     };
     finish_empty_filled_bucket(world, bucket_stack, place_pos, None);
@@ -662,7 +681,9 @@ impl ItemBehaviour for FilledBucketItem {
         let direction = hit.direction;
         let is_sneaking = player.get_entity().is_sneaking();
 
-        let Some(place_pos) = try_place_liquid(&world, item, pos, direction, is_sneaking) else {
+        let Some(place_pos) =
+            try_place_liquid(&world, item, pos, direction, is_sneaking, Some(player))
+        else {
             return;
         };
 

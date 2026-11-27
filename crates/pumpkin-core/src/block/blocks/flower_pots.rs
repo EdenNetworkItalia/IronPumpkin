@@ -41,9 +41,10 @@ impl BlockBehaviour for FlowerPotBlock {
             Block::from_id(potted_block_id).default_state.id,
             BlockFlags::NOTIFY_ALL,
         );
-        args.world.emit_game_event(
+        args.world.emit_game_event_by(
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
         );
         args.player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Custom,
@@ -74,9 +75,10 @@ impl BlockBehaviour for FlowerPotBlock {
             Block::FLOWER_POT.default_state.id,
             BlockFlags::NOTIFY_ALL,
         );
-        args.world.emit_game_event(
+        args.world.emit_game_event_by(
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
         );
         BlockActionResult::Success
     }

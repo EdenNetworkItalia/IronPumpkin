@@ -36,6 +36,8 @@ impl<'a> ServerPacket<'a> for SClickSlot {
         mut bytebuf: &mut &'a [u8],
         version: &JavaMinecraftVersion,
     ) -> Result<Self, ReadingError> {
+        // `ServerboundContainerClickPacket.MAX_SLOT_COUNT`.
+        const MAX_CHANGED_SLOTS: i32 = 128;
         let sync_id = bytebuf.get_container_id(version)?;
         let revision = if version >= &JavaMinecraftVersion::V_1_17_1 {
             bytebuf.get_var_int()?
@@ -47,7 +49,7 @@ impl<'a> ServerPacket<'a> for SClickSlot {
         let mode = SlotActionType::read(&mut bytebuf)?;
 
         let length_of_array = bytebuf.get_var_int()?;
-        if length_of_array.0 < 0 || length_of_array.0 > 256 {
+        if length_of_array.0 < 0 || length_of_array.0 > MAX_CHANGED_SLOTS {
             return Err(ReadingError::Message(
                 "Changed slots length out of bounds".into(),
             ));
@@ -163,5 +165,38 @@ impl TryFrom<i32> for SlotActionType {
             6 => Ok(Self::PickupAll),
             _ => Err(InvalidSlotActionType),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ser::NetworkWriteExt;
+
+    /// A pickup click on slot 0 with `changed` changed slots, each without a stack, and no
+    /// carried stack.
+    fn click(changed: i16) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for value in [0, 0] {
+            bytes.write_var_int(&VarInt(value)).unwrap();
+        }
+        bytes.extend([0, 0, 0]);
+        bytes.write_var_int(&VarInt(0)).unwrap();
+        bytes.write_var_int(&VarInt(i32::from(changed))).unwrap();
+        for slot in 0..changed {
+            bytes.extend(slot.to_be_bytes());
+            bytes.push(0);
+        }
+        bytes.push(0);
+        bytes
+    }
+
+    /// `ServerboundContainerClickPacket.MAX_SLOT_COUNT` is 128.
+    #[test]
+    fn click_packets_carry_at_most_128_changed_slots() {
+        let version = JavaMinecraftVersion::V_26_3;
+        let packet = SClickSlot::read(&mut click(128).as_slice(), &version).unwrap();
+        assert_eq!(packet.array_of_changed_slots.len(), 128);
+        assert!(SClickSlot::read(&mut click(129).as_slice(), &version).is_err());
     }
 }

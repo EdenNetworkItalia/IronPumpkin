@@ -396,10 +396,11 @@ crate::impl_abstract_horse!(
                 self.play_varied_sound(sound);
             }
             let entity = self.get_entity();
-            entity
-                .world
-                .load()
-                .emit_game_event(GameEvent::Eat.name(), entity.pos.load());
+            entity.world.load().emit_game_event_by(
+                GameEvent::Eat.name(),
+                entity.pos.load(),
+                entity,
+            );
             true
         }
     },

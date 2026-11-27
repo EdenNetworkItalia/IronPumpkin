@@ -71,9 +71,7 @@ fn shear_with_player(
     world.emit_game_event_with_context(
         GameEvent::Shear.name(),
         pos,
-        &GameEventContext {
-            source_entity: Some(player.as_ref()),
-        },
+        &GameEventContext::of_entity(Some(player.as_ref())),
     );
     // Without a hand, the interact handler writes `tool` back to the hand and counts the break.
     match hand {

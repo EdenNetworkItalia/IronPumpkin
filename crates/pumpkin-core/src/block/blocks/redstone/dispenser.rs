@@ -275,9 +275,10 @@ impl BlockBehaviour for DispenserBlock {
             } else {
                 args.world
                     .sync_world_event(WorldEvent::SoundDispenserFail, *args.position, 0);
-                args.world.emit_game_event(
+                args.world.emit_game_event_with_context(
                     GameEvent::BlockActivate.name(),
                     args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_state(state.id),
                 );
             }
         }
@@ -964,7 +965,7 @@ impl DispenserBlock {
         let front = Self::target_position(ctx);
         let front_block = ctx.world.get_block(&front);
 
-        if try_wax_block(ctx.world, front, front_block) {
+        if try_wax_block(ctx.world, front, front_block, None) {
             item.decrement(1);
             ctx.world
                 .sync_world_event(WorldEvent::ParticlesWaxOn, front, 0);
@@ -1367,7 +1368,8 @@ impl DispenserBlock {
 
             living.send_equipment_changes(&[(slot.clone(), stack)]);
             let pos = entity.get_entity().pos.load();
-            ctx.world.emit_game_event(GameEvent::Equip.name(), pos);
+            ctx.world
+                .emit_game_event_by(GameEvent::Equip.name(), pos, entity.get_entity());
             if let Some(mob) = entity.get_mob() {
                 let mob_entity = mob.get_mob_entity();
                 mob_entity.set_guaranteed_drop(slot);
