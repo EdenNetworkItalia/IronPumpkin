@@ -161,7 +161,8 @@ mod review_tests {
         assert_eq!(relative, ["data/x.json"]);
     }
 
-    #[cfg(unix)]
+    // APFS refuses a file name that is not UTF-8, so macOS cannot create the fixture.
+    #[cfg(all(unix, not(target_os = "macos")))]
     #[test]
     fn r_a_non_utf8_file_name_is_an_error() {
         let dir = scratch("non_utf8");
