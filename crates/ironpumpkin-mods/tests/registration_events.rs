@@ -9,11 +9,10 @@
     reason = "a test fails on the first missing value"
 )]
 
-#[path = "../../pumpkin-core/tests/support/mod.rs"]
-mod support;
+use ironpumpkin_test_support as support;
 
 use std::{
-    sync::{Arc, Mutex, PoisonError},
+    sync::{Arc, Mutex, PoisonError, atomic::Ordering},
     time::{Duration, Instant},
 };
 
@@ -25,11 +24,17 @@ use ironpumpkin_mods::{
         living::LivingEntity,
         r#type::{check_spawn_rules, from_type},
     },
+    entity_attributes::AttributeBuilder,
     math::{position::BlockPos, vector3::Vector3},
     pumpkin_core::{
         block::PathComputationType,
+        block::entities::barrel::BarrelBlockEntity,
+        content::attributes::default_attributes,
         content::poi::profession_for_block,
         content::spawn_placements::spawn_restriction,
+        entity::ai::brain::{
+            behavior::job_site::acquire_poi::SCAN_RANGE, memory::types as memory_types,
+        },
         plugin::{level::EntitySpawnReason, startup::STARTUP_HOOK},
     },
     pumpkin_data::{
@@ -47,6 +52,7 @@ use ironpumpkin_mods::{
         villager::VillagerProfession,
     },
     pumpkin_util::{Hand, HeightMap},
+    pumpkin_world::poi::Occupancy,
     pumpkin_world::world::BlockFlags,
     register_mod,
     registration::{
@@ -59,6 +65,7 @@ use ironpumpkin_mods::{
 use pumpkin_protocol::{codec::var_int::VarInt, java::server::play::SUseItemOn};
 
 const GOLEM: &str = "regmod:golem";
+const MANA: &str = "regmod:mana";
 const STAIRS: &str = "regmod:tin_stairs";
 const OWN_STAIRS: &str = "regmod:own_stairs";
 const CRATE: &str = "regmod:crate";
@@ -114,6 +121,8 @@ impl NativeMod for RegistrationMod {
 
     fn init(&self, cx: &mut ModInit) {
         log("init");
+        cx.register_attribute(AttributeBuilder::ranged(MANA, 20.0, 0.0, 1000.0))
+            .unwrap();
         cx.register_entity_type(EntityTypeBuilder::new(GOLEM, &EntityType::ZOMBIE), living)
             .unwrap();
         // Scenario "Stair block": no properties and no behaviour, only the block type.
@@ -166,7 +175,10 @@ impl NativeMod for RegistrationMod {
         event
             .put(
                 GOLEM,
-                AttributeSupplier::of(&EntityType::ZOMBIE).add(Attributes::MAX_HEALTH, 40.0),
+                // A mod attribute goes in by name: it has no id before the freeze.
+                AttributeSupplier::of(&EntityType::ZOMBIE)
+                    .add(Attributes::MAX_HEALTH, 40.0)
+                    .add(MANA, 30.0),
             )
             .unwrap();
     }
@@ -176,7 +188,10 @@ impl NativeMod for RegistrationMod {
         event
             .add("minecraft:zombie", Attributes::ARMOR, 5.0)
             .unwrap();
+        event.add("minecraft:zombie", MANA, 7.0).unwrap();
         assert!(event.has("minecraft:zombie", &Attributes::ARMOR));
+        assert!(event.has("minecraft:zombie", MANA));
+        assert!(event.has(GOLEM, MANA));
         assert!(event.has(GOLEM, &Attributes::MAX_HEALTH));
     }
 
@@ -281,7 +296,13 @@ fn a_mod_reads_its_entries_in_common_setup() {
             .collect::<Vec<_>>(),
         [BUCKET]
     );
-    assert!(registry::mod_entries("regmod", ContentKind::Attribute).is_empty());
+    assert_eq!(
+        registry::mod_entries("regmod", ContentKind::Attribute)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        [MANA]
+    );
     assert!(registry::mod_entries("unknown", ContentKind::Block).is_empty());
 }
 
@@ -309,6 +330,44 @@ fn a_spawned_mod_entity_has_the_attributes_of_the_creation_event() {
             .find(|(attribute, _)| *attribute == Attributes::SPAWN_REINFORCEMENTS)
             .unwrap()
             .1
+    );
+}
+
+/// A mod attribute named in the creation and the modification event binds at the freeze, and the
+/// default changes for every entity of the type.
+#[test]
+fn a_mod_attribute_named_in_a_registration_event_is_a_default_of_every_entity_of_the_type() {
+    boot();
+    let world = support::world();
+    let mana = Attributes::from_name(MANA).unwrap();
+    let golem = EntityType::from_name(GOLEM).unwrap();
+    for _ in 0..2 {
+        let entity = from_type(
+            golem,
+            Vector3::new(0.0, 100.0, 0.0),
+            &world,
+            uuid::Uuid::new_v4(),
+        );
+        assert_eq!(
+            entity.get_living_entity().unwrap().get_attribute_base(mana),
+            30.0
+        );
+        let zombie = from_type(
+            &EntityType::ZOMBIE,
+            Vector3::new(0.0, 100.0, 0.0),
+            &world,
+            uuid::Uuid::new_v4(),
+        );
+        assert_eq!(
+            zombie.get_living_entity().unwrap().get_attribute_base(mana),
+            7.0
+        );
+    }
+    // An entity type that no event names does not get the attribute.
+    assert!(
+        default_attributes(&EntityType::SKELETON)
+            .iter()
+            .all(|(attribute, _)| attribute.id != mana.id)
     );
 }
 
@@ -393,6 +452,108 @@ fn a_block_entity_type_accepts_the_mod_block() {
     world.set_block_state(&pos, crate_block.default_state.id, BlockFlags::NOTIFY_ALL);
     let entity = world.get_block_entity(&pos).unwrap();
     assert_eq!(entity.resource_location(), "minecraft:barrel");
+}
+
+/// The block entity of a mod block that names a vanilla type goes with the block: it is removed
+/// on break, and its saved NBT loads again with its contents.
+#[test]
+fn a_mod_block_entity_is_removed_on_break_and_survives_a_save_and_load() {
+    boot();
+    let crate_block = block(CRATE);
+    let pos = BlockPos::new(1607, 200, 10);
+    load_chunk(pos);
+    let world = support::world();
+    world.set_block_state(&pos, crate_block.default_state.id, BlockFlags::NOTIFY_ALL);
+    let entity = world.get_block_entity(&pos).unwrap();
+    let barrel = entity.as_any().downcast_ref::<BarrelBlockEntity>().unwrap();
+    barrel.items.write().unwrap()[3] = ItemStack::new(5, &Item::DIAMOND);
+    let saved = world.get_block_entity_nbt(&pos).unwrap();
+    assert_eq!(saved.get_string("id"), Some("minecraft:barrel"));
+
+    // A break removes the block entity.
+    world.set_block_state(&pos, Block::AIR.default_state.id, BlockFlags::NOTIFY_ALL);
+    assert!(world.get_block_entity(&pos).is_none());
+    assert!(world.get_block_entity_nbt(&pos).is_none());
+
+    // The block placed again has an empty barrel; the saved NBT loads in its place.
+    world.set_block_state(&pos, crate_block.default_state.id, BlockFlags::NOTIFY_ALL);
+    world.remove_block_entity(&pos);
+    world.add_block_entity_nbt(pos, &saved);
+    let loaded = world.get_block_entity(&pos).unwrap();
+    assert_eq!(loaded.resource_location(), "minecraft:barrel");
+    let barrel = loaded.as_any().downcast_ref::<BarrelBlockEntity>().unwrap();
+    let items = barrel.items.read().unwrap();
+    assert_eq!(items[3].item.id, Item::DIAMOND.id);
+    assert_eq!(items[3].item_count, 5);
+}
+
+/// A villager takes the job site POI of a mod block as one of the vanilla block: its brain runs
+/// `AcquirePoi` until it paths to the desk and claims it, and no other villager finds it then.
+#[test]
+fn a_villager_acquires_the_mod_poi() {
+    boot();
+    let desk = block(DESK);
+    let world = support::world();
+    // A floor of stone, so the villager walks to the desk.
+    let (x0, y, z0) = (1620, 200, 20);
+    load_chunk(BlockPos::new(x0, y, z0));
+    for x in x0 - 1..=x0 + 6 {
+        for z in z0 - 1..=z0 + 4 {
+            world.set_block_state(
+                &BlockPos::new(x, y - 1, z),
+                Block::STONE.default_state.id,
+                BlockFlags::empty(),
+            );
+            for dy in 0..3 {
+                world.set_block_state(
+                    &BlockPos::new(x, y + dy, z),
+                    Block::AIR.default_state.id,
+                    BlockFlags::empty(),
+                );
+            }
+        }
+    }
+    let desk_pos = BlockPos::new(x0 + 4, y, z0 + 1);
+    world.set_block_state(&desk_pos, desk.default_state.id, BlockFlags::NOTIFY_ALL);
+    let free_desks = || {
+        world
+            .portal_poi
+            .lock()
+            .unwrap()
+            .find_all_closest_first_with_type(
+                &|poi| poi == PoiType::Librarian,
+                &|_| true,
+                desk_pos,
+                SCAN_RANGE,
+                Occupancy::HasSpace,
+            )
+    };
+    assert_eq!(free_desks(), [(PoiType::Librarian, desk_pos)]);
+
+    let villager = from_type(
+        &EntityType::VILLAGER,
+        Vector3::new(f64::from(x0) + 0.5, f64::from(y), f64::from(z0) + 1.5),
+        &world,
+        uuid::Uuid::new_v4(),
+    );
+    // A walking mob paths only from the ground, and a mob that no tick settled is not on it yet.
+    villager
+        .get_entity()
+        .on_ground
+        .store(true, Ordering::Relaxed);
+    let mob = villager.get_mob().unwrap();
+    let mob_entity = mob.get_mob_entity();
+    let potential_job_site = memory_types::POTENTIAL_JOB_SITE.id();
+    // `AcquirePoi` first waits up to 20 ticks, then scans every 20 to 39 ticks.
+    for time in 1..=100 {
+        mob_entity.with_brain(mob, |brain| brain.tick(&world, mob, time));
+        if mob_entity.brain_has_memory_value(potential_job_site) {
+            break;
+        }
+    }
+    assert!(mob_entity.brain_has_memory_value(potential_job_site));
+    // The claim took the only ticket of the desk.
+    assert!(free_desks().is_empty());
 }
 
 #[test]

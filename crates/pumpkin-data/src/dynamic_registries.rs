@@ -16,7 +16,9 @@
 //! by name, so every client can play it.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::fmt;
+use std::io::Read;
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use pumpkin_nbt::tag::NbtTag;
 
@@ -142,6 +144,23 @@ pub struct AttributeDefinition {
     pub syncable: bool,
 }
 
+/// The stream codec of a data component type whose Java half has its own
+/// `StreamCodec` (`DataComponentType.Builder#networkSynchronized`). The network carries the bytes
+/// of that codec, not the NBT form of the value. Item stacks keep the NBT form either way.
+#[derive(Clone)]
+pub struct RawStreamCodec {
+    /// The network bytes of a value in NBT form.
+    pub encode: Arc<dyn Fn(&NbtTag) -> Result<Vec<u8>, String> + Send + Sync>,
+    /// A value in NBT form, read from the network bytes. It reads the value and no more.
+    pub decode: Arc<dyn Fn(&mut dyn Read) -> Result<NbtTag, String> + Send + Sync>,
+}
+
+impl fmt::Debug for RawStreamCodec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("RawStreamCodec")
+    }
+}
+
 /// A data component type of a mod. The value codec lives in `ironpumpkin-mods`: item stacks hold
 /// the value in its NBT form.
 #[derive(Debug, Clone)]
@@ -152,6 +171,9 @@ pub struct DataComponentTypeDefinition {
     pub persistent: bool,
     /// Whether a value in NBT form decodes through the codec of the type.
     pub validate: fn(&NbtTag) -> bool,
+    /// The network bytes of the type, or `None` for the NBT form of the codec, as
+    /// `ByteBufCodecs.fromCodecWithRegistries` writes it.
+    pub raw: Option<RawStreamCodec>,
 }
 
 /// A frozen data component type of a mod.
@@ -161,6 +183,7 @@ pub struct DataComponentTypeEntry {
     pub name: &'static str,
     pub persistent: bool,
     pub validate: fn(&NbtTag) -> bool,
+    pub raw: Option<RawStreamCodec>,
 }
 
 #[cfg(feature = "attributes")]
@@ -266,6 +289,7 @@ impl Pending {
                     name: leak(definition.name),
                     persistent: definition.persistent,
                     validate: definition.validate,
+                    raw: definition.raw,
                 },
             ));
         #[cfg(feature = "attributes")]

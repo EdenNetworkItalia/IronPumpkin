@@ -2043,6 +2043,7 @@ dependencies = [
  "futures",
  "indexmap",
  "inventory",
+ "ironpumpkin-test-support",
  "pumpkin-codecs",
  "pumpkin-config",
  "pumpkin-core",
@@ -2080,6 +2081,18 @@ dependencies = [
  "pumpkin-protocol",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "ironpumpkin-test-support"
+version = "0.2.2+26.3-26.63"
+dependencies = [
+ "arc-swap",
+ "pumpkin-config",
+ "pumpkin-core",
+ "pumpkin-util",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3134,6 +3147,7 @@ dependencies = [
  "hex",
  "hmac 0.13.0",
  "indexmap",
+ "ironpumpkin-test-support",
  "libc",
  "libloading",
  "notify",
@@ -3470,9 +3484,9 @@ dependencies = [
 name = "pumpkin-wasm-host-v0_2"
 version = "0.2.2+26.3-26.63"
 dependencies = [
- "arc-swap",
  "bytes",
  "criterion",
+ "ironpumpkin-test-support",
  "pumpkin-config",
  "pumpkin-core",
  "pumpkin-data",

@@ -29,6 +29,7 @@ members = [
     "crates/pumpkin-world",
     "crates/ironpumpkin-mods",
     "crates/ironpumpkin-test-mod",
+    "crates/ironpumpkin-test-support",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-tester",
@@ -64,6 +65,7 @@ default-members = [
     "crates/pumpkin-world",
     "crates/ironpumpkin-mods",
     "crates/ironpumpkin-test-mod",
+    "crates/ironpumpkin-test-support",
     "tools/pumpkin-codegen",
     "tools/pumpkin-fuzzer",
     "tools/pumpkin-tester",
@@ -270,6 +272,7 @@ pumpkin-wasm-host-v0_1 = { path = "crates/pumpkin-wasm-host-v0_1", default-featu
 pumpkin-wasm-host-v0_2 = { path = "crates/pumpkin-wasm-host-v0_2", default-features = false }
 pumpkin-world = { path = "crates/pumpkin-world", default-features = false }
 ironpumpkin-mods = { path = "crates/ironpumpkin-mods", default-features = false }
+ironpumpkin-test-support = { path = "crates/ironpumpkin-test-support", default-features = false }
 inventory = { version = "0.3.25", default-features = false }
 quote = { version = "1.0", default-features = false, features = ["proc-macro"] }
 rand = { version = "0.10.3", default-features = false, features = ["std", "std_rng", "thread_rng"] }

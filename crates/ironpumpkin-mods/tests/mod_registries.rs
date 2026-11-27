@@ -2,15 +2,14 @@
 //! server (`openspec/changes/neoforge-shaped-plugin-api`, spec `neoforge-registration`,
 //! requirements "Data components, sound events, mob effects and attributes" and "Access to mod
 //! components, effects and attributes"). The server runs `init_mods` as its startup hook and
-//! freezes the registries once per process, so this file is its own test binary. It shares the
-//! server support of the `pumpkin-core` tests.
+//! freezes the registries once per process, so this file is its own test binary. It uses the
+//! `ironpumpkin-test-support` server.
 #![expect(
     clippy::unwrap_used,
     reason = "a test fails on the first missing value"
 )]
 
-#[path = "../../pumpkin-core/tests/support/mod.rs"]
-mod support;
+use ironpumpkin_test_support as support;
 
 use std::{
     io::Cursor,

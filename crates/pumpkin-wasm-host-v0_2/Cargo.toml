@@ -31,8 +31,8 @@ uuid.workspace = true
 wasmtime = { workspace = true }
 
 [dev-dependencies]
-arc-swap.workspace = true
 criterion.workspace = true
+ironpumpkin-test-support.workspace = true
 
 [[bench]]
 name = "tick_events"

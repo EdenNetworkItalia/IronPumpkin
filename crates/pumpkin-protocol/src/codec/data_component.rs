@@ -1416,7 +1416,7 @@ fn deserialize_item_stack_template(
     for _ in 0..num_to_add {
         let id_val = seq.get_var_int()?.0;
         if let Some(entry) = custom_component_type(id_val) {
-            patch.put_custom(entry.id, read_custom_component(seq)?);
+            patch.put_custom(entry.id, read_custom_component(entry, seq)?);
             continue;
         }
         let id = component_id(id_val)?;

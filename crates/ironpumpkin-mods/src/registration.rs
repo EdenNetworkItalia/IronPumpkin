@@ -71,6 +71,7 @@ use pumpkin_data::{
 use pumpkin_util::{identifier::Identifier, math::position::BlockPos};
 use tracing::warn;
 
+pub use pumpkin_core::content::attributes::AttributeRef;
 pub use pumpkin_core::content::spawn_placements::SpawnPlacementOperation as Operation;
 pub use pumpkin_data::{attributes::Attributes, entity::SpawnLocation};
 pub use pumpkin_util::HeightMap;
@@ -91,6 +92,9 @@ pub enum RegistrationError {
     UnknownPoiType(String),
     /// No vanilla or mod item has this name.
     UnknownItem(String),
+    /// No generated, `NeoForge` or mod attribute has this name. A mod registers its attribute
+    /// before the registration events.
+    UnknownAttribute(String),
     /// The entity type already has default attributes: every vanilla type with attributes, or a
     /// mod type that got them before. `NeoForge`: "Duplicate `DefaultAttributes` entry".
     DuplicateAttributes(String),
@@ -115,6 +119,7 @@ impl fmt::Display for RegistrationError {
             Self::UnknownBlock(name) => write!(f, "unknown block \"{name}\""),
             Self::UnknownPoiType(name) => write!(f, "unknown POI type \"{name}\""),
             Self::UnknownItem(name) => write!(f, "unknown item \"{name}\""),
+            Self::UnknownAttribute(name) => write!(f, "unknown attribute \"{name}\""),
             Self::DuplicateAttributes(name) => {
                 write!(f, "entity type \"{name}\" already has default attributes")
             }
@@ -241,7 +246,7 @@ pub(crate) fn namespaced(name: &str) -> String {
 
 /// `AttributeSupplier`: the default attributes of an entity type and their base values.
 #[derive(Debug, Clone, Default)]
-pub struct AttributeSupplier(Vec<(Attributes, f64)>);
+pub struct AttributeSupplier(Vec<(AttributeRef, f64)>);
 
 impl AttributeSupplier {
     /// An empty set, as `AttributeSupplier.builder()`.
@@ -254,16 +259,21 @@ impl AttributeSupplier {
     /// to extend with [`add`](Self::add).
     #[must_use]
     pub fn of(entity_type: &EntityType) -> Self {
-        Self(entity_type.attributes.to_vec())
+        Self(
+            entity_type
+                .attributes
+                .iter()
+                .map(|(attribute, value)| (AttributeRef::Known(attribute.clone()), *value))
+                .collect(),
+        )
     }
 
-    /// Adds the attribute with this base value, or replaces its value.
+    /// Adds the attribute with this base value, or replaces its value. The attribute is an
+    /// [`Attributes`] value, or the namespaced name of a generated, `NeoForge` or mod attribute.
+    /// The server binds a name at the freeze, so a mod attribute needs no id here.
     #[must_use]
-    pub fn add(mut self, attribute: Attributes, value: f64) -> Self {
-        match self.0.iter_mut().find(|(a, _)| *a == attribute) {
-            Some(entry) => entry.1 = value,
-            None => self.0.push((attribute, value)),
-        }
+    pub fn add(mut self, attribute: impl Into<AttributeRef>, value: f64) -> Self {
+        attributes::set_value(&mut self.0, attribute.into(), value);
         self
     }
 
@@ -291,7 +301,8 @@ impl EntityAttributeCreationEvent {
     /// # Errors
     ///
     /// [`RegistrationError::DuplicateAttributes`] for a vanilla type with attributes or a type
-    /// that already got them, [`RegistrationError::UnknownEntityType`] for an unknown name.
+    /// that already got them, [`RegistrationError::UnknownEntityType`] for an unknown name,
+    /// [`RegistrationError::UnknownAttribute`] for an attribute that no mod registered.
     pub fn put(
         &mut self,
         entity_type: &str,
@@ -311,10 +322,24 @@ fn put_attributes(
     if vanilla && EntityType::from_name(&name).is_some_and(|ty| !ty.attributes.is_empty()) {
         return Err(duplicate());
     }
-    if attributes::create(&name, attributes.0).map_err(RegistrationError::Registry)? {
+    let mut list = Vec::with_capacity(attributes.0.len());
+    for (attribute, value) in attributes.0 {
+        attributes::set_value(&mut list, registered_attribute(&attribute)?, value);
+    }
+    if attributes::create(&name, list).map_err(RegistrationError::Registry)? {
         Ok(())
     } else {
         Err(duplicate())
+    }
+}
+
+/// The attribute with its namespace, when a generated, `NeoForge` or mod attribute has its name.
+fn registered_attribute(attribute: &AttributeRef) -> Result<AttributeRef, RegistrationError> {
+    match AttributeRef::named(attribute.name()) {
+        AttributeRef::Named(name) if !dynamic::is_registered(ContentKind::Attribute, &name) => {
+            Err(RegistrationError::UnknownAttribute(name))
+        }
+        resolved => Ok(resolved),
     }
 }
 
@@ -328,18 +353,22 @@ registration_event!(EntityAttributeModificationEvent);
 
 impl EntityAttributeModificationEvent {
     /// Adds the attribute with this base value to the default attributes of `entity_type`, or
-    /// replaces its value.
+    /// replaces its value. The attribute is an [`Attributes`] value, or the namespaced name of a
+    /// generated, `NeoForge` or mod attribute: the server binds the name at the freeze, so the
+    /// default changes for every entity of the type.
     ///
     /// # Errors
     ///
-    /// [`RegistrationError::UnknownEntityType`] for an unknown name.
+    /// [`RegistrationError::UnknownEntityType`] for an unknown name,
+    /// [`RegistrationError::UnknownAttribute`] for an attribute that no mod registered.
     pub fn add(
         &mut self,
         entity_type: &str,
-        attribute: Attributes,
+        attribute: impl Into<AttributeRef>,
         value: f64,
     ) -> Result<(), RegistrationError> {
         let result = self::entity_type(entity_type).and_then(|(name, _)| {
+            let attribute = registered_attribute(&attribute.into())?;
             attributes::add(&name, attribute, value).map_err(RegistrationError::Registry)
         });
         self.error.keep(result)
@@ -363,8 +392,8 @@ impl EntityAttributeModificationEvent {
     /// [`EntityAttributeCreationEvent::put`], or from this event. A mod type without `put` answers
     /// only for this event, as it has no supplier in `NeoForge`.
     #[must_use]
-    pub fn has(&self, entity_type: &str, attribute: &Attributes) -> bool {
-        attributes::has(&namespaced(entity_type), attribute)
+    pub fn has(&self, entity_type: &str, attribute: impl Into<AttributeRef>) -> bool {
+        attributes::has(&namespaced(entity_type), &attribute.into())
     }
 
     /// The entity types that have default attributes: the vanilla types with attributes and the
@@ -711,6 +740,41 @@ mod tests {
     }
 
     #[test]
+    fn an_attribute_by_name_replaces_the_generated_attribute_and_an_unknown_one_is_an_error() {
+        // `minecraft:max_health` by name is the generated attribute, so it replaces its value.
+        let supplier = AttributeSupplier::of(&EntityType::ZOMBIE)
+            .add(Attributes::MAX_HEALTH, 40.0)
+            .add("max_health", 50.0);
+        let health: Vec<f64> = supplier
+            .0
+            .iter()
+            .filter(|(a, _)| a.name() == "minecraft:max_health")
+            .map(|(_, v)| *v)
+            .collect();
+        assert_eq!(health, [50.0]);
+
+        let mut event = EntityAttributeModificationEvent::new();
+        assert_eq!(
+            event.add("minecraft:zombie", "examplemod:mana", 5.0),
+            Err(RegistrationError::UnknownAttribute(
+                "examplemod:mana".to_owned()
+            ))
+        );
+        assert_eq!(
+            event.add("minecraft:zombie", "neoforge:swim_speed", 2.0),
+            Ok(())
+        );
+        assert!(event.has("minecraft:zombie", "neoforge:swim_speed"));
+        assert!(!event.has("minecraft:zombie", "examplemod:mana"));
+        assert_eq!(
+            event.take_error(),
+            Some(RegistrationError::UnknownAttribute(
+                "examplemod:mana".to_owned()
+            ))
+        );
+    }
+
+    #[test]
     fn attribute_supplier_replaces_a_value_and_adds_defaults() {
         let supplier = AttributeSupplier::of(&EntityType::ZOMBIE)
             .add(Attributes::MAX_HEALTH, 40.0)
@@ -719,7 +783,7 @@ mod tests {
             supplier
                 .0
                 .iter()
-                .filter(|(a, _)| a == attribute)
+                .filter(|(a, _)| a.name() == attribute.name)
                 .map(|(_, v)| *v)
                 .collect::<Vec<_>>()
         };
@@ -840,6 +904,22 @@ mod tests {
                 "minecraft:home",
                 "minecraft:lodestone",
                 "minecraft:lodestone",
+            ),
+            ("minecraft:mason", "minecraft:beehive", "minecraft:beehive"),
+            (
+                "minecraft:mason",
+                "minecraft:bee_nest",
+                "minecraft:bee_nest",
+            ),
+            (
+                "minecraft:mason",
+                "minecraft:nether_portal",
+                "minecraft:nether_portal",
+            ),
+            (
+                "minecraft:mason",
+                "minecraft:test_instance_block",
+                "minecraft:test_instance",
             ),
         ] {
             assert_eq!(

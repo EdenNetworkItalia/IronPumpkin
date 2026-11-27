@@ -29,6 +29,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+ironpumpkin-test-support.workspace = true
 pumpkin-config.workspace = true
 pumpkin-inventory.workspace = true
 pumpkin-wasm-host = { workspace = true, features = ["v0_2"] }

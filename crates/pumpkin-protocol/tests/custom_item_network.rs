@@ -53,6 +53,7 @@ fn ruby() -> &'static Item {
             name: "test:charge".to_owned(),
             persistent: true,
             validate: |_| true,
+            raw: None,
         })
         .expect("register data component type");
         dynamic::freeze().expect("freeze registry");

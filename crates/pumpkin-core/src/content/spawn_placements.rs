@@ -1,9 +1,12 @@
 //! Spawn placements that native mods register, the backing of `NeoForge`
 //! `RegisterSpawnPlacementsEvent` and its `MergedSpawnPredicate`.
 //!
-//! A vanilla type always has a placement: its spawn restriction and the rules of
-//! [`check_spawn_rules`](crate::entity::r#type::check_spawn_rules). A custom type has one after
-//! its first registration, which must name the placement type and the heightmap. Mods register by
+//! A vanilla type with an entry in `SpawnPlacements` (`EntityType::has_spawn_placement`) has a
+//! placement: its spawn restriction and the rules of
+//! [`check_spawn_rules`](crate::entity::r#type::check_spawn_rules). A custom type and a vanilla
+//! type without an entry (78 of the 161 vanilla types, among them `allay`, `bee`, `player` and
+//! every boat, minecart, projectile and display) have one after their first registration, which
+//! must name the placement type and the heightmap. Mods register by
 //! name before the freeze. On the first lookup after it the placements become a table by entity
 //! type id.
 
@@ -88,9 +91,36 @@ pub fn register(
         return Err(SpawnPlacementError::RegistryFrozen);
     }
     let mut pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner);
-    let has_placement = pending.contains_key(name)
-        || EntityType::from_name(name).is_some_and(|ty| ty.id < EntityType::COUNT);
-    if !has_placement {
+    register_into(
+        &mut pending,
+        name,
+        has_vanilla_placement(name),
+        location,
+        heightmap,
+        predicate,
+        operation,
+    )?;
+    ANY.store(true, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Whether vanilla `SpawnPlacements` has an entry for the type `name`. A mod gives a type without
+/// one its placement, as it does to a custom type.
+fn has_vanilla_placement(name: &str) -> bool {
+    EntityType::from_name(name)
+        .is_some_and(|ty| ty.id < EntityType::COUNT && ty.has_spawn_placement)
+}
+
+fn register_into(
+    pending: &mut BTreeMap<String, MergedSpawnPredicate>,
+    name: &str,
+    vanilla_placement: bool,
+    location: Option<SpawnLocation>,
+    heightmap: Option<HeightMap>,
+    predicate: SpawnPredicate,
+    operation: SpawnPlacementOperation,
+) -> Result<(), SpawnPlacementError> {
+    if !(vanilla_placement || pending.contains_key(name)) {
         let (Some(location), Some(heightmap)) = (location, heightmap) else {
             return Err(SpawnPlacementError::MissingPlacement);
         };
@@ -105,7 +135,6 @@ pub fn register(
                 heightmap: Some(heightmap),
             },
         );
-        ANY.store(true, Ordering::Relaxed);
         return Ok(());
     }
     if operation != SpawnPlacementOperation::Replace && (location.is_some() || heightmap.is_some())
@@ -135,7 +164,6 @@ pub fn register(
             }
         }
     }
-    ANY.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -213,4 +241,180 @@ fn build_table() -> FxHashMap<u16, Placement> {
             ))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn always() -> SpawnPredicate {
+        Arc::new(|_, _, _| true)
+    }
+
+    #[test]
+    fn a_type_without_a_placement_takes_the_first_registration_as_its_placement() {
+        let mut pending = BTreeMap::new();
+        let first = register_into(
+            &mut pending,
+            "minecraft:allay",
+            has_vanilla_placement("minecraft:allay"),
+            Some(SpawnLocation::Unrestricted),
+            Some(HeightMap::MotionBlocking),
+            always(),
+            SpawnPlacementOperation::Replace,
+        );
+        assert_eq!(first, Ok(()));
+        let merged = &pending["minecraft:allay"];
+        assert!(merged.original.is_some());
+        assert!(merged.location.is_some() && merged.heightmap.is_some());
+        // The next registration changes the placement as for any type that has one.
+        let next = register_into(
+            &mut pending,
+            "minecraft:allay",
+            has_vanilla_placement("minecraft:allay"),
+            Some(SpawnLocation::OnGround),
+            None,
+            always(),
+            SpawnPlacementOperation::Or,
+        );
+        assert_eq!(next, Err(SpawnPlacementError::PlacementWithoutReplace));
+    }
+
+    #[test]
+    fn a_type_without_a_placement_needs_its_placement_type_and_heightmap() {
+        let mut pending = BTreeMap::new();
+        let result = register_into(
+            &mut pending,
+            "minecraft:allay",
+            has_vanilla_placement("minecraft:allay"),
+            None,
+            None,
+            always(),
+            SpawnPlacementOperation::Or,
+        );
+        assert_eq!(result, Err(SpawnPlacementError::MissingPlacement));
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn a_type_with_a_placement_rejects_a_placement_type_without_replace() {
+        let mut pending = BTreeMap::new();
+        let result = register_into(
+            &mut pending,
+            "minecraft:zombie",
+            has_vanilla_placement("minecraft:zombie"),
+            Some(SpawnLocation::OnGround),
+            Some(HeightMap::MotionBlocking),
+            always(),
+            SpawnPlacementOperation::And,
+        );
+        assert_eq!(result, Err(SpawnPlacementError::PlacementWithoutReplace));
+    }
+
+    /// The vanilla 26.3 types that `SpawnPlacements` does not register.
+    const WITHOUT_PLACEMENT: &[&str] = &[
+        "acacia_boat",
+        "acacia_chest_boat",
+        "allay",
+        "area_effect_cloud",
+        "armor_stand",
+        "arrow",
+        "bamboo_chest_raft",
+        "bamboo_raft",
+        "bee",
+        "birch_boat",
+        "birch_chest_boat",
+        "block_display",
+        "breeze_wind_charge",
+        "cherry_boat",
+        "cherry_chest_boat",
+        "chest_minecart",
+        "command_block_minecart",
+        "copper_golem",
+        "cushion",
+        "dark_oak_boat",
+        "dark_oak_chest_boat",
+        "dragon_fireball",
+        "egg",
+        "end_crystal",
+        "ender_pearl",
+        "evoker_fangs",
+        "experience_bottle",
+        "experience_orb",
+        "eye_of_ender",
+        "falling_block",
+        "fireball",
+        "firework_rocket",
+        "fishing_bobber",
+        "furnace_minecart",
+        "glow_item_frame",
+        "hopper_minecart",
+        "interaction",
+        "item",
+        "item_display",
+        "item_frame",
+        "jungle_boat",
+        "jungle_chest_boat",
+        "leash_knot",
+        "lightning_bolt",
+        "lingering_potion",
+        "llama_spit",
+        "mangrove_boat",
+        "mangrove_chest_boat",
+        "mannequin",
+        "marker",
+        "minecart",
+        "oak_boat",
+        "oak_chest_boat",
+        "ominous_item_spawner",
+        "painting",
+        "pale_oak_boat",
+        "pale_oak_chest_boat",
+        "piglin_brute",
+        "player",
+        "poplar_boat",
+        "poplar_chest_boat",
+        "shulker_bullet",
+        "small_fireball",
+        "sniffer",
+        "snowball",
+        "spawner_minecart",
+        "spectral_arrow",
+        "splash_potion",
+        "spruce_boat",
+        "spruce_chest_boat",
+        "tadpole",
+        "text_display",
+        "tnt",
+        "tnt_minecart",
+        "trident",
+        "wind_charge",
+        "wither_skull",
+        "zombie_nautilus",
+    ];
+
+    #[test]
+    fn the_types_without_a_vanilla_placement_need_one_on_their_first_registration() {
+        assert_eq!(WITHOUT_PLACEMENT.len(), 78);
+        for entity_type in EntityType::ALL {
+            let name = format!("minecraft:{}", entity_type.resource_name);
+            let expected = !WITHOUT_PLACEMENT.contains(&entity_type.resource_name);
+            assert_eq!(has_vanilla_placement(&name), expected, "{name}");
+            let result = register_into(
+                &mut BTreeMap::new(),
+                &name,
+                has_vanilla_placement(&name),
+                None,
+                None,
+                always(),
+                SpawnPlacementOperation::Or,
+            );
+            let expected = if expected {
+                Ok(())
+            } else {
+                Err(SpawnPlacementError::MissingPlacement)
+            };
+            assert_eq!(result, expected, "{name}");
+        }
+    }
 }

@@ -111,6 +111,7 @@ libc = { workspace = true }
 
 [dev-dependencies]
 criterion.workspace = true
+ironpumpkin-test-support.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
