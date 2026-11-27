@@ -2652,12 +2652,13 @@ impl DataComponentCodec<Self> for ChargedProjectilesImpl {
         seq: &mut impl NetworkWriteExt,
         ids: ContentIds,
     ) -> Result<(), WritingError> {
-        let stacks = self.stacks();
-        seq.write_var_int(&VarInt(stacks.len() as i32))?;
-        for stack in &stacks {
-            serialize_item_stack_template(stack, seq, ids)?;
-        }
-        Ok(())
+        self.with_stacks(|stacks| {
+            seq.write_var_int(&VarInt(stacks.len() as i32))?;
+            for stack in stacks {
+                serialize_item_stack_template(stack, seq, ids)?;
+            }
+            Ok(())
+        })
     }
 
     fn deserialize(seq: &mut impl NetworkReadExt) -> Result<Self, ReadingError> {

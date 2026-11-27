@@ -554,14 +554,23 @@ impl ChargedProjectilesImpl {
         Some(Self { projectiles })
     }
 
-    /// The projectiles that load as non-empty stacks. The client gets and hashes only these.
-    #[must_use]
-    pub fn stacks(&self) -> Vec<crate::item_stack::ItemStack> {
-        self.projectiles
+    /// Runs `f` on the projectiles that load as non-empty stacks. The client gets and hashes
+    /// only these.
+    ///
+    /// The stacks keep their own projectiles in the saved form, so `f` recurses into them one
+    /// level at a time. Each level holds one level of the item stack nesting limit while `f`
+    /// runs, and loads no projectile past the limit.
+    pub fn with_stacks<R>(&self, f: impl FnOnce(&[crate::item_stack::ItemStack]) -> R) -> R {
+        let Some(_level) = crate::item_stack::nesting::NestingGuard::enter() else {
+            return f(&[]);
+        };
+        let stacks: Vec<_> = self
+            .projectiles
             .iter()
             .filter_map(crate::item_stack::ItemStack::read_item_stack)
             .filter(|stack| !stack.is_empty())
-            .collect()
+            .collect();
+        f(&stacks)
     }
 }
 impl DataComponentImpl for ChargedProjectilesImpl {
@@ -574,7 +583,8 @@ impl DataComponentImpl for ChargedProjectilesImpl {
     }
     /// A list of `ItemStackTemplate.CODEC` values.
     fn get_hash(&self) -> i32 {
-        hash_ops::list(self.stacks().iter().map(hash_ops::item_stack_template)) as i32
+        self.with_stacks(|stacks| hash_ops::list(stacks.iter().map(hash_ops::item_stack_template)))
+            as i32
     }
     default_impl!(ChargedProjectiles);
 }

@@ -1305,6 +1305,52 @@ mod tests {
         assert_eq!(stack.item, &Item::ARROW);
     }
 
+    /// Saved crossbows whose charged projectile is a crossbow, `levels` deep.
+    fn saved_crossbow_chain(levels: usize) -> pumpkin_nbt::compound::NbtCompound {
+        use pumpkin_nbt::compound::NbtCompound;
+        let mut stack = NbtCompound::new();
+        stack.put_string("id", "minecraft:crossbow".to_owned());
+        for _ in 1..levels {
+            let mut components = NbtCompound::new();
+            components.put_list(
+                "minecraft:charged_projectiles",
+                vec![pumpkin_nbt::tag::NbtTag::Compound(stack)],
+            );
+            let mut outer = NbtCompound::new();
+            outer.put_string("id", "minecraft:crossbow".to_owned());
+            outer.put_compound("components", components);
+            stack = outer;
+        }
+        stack
+    }
+
+    /// Charged projectiles keep their saved form and load one level at a time, so the write and
+    /// the hash count each level in the nesting limit. The client gets the levels within the
+    /// limit, and its hash of them matches the hash of the saved stack.
+    #[test]
+    fn charged_projectiles_count_in_the_nesting_limit() {
+        use crate::codec::data_component::{deserialize, serialize};
+        use pumpkin_data::data_component_impl::ChargedProjectilesImpl;
+        use pumpkin_data::item_stack::nesting::MAX_ITEM_NESTING;
+        let crossbow =
+            ItemStack::read_item_stack(&saved_crossbow_chain(MAX_ITEM_NESTING as usize + 8))
+                .unwrap();
+        let charged = crossbow
+            .get_data_component::<ChargedProjectilesImpl>()
+            .unwrap();
+        let mut bytes = Vec::new();
+        serialize(
+            DataComponent::ChargedProjectiles,
+            charged,
+            &mut bytes,
+            ContentIds::Display,
+        )
+        .unwrap();
+        let decoded = deserialize(DataComponent::ChargedProjectiles, &mut bytes.as_slice())
+            .expect("the levels within the limit decode");
+        assert_eq!(decoded.get_hash(), charged.get_hash());
+    }
+
     /// A var int id above the id type is an error, not a truncated id of another entry.
     #[test]
     fn out_of_range_ids_fail_to_decode() {
