@@ -154,12 +154,12 @@ impl ContainerImpl {
         if let NbtTag::List(l) = tag {
             for item_tag in l {
                 if let NbtTag::Compound(c) = item_tag
-                    && let Some(slot) = c.get_int("slot")
+                    && let Some(slot) = c.get_int("slot").and_then(|slot| u8::try_from(slot).ok())
                     && let Some(item_compound) = c.get_compound("item")
                     && let Some(stack) =
                         crate::item_stack::ItemStack::read_item_stack(item_compound)
                 {
-                    items.push((slot as u8, stack));
+                    items.push((slot, stack));
                 }
             }
         }

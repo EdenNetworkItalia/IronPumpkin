@@ -624,6 +624,27 @@ mod tests {
         );
     }
 
+    /// `ItemContainerContents.Slot.CODEC` takes a slot in `0..=255`. A saved slot outside the
+    /// range does not load as another slot.
+    #[test]
+    fn container_slots_outside_the_range_do_not_load() {
+        use crate::data_component_impl::ContainerImpl;
+        use pumpkin_nbt::compound::NbtCompound;
+        use pumpkin_nbt::tag::NbtTag;
+        let entry = |slot: i32| {
+            let mut item = NbtCompound::new();
+            item.put_string("id", "minecraft:stick".to_owned());
+            let mut entry = NbtCompound::new();
+            entry.put_int("slot", slot);
+            entry.put_compound("item", item);
+            NbtTag::Compound(entry)
+        };
+        let saved = NbtTag::List(vec![entry(256), entry(-1), entry(3)]);
+        let container = ContainerImpl::read_data(&saved).unwrap();
+        let slots: Vec<u8> = container.items.iter().map(|(slot, _)| *slot).collect();
+        assert_eq!(slots, [3]);
+    }
+
     #[test]
     fn pot_decorations_hash_has_the_present_sides_as_templates() {
         let pot = PotDecorationsImpl {
