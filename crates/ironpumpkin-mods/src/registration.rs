@@ -905,6 +905,22 @@ mod tests {
                 "minecraft:lodestone",
                 "minecraft:lodestone",
             ),
+            ("minecraft:mason", "minecraft:beehive", "minecraft:beehive"),
+            (
+                "minecraft:mason",
+                "minecraft:bee_nest",
+                "minecraft:bee_nest",
+            ),
+            (
+                "minecraft:mason",
+                "minecraft:nether_portal",
+                "minecraft:nether_portal",
+            ),
+            (
+                "minecraft:mason",
+                "minecraft:test_instance_block",
+                "minecraft:test_instance",
+            ),
         ] {
             assert_eq!(
                 event.add_block_to_poi(poi_type, block),
