@@ -273,8 +273,9 @@ pub fn text(component: &TextComponent) -> u32 {
 pub const TEXT_VERSION: JavaMinecraftVersion = JavaMinecraftVersion::V_26_3;
 
 /// The hash of `ItemPredicate.CODEC` or `BlockPredicate.CODEC` in its saved form. The expected
-/// components hash with the codec of each component. The other fields hash as saved codec
-/// values: they hold ids, numbers, strings and the boolean flags of partial predicates.
+/// components hash with the codec of each component, and `items` and `blocks` as holder sets.
+/// The other fields hash as saved codec values: they hold numbers, strings and the boolean flags
+/// of partial predicates.
 #[must_use]
 pub fn predicate(compound: &NbtCompound) -> u32 {
     map(compound
@@ -283,6 +284,7 @@ pub fn predicate(compound: &NbtCompound) -> u32 {
         .map(|(key, value)| {
             let value = match (&**key, value) {
                 ("components", NbtTag::Compound(exact)) => exact_components(exact),
+                ("items" | "blocks", value) => saved_holder_set(value),
                 (_, value) => codec_nbt(value),
             };
             (string(key), value)
@@ -298,8 +300,30 @@ pub fn adventure_predicate(tag: &NbtTag) -> u32 {
         tag => codec_nbt(tag),
     };
     match tag {
-        NbtTag::List(predicates) => list(predicates.iter().map(entry)),
+        NbtTag::List(predicates) => match &predicates[..] {
+            [predicate] => entry(predicate),
+            predicates => list(predicates.iter().map(entry)),
+        },
         tag => entry(tag),
+    }
+}
+
+/// The hash of a saved `RegistryCodecs.homogeneousList` value: a `#tag`, one id, or a list of
+/// ids, where a list of one id hashes as the id.
+fn saved_holder_set(value: &NbtTag) -> u32 {
+    let entry = |value: &NbtTag| match value {
+        NbtTag::String(name) => name.strip_prefix('#').map_or_else(
+            || id(name),
+            |tag| string(&format!("#{}", namespaced_name(tag))),
+        ),
+        value => codec_nbt(value),
+    };
+    match value {
+        NbtTag::List(ids) => match &ids[..] {
+            [single] => entry(single),
+            ids => list(ids.iter().map(entry)),
+        },
+        value => entry(value),
     }
 }
 
@@ -1429,6 +1453,41 @@ mod tests {
                 ]),
             };
             assert_eq!(hash(&two), vanilla::list(&[block_hash, block_hash]));
+        }
+
+        /// `ExtraCodecs.compactListCodec` writes a list of one element as the element: the
+        /// predicates of `AdventureModePredicate`, and the ids of `blocks` and `items`, which
+        /// are `RegistryCodecs.homogeneousList` holder sets.
+        #[test]
+        fn predicate_lists_of_one_hash_as_their_element() {
+            use crate::data_component_impl::{CanPlaceOnImpl, LockImpl};
+            use pumpkin_nbt::compound::NbtCompound;
+            use pumpkin_nbt::tag::NbtTag;
+            let id = |name: &str| NbtTag::String(name.into());
+            let mut block = NbtCompound::new();
+            block.put_list("blocks", vec![id("stone")]);
+            let one = CanPlaceOnImpl {
+                predicate: NbtTag::List(vec![NbtTag::Compound(block)]),
+            };
+            let stone = vanilla::string("minecraft:stone");
+            assert_eq!(hash(&one), vanilla::map(&[("blocks", stone)]));
+            let mut blocks = NbtCompound::new();
+            blocks.put_list("blocks", vec![id("stone"), id("minecraft:dirt")]);
+            let two = CanPlaceOnImpl {
+                predicate: NbtTag::Compound(blocks),
+            };
+            let dirt = vanilla::string("minecraft:dirt");
+            assert_eq!(
+                hash(&two),
+                vanilla::map(&[("blocks", vanilla::list(&[stone, dirt]))])
+            );
+            let mut item = NbtCompound::new();
+            item.put_list("items", vec![id("minecraft:stick")]);
+            let lock = LockImpl { predicate: item };
+            assert_eq!(
+                hash(&lock),
+                vanilla::map(&[("items", vanilla::string("minecraft:stick"))])
+            );
         }
 
         /// `MobEffectInstance.Details` nests the hidden effect without an id, and
