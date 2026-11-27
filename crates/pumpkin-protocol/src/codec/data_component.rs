@@ -76,9 +76,7 @@ fn deserialize_idset<T: IDSetContent>(
                 Vec::with_capacity((len as usize).min(MAX_INITIAL_COLLECTION_SIZE));
 
             for _ in 0..len {
-                let varint_id = seq.get_var_int()?.0;
-
-                let elmt = T::from_id(varint_id as u16).ok_or(ReadingError::Message(
+                let elmt = T::from_id(read_id(seq)?).ok_or(ReadingError::Message(
                     "Invalid registry id VarInt in IDSet".into(),
                 ))?;
                 content_vec.push(elmt);
@@ -120,8 +118,7 @@ fn deserialize_status_effects(
     }
     let mut custom_effects = Vec::with_capacity(effects_len);
     for _ in 0..effects_len {
-        let effect_registry_id = seq.get_var_int()?.0;
-        let effect_name = StatusEffect::from_id(effect_registry_id as u16)
+        let effect_name = StatusEffect::from_id(read_id(seq)?)
             .ok_or(ReadingError::Message("Invalid effect_id!".into()))?
             .minecraft_name;
         let effect_id = Cow::Borrowed(effect_name);

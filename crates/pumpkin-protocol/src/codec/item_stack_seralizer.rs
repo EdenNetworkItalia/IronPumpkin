@@ -1370,6 +1370,19 @@ mod tests {
         );
     }
 
+    /// The ids of a holder set and of an effect fail the same way.
+    #[test]
+    fn out_of_range_set_and_effect_ids_fail_to_decode() {
+        use crate::codec::data_component::deserialize;
+        // `repairable` with one item id, `stick + 65536`.
+        let bytes = var_ints(&[2, i32::from(Item::STICK.id) + 65_536]);
+        assert!(deserialize(DataComponent::Repairable, &mut bytes.as_slice()).is_err());
+        // `potion_contents` with no potion, no color and the effect id `speed + 65536`.
+        let speed = i32::from(pumpkin_data::effect::StatusEffect::SPEED.id);
+        let bytes = [var_ints(&[0, 0, 1, speed + 65_536]), vec![0; 8]].concat();
+        assert!(deserialize(DataComponent::PotionContents, &mut bytes.as_slice()).is_err());
+    }
+
     /// `HashedPatchMap.STREAM_CODEC` reads the added hashes into a map and the removed types
     /// into a set, so a repeated entry counts once.
     #[test]
