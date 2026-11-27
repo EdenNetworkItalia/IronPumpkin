@@ -108,8 +108,9 @@ impl<T: Encode + Decode + 'static> DataComponentTypeBuilder<T> {
     /// must be the bytes of that `StreamCodec`. Without this call the network carries the NBT form
     /// of the codec, which fits the default `ByteBufCodecs.fromCodecWithRegistries`.
     ///
-    /// `encode` writes the value. `decode` reads one value from `read` and stops at its end: the
-    /// bytes have no length prefix in a stack. Item stacks keep the codec form of the value, so
+    /// `encode` writes the value. `decode` reads one value from `read` with `Read::read_exact` and
+    /// stops at its end: the bytes have no length prefix in a stack, and a `read` that asks for
+    /// more bytes than the value has fails. Item stacks keep the codec form of the value, so
     /// `get`, `set` and the saves do not change.
     #[must_use]
     pub fn stream_codec(

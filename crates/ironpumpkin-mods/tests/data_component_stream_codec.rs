@@ -110,6 +110,29 @@ fn a_length_prefixed_stack_carries_the_bytes_with_a_length_prefix_and_reads_them
     assert_eq!(PACKED.get(&read), Ok(Some(9)));
 }
 
+/// `DataComponentPatch.DELIMITED_STREAM_CODEC` decodes a value from its slice and skips the rest.
+#[test]
+fn a_length_prefixed_value_skips_its_trailing_bytes() {
+    frozen();
+    let mut stack = ItemStack::new(1, &Item::STICK);
+    PACKED.set(&mut stack, &9).unwrap();
+    let mut bytes = Vec::new();
+    ItemStackSerializer::from(stack)
+        .write_length_prefixed_with_version(&mut bytes, &real())
+        .unwrap();
+    let mut value = var_int(4);
+    value.extend([9, 0, 0, 0]);
+    assert!(bytes.ends_with(&value), "{bytes:?}");
+    bytes.truncate(bytes.len() - value.len());
+    bytes.extend(var_int(6));
+    bytes.extend([9, 0, 0, 0, 7, 7]);
+
+    let read = ItemStackSerializer::read_length_prefixed_optional(&mut Cursor::new(&bytes[..]))
+        .unwrap()
+        .to_stack();
+    assert_eq!(PACKED.get(&read), Ok(Some(9)));
+}
+
 #[test]
 fn a_truncated_value_is_a_read_error() {
     frozen();

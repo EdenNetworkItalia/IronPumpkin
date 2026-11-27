@@ -90,13 +90,8 @@ fn decode_custom_component(
 ) -> Result<NbtTag, ReadingError> {
     let mut cursor = Cursor::new(component_data);
     if let Some(raw) = &entry.raw {
-        let value = (raw.decode)(&mut cursor).map_err(ReadingError::Message)?;
-        if cursor.position() != component_data.len() as u64 {
-            return Err(ReadingError::Message(
-                "Mod component value has trailing bytes".into(),
-            ));
-        }
-        return Ok(value);
+        // As `ByteBufCodecs.registryFriendlyLengthPrefixed`, the bytes after the value are skipped.
+        return (raw.decode)(&mut cursor).map_err(ReadingError::Message);
     }
     let mut nbt_reader = pumpkin_nbt::deserializer::NbtReadHelperJava::new(&mut cursor);
     NbtTag::deserialize(&mut nbt_reader)
