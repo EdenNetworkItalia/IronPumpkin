@@ -15,6 +15,7 @@ use pumpkin_nbt::tag::NbtTag;
 use pumpkin_util::text::TextComponent;
 use pumpkin_util::version::JavaMinecraftVersion;
 use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
 
 #[derive(Clone)]
@@ -828,8 +829,10 @@ impl From<Option<ItemStack>> for ItemStackSerializer<'_> {
 
 #[derive(Debug, Clone)]
 pub struct ItemComponentHash {
-    pub added: Vec<(VarInt, i32)>,
-    pub removed: Vec<VarInt>,
+    /// The hash of each added component, by component type id.
+    pub added: BTreeMap<i32, i32>,
+    /// The removed component type ids.
+    pub removed: BTreeSet<i32>,
 }
 
 impl ItemComponentHash {
@@ -842,26 +845,20 @@ impl ItemComponentHash {
         }
         // `HashedPatchMap.STREAM_CODEC` reads the added hashes into a map and the removed
         // types into a set.
-        let mut added: Vec<(VarInt, i32)> = Vec::with_capacity(added_length.0 as usize);
+        let mut added = BTreeMap::new();
         for _ in 0..added_length.0 {
-            let component_id = read.get_var_int()?;
+            let component_id = read.get_var_int()?.0;
             let component_value = read.get_i32()?;
-            match added.iter_mut().find(|(id, _)| *id == component_id) {
-                Some(entry) => entry.1 = component_value,
-                None => added.push((component_id, component_value)),
-            }
+            added.insert(component_id, component_value);
         }
 
         let removed_length = read.get_var_int()?;
         if removed_length.0 < 0 || removed_length.0 > MAX_COMPONENTS {
             return Err(ReadingError::Message("removed_length out of bounds".into()));
         }
-        let mut removed = Vec::with_capacity(removed_length.0 as usize);
+        let mut removed = BTreeSet::new();
         for _ in 0..removed_length.0 {
-            let component_id = read.get_var_int()?;
-            if !removed.contains(&component_id) {
-                removed.push(component_id);
-            }
+            removed.insert(read.get_var_int()?.0);
         }
 
         Ok(Self { added, removed })
@@ -870,12 +867,12 @@ impl ItemComponentHash {
     pub fn write(&self, write: &mut impl NetworkWriteExt) -> Result<(), WritingError> {
         write.put_var_int(&VarInt::from(self.added.len() as i32))?;
         for (id, val) in &self.added {
-            write.put_var_int(id)?;
+            write.put_var_int(&VarInt(*id))?;
             write.put_i32(*val)?;
         }
         write.put_var_int(&VarInt::from(self.removed.len() as i32))?;
         for id in &self.removed {
-            write.put_var_int(id)?;
+            write.put_var_int(&VarInt(*id))?;
         }
         Ok(())
     }
@@ -959,11 +956,11 @@ impl ItemComponentHash {
             ));
         }
         removed.len() == self.removed.len()
-            && removed.iter().all(|id| self.removed.contains(id))
+            && removed.iter().all(|id| self.removed.contains(&id.0))
             && added.len() == self.added.len()
             && added
                 .iter()
-                .all(|entry| self.added.iter().any(|sent| sent == entry))
+                .all(|(id, hash)| self.added.get(&id.0) == Some(hash))
     }
 }
 
