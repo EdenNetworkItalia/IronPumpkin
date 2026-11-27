@@ -271,9 +271,10 @@ pub(crate) fn maybe_transfer_fluid(
             Block::CLAY.default_state.id,
             BlockFlags::NOTIFY_ALL,
         );
-        world.emit_game_event(
+        world.emit_game_event_with_context(
             GameEvent::BlockChange.name(),
             fluid_info.pos.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_state(Block::CLAY.default_state.id),
         );
         world.sync_world_event(WorldEvent::DripstoneDrip, tip_pos, 0);
         return;

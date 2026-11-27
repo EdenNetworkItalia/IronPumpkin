@@ -466,9 +466,7 @@ impl Mob for SnifferEntity {
                 world.emit_game_event_with_context(
                     GameEvent::EntityAction.name(),
                     head_block.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(source),
-                    },
+                    &GameEventContext::of_entity(Some(source)),
                 );
             }
             self.drop_seed();

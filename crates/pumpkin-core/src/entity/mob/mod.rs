@@ -759,6 +759,9 @@ impl MobEntity {
     }
 
     pub fn with_brain<R>(&self, mob: &dyn Mob, callback: impl FnOnce(&mut Brain) -> R) -> R {
+        // The brain code plays sounds and emits game events inside the brain lock, and a mod
+        // handler can reach the brain. Their fires wait for the end of the call.
+        let _fires = crate::world::fire_deferral::FireDeferral::start();
         let result = {
             let mut slot = self
                 .brain
@@ -1361,8 +1364,7 @@ pub(crate) fn drop_from_gift_loot_table(
         this_entity: Some(this_entity),
         ..Default::default()
     };
-    let drops =
-        crate::world::loot::generate_loot_from_handle(&table, mob.get_random().random(), &params);
+    let drops = crate::world::loot::roll_loot(&table, 0, &params);
     let mut dropped = false;
     for stack in drops {
         let mut drop_event =
@@ -1875,7 +1877,9 @@ pub trait Mob: EntityBase + Send + Sync {
         let mob_entity = self.get_mob_entity();
         let living = &mob_entity.living_entity;
         let creative = player.gamemode.load() == pumpkin_util::GameMode::Creative;
-        let sheared = {
+        // `prevents_armor_change` fires `GetEnchantmentLevelEvent`: copy the candidates first and
+        // check them with no equipment lock held.
+        let candidates: Vec<_> = {
             let equipment = living
                 .entity_equipment
                 .lock()
@@ -1891,17 +1895,20 @@ pub trait Mob: EntityBase + Send + Sync {
                 EquipmentSlot::SADDLE,
             ]
             .into_iter()
-            .find_map(|slot| {
+            .filter_map(|slot| {
                 let stack = equipment.equipment.get(&slot)?;
                 let shearing_sound = stack
                     .get_data_component::<EquippableImpl>()
                     .filter(|equippable| equippable.can_be_sheared)?
                     .shearing_sound
                     .clone();
-                (creative || !prevents_armor_change(stack))
-                    .then(|| (slot, stack.clone(), shearing_sound))
+                Some((slot, stack.clone(), shearing_sound))
             })
+            .collect()
         };
+        let sheared = candidates
+            .into_iter()
+            .find(|(_, stack, _)| creative || !prevents_armor_change(stack));
         let (slot, stack, shearing_sound) = sheared?;
 
         let entity = &living.entity;
@@ -1921,13 +1928,11 @@ pub trait Mob: EntityBase + Send + Sync {
 
         let _ = player.damage_held_stack(shears, 1, hand);
         mob_entity.set_item_slot(&slot, ItemStack::EMPTY.clone());
-        world.emit_game_event(GameEvent::Unequip.name(), entity.pos.load());
+        world.emit_game_event_by(GameEvent::Unequip.name(), entity.pos.load(), entity);
         world.emit_game_event_with_context(
             GameEvent::Shear.name(),
             entity.pos.load(),
-            &crate::world::game_event::GameEventContext {
-                source_entity: Some(player.as_ref()),
-            },
+            &crate::world::game_event::GameEventContext::of_entity(Some(player.as_ref())),
         );
         let item_id = stack.item.registry_key.to_string();
         entity.spawn_at_location_with_offset(stack, super::average_passenger_attachment(self));
@@ -3384,9 +3389,7 @@ fn emit_entity_interact(entity: &Entity, player: &Arc<Player>) {
     entity.world.load().emit_game_event_with_context(
         GameEvent::EntityInteract.name(),
         entity.pos.load(),
-        &crate::world::game_event::GameEventContext {
-            source_entity: Some(player.as_ref()),
-        },
+        &crate::world::game_event::GameEventContext::of_entity(Some(player.as_ref())),
     );
 }
 

@@ -1,4 +1,5 @@
 use pumpkin_data::recipes::RecipeCategoryTypes;
+use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::recipe::{
     DynamicRecipe, OwnedBrewingRecipe, OwnedCookingRecipe, OwnedCookingRecipeType,
     OwnedCraftingRecipe, OwnedRecipeIngredient, OwnedRecipeResult, OwnedSmithingTransformRecipe,
@@ -6,13 +7,38 @@ use pumpkin_protocol::codec::recipe::{
 };
 use serde_json::Value;
 
+/// The special crafting serializers in the registry `minecraft:recipe_serializer`, from
+/// `RecipeSerializers.java`.
+const SPECIAL_CRAFTING_TYPES: [&str; 8] = [
+    "crafting_special_bookcloning",
+    "crafting_special_mapextending",
+    "crafting_special_firework_rocket",
+    "crafting_special_firework_star",
+    "crafting_special_firework_star_fade",
+    "crafting_special_bannerduplicate",
+    "crafting_special_shielddecoration",
+    "crafting_special_repairitem",
+];
+
+/// The recipe of a data pack file, or `None` when the file does not decode.
+#[must_use]
 pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<DynamicRecipe> {
-    let value: Value = serde_json::from_str(json_str).ok()?;
+    try_parse_recipe(namespace, name, json_str).ok()
+}
+
+/// The recipe of a data pack file, or the cause when the file does not decode. A decoded recipe
+/// can still fail later, in the recipe manager, with the vanilla error of an item or a tag.
+pub fn try_parse_recipe(
+    namespace: &str,
+    name: &str,
+    json_str: &str,
+) -> Result<DynamicRecipe, String> {
+    let value: Value = serde_json::from_str(json_str).map_err(|error| error.to_string())?;
     let recipe_id = format!("{namespace}:{name}");
-    let raw_type = value.get("type")?.as_str()?;
+    let raw_type = super::load_error::type_of(&value)?;
     let recipe_type = raw_type.strip_prefix("minecraft:").unwrap_or(raw_type);
 
-    match recipe_type {
+    let parsed = match recipe_type {
         "crafting_shaped" => parse_shaped(recipe_id, &value).map(DynamicRecipe::Crafting),
         "crafting_shapeless" => parse_shapeless(recipe_id, &value).map(DynamicRecipe::Crafting),
         "crafting_transmute" => parse_transmute(recipe_id, &value).map(DynamicRecipe::Crafting),
@@ -26,24 +52,30 @@ pub fn parse_recipe(namespace: &str, name: &str, json_str: &str) -> Option<Dynam
             parse_smithing_transform(recipe_id, &value).map(DynamicRecipe::SmithingTransform)
         }
         "smithing_trim" => parse_smithing_trim(recipe_id, &value).map(DynamicRecipe::SmithingTrim),
-        s if s.starts_with("crafting_special_") => {
+        s if SPECIAL_CRAFTING_TYPES.contains(&s) => {
             let category = parse_category(value.get("category"));
             Some(DynamicRecipe::SpecialCrafting(OwnedSpecialCraftingRecipe {
                 recipe_id,
                 category,
             }))
         }
-        "smelting" => parse_cooking(recipe_id, &value, 200)
+        "smelting" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(c))),
-        "blasting" => parse_cooking(recipe_id, &value, 100)
+        "blasting" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Blasting(c))),
-        "smoking" => parse_cooking(recipe_id, &value, 100)
+        "smoking" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::Smoking(c))),
-        "campfire_cooking" => parse_cooking(recipe_id, &value, 600)
+        "campfire_cooking" => parse_cooking(recipe_id, &value)
             .map(|c| DynamicRecipe::Cooking(OwnedCookingRecipeType::CampfireCooking(c))),
         "brewing" => parse_brewing(recipe_id, &value).map(DynamicRecipe::Brewing),
-        _ => None,
-    }
+        _ => {
+            return Err(format!(
+                "Unknown registry key in ResourceKey[minecraft:root / minecraft:recipe_serializer]: {}",
+                normalize_id(raw_type)
+            ));
+        }
+    };
+    parsed.ok_or_else(|| format!("The {raw_type} recipe has a field that does not decode"))
 }
 
 fn normalize_id(id: &str) -> String {
@@ -56,24 +88,19 @@ fn normalize_id(id: &str) -> String {
 
 fn parse_ingredient(value: &Value) -> Option<OwnedRecipeIngredient> {
     match value {
-        Value::String(s) => Some(OwnedRecipeIngredient::Simple(normalize_id(s))),
-        Value::Object(map) => map
-            .get("tag")
-            .and_then(Value::as_str)
-            .map(|tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)))
-            .or_else(|| {
-                map.get("item")
-                    .and_then(Value::as_str)
-                    .map(|item| OwnedRecipeIngredient::Simple(normalize_id(item)))
-            }),
+        // `HolderSetCodec` reads a string that starts with `#` as a tag. A legacy `{"item": ..}`
+        // or `{"tag": ..}` object is no ingredient in vanilla 26.3.
+        Value::String(s) => Some(s.strip_prefix('#').map_or_else(
+            || OwnedRecipeIngredient::Simple(normalize_id(s)),
+            |tag| OwnedRecipeIngredient::Tagged(normalize_id(tag)),
+        )),
         Value::Array(arr) => {
             let mut ids = Vec::new();
             for item in arr {
-                if let Some(s) = item.as_str() {
-                    ids.push(normalize_id(s));
-                } else if let Some(obj_item) = item.get("item").and_then(Value::as_str) {
-                    ids.push(normalize_id(obj_item));
-                }
+                // `HolderSetCodec` reads a list of item ids only: a tag, an object (the legacy
+                // `{"item": ..}` form too) or any other value in it fails the recipe.
+                let id = item.as_str().filter(|id| !id.starts_with('#'))?;
+                ids.push(normalize_id(id));
             }
             if ids.is_empty() {
                 None
@@ -90,20 +117,34 @@ fn parse_result(value: &Value) -> Option<OwnedRecipeResult> {
         Value::String(s) => Some(OwnedRecipeResult {
             item_id: normalize_id(s),
             count: 1,
+            components: None,
         }),
         Value::Object(map) => {
             let id = map
                 .get("id")
                 .or_else(|| map.get("item"))
                 .and_then(Value::as_str)?;
-            let count = map
-                .get("count")
-                .and_then(Value::as_u64)
-                .unwrap_or(1)
-                .min(99) as u8;
+            // Vanilla `ItemStackTemplate.MAP_CODEC` takes a count from 1 to 99
+            // (`ItemStackTemplate.java:24`) and fails the recipe on any other value.
+            let count = match map.get("count") {
+                None => 1,
+                Some(count) => {
+                    let count = count.as_f64()? as i64;
+                    u8::try_from(count)
+                        .ok()
+                        .filter(|count| (1..=99).contains(count))?
+                }
+            };
+            let components = map.get("components").and_then(|components| {
+                match super::dynamic_registry_loader::json_to_nbt_tag(components) {
+                    NbtTag::Compound(compound) => Some(compound),
+                    _ => None,
+                }
+            });
             Some(OwnedRecipeResult {
                 item_id: normalize_id(id),
                 count,
+                components,
             })
         }
         _ => None,
@@ -220,11 +261,7 @@ fn parse_shapeless(recipe_id: String, value: &Value) -> Option<OwnedCraftingReci
     })
 }
 
-fn parse_cooking(
-    recipe_id: String,
-    value: &Value,
-    default_cooking_time: i32,
-) -> Option<OwnedCookingRecipe> {
+fn parse_cooking(recipe_id: String, value: &Value) -> Option<OwnedCookingRecipe> {
     let ingredient = parse_ingredient(value.get("ingredient")?)?;
     let result = parse_result(value.get("result")?)?;
     let category = parse_category(value.get("category"));
@@ -232,10 +269,8 @@ fn parse_cooking(
         .get("group")
         .and_then(Value::as_str)
         .map(ToString::to_string);
-    let cooking_time = value
-        .get("cookingtime")
-        .and_then(Value::as_i64)
-        .map_or(default_cooking_time, |t| t as i32);
+    // `AbstractCookingRecipe.cookingMapCodec` requires `cookingtime`.
+    let cooking_time = value.get("cookingtime")?.as_f64()? as i32;
     let experience = value
         .get("experience")
         .and_then(Value::as_f64)
@@ -254,14 +289,14 @@ fn parse_cooking(
 
 fn parse_brewing(recipe_id: String, value: &Value) -> Option<OwnedBrewingRecipe> {
     let input = value.get("input")?;
-    let input_item = normalize_id(input.get("item")?.as_str()?);
+    let input_item = parse_ingredient(input.get("item")?)?;
     let input_potion = input
         .get("potion_contents")
         .and_then(|pc| pc.get("potions").or_else(|| pc.get("potion")))
         .and_then(Value::as_str)
         .map(normalize_id);
 
-    let reagent = normalize_id(value.get("reagent")?.get("item")?.as_str()?);
+    let reagent = parse_ingredient(value.get("reagent")?.get("item")?)?;
 
     let output = value.get("output")?;
     let output_item = normalize_id(output.get("id").or_else(|| output.get("item"))?.as_str()?);
@@ -293,6 +328,7 @@ fn parse_transmute(recipe_id: String, value: &Value) -> Option<OwnedCraftingReci
     let result = parse_result(value.get("result")?).unwrap_or(OwnedRecipeResult {
         item_id: "minecraft:filled_map".to_string(),
         count: 1,
+        components: None,
     });
     Some(OwnedCraftingRecipe::Shapeless {
         recipe_id: Some(recipe_id),
@@ -382,9 +418,11 @@ fn parse_smithing_transform(
     recipe_id: String,
     value: &Value,
 ) -> Option<OwnedSmithingTransformRecipe> {
-    let template = parse_ingredient(value.get("template")?)?;
+    // Vanilla `SmithingTransformRecipe.MAP_CODEC`: `template` and `addition` are optional.
+    let optional = |field: &str| value.get(field).map(parse_ingredient);
+    let template = optional("template").map_or(Some(None), |parsed| parsed.map(Some))?;
     let base = parse_ingredient(value.get("base")?)?;
-    let addition = parse_ingredient(value.get("addition")?)?;
+    let addition = optional("addition").map_or(Some(None), |parsed| parsed.map(Some))?;
     let result = parse_result(value.get("result")?)?;
     Some(OwnedSmithingTransformRecipe {
         recipe_id,
@@ -412,6 +450,7 @@ fn parse_smithing_trim(recipe_id: String, value: &Value) -> Option<OwnedSmithing
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pumpkin_data::item::Item;
 
     #[test]
     fn parse_shaped_recipe() {
@@ -555,13 +594,252 @@ mod tests {
                 brewing.recipe_id,
                 "minecraft:brewing/potion_water_nether_wart"
             );
-            assert_eq!(brewing.input_item, "minecraft:potion");
+            assert_eq!(
+                brewing.input_item,
+                OwnedRecipeIngredient::Simple("minecraft:potion".to_string())
+            );
             assert_eq!(brewing.input_potion.as_deref(), Some("minecraft:water"));
-            assert_eq!(brewing.reagent, "minecraft:nether_wart");
+            assert_eq!(
+                brewing.reagent,
+                OwnedRecipeIngredient::Simple("minecraft:nether_wart".to_string())
+            );
             assert_eq!(brewing.output_item, "minecraft:potion");
             assert_eq!(brewing.output_potion.as_deref(), Some("minecraft:awkward"));
         } else {
             panic!("Expected brewing recipe");
         }
+    }
+
+    #[test]
+    fn a_tag_inside_an_ingredient_list_fails_the_recipe() {
+        let json = r##"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": ["#c:ingots", "minecraft:stick"],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        assert!(parse_recipe("test", "bad_list", json).is_none());
+    }
+
+    #[test]
+    fn a_tag_object_or_a_number_in_an_ingredient_list_fails_the_recipe() {
+        for entry in [r#"{ "tag": "minecraft:planks" }"#, "5"] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "cookingtime": 200,
+                    "ingredient": ["minecraft:stick", {entry}],
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(
+                parse_recipe("test", "bad_entry", &json).is_none(),
+                "{entry}"
+            );
+        }
+    }
+
+    /// The ingredient codec of vanilla 26.3 takes an id, a tag string or a list of ids. The
+    /// legacy `{"item": ..}` object is none of them.
+    #[test]
+    fn a_legacy_item_object_inside_an_ingredient_list_fails_the_recipe() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": ["minecraft:stick", { "item": "minecraft:dirt" }],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"#;
+        assert!(parse_recipe("test", "legacy_list", json).is_none());
+    }
+
+    #[test]
+    fn a_legacy_object_as_an_ingredient_fails_the_recipe() {
+        for ingredient in [
+            r#"{ "item": "minecraft:dirt" }"#,
+            r#"{ "tag": "minecraft:planks" }"#,
+        ] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "cookingtime": 200,
+                    "ingredient": {ingredient},
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(
+                parse_recipe("test", "legacy", &json).is_none(),
+                "{ingredient}"
+            );
+        }
+    }
+
+    /// `AbstractCookingRecipe.cookingMapCodec` has no default for `cookingtime`.
+    #[test]
+    fn a_cooking_recipe_without_a_cooking_time_fails() {
+        for kind in ["smelting", "blasting", "smoking", "campfire_cooking"] {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:{kind}",
+                    "ingredient": "minecraft:dirt",
+                    "result": {{ "id": "minecraft:iron_nugget" }}
+                }}"#
+            );
+            assert!(parse_recipe("test", "no_time", &json).is_none(), "{kind}");
+            let json = json.replace("\"ingredient\"", "\"cookingtime\": 7, \"ingredient\"");
+            assert!(parse_recipe("test", "time", &json).is_some(), "{kind}");
+        }
+    }
+
+    #[test]
+    fn a_result_count_outside_1_to_99_fails_the_recipe() {
+        let recipe = |count: &str| {
+            let json = format!(
+                r#"{{
+                    "type": "minecraft:smelting",
+                    "cookingtime": 200,
+                    "ingredient": "minecraft:dirt",
+                    "result": {{ "id": "minecraft:diamond", "count": {count} }}
+                }}"#
+            );
+            parse_recipe("test", "count", &json)
+        };
+        assert!(recipe("0").is_none());
+        assert!(recipe("100").is_none());
+        assert!(recipe("-1").is_none());
+        assert!(recipe("\"a\"").is_none());
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) = recipe("99")
+        else {
+            panic!("Expected smelting recipe");
+        };
+        assert_eq!(cooking.result.count, 99);
+    }
+
+    #[test]
+    fn a_smithing_transform_can_leave_out_the_template_and_the_addition() {
+        let json = r#"{
+            "type": "minecraft:smithing_transform",
+            "base": "minecraft:iron_sword",
+            "result": { "id": "minecraft:diamond_sword" }
+        }"#;
+        let Some(DynamicRecipe::SmithingTransform(recipe)) = parse_recipe("test", "plain", json)
+        else {
+            panic!("Expected smithing transform recipe");
+        };
+        assert_eq!(recipe.template, None);
+        assert_eq!(recipe.addition, None);
+        assert!(OwnedRecipeIngredient::match_optional(None, &Item::AIR));
+        assert!(!OwnedRecipeIngredient::match_optional(None, &Item::STICK));
+    }
+
+    #[test]
+    fn a_result_keeps_its_components() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": "minecraft:dirt",
+            "result": {
+                "id": "minecraft:diamond",
+                "components": { "minecraft:max_stack_size": 7 }
+            }
+        }"#;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "shiny", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        let components = cooking
+            .result
+            .components
+            .expect("the result has components");
+        assert_eq!(components.get_int("minecraft:max_stack_size"), Some(7));
+    }
+
+    /// JSON numbers have no NBT type. Vanilla codecs read any number, so a decimal saturation
+    /// and a whole food nutrition both load, and one component does not drop the others.
+    #[test]
+    fn json_numbers_decode_as_the_component_types_expect() {
+        let json = r#"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": "minecraft:dirt",
+            "result": {
+                "id": "minecraft:diamond",
+                "components": {
+                    "minecraft:food": { "nutrition": 4, "saturation": 1.5 },
+                    "minecraft:max_stack_size": 7.0
+                }
+            }
+        }"#;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "food", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        let stack =
+            pumpkin_inventory::recipe_index::RecipeOutput::owned(&cooking.result).assemble();
+        assert_eq!(stack.get_max_stack_size(), 7);
+        let food = stack
+            .get_data_component::<pumpkin_data::data_component_impl::FoodImpl>()
+            .expect("the result has the food component");
+        assert_eq!(food.nutrition, 4);
+        assert!((food.saturation - 1.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn tag_string_ingredient_is_a_tag() {
+        let json = r##"{
+            "type": "minecraft:smelting",
+            "cookingtime": 200,
+            "ingredient": "#c:ingots",
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        let Some(DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(cooking))) =
+            parse_recipe("test", "ingots", json)
+        else {
+            panic!("Expected smelting recipe");
+        };
+        assert_eq!(
+            cooking.ingredient,
+            OwnedRecipeIngredient::Tagged("c:ingots".to_string())
+        );
+        assert!(cooking.ingredient.match_item(&Item::IRON_INGOT));
+        assert!(!cooking.ingredient.match_item(&Item::STICK));
+    }
+
+    #[test]
+    fn tag_string_in_ingredient_list_is_a_tag() {
+        let json = r##"{
+            "type": "minecraft:crafting_shapeless",
+            "ingredients": ["#c:ingots", "minecraft:stick"],
+            "result": { "id": "minecraft:iron_nugget" }
+        }"##;
+        let Some(DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless { ingredients, .. })) =
+            parse_recipe("test", "mix", json)
+        else {
+            panic!("Expected shapeless recipe");
+        };
+        assert_eq!(
+            ingredients,
+            vec![
+                OwnedRecipeIngredient::Tagged("c:ingots".to_string()),
+                OwnedRecipeIngredient::Simple("minecraft:stick".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn brewing_reagent_accepts_a_tag_string() {
+        let json = r##"{
+            "type": "minecraft:brewing",
+            "input": { "item": "minecraft:potion" },
+            "output": { "id": "minecraft:potion" },
+            "reagent": { "item": "#c:ingots" }
+        }"##;
+        let Some(DynamicRecipe::Brewing(brewing)) = parse_recipe("test", "ingot_potion", json)
+        else {
+            panic!("Expected brewing recipe");
+        };
+        assert!(brewing.reagent.match_item(&Item::GOLD_INGOT));
+        assert!(!brewing.reagent.match_item(&Item::NETHER_WART));
     }
 }

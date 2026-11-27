@@ -157,8 +157,14 @@ impl Shearable for SnowGolemEntity {
 
         let entity = self.get_entity();
         let world = entity.world.load();
-        let pos = entity.pos.load();
-        world.play_sound(Sound::EntitySnowGolemShear, sound_category, &pos);
+        world.play_sound_at_entity(
+            None,
+            entity,
+            Sound::EntitySnowGolemShear,
+            sound_category,
+            1.0,
+            1.0,
+        );
         self.set_has_pumpkin(false);
 
         for stack in shearing_loot(self, SHEAR_SNOW_GOLEM_LOOT_TABLE, tool) {
@@ -263,9 +269,7 @@ impl Mob for SnowGolemEntity {
                 world.emit_game_event_with_context(
                     GameEvent::BlockPlace.name(),
                     snow_pos.to_centered_f64(),
-                    &GameEventContext {
-                        source_entity: Some(self),
-                    },
+                    &GameEventContext::of_entity_state(Some(self), new_state),
                 );
             }
         }

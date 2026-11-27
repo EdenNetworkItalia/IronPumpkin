@@ -3,11 +3,11 @@ use std::sync::Arc;
 
 use crate::{
     inventory::Inventory,
+    recipe_index,
     window_property::{ExperienceContainer, PropertyDelegate},
 };
 use pumpkin_data::data_component_impl::CookingFuelImpl;
 use pumpkin_data::item_stack::ItemStack;
-use pumpkin_data::recipes::{CookingRecipeKind, CookingRecipeType};
 use pumpkin_data::screen::WindowType;
 
 use crate::{
@@ -20,25 +20,18 @@ use crate::{
 
 use super::furnace_like_slot::{FurnaceLikeSlot, FurnaceLikeSlotType, FurnaceOutputSlot};
 
+/// Vanilla `AbstractFurnaceMenu.canSmelt`: the input property set of the furnace holds `item`.
 #[must_use]
 pub fn can_smelt_item(item: &pumpkin_data::item::Item, window_type: WindowType) -> bool {
-    let kind = match window_type {
-        WindowType::Furnace => CookingRecipeKind::Smelting,
-        WindowType::BlastFurnace => CookingRecipeKind::Blasting,
-        WindowType::Smoker => CookingRecipeKind::Smoking,
+    let key = match window_type {
+        WindowType::Furnace => recipe_index::FURNACE_INPUT,
+        WindowType::BlastFurnace => recipe_index::BLAST_FURNACE_INPUT,
+        WindowType::Smoker => recipe_index::SMOKER_INPUT,
         _ => return false,
     };
-
-    pumpkin_data::recipes::RECIPES_COOKING
-        .iter()
-        .any(|recipe| match (recipe, &kind) {
-            (CookingRecipeType::Smelting(r), CookingRecipeKind::Smelting)
-            | (CookingRecipeType::Blasting(r), CookingRecipeKind::Blasting)
-            | (CookingRecipeType::Smoking(r), CookingRecipeKind::Smoking) => {
-                r.ingredient.match_item(item)
-            }
-            _ => false,
-        })
+    recipe_index::current()
+        .property_set(key)
+        .is_some_and(|set| set.test(item))
 }
 
 pub struct FurnaceLikeScreenHandler {

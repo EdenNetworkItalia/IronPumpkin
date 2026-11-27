@@ -84,10 +84,11 @@ impl ShootTongue {
     }
 
     fn eat_entity(&self, tick: &BrainTick<'_>, frog: &FrogEntity) {
-        tick.world.play_sound_fine(
+        tick.world.play_sound_at_entity(
+            None,
+            frog.get_entity(),
             self.eat_sound,
             SoundCategory::Neutral,
-            &frog.get_entity().pos.load(),
             2.0,
             1.0,
         );
@@ -186,10 +187,11 @@ impl Behavior for ShootTongue {
                 let frog_pos = frog.get_entity().pos.load();
                 let target_pos = target.get_entity().pos.load();
                 if target_pos.squared_distance_to_vec(&frog_pos).sqrt() < EATING_DISTANCE {
-                    tick.world.play_sound_fine(
+                    tick.world.play_sound_at_entity(
+                        None,
+                        frog.get_entity(),
                         self.tongue_sound,
                         SoundCategory::Neutral,
-                        &frog_pos,
                         2.0,
                         1.0,
                     );

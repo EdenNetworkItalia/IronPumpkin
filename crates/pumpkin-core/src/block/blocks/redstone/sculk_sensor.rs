@@ -71,7 +71,13 @@ fn get_calibrated_sculk_sensor_input_strength(
 }
 
 impl SculkSensorBlock {
-    pub fn trigger(world: &Arc<World>, pos: &BlockPos, block: &Block, power: u8) {
+    pub fn trigger(
+        world: &Arc<World>,
+        pos: &BlockPos,
+        block: &Block,
+        power: u8,
+        source: Option<&crate::entity::Entity>,
+    ) {
         if block.id == BlockId::SCULK_SENSOR {
             let state = world.get_block_state(pos);
             let mut props = SculkSensorLikeProperties::from_state_id(state.id);
@@ -96,9 +102,10 @@ impl SculkSensorBlock {
                         *pos,
                     );
                 }
-                world.emit_game_event(
+                world.emit_game_event_by(
                     GameEvent::SculkSensorTendrilsClicking.name(),
                     pos.to_centered_f64(),
+                    source,
                 );
                 world.schedule_block_tick(block, *pos, 30, TickPriority::Normal);
             }
@@ -135,9 +142,10 @@ impl SculkSensorBlock {
                         *pos,
                     );
                 }
-                world.emit_game_event(
+                world.emit_game_event_by(
                     GameEvent::SculkSensorTendrilsClicking.name(),
                     pos.to_centered_f64(),
+                    source,
                 );
                 // Vanilla CalibratedSculkSensorBlock.getActiveTicks() is 10 ticks (vs 30 for normal).
                 world.schedule_block_tick(block, *pos, 10, TickPriority::Normal);

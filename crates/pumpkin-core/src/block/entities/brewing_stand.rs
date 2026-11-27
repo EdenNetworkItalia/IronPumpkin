@@ -72,12 +72,11 @@ impl BrewingStandBlockEntity {
         let Some(server) = world.server.upgrade() else {
             return false;
         };
-        let key = format!("minecraft:{}", stack.get_item().registry_key);
         server
             .recipe_manager
             .get_dynamic_recipes_internal()
             .iter()
-            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.reagent == key))
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.reagent.match_item(stack.get_item())))
     }
 
     fn is_dynamic_potion_input(&self, stack: &ItemStack) -> bool {
@@ -87,12 +86,11 @@ impl BrewingStandBlockEntity {
         let Some(server) = world.server.upgrade() else {
             return false;
         };
-        let key = format!("minecraft:{}", stack.get_item().registry_key);
         server
             .recipe_manager
             .get_dynamic_recipes_internal()
             .iter()
-            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.input_item == key))
+            .any(|recipe| matches!(recipe, DynamicRecipe::Brewing(r) if r.input_item.match_item(stack.get_item())))
     }
 
     /// Vanilla `setChanged` only persists the entity, comparators react to slot changes instead.
@@ -144,12 +142,10 @@ impl BrewingStandBlockEntity {
             // 2. Check dynamic brewing recipes from loaded datapacks
             if let Some(server) = world.server.upgrade() {
                 let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                let slot_key = format!("minecraft:{}", slot.get_item().registry_key);
-                let ing_key = format!("minecraft:{}", ingredient.get_item().registry_key);
-                for dyn_recipe in &dynamic_recipes {
+                for dyn_recipe in dynamic_recipes.iter() {
                     if let DynamicRecipe::Brewing(r) = dyn_recipe
-                        && r.input_item == slot_key
-                        && r.reagent == ing_key
+                        && r.input_item.match_item(slot.get_item())
+                        && r.reagent.match_item(ingredient.get_item())
                     {
                         if let Some(req_pot) = &r.input_potion {
                             let current_pot = potion_id
@@ -233,12 +229,10 @@ impl BrewingStandBlockEntity {
                 // 2. Try dynamic brewing recipes from loaded datapacks
                 if let Some(server) = world.server.upgrade() {
                     let dynamic_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-                    let slot_key = format!("minecraft:{}", slot.get_item().registry_key);
-                    let ing_key = format!("minecraft:{}", ingredient.get_item().registry_key);
-                    for dyn_recipe in &dynamic_recipes {
+                    for dyn_recipe in dynamic_recipes.iter() {
                         if let DynamicRecipe::Brewing(r) = dyn_recipe
-                            && r.input_item == slot_key
-                            && r.reagent == ing_key
+                            && r.input_item.match_item(slot.get_item())
+                            && r.reagent.match_item(ingredient.get_item())
                         {
                             if let Some(req_pot) = &r.input_potion {
                                 let current_pot = potion_id
@@ -356,20 +350,38 @@ impl BrewingStandBlockEntity {
         self.mark_dirty();
     }
 
+    fn read_items(&self) -> std::sync::RwLockReadGuard<'_, [ItemStack; Self::INVENTORY_SIZE]> {
+        self.items
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn write_items(&self) -> std::sync::RwLockWriteGuard<'_, [ItemStack; Self::INVENTORY_SIZE]> {
+        self.items
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
     fn try_refill_fuel(&self, world: &Arc<crate::world::World>) -> bool {
-        let (expected_fuel, default_uses, speed_multiplier) = if self.fuel.load(Ordering::Relaxed)
-            <= 0
-            && let Ok(items) = self.items.try_read()
-            && !items[4].is_empty()
-            && let Some(fuel_comp) = items[4].get_data_component::<BrewingFuelImpl>()
-        {
+        // Block entities tick in parallel: a hopper push can hold the items lock. Vanilla ticks
+        // them one after another, so each tick lock here waits for the push.
+        if self.fuel.load(Ordering::Relaxed) > 0 {
+            return false;
+        }
+        let (expected_fuel, default_uses, speed_multiplier) = {
+            let items = self.read_items();
+            let fuel = &items[4];
+            let Some(fuel_comp) = fuel
+                .get_data_component::<BrewingFuelImpl>()
+                .filter(|_| !fuel.is_empty())
+            else {
+                return false;
+            };
             (
-                items[4].clone(),
+                fuel.clone(),
                 fuel_comp.get_uses(),
                 fuel_comp.get_speed_multiplier(),
             )
-        } else {
-            return false;
         };
 
         let initial_power = u16::try_from(default_uses.max(0)).unwrap_or(u16::MAX);
@@ -396,10 +408,11 @@ impl BrewingStandBlockEntity {
         };
 
         let mut dropped_remainder = None;
+        let mut items = self.write_items();
         let refilled = if self.fuel.load(Ordering::Relaxed) <= 0
-            && let Ok(mut items) = self.items.try_write()
             && !items[4].is_empty()
-            && items[4].are_equal(&expected_fuel)
+            // A hopper can add fuel during the event: the count may differ.
+            && items[4].are_items_and_components_equal(&expected_fuel)
         {
             let remainder = items[4].crafting_remainder();
             self.fuel.store(fuel_power, Ordering::Relaxed);
@@ -420,6 +433,7 @@ impl BrewingStandBlockEntity {
         } else {
             false
         };
+        drop(items);
 
         if let Some(remainder) = dropped_remainder {
             world.drop_stack(&self.position, remainder);
@@ -747,11 +761,7 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
         let fuel_refilled = self.try_refill_fuel(world);
 
         // Get current ingredient and check brewing state
-        let Ok(items) = self.items.try_read() else {
-            return;
-        };
-        let ingredient = items[3].clone();
-        drop(items);
+        let ingredient = self.read_items()[3].clone();
         let brewable = self.is_brewable(&ingredient, world);
         let is_brewing = self.brew_time.load(Ordering::Relaxed) > 0;
 
@@ -774,33 +784,35 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             }
         } else if brewable && self.fuel.load(Ordering::Relaxed) > 0 {
             let default_ticks = self.effective_brew_ticks();
-            let brew_time = if let Some(server) = world.server.upgrade() {
-                let mut start_event =
-                    crate::plugin::api::events::block::brewing_start::BrewingStartEvent::new(
-                        self.position,
-                        world.clone(),
-                        default_ticks,
-                    );
-                server
-                    .plugin_manager
-                    .fire_blocking(&server, &mut start_event);
-                if start_event.cancelled {
-                    return;
-                }
-                start_event.brewing_time
-            } else {
-                default_ticks
-            };
+            let brew_time = world
+                .server
+                .upgrade()
+                .map_or(Some(default_ticks), |server| {
+                    let mut start_event =
+                        crate::plugin::api::events::block::brewing_start::BrewingStartEvent::new(
+                            self.position,
+                            world.clone(),
+                            default_ticks,
+                        );
+                    server
+                        .plugin_manager
+                        .fire_blocking(&server, &mut start_event);
+                    // A cancelled start stops only the brew: the bottle state below still updates.
+                    (!start_event.cancelled).then_some(start_event.brewing_time)
+                });
 
-            // Start new brewing cycle
-            self.fuel.fetch_sub(1, Ordering::Relaxed);
-            self.brew_time.store(brew_time, Ordering::Relaxed);
-            self.total_brew_time.store(brew_time, Ordering::Relaxed);
-            *self
-                .ingredient_item
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ingredient.get_item());
-            self.mark_timer_dirty();
+            if let Some(brew_time) = brew_time {
+                // Start new brewing cycle
+                self.fuel.fetch_sub(1, Ordering::Relaxed);
+                self.brew_time.store(brew_time, Ordering::Relaxed);
+                self.total_brew_time.store(brew_time, Ordering::Relaxed);
+                *self
+                    .ingredient_item
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) =
+                    Some(ingredient.get_item());
+                self.mark_timer_dirty();
+            }
         } else if fuel_refilled {
             // Mark dirty if fuel was refilled to update fuel indicator
             self.mark_timer_dirty();
@@ -809,11 +821,13 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
         // Ensure clients are notified when potion slot contents (and their data) change.
         // Compute current presence bits for the three bottle slots
         let mut current: [bool; 3] = [false; 3];
-        if let Ok(items_guard) = self.items.try_read() {
-            for (i, slot) in items_guard.iter().take(3).enumerate() {
-                // Consider a potion slot "present" when it has an item and a PotionContents component or is a glass bottle
-                current[i] = !slot.is_empty() && (slot.get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>().is_some() || slot.get_item().id == Item::GLASS_BOTTLE.id);
-            }
+        for (i, slot) in self.read_items().iter().take(3).enumerate() {
+            // Consider a potion slot "present" when it has an item and a PotionContents component or is a glass bottle
+            current[i] = !slot.is_empty()
+                && (slot
+                    .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
+                    .is_some()
+                    || slot.get_item().id == Item::GLASS_BOTTLE.id);
         }
 
         // If potion presence changed, update last_potion_count and update block state so clients
@@ -840,10 +854,12 @@ impl crate::block::entities::BlockEntity for BrewingStandBlockEntity {
             props.r#has_bottle_1 = current[1];
             props.r#has_bottle_2 = current[2];
 
+            // Vanilla `serverTick` (`BrewingStandBlockEntity.java:187`) uses flag 2: no
+            // neighbor update.
             world.set_block_state(
                 &self.position,
                 props.to_state_id(block),
-                crate::world::BlockFlags::NOTIFY_ALL,
+                crate::world::BlockFlags::NOTIFY_LISTENERS,
             );
 
             // Also mark dirty so inventory/container updates are sent to open screens.

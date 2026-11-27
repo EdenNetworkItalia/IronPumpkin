@@ -1,7 +1,10 @@
+use std::sync::Arc;
+
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
 
 pub trait RecipeProvider: Send + Sync {
-    fn get_dynamic_recipes(&self) -> Vec<DynamicRecipe>;
+    /// The loaded data pack and plugin recipes. The caller shares the list and clones no recipe.
+    fn get_dynamic_recipes(&self) -> Arc<[DynamicRecipe]>;
 }
 
 #[derive(Clone, Copy)]

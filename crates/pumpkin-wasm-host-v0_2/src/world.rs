@@ -1,4 +1,5 @@
 use super::{AccessorExt, in_active_context, run_blocking};
+use crate::DeferHost;
 use crate::LockIgnorePoison;
 
 use pumpkin_data::block_properties::NoteblockInstrument as InternalNoteblockInstrument;
@@ -770,7 +771,10 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         let world_ref = self.get(&world)?.clone();
         let pos = pumpkin_util::math::vector2::Vector2::new(x, z);
         if world_ref.set_chunk_forced(pos, forced) {
-            world_ref.update_active_chunks();
+            // The update fires `ChunkEvent.Load` for the chunks that it loads.
+            self.defer("world set-chunk-force-loaded", move || {
+                world_ref.update_active_chunks();
+            })?;
         }
         Ok(())
     }
@@ -984,6 +988,11 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         ))
     }
 
+    // The sound call fires `PlayLevelSoundEvent`, which can reach a Wasm handler. This import is
+    // synchronous, so the guest call that makes it holds the root permit, and a handler of the
+    // event could not run. The store queue plays the sound after the call, one sound after the
+    // other, in call order. A panic of the sound is logged with the sound name. The WIT cannot
+    // become `async func`: a plugin that imports the synchronous function would not link.
     fn play_sound(
         &mut self,
         world: Resource<World>,
@@ -993,21 +1002,21 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let world_ref = self.get(&world)?;
-        let sound_name = format!("{sound:?}").to_lowercase().replace('_', ".");
-        let sound_data = pumpkin_data::sound::Sound::from_name(&sound_name)
-            .ok_or_else(|| wasmtime::Error::msg(format!("Unknown sound: {sound_name}")))?;
-
-        let internal_category = from_wit_sound_category(category);
-
-        world_ref.play_sound_raw(
-            sound_data as u16,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-        );
-        Ok(())
+        let world = self.get(&world)?.clone();
+        let sound_data = pumpkin_data::sound::Sound::slice()[sound as usize];
+        let category = from_wit_sound_category(category);
+        self.defer(
+            format!("world play-sound {}", sound_data.to_name()),
+            move || {
+                world.play_sound_raw(
+                    sound_data as u16,
+                    category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                );
+            },
+        )
     }
 
     fn play_custom_sound(
@@ -1019,16 +1028,17 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         volume: f32,
         pitch: f32,
     ) -> wasmtime::Result<()> {
-        let world_ref = self.get(&world)?;
-        let internal_category = from_wit_sound_category(category);
-        world_ref.play_custom_sound(
-            &sound_name,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-        );
-        Ok(())
+        let world = self.get(&world)?.clone();
+        let category = from_wit_sound_category(category);
+        self.defer(format!("world play-custom-sound {sound_name}"), move || {
+            world.play_custom_sound(
+                &sound_name,
+                category,
+                &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                volume,
+                pitch,
+            );
+        })
     }
 
     fn spawn_particle(
@@ -1486,11 +1496,12 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         rule: WitGameRule,
         value: WitGameRuleValue,
     ) -> wasmtime::Result<()> {
-        let world_res = self.get(&world)?;
+        let world_res = self.get(&world)?.clone();
         let internal_rule = from_wit_game_rule(rule);
         let internal_value = from_wit_game_rule_value(value);
-        world_res.set_game_rule(&internal_rule, internal_value);
-        Ok(())
+        self.defer("world set-game-rule", move || {
+            world_res.set_game_rule(&internal_rule, internal_value);
+        })
     }
 
     fn drop(&mut self, rep: Resource<World>) -> wasmtime::Result<()> {
@@ -1932,7 +1943,9 @@ impl pumpkin::plugin::world::HostChunk for PluginHostState {
         };
         let pos = pumpkin_util::math::vector2::Vector2::new(chunk_data.x, chunk_data.z);
         if world.set_chunk_forced(pos, forced) {
-            world.update_active_chunks();
+            self.defer("chunk set-force-loaded", move || {
+                world.update_active_chunks();
+            })?;
         }
         Ok(())
     }
@@ -2764,6 +2777,27 @@ impl pumpkin_world::generation::generator::CustomChunkGenerator for WasmChunkGen
         let chunk = cache.chunks[mid].get_proto_chunk_mut();
         self.invoke_phase(pumpkin::plugin::world::GenerationPhase::Features, chunk);
         chunk.stage = pumpkin_world::chunk_system::StagedChunkEnum::Features;
+    }
+}
+
+#[must_use]
+pub const fn to_wit_sound_category(
+    category: pumpkin_data::sound::SoundCategory,
+) -> pumpkin::plugin::sounds::SoundCategory {
+    use pumpkin::plugin::sounds::SoundCategory as Wit;
+    use pumpkin_data::sound::SoundCategory as Native;
+    match category {
+        Native::Master => Wit::Master,
+        Native::Music => Wit::Music,
+        Native::Records => Wit::Records,
+        Native::Weather => Wit::Weather,
+        Native::Blocks => Wit::Blocks,
+        Native::Hostile => Wit::Hostile,
+        Native::Neutral => Wit::Neutral,
+        Native::Players => Wit::Players,
+        Native::Ambient => Wit::Ambient,
+        Native::Voice => Wit::Voice,
+        Native::Ui => Wit::Ui,
     }
 }
 

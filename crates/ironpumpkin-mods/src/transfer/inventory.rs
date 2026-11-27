@@ -30,7 +30,6 @@ use pumpkin_data::{
     item::Item,
     item_stack::ItemStack,
     potion_brewing::BREWING_RECIPES,
-    recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
     tag::{self, Taggable},
 };
 use pumpkin_inventory::Inventory;
@@ -203,18 +202,28 @@ macro_rules! with_furnace {
 
 /// Writes `stack` to `slot`. The Pumpkin furnace resets its cooking progress in `set_stack` when
 /// the input item changes; inside a transaction that reset waits for the root commit, as the
-/// `insideTransaction` flag of `NeoForge` defers it, so the write keeps the progress.
+/// `insideTransaction` flag of `NeoForge` defers it, so the write keeps the progress and the
+/// recipe hint (`AbstractFurnaceBlockEntity.java:346`).
 fn write_slot(inventory: &dyn Inventory, kind: ContainerKind, slot: usize, stack: ItemStack) {
     if kind == ContainerKind::Furnace && slot == FURNACE_INPUT {
         let progress = with_furnace!(inventory, |furnace| (
             furnace.get_cooking_time_spent(),
-            furnace.get_cooking_total_time()
+            furnace.get_cooking_total_time(),
+            furnace
+                .last_recipe
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone()
         ));
         inventory.set_stack(slot, stack);
-        if let Some((spent, total)) = progress {
+        if let Some((spent, total, hint)) = progress {
             with_furnace!(inventory, |furnace| {
                 furnace.set_cooking_time_spent(spent);
                 furnace.set_cooking_total_time(total);
+                *furnace
+                    .last_recipe
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner) = hint;
             });
         }
     } else {
@@ -346,19 +355,9 @@ impl Journal for CookingReset {
             return;
         }
         let input = self.furnace.get_stack(FURNACE_INPUT);
-        // The reset of Pumpkin's furnace `set_stack`.
-        let total = if input.is_empty() {
-            0
-        } else {
-            get_cooking_recipe_with_ingredient(input.item, CookingRecipeKind::Smelting)
-                .map_or(0, |recipe| {
-                    u16::try_from(recipe.cookingtime).unwrap_or(u16::MAX)
-                })
-        };
-        with_furnace!(self.furnace.as_ref(), |furnace| {
-            furnace.set_cooking_total_time(total);
-            furnace.set_cooking_time_spent(0);
-        });
+        // The reset of the furnace `set_stack`, with the recipes of that furnace type.
+        with_furnace!(self.furnace.as_ref(), |furnace| furnace
+            .reset_cooking(&input));
     }
 }
 

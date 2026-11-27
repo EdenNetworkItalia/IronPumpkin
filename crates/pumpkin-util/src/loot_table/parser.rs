@@ -134,6 +134,10 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
         Some(Table {
             pools,
             functions: self.functions(value),
+            random_sequence: value
+                .get("random_sequence")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
         })
     }
 
@@ -387,6 +391,9 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
             Some("this") => LootEntityTarget::This,
             Some("attacker" | "killer") => LootEntityTarget::Attacker,
             Some("direct_attacker" | "direct_killer") => LootEntityTarget::DirectAttacker,
+            Some("attacking_player") => LootEntityTarget::AttackingPlayer,
+            Some("target_entity") => LootEntityTarget::TargetEntity,
+            Some("interacting_entity") => LootEntityTarget::InteractingEntity,
             _ => return None,
         };
         let mut predicate = value.get("predicate")?.as_object()?.clone();
@@ -433,7 +440,11 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
         let Some(predicate) = value.get("predicate") else {
             return Condition::Never;
         };
-        let mut conditions = Vec::new();
+        // `DamageSourceCondition.test` fails without a damage source or an origin, whatever the
+        // predicate holds. An empty predicate only checks that they exist.
+        let mut conditions = vec![Condition::DamageSourceProperties(Value::Object(
+            serde_json::Map::new(),
+        ))];
         for (field, target) in [
             ("source_entity", LootEntityTarget::Attacker),
             ("direct_entity", LootEntityTarget::DirectAttacker),
@@ -495,7 +506,7 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                                 .unwrap_or(false),
                         }
                     }
-                    "furnace_smelt" => LootFunctionKind::FurnaceSmelt,
+                    "furnace_smelt" => furnace_smelt(function),
                     "apply_bonus" => {
                         let formula = function.get("formula").and_then(Value::as_str)?;
                         let parameters = function.get("parameters");
@@ -575,5 +586,15 @@ impl<R: Fn(&str) -> Option<Value>> Parser<'_, R> {
                 })
             })
             .collect()
+    }
+}
+
+/// Vanilla `SmeltItemFunction.MAP_CODEC`: `use_input_count` defaults to `true`.
+fn furnace_smelt(function: &Value) -> LootFunctionKind {
+    LootFunctionKind::FurnaceSmelt {
+        use_input_count: function
+            .get("use_input_count")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
     }
 }

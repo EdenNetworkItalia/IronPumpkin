@@ -383,7 +383,7 @@ fn acquire_forced_game_test_chunk(world: &World, chunk: Vector2<i32>) {
         .chunk_loading
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    chunk_loading.add_force_ticket(chunk);
+    chunk_loading.add_forced_chunk_ticket(chunk);
     chunk_loading.send_change();
     drop(chunk_loading);
     leases.insert(
@@ -416,7 +416,7 @@ fn release_forced_game_test_chunk(world: &World, chunk: Vector2<i32>) {
         .chunk_loading
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    chunk_loading.remove_force_ticket(chunk);
+    chunk_loading.remove_forced_chunk_ticket(chunk);
     chunk_loading.send_change();
     drop(chunk_loading);
 
@@ -855,7 +855,7 @@ impl GameTestWorld for ServerGameTestWorld {
                 tick: 0,
             });
         }
-        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position);
+        crate::block::blocks::redstone::buttons::ButtonBlock::press(&self.world, position, None);
         Ok(())
     }
 
@@ -869,7 +869,7 @@ impl GameTestWorld for ServerGameTestWorld {
                 tick: 0,
             });
         }
-        crate::block::blocks::redstone::lever::LeverBlock::pull(&self.world, position);
+        crate::block::blocks::redstone::lever::LeverBlock::pull(&self.world, position, None);
         Ok(())
     }
 

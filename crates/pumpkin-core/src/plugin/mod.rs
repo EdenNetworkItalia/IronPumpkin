@@ -29,7 +29,9 @@ pub mod data_maps;
 pub mod dispatch;
 pub(crate) mod entity_events;
 pub mod guarded_call;
+pub mod guest_call;
 pub(crate) mod interact_events;
+pub(crate) mod item_events;
 pub(crate) mod level_events;
 pub(crate) mod living_events;
 pub mod loader;
@@ -40,6 +42,7 @@ pub mod network_events;
 /// host features.
 pub mod permissions;
 pub(crate) mod player_events;
+pub use item_events::{is_hooked_event, without_item_hooks};
 pub use player_events::{Deferral, defer_if_active};
 pub mod server_events;
 pub mod startup;
@@ -107,6 +110,12 @@ pub trait DynEventHandler: Send + Sync {
     fn receive_canceled(&self) -> bool {
         true
     }
+
+    /// Whether the handler calls a Wasm plugin store, and so waits for the root permit of the
+    /// stores. See [`guest_call`].
+    fn is_wasm_plugin(&self) -> bool {
+        false
+    }
 }
 
 /// A trait for handling specific events.
@@ -131,6 +140,11 @@ pub trait EventHandler<E: Payload>: Send + Sync {
         _event: &'a mut E,
     ) -> BoxFuture<'a, ()> {
         Box::pin(async {})
+    }
+
+    /// Whether the handler calls a Wasm plugin store. See [`DynEventHandler::is_wasm_plugin`].
+    fn is_wasm_plugin(&self) -> bool {
+        false
     }
 }
 
@@ -199,6 +213,10 @@ where
 
     fn receive_canceled(&self) -> bool {
         self.receive_canceled
+    }
+
+    fn is_wasm_plugin(&self) -> bool {
+        self.handler.is_wasm_plugin()
     }
 }
 
@@ -1254,6 +1272,17 @@ impl PluginManager {
         )
     }
 
+    /// Whether a Wasm plugin handles `E` or one of its parents. See [`guest_call`].
+    #[must_use]
+    pub fn has_wasm_handlers<E: Payload + 'static>(&self) -> bool {
+        dispatch::any_handler_in(
+            &self.handlers.load(),
+            E::get_name_static(),
+            E::get_parent_names_static(),
+            |handler| handler.is_wasm_plugin(),
+        )
+    }
+
     /// Fire an event to all registered handlers
     pub async fn fire<E: Payload + Send + Sync + 'static>(
         &self,
@@ -1306,20 +1335,31 @@ impl PluginManager {
         parent_names: &'static [&'static str],
         event: &mut (dyn Payload + Send + Sync),
     ) {
-        if !dispatch::has_handlers_in(&self.handlers.load(), event_name, parent_names) {
+        let handlers_map = self.handlers.load();
+        if !dispatch::has_handlers_in(&handlers_map, event_name, parent_names) {
             return;
         }
+        let skip_wasm = guest_call::skips_wasm_handlers();
+        if skip_wasm
+            && !dispatch::any_handler_in(&handlers_map, event_name, parent_names, |handler| {
+                !handler.is_wasm_plugin()
+            })
+        {
+            return;
+        }
+        let fire = dispatch::dispatch_skipping(
+            &handlers_map,
+            server,
+            event_name,
+            parent_names,
+            event,
+            skip_wasm,
+        );
 
         if tokio::runtime::Handle::try_current().is_ok() {
-            tokio::task::block_in_place(|| {
-                server
-                    .runtime
-                    .block_on(self.fire_dyn(server, event_name, parent_names, event));
-            });
+            tokio::task::block_in_place(|| server.runtime.block_on(fire));
         } else {
-            server
-                .runtime
-                .block_on(self.fire_dyn(server, event_name, parent_names, event));
+            server.runtime.block_on(fire);
         }
     }
 

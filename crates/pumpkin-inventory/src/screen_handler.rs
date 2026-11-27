@@ -155,6 +155,11 @@ pub trait InventoryPlayer: Send + Sync {
         false
     }
 
+    /// The ids that the client of the player gets for custom content.
+    fn content_ids(&self) -> pumpkin_data::dynamic::ContentIds {
+        pumpkin_data::dynamic::ContentIds::Real
+    }
+
     /// Gets the player's experience level.
     fn experience_level(&self) -> i32;
 
@@ -223,6 +228,13 @@ pub trait InventoryPlayer: Send + Sync {
         false
     }
 
+    /// Whether `stack` has the effect that keeps a player from changing armor (vanilla
+    /// `ArmorSlot.mayPickup`). The check fires `GetEnchantmentLevelEvent`, so a server that holds
+    /// no lock at the click answers it ahead.
+    fn prevents_armor_change(&self, stack: &ItemStack) -> bool {
+        stack.has_prevent_armor_change()
+    }
+
     /// Performs grindstone experience drop and plays grindstone sound events.
     fn use_grindstone(&self, _xp_amount: i32) {}
 
@@ -240,7 +252,7 @@ pub trait InventoryPlayer: Send + Sync {
     fn on_recipe_crafted(&self, _item: &ItemStack) {}
 
     /// Called when the player takes a brewed potion from a brewing stand potion slot.
-    fn on_brewed_potion(&self) {}
+    fn on_brewed_potion(&self, _stack: &ItemStack) {}
 
     fn game_time(&self) -> i64 {
         0
@@ -843,6 +855,10 @@ pub trait ScreenHandler: Send + Sync {
         action_type: SlotActionType,
         player: &dyn InventoryPlayer,
     ) {
+        // A drag over one slot ends in a pickup click through a recursive call: the flag waits
+        // for it.
+        let skip_item_click_overrides = action_type == SlotActionType::Pickup
+            && std::mem::take(&mut self.get_behaviour_mut().skip_item_click_overrides);
         if action_type == SlotActionType::PickupAll {
             // Vanilla `AbstractContainerMenu#doClick`, `PICKUP_ALL`: two passes from the start
             // (button 0) or the end (button 1); the first pass skips full stacks.
@@ -1128,9 +1144,10 @@ pub trait ScreenHandler: Send + Sync {
 
                 // 26.3 Bundle click overrides (`AbstractContainerMenu.tryItemClickBehaviourOverride`):
                 // 1. `BundleItem.overrideStackedOnOther` (bundle on cursor)
-                if cursor_stack
-                    .get_data_component::<pumpkin_data::data_component_impl::BundleContentsImpl>()
-                    .is_some()
+                if !skip_item_click_overrides
+                    && cursor_stack
+                        .get_data_component::<pumpkin_data::data_component_impl::BundleContentsImpl>()
+                        .is_some()
                 {
                     if click_type == MouseClick::Left && !slot_stack.is_empty() {
                         if can_grab
@@ -1172,9 +1189,10 @@ pub trait ScreenHandler: Send + Sync {
                 }
 
                 // 2. `BundleItem.overrideOtherStackedOnMe` (bundle in slot)
-                if slot_stack
-                    .get_data_component::<pumpkin_data::data_component_impl::BundleContentsImpl>()
-                    .is_some()
+                if !skip_item_click_overrides
+                    && slot_stack
+                        .get_data_component::<pumpkin_data::data_component_impl::BundleContentsImpl>()
+                        .is_some()
                 {
                     if click_type == MouseClick::Left && cursor_stack.is_empty() {
                         if slot_stack
@@ -1492,6 +1510,9 @@ pub struct ScreenHandlerBehaviour {
     pub allow_put_items: bool,
     /// Number of slots that belong to the container (not the player inventory).
     pub container_slots: usize,
+    /// Makes the next pickup click skip the item click overrides (the bundle logic), as a
+    /// cancelled `ItemStackedOnOtherEvent` with a `false` result does. The click clears it.
+    pub skip_item_click_overrides: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1529,6 +1550,7 @@ impl ScreenHandlerBehaviour {
             allow_grab_items: true,
             allow_put_items: true,
             container_slots: 0,
+            skip_item_click_overrides: false,
         }
     }
 

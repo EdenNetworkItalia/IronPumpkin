@@ -3,6 +3,8 @@ pub mod badlands;
 #[cfg(test)]
 pub mod biome_hashes;
 #[cfg(test)]
+pub mod desert_well;
+#[cfg(test)]
 pub mod dumps;
 #[cfg(test)]
 pub mod resume;
@@ -12,6 +14,8 @@ pub mod stage_parity;
 pub mod structure_saves;
 #[cfg(test)]
 pub mod structure_starts;
+#[cfg(test)]
+pub mod warm_ocean;
 
 #[cfg(test)]
 pub(crate) fn surface_biomes(

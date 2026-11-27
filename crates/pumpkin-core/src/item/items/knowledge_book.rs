@@ -8,7 +8,6 @@ use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_inventory::player::player_inventory::PlayerInventory;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::codec::recipe::DynamicRecipe;
-use pumpkin_protocol::java::client::play::CRecipeBookAdd;
 use pumpkin_util::Hand;
 
 pub struct KnowledgeBookItem;
@@ -80,26 +79,27 @@ impl ItemBehaviour for KnowledgeBookItem {
             return;
         }
 
-        let Some(server) = player.world().server.upgrade() else {
-            return;
-        };
-        let all_recipes = server.recipe_manager.get_dynamic_recipes_internal();
-        let mut matching_recipes = Vec::with_capacity(recipe_ids.len());
+        let index = pumpkin_inventory::recipe_index::current();
+        let mut ids = Vec::with_capacity(recipe_ids.len());
 
         for recipe_id in &recipe_ids {
             let stripped_target = recipe_id.strip_prefix("minecraft:").unwrap_or(recipe_id);
-            if let Some(found) = all_recipes.iter().find(|r| {
+            let Some(found) = index.dynamic_recipes().iter().position(|r| {
                 let id = dynamic_recipe_id(r);
                 id == recipe_id || id.strip_prefix("minecraft:").unwrap_or(id) == stripped_target
-            }) {
-                matching_recipes.push(found.clone());
-            } else {
+            }) else {
                 tracing::error!("Invalid recipe: {recipe_id}");
                 return;
-            }
+            };
+            // A recipe without a book entry, such as a stonecutter recipe, adds no entry.
+            ids.extend(index.book().dynamic_display_id(found));
         }
 
-        let packet = CRecipeBookAdd::new(false, &matching_recipes);
+        let packet = pumpkin_protocol::codec::recipe_book::CRecipeBookEntries::subset(
+            index.book(),
+            index.dynamic_recipes(),
+            &ids,
+        );
         player.try_send_client_packet(&packet);
         player.increment_stat(
             StatisticCategory::Used,

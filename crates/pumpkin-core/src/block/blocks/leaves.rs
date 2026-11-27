@@ -115,7 +115,6 @@ impl BlockBehaviour for LeavesBlock {
             }
             let params = LootContextParameters {
                 block_state: Some(BlockState::from_id(state_id)),
-                position: Some(args.position.to_f64()),
                 ..Default::default()
             };
             // loot is dropped

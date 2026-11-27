@@ -3,14 +3,15 @@ use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::packet::clientbound::play::RECIPE_BOOK_ADD;
 use pumpkin_data::recipes::{
-    CookingRecipeType, CraftingRecipeTypes, RECIPES_COOKING, RECIPES_CRAFTING, RecipeCategoryTypes,
-    RecipeIngredientTypes, RecipeResultStruct,
+    CookingRecipeType, CraftingRecipeTypes, RecipeCategoryTypes, RecipeIngredientTypes,
+    RecipeResultStruct,
 };
 use pumpkin_macros::java_packet;
 use std::borrow::Cow;
-use std::{collections::HashMap, io::Write};
+use std::io::Write;
 
 use crate::codec::item_stack_seralizer::ItemStackTemplateSerializer;
+use crate::codec::recipe::OwnedRecipeIngredient;
 use crate::{ClientPacket, VarInt, WritingError, ser::NetworkWriteExt};
 
 // Recipe Display type IDs
@@ -41,7 +42,8 @@ const CATEGORY_BLAST_FURNACE_MISC: i32 = 8;
 const CATEGORY_SMOKER_FOOD: i32 = 9;
 const CATEGORY_CAMPFIRE: i32 = 12;
 
-use crate::codec::recipe::DynamicRecipe;
+use crate::codec::recipe::{DynamicRecipe, OwnedCookingRecipeType, OwnedCraftingRecipe};
+use crate::codec::recipe_book::{BookRecipe, RecipeBook, owned_cooking};
 
 /// Clientbound packet that adds recipes to the client's recipe book.
 /// `replace = true` means the client replaces its current recipe list.
@@ -73,7 +75,7 @@ fn write_item_slot_display(
     Ok(())
 }
 
-fn write_item_stack_slot_display(
+pub(super) fn write_item_stack_slot_display(
     write: &mut impl Write,
     item: &Item,
     count: u8,
@@ -81,16 +83,24 @@ fn write_item_stack_slot_display(
 ) -> Result<(), WritingError> {
     let static_item = Item::from_id(item.id)
         .ok_or_else(|| WritingError::Message(format!("item id {} must exist", item.id)))?;
-    let stack = ItemStack::new(count, static_item);
+    write_stack_slot_display(write, &ItemStack::new(count, static_item), version)
+}
+
+/// Writes `stack` as an `ItemStackSlotDisplay` with its components, or the empty display.
+pub(super) fn write_stack_slot_display(
+    write: &mut impl Write,
+    stack: &ItemStack,
+    version: EncodingKey,
+) -> Result<(), WritingError> {
     // A result without an `id` lowers to air, which vanilla rejects as an item stack
     if stack.is_empty() {
         return write_empty_slot_display(write, version);
     }
     write.write_var_int(&VarInt(SLOT_DISPLAY_ITEM_STACK as i32))?;
-    ItemStackTemplateSerializer::from(stack).write_with_version(write, &version)
+    ItemStackTemplateSerializer(Cow::Borrowed(stack)).write_with_version(write, &version)
 }
 
-fn write_empty_slot_display(
+pub(super) fn write_empty_slot_display(
     write: &mut impl Write,
     _version: EncodingKey,
 ) -> Result<(), WritingError> {
@@ -106,44 +116,48 @@ fn write_any_fuel_slot_display(
     Ok(())
 }
 
-fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'static Item>> {
-    let tag = tag.strip_prefix('#').unwrap_or(tag);
-    let full_tag = if tag.contains(':') {
-        Cow::Borrowed(tag)
-    } else {
-        Cow::Owned(format!("minecraft:{tag}"))
-    };
-
-    let item_names = pumpkin_data::tag::get_registry_key_tags(
-        version.version(),
-        pumpkin_data::tag::RegistryKey::Item,
-    )
-    .and_then(|map| map.get(full_tag.as_ref()))
-    .map(|t| t.0)
-    .or_else(|| {
-        pumpkin_data::tag::get_tag_values(pumpkin_data::tag::RegistryKey::Item, full_tag.as_ref())
-    })?;
-
-    let mut items = Vec::new();
-    for name in item_names {
-        let key = name.strip_prefix("minecraft:").unwrap_or(name);
-        if let Some(item) = Item::from_registry_key(key) {
-            items.push(item);
-        }
-    }
-    // A custom item can map to its display item, which can already be in the set.
-    let custom = pumpkin_data::dynamic::tag_ids(pumpkin_data::tag::RegistryKey::Item, &full_tag)
-        .map_or(&[][..], |(_, custom)| custom);
-    for item in custom.iter().filter_map(|&id| Item::from_id(id)) {
-        let id = item.to_java_network_id(version.content_ids());
-        if !items
-            .iter()
-            .any(|known| known.to_java_network_id(version.content_ids()) == id)
-        {
-            items.push(item);
-        }
-    }
+/// The items of `tag` as the server matches them: the generated and the custom members of a
+/// generated or mod tag, one item per network id of the connection. `None` when the tag is
+/// unknown or empty.
+pub(super) fn resolve_item_tag(tag: &str, version: EncodingKey) -> Option<Vec<&'static Item>> {
+    let mut ids = Vec::new();
+    let items: Vec<&'static Item> = OwnedRecipeIngredient::Tagged(tag.to_string())
+        .items()
+        .into_iter()
+        .filter(|item| {
+            let id = item.to_java_network_id(version.content_ids());
+            let new = !ids.contains(&id);
+            ids.push(id);
+            new
+        })
+        .collect();
     if items.is_empty() { None } else { Some(items) }
+}
+
+/// The network ids of the items of `items` that the client matches as the server does, without
+/// duplicates. A `Display` client sees a custom item as its display item, so the list leaves the
+/// custom item out: the client would else match the display item.
+pub(super) fn synced_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
+    let ids = version.content_ids();
+    let items: Vec<&'static Item> = items
+        .iter()
+        .copied()
+        .filter(|item| item.id < Item::COUNT || item.to_java_network_id(ids) >= Item::COUNT)
+        .collect();
+    network_item_ids(&items, version)
+}
+
+/// The network ids of `items` for the connection, without duplicates. A custom item can map to
+/// its display item, which can already be in the list.
+fn network_item_ids(items: &[&'static Item], version: EncodingKey) -> Vec<i32> {
+    let mut ids = Vec::with_capacity(items.len());
+    for item in items {
+        let id = i32::from(item.to_java_network_id(version.content_ids()));
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids
 }
 
 fn write_ingredient_slot_display(
@@ -494,13 +508,37 @@ fn write_entry(
     Ok(false)
 }
 
-#[allow(clippy::too_many_lines)]
 impl ClientPacket for CRecipeBookAdd<'_> {
     fn write_packet_data(
         &self,
         write: impl Write,
         version: &EncodingKey,
     ) -> Result<(), WritingError> {
+        let book = RecipeBook::new(self.dynamic_recipes);
+        write_recipe_book(
+            write,
+            *version,
+            self.replace,
+            &book,
+            self.dynamic_recipes,
+            None,
+        )
+    }
+}
+
+/// Writes the body of vanilla `ClientboundRecipeBookAddPacket`.
+///
+/// It writes the entries of `book` with the display ids `only`, or every entry.
+#[allow(clippy::too_many_lines)]
+pub fn write_recipe_book(
+    write: impl Write,
+    version: EncodingKey,
+    replace: bool,
+    book: &RecipeBook,
+    dynamic_recipes: &[DynamicRecipe],
+    only: Option<&[i32]>,
+) -> Result<(), WritingError> {
+    {
         let mut write = write;
 
         // Station items (these IDs are stable across all versions we support)
@@ -515,222 +553,125 @@ impl ClientPacket for CRecipeBookAdd<'_> {
         let campfire = Item::from_registry_key("campfire")
             .ok_or_else(|| WritingError::Message("campfire item must exist".into()))?;
 
-        // First pass - count and skip CraftingSpecial and CraftingDecoratedPot entries.
-        let crafting_count: usize = RECIPES_CRAFTING
-            .iter()
-            .filter(|r| {
-                !matches!(
-                    r,
-                    CraftingRecipeTypes::CraftingSpecial(_)
-                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                )
-            })
-            .count();
-        let dynamic_count = self
-            .dynamic_recipes
-            .iter()
-            .filter(|r| matches!(r, DynamicRecipe::Crafting(_) | DynamicRecipe::Cooking(_)))
-            .count();
-        let total = crafting_count + RECIPES_COOKING.len() + dynamic_count;
+        let entries: Vec<(i32, BookRecipe<'_>)> = book
+            .display_ids()
+            .filter(|id| only.is_none_or(|only| only.contains(id)))
+            .filter_map(|id| Some((id, book.recipe(id, dynamic_recipes)?)))
+            .collect();
+        write.write_var_int(&VarInt(entries.len() as i32))?;
 
-        // Entry count (VarInt)
-        write.write_var_int(&VarInt(total as i32))?;
-
-        let mut display_id: i32 = 0;
-        let mut group_ids: HashMap<Cow<'_, str>, i32> = HashMap::new();
-        let mut next_group_id: i32 = 0;
-        let highlight = !self.replace;
-
-        // Write crafting recipes
-        for recipe in RECIPES_CRAFTING {
-            let (group, notification) = match recipe {
-                CraftingRecipeTypes::CraftingShaped {
-                    group,
-                    show_notification,
-                    ..
-                } => (group.map(Cow::Borrowed), *show_notification),
-                CraftingRecipeTypes::CraftingShapeless { group, .. }
-                | CraftingRecipeTypes::CraftingTransmute { group, .. } => {
-                    (group.map(Cow::Borrowed), true)
-                }
-                CraftingRecipeTypes::CraftingDecoratedPot { .. }
-                | CraftingRecipeTypes::CraftingSpecial(_) => (None, true),
-            };
-            let group_id = resolve_group_id_owned(&mut group_ids, &mut next_group_id, group);
-            let flags = entry_flags(self.replace, notification, highlight);
-            let written = write_entry(
-                &mut write,
-                display_id,
-                *version,
-                group_id,
-                flags,
-                crafting_table,
-                furnace,
-                blast_furnace,
-                smoker,
-                campfire,
-                Some(recipe),
-                None,
-            )?;
-            if written {
-                display_id += 1;
-            }
-        }
-
-        // Write cooking recipes
-        for recipe in RECIPES_COOKING {
-            let (book_category, group) = match recipe {
-                CookingRecipeType::Smelting(r) => (
-                    match r.category {
-                        RecipeCategoryTypes::Food => CATEGORY_FURNACE_FOOD,
-                        RecipeCategoryTypes::Blocks => CATEGORY_FURNACE_BLOCKS,
-                        _ => CATEGORY_FURNACE_MISC,
-                    },
-                    r.group,
-                ),
-                CookingRecipeType::Blasting(r) => (
-                    match r.category {
-                        RecipeCategoryTypes::Blocks => CATEGORY_BLAST_FURNACE_BLOCKS,
-                        _ => CATEGORY_BLAST_FURNACE_MISC,
-                    },
-                    r.group,
-                ),
-                CookingRecipeType::Smoking(r) => (CATEGORY_SMOKER_FOOD, r.group),
-                CookingRecipeType::CampfireCooking(r) => (CATEGORY_CAMPFIRE, r.group),
-            };
-            let group_id = resolve_group_id_owned(
-                &mut group_ids,
-                &mut next_group_id,
-                group.map(Cow::Borrowed),
-            );
-            let flags = entry_flags(self.replace, true, highlight);
-            write_entry(
-                &mut write,
-                display_id,
-                *version,
-                group_id,
-                flags,
-                crafting_table,
-                furnace,
-                blast_furnace,
-                smoker,
-                campfire,
-                None,
-                Some((recipe, book_category)),
-            )?;
-            display_id += 1;
-        }
-
-        // Write dynamic recipes
-        for recipe in self.dynamic_recipes {
+        let highlight = !replace;
+        for (display_id, recipe) in entries {
+            let group_id = book.group(display_id);
             match recipe {
-                DynamicRecipe::Crafting(crafting) => {
-                    let (group, flags) = match crafting {
-                        crate::codec::recipe::OwnedCraftingRecipe::Shaped {
-                            group,
-                            show_notification,
-                            ..
-                        } => (
-                            group.as_deref().map(Cow::Borrowed),
-                            entry_flags(self.replace, *show_notification, highlight),
-                        ),
-                        crate::codec::recipe::OwnedCraftingRecipe::Shapeless { group, .. } => (
-                            group.as_deref().map(Cow::Borrowed),
-                            entry_flags(self.replace, true, highlight),
-                        ),
+                BookRecipe::Crafting(recipe) => {
+                    let notification = match recipe {
+                        CraftingRecipeTypes::CraftingShaped {
+                            show_notification, ..
+                        } => *show_notification,
+                        _ => true,
                     };
-                    let group_id =
-                        resolve_group_id_owned(&mut group_ids, &mut next_group_id, group);
+                    write_entry(
+                        &mut write,
+                        display_id,
+                        version,
+                        group_id,
+                        entry_flags(replace, notification, highlight),
+                        crafting_table,
+                        furnace,
+                        blast_furnace,
+                        smoker,
+                        campfire,
+                        Some(recipe),
+                        None,
+                    )?;
+                }
+                BookRecipe::Cooking(recipe) => {
+                    let book_category = match recipe {
+                        CookingRecipeType::Smelting(r) => match r.category {
+                            RecipeCategoryTypes::Food => CATEGORY_FURNACE_FOOD,
+                            RecipeCategoryTypes::Blocks => CATEGORY_FURNACE_BLOCKS,
+                            _ => CATEGORY_FURNACE_MISC,
+                        },
+                        CookingRecipeType::Blasting(r) => match r.category {
+                            RecipeCategoryTypes::Blocks => CATEGORY_BLAST_FURNACE_BLOCKS,
+                            _ => CATEGORY_BLAST_FURNACE_MISC,
+                        },
+                        CookingRecipeType::Smoking(_) => CATEGORY_SMOKER_FOOD,
+                        CookingRecipeType::CampfireCooking(_) => CATEGORY_CAMPFIRE,
+                    };
+                    write_entry(
+                        &mut write,
+                        display_id,
+                        version,
+                        group_id,
+                        entry_flags(replace, true, highlight),
+                        crafting_table,
+                        furnace,
+                        blast_furnace,
+                        smoker,
+                        campfire,
+                        None,
+                        Some((recipe, book_category)),
+                    )?;
+                }
+                BookRecipe::Dynamic(DynamicRecipe::Crafting(crafting)) => {
+                    let notification = match crafting {
+                        OwnedCraftingRecipe::Shaped {
+                            show_notification, ..
+                        } => *show_notification,
+                        OwnedCraftingRecipe::Shapeless { .. } => true,
+                    };
                     write_dynamic_crafting_entry(
                         &mut write,
                         display_id,
-                        *version,
+                        version,
                         group_id,
-                        flags,
+                        entry_flags(replace, notification, highlight),
                         crafting_table,
                         crafting,
                     )?;
                 }
-                DynamicRecipe::Cooking(cooking) => {
-                    let (book_category, group, owned_cooking) = match cooking {
-                        crate::codec::recipe::OwnedCookingRecipeType::Smelting(r) => (
+                BookRecipe::Dynamic(DynamicRecipe::Cooking(cooking)) => {
+                    let (book_category, station) = match cooking {
+                        OwnedCookingRecipeType::Smelting(r) => (
                             match r.category {
                                 RecipeCategoryTypes::Food => CATEGORY_FURNACE_FOOD,
                                 RecipeCategoryTypes::Blocks => CATEGORY_FURNACE_BLOCKS,
                                 _ => CATEGORY_FURNACE_MISC,
                             },
-                            r.group.as_deref().map(Cow::Borrowed),
-                            r,
+                            furnace,
                         ),
-                        crate::codec::recipe::OwnedCookingRecipeType::Blasting(r) => (
+                        OwnedCookingRecipeType::Blasting(r) => (
                             match r.category {
                                 RecipeCategoryTypes::Blocks => CATEGORY_BLAST_FURNACE_BLOCKS,
                                 _ => CATEGORY_BLAST_FURNACE_MISC,
                             },
-                            r.group.as_deref().map(Cow::Borrowed),
-                            r,
+                            blast_furnace,
                         ),
-                        crate::codec::recipe::OwnedCookingRecipeType::Smoking(r) => (
-                            CATEGORY_SMOKER_FOOD,
-                            r.group.as_deref().map(Cow::Borrowed),
-                            r,
-                        ),
-                        crate::codec::recipe::OwnedCookingRecipeType::CampfireCooking(r) => {
-                            (CATEGORY_CAMPFIRE, r.group.as_deref().map(Cow::Borrowed), r)
-                        }
+                        OwnedCookingRecipeType::Smoking(_) => (CATEGORY_SMOKER_FOOD, smoker),
+                        OwnedCookingRecipeType::CampfireCooking(_) => (CATEGORY_CAMPFIRE, campfire),
                     };
-                    let station = match cooking {
-                        crate::codec::recipe::OwnedCookingRecipeType::Smelting(_) => furnace,
-                        crate::codec::recipe::OwnedCookingRecipeType::Blasting(_) => blast_furnace,
-                        crate::codec::recipe::OwnedCookingRecipeType::Smoking(_) => smoker,
-                        crate::codec::recipe::OwnedCookingRecipeType::CampfireCooking(_) => {
-                            campfire
-                        }
-                    };
-
-                    let group_id =
-                        resolve_group_id_owned(&mut group_ids, &mut next_group_id, group);
-                    let flags = entry_flags(self.replace, true, highlight);
                     write_dynamic_cooking_entry(
                         &mut write,
                         display_id,
-                        *version,
+                        version,
                         group_id,
-                        flags,
+                        entry_flags(replace, true, highlight),
                         station,
-                        owned_cooking,
+                        owned_cooking(cooking),
                         book_category,
                     )?;
                 }
-                DynamicRecipe::Brewing(_)
-                | DynamicRecipe::Stonecutting(_)
-                | DynamicRecipe::SmithingTransform(_)
-                | DynamicRecipe::SmithingTrim(_)
-                | DynamicRecipe::SpecialCrafting(_) => {
-                    // Non-crafting/cooking recipes are not displayed in the recipe book
-                    continue;
-                }
+                // `RecipeBook` holds crafting and cooking recipes only.
+                BookRecipe::Dynamic(_) => {}
             }
-            display_id += 1;
         }
 
         // replace flag
-        write.write_bool(self.replace)?;
+        write.write_bool(replace)?;
         Ok(())
     }
-}
-
-fn resolve_group_id_owned<'a>(
-    group_ids: &mut HashMap<Cow<'a, str>, i32>,
-    next_group_id: &mut i32,
-    group: Option<Cow<'a, str>>,
-) -> Option<i32> {
-    let key = group?;
-    Some(*group_ids.entry(key).or_insert_with(|| {
-        let id = *next_group_id;
-        *next_group_id += 1;
-        id
-    }))
 }
 
 fn write_dynamic_ingredient_slot_display(
@@ -787,61 +728,23 @@ fn write_dynamic_ingredient_slot_display(
     Ok(())
 }
 
-fn write_dynamic_ingredient_holderset(
+/// Writes `ingredient` as `ByteBufCodecs.holderSet`, always as a direct list: a client knows
+/// the items of the list, but a `Display` client does not know a mod tag.
+pub(super) fn write_dynamic_ingredient_holderset(
     write: &mut impl Write,
-    ingredient: &crate::codec::recipe::OwnedRecipeIngredient,
+    ingredient: &OwnedRecipeIngredient,
     version: EncodingKey,
 ) -> Result<(), WritingError> {
-    match ingredient {
-        crate::codec::recipe::OwnedRecipeIngredient::Simple(id) => {
-            let key = id.strip_prefix("minecraft:").unwrap_or(id);
-            write.write_var_int(&VarInt(2))?;
-            if let Some(item) = Item::from_registry_key(key) {
-                write.write_var_int(&VarInt(i32::from(
-                    item.to_java_network_id(version.content_ids()),
-                )))?;
-            } else {
-                write.write_var_int(&VarInt(0))?;
-            }
-        }
-        crate::codec::recipe::OwnedRecipeIngredient::Tagged(tag) => {
-            if let Some(items) = resolve_item_tag(tag, version) {
-                write.write_var_int(&VarInt(items.len() as i32 + 1))?;
-                for item in &items {
-                    write.write_var_int(&VarInt(i32::from(
-                        item.to_java_network_id(version.content_ids()),
-                    )))?;
-                }
-            } else {
-                let tag = tag.strip_prefix('#').unwrap_or(tag);
-                let full_tag = if tag.contains(':') {
-                    tag.to_string()
-                } else {
-                    format!("minecraft:{tag}")
-                };
-                write.write_var_int(&VarInt(0))?;
-                write.write_string(&full_tag)?;
-            }
-        }
-        crate::codec::recipe::OwnedRecipeIngredient::OneOf(ids) => {
-            let items: Vec<i32> = ids
-                .iter()
-                .filter_map(|id| {
-                    let key = id.strip_prefix("minecraft:").unwrap_or(id);
-                    Item::from_registry_key(key)
-                        .map(|item| i32::from(item.to_java_network_id(version.content_ids())))
-                })
-                .collect();
-            if items.is_empty() {
-                write.write_var_int(&VarInt(2))?;
-                write.write_var_int(&VarInt(0))?;
-            } else {
-                write.write_var_int(&VarInt(items.len() as i32 + 1))?;
-                for id in &items {
-                    write.write_var_int(&VarInt(*id))?;
-                }
-            }
-        }
+    let ids = synced_item_ids(&ingredient.items(), version);
+    // Vanilla `Ingredient` rejects an empty list, and `RecipeManager` drops such recipes.
+    if ids.is_empty() {
+        return Err(WritingError::Message(format!(
+            "recipe ingredient {ingredient:?} holds no item"
+        )));
+    }
+    write.write_var_int(&VarInt(ids.len() as i32 + 1))?;
+    for id in ids {
+        write.write_var_int(&VarInt(id))?;
     }
     Ok(())
 }
@@ -851,16 +754,7 @@ fn write_dynamic_result_slot_display(
     result: &crate::codec::recipe::OwnedRecipeResult,
     version: EncodingKey,
 ) -> Result<(), WritingError> {
-    let key = result
-        .item_id
-        .strip_prefix("minecraft:")
-        .unwrap_or(&result.item_id);
-    if let Some(item) = Item::from_registry_key(key) {
-        write_item_stack_slot_display(write, item, result.count, version)?;
-    } else {
-        write_empty_slot_display(write, version)?;
-    }
-    Ok(())
+    write_stack_slot_display(write, &result.to_stack(), version)
 }
 
 fn write_dynamic_crafting_entry(
@@ -980,6 +874,9 @@ fn write_dynamic_cooking_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::codec::recipe::OwnedCookingRecipe;
+    use crate::codec::recipe_book::{CRecipeBookEntries, generated_cooking};
+    use pumpkin_data::recipes::{RECIPES_CRAFTING, RECIPES_CRAFTING_IDS};
     use pumpkin_util::version::JavaMinecraftVersion;
 
     #[test]
@@ -996,13 +893,155 @@ mod tests {
         }
     }
 
+    use crate::codec::recipe::{OwnedRecipeIngredient, OwnedRecipeResult};
+
+    fn diamond() -> OwnedRecipeResult {
+        OwnedRecipeResult {
+            item_id: "minecraft:diamond".to_string(),
+            count: 1,
+            components: None,
+        }
+    }
+
+    fn shapeless(id: &str) -> DynamicRecipe {
+        DynamicRecipe::Crafting(OwnedCraftingRecipe::Shapeless {
+            recipe_id: Some(id.to_string()),
+            category: RecipeCategoryTypes::Misc,
+            group: None,
+            ingredients: vec![OwnedRecipeIngredient::Simple("minecraft:dirt".to_string())],
+            result: diamond(),
+        })
+    }
+
+    /// The display id of the generated crafting recipe `id` in a book without dynamic recipes.
+    fn generated_crafting_display_id(id: &str) -> i32 {
+        RECIPES_CRAFTING
+            .iter()
+            .zip(RECIPES_CRAFTING_IDS)
+            .filter(|(recipe, _)| {
+                !matches!(
+                    recipe,
+                    CraftingRecipeTypes::CraftingSpecial(_)
+                        | CraftingRecipeTypes::CraftingDecoratedPot { .. }
+                )
+            })
+            .position(|(_, recipe_id)| *recipe_id == id)
+            .unwrap() as i32
+    }
+
+    fn body(packet: &impl ClientPacket) -> Vec<u8> {
+        let mut body = Vec::new();
+        packet
+            .write_packet_data(&mut body, &JavaMinecraftVersion::V_26_3.into())
+            .unwrap();
+        body
+    }
+
+    fn var_ints(values: &[i32]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for value in values {
+            bytes.write_var_int(&VarInt(*value)).unwrap();
+        }
+        bytes
+    }
+
     #[test]
     fn vanilla_recipes_serialize_for_every_recipe_book_version() {
-        let packet = CRecipeBookAdd::new(true, &[]);
+        let book = RecipeBook::new(&[]);
+        let packet = CRecipeBookEntries::all(true, &book, &[]);
         for version in [JavaMinecraftVersion::V_1_21_2, JavaMinecraftVersion::V_26_3] {
             packet
                 .write_packet_data(Vec::new(), &version.into())
                 .unwrap();
         }
+    }
+
+    #[test]
+    fn a_dynamic_recipe_takes_the_display_id_of_the_generated_recipe_it_replaces() {
+        use crate::codec::recipe::OwnedStonecutterRecipe;
+        let id = "minecraft:iron_ingot_from_smelting_raw_iron";
+        let dynamic = [
+            DynamicRecipe::Stonecutting(OwnedStonecutterRecipe {
+                recipe_id: "test:cut".to_string(),
+                group: None,
+                ingredient: OwnedRecipeIngredient::Simple("minecraft:stone".to_string()),
+                result: diamond(),
+            }),
+            DynamicRecipe::Cooking(OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+                recipe_id: id.to_string(),
+                category: RecipeCategoryTypes::Misc,
+                group: None,
+                ingredient: OwnedRecipeIngredient::Simple("minecraft:raw_iron".to_string()),
+                cooking_time: 10,
+                experience: 1.0,
+                result: diamond(),
+            })),
+            shapeless("minecraft:stick"),
+        ];
+        let empty = RecipeBook::new(&[]);
+        let book = RecipeBook::new(&dynamic);
+        // One entry per id, and no other entry moves.
+        assert_eq!(book.display_ids().count(), empty.display_ids().count());
+        assert_eq!(book.dynamic_display_id(0), None);
+        let stick = generated_crafting_display_id("minecraft:stick");
+        assert_eq!(book.dynamic_display_id(2), Some(stick));
+        let iron = book.dynamic_display_id(1).unwrap();
+        assert!(matches!(
+            empty.recipe(iron, &[]),
+            Some(BookRecipe::Cooking(recipe)) if generated_cooking(recipe).recipe_id == id
+        ));
+        let body = body(&CRecipeBookEntries::all(true, &book, &dynamic));
+        let expected = var_ints(&[empty.display_ids().count() as i32]);
+        assert_eq!(body[..expected.len()], expected[..]);
+    }
+
+    /// A plugin recipe with a new id takes the next display id, so the client keeps every id
+    /// it knows.
+    #[test]
+    fn a_recipe_with_a_new_id_appends_its_entry() {
+        let empty = RecipeBook::new(&[]);
+        let book = RecipeBook::new(&[shapeless("test:first"), shapeless("test:second")]);
+        let next = empty.display_ids().count() as i32;
+        assert_eq!(book.dynamic_display_id(0), Some(next));
+        assert_eq!(book.dynamic_display_id(1), Some(next + 1));
+    }
+
+    /// Vanilla keeps an ignored recipe in the recipe map: it still replaces the generated recipe
+    /// with its id, and the book has no entry for that id.
+    #[test]
+    fn an_ignored_recipe_empties_the_entry_of_the_recipe_it_replaces() {
+        let dynamic = [DynamicRecipe::Ignored {
+            recipe_id: "minecraft:stick".to_string(),
+        }];
+        let book = RecipeBook::new(&dynamic);
+        let stick = generated_crafting_display_id("minecraft:stick");
+        assert!(book.recipe(stick, &dynamic).is_none());
+        assert_eq!(
+            book.display_ids().count(),
+            RecipeBook::new(&[]).display_ids().count() - 1
+        );
+    }
+
+    /// `/recipe give` sends a subset: each entry keeps its display id of the whole book.
+    #[test]
+    fn a_subset_keeps_the_display_ids_of_the_whole_book() {
+        let dynamic = [shapeless("test:first"), shapeless("test:second")];
+        let book = RecipeBook::new(&dynamic);
+        let second = book.dynamic_display_id(1).unwrap();
+        let ids = [second];
+        let body = body(&CRecipeBookEntries::subset(&book, &dynamic, &ids));
+        let expected = var_ints(&[1, second]);
+        assert_eq!(body[..expected.len()], expected[..]);
+    }
+
+    /// The plugin packet builds the book of its recipes and writes the same bytes.
+    #[test]
+    fn the_plugin_packet_writes_the_book_of_its_recipes() {
+        let dynamic = [shapeless("test:first"), shapeless("minecraft:stick")];
+        let book = RecipeBook::new(&dynamic);
+        assert_eq!(
+            body(&CRecipeBookAdd::new(true, &dynamic)),
+            body(&CRecipeBookEntries::all(true, &book, &dynamic))
+        );
     }
 }

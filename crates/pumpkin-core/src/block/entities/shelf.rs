@@ -169,7 +169,13 @@ impl ShelfBlockEntity {
         self.comparator_dirty.store(true, Ordering::Relaxed);
         if let Some(world) = self.world.get().and_then(Weak::upgrade) {
             if let Some(event) = event {
-                world.emit_game_event(event.name(), self.position.to_centered_f64());
+                world.emit_game_event_with_context(
+                    event.name(),
+                    self.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_state(
+                        world.get_block_state_id(&self.position),
+                    ),
+                );
             }
             if let Some(entity) = world.get_block_entity(&self.position) {
                 world.update_block_entity(&entity);

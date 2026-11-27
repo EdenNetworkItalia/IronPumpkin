@@ -14,10 +14,7 @@ use super::features::{
     blue_ice::BlueIceFeature,
     bonus_chest::BonusChestFeature,
     chorus_plant::ChorusPlantFeature,
-    coral::{
-        coral_claw::CoralClawFeature, coral_mushroom::CoralMushroomFeature,
-        coral_tree::CoralTreeFeature,
-    },
+    coral::{coral_claw::CoralClawFeature, coral_tree::CoralTreeFeature},
     delta_feature::DeltaFeatureFeature,
     desert_well::DesertWellFeature,
     disk::DiskFeature,
@@ -61,11 +58,13 @@ use super::features::{
     sculk_patch::SculkPatchFeature,
     sea_pickle::SeaPickleFeature,
     seagrass::SeagrassFeature,
+    sequence::SequenceFeature,
     simple_block::SimpleBlockFeature,
     simple_random_selector::SimpleRandomFeature,
     single_block_pillar::SingleBlockPillarFeature,
     spring_feature::SpringFeatureFeature,
     stepped_column_cluster::SteppedColumnClusterFeature,
+    template::TemplateFeature,
     tree::TreeFeature,
     twisting_vines::TwistingVinesFeature,
     underwater_magma::UnderwaterMagmaFeature,
@@ -139,7 +138,6 @@ pub enum ConfiguredFeature {
     Seagrass(SeagrassFeature),
     Kelp(KelpFeature),
     CoralTree(CoralTreeFeature),
-    CoralMushroom(CoralMushroomFeature),
     CoralClaw(CoralClawFeature),
     SeaPickle(SeaPickleFeature),
     SimpleBlock(SimpleBlockFeature),
@@ -169,6 +167,8 @@ pub enum ConfiguredFeature {
     RandomNeighborSpread(RandomNeighborSpreadFeature),
     SingleBlockPillar(SingleBlockPillarFeature),
     SteppedColumnCluster(SteppedColumnClusterFeature),
+    Sequence(SequenceFeature),
+    Template(TemplateFeature),
 }
 
 // Yes this may look ugly and you wonder why this is hard coded, but it makes sense to hardcode since we have to add logic for these in code
@@ -224,7 +224,7 @@ impl ConfiguredFeature {
                 pos,
             ),
             Self::PointedDripstone(feature) => feature.generate(chunk, random, pos),
-            Self::CoralMushroom(_feature) => CoralMushroomFeature::generate(
+            Self::CoralTree(feature) => feature.generate(
                 chunk,
                 block_registry,
                 min_y,
@@ -233,7 +233,7 @@ impl ConfiguredFeature {
                 random,
                 pos,
             ),
-            Self::CoralTree(_feature) => CoralTreeFeature::generate(
+            Self::CoralClaw(feature) => feature.generate(
                 chunk,
                 block_registry,
                 min_y,
@@ -242,9 +242,6 @@ impl ConfiguredFeature {
                 random,
                 pos,
             ),
-            Self::CoralClaw(_feature) => {
-                CoralClawFeature::generate(chunk, block_registry, random, pos)
-            }
             Self::EndPlatform(_feature) => EndPlatformFeature::generate(
                 chunk,
                 block_registry,
@@ -536,6 +533,16 @@ impl ConfiguredFeature {
             Self::SteppedColumnCluster(feature) => {
                 feature.generate(chunk, block_registry, random, pos)
             }
+            Self::Sequence(feature) => feature.generate(
+                chunk,
+                block_registry,
+                min_y,
+                height,
+                feature_name,
+                random,
+                pos,
+            ),
+            Self::Template(feature) => feature.generate(chunk, random, pos),
             Self::NoOp => false,
         }
     }

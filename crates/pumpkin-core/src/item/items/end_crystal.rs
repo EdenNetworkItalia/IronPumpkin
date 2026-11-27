@@ -63,7 +63,11 @@ impl ItemBehaviour for EndCrystalItem {
         let end_crystal = Arc::new(EndCrystalEntity::new(entity));
         end_crystal.set_show_bottom(false);
         world.spawn_entity(end_crystal);
-        world.emit_game_event(GameEvent::EntityPlace.name(), location.to_f64());
+        world.emit_game_event_by(
+            GameEvent::EntityPlace.name(),
+            location.to_f64(),
+            &player.living_entity.entity,
+        );
         item.decrement_unless_creative(player.gamemode.load(), 1);
 
         if let Some(ref fight_mutex) = world.dragon_fight

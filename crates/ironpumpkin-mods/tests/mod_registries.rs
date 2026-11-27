@@ -268,6 +268,34 @@ fn a_played_mod_sound_reaches_the_players_near_the_position() {
     assert_eq!(name, ZAP.name());
 }
 
+/// A vanilla sound has no fixed range: its range is 16 blocks times a volume above 1. A goat horn
+/// plays at volume 16, so it reaches 256 blocks and no further.
+#[test]
+fn a_vanilla_sound_reaches_sixteen_blocks_times_its_volume() {
+    server();
+    let (player, _peer) = support::player_with_peer("SoundGoat", NegotiatedState::default());
+    let world = support::world();
+    let base = Vector3::new(3000.0, 100.0, 0.5);
+    player.living_entity.entity.pos.store(base);
+    let horn = SoundEvent::new("minecraft:item.goat_horn.sound.0");
+    let play = |distance: f64, volume: f32| {
+        sound_events::play_sound(
+            &world,
+            &horn,
+            SoundCategory::Records,
+            &base.add(&Vector3::new(distance, 0.0, 0.0)),
+            volume,
+            1.0,
+        )
+    };
+
+    assert_eq!(play(200.0, 16.0), Ok(1));
+    assert_eq!(play(300.0, 16.0), Ok(0));
+    assert_eq!(play(200.0, 1.0), Ok(0));
+    assert_eq!(play(15.0, 1.0), Ok(1));
+    assert_eq!(play(17.0, 1.0), Ok(0));
+}
+
 /// The client form of a stack: the count of added components and the bytes.
 fn client_stack(stack: &ItemStack, ids: ContentIds) -> (i32, Vec<u8>) {
     let mut bytes = Vec::new();

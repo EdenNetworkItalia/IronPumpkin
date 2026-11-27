@@ -44,14 +44,16 @@ impl CaveVinesBlock {
             .map_or_else(
                 || vec![ItemStack::new(1, &Item::GLOW_BERRIES)],
                 |handle| {
-                    let params = crate::world::loot::LootContextParameters {
-                        world: Some(world),
-                        position: Some(pos.to_centered_f64()),
-                        block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
-                        this_entity: Some(player as &dyn crate::entity::EntityBase),
-                        ..Default::default()
-                    };
-                    crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+                    let block_entity = world.get_block_entity(pos);
+                    let params = crate::world::loot::LootContextParameters::block_interact(
+                        world,
+                        pos,
+                        pumpkin_data::BlockState::from_id(state_id),
+                        block_entity.as_deref(),
+                        Some(player as &dyn crate::entity::EntityBase),
+                        None,
+                    );
+                    crate::world::loot::roll_loot(&handle, 0, &params)
                 },
             );
         for stack in drops {

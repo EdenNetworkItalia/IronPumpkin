@@ -7,9 +7,7 @@ use crate::entity::item::ItemEntity;
 use crate::entity::projectile::{
     ProjectileHit, get_hit_result_on_move_vector, hit_target_or_deflect_self,
 };
-use crate::world::loot::{
-    LootContextParameters, generate_loot_from_handle, get_context_loot_table,
-};
+use crate::world::loot::{LootContextParameters, get_context_loot_table, roll_loot};
 use crate::{
     entity::{Entity, EntityBase, living::LivingEntity, player::Player},
     server::Server,
@@ -97,6 +95,8 @@ impl FishingBobberEntity {
                 position: Some(bobber_pos),
                 tool: Some(rod.clone()),
                 this_entity: Some(self),
+                // `FishingHook.retrieve`: the owner is the attacking entity.
+                killer_entity: Some(player),
                 world: Some(&world),
                 luck,
                 ..Default::default()
@@ -311,9 +311,8 @@ impl EntityBase for FishingBobberEntity {
 /// `FishingHook.retrieve` rolls `gameplay/fishing` with no seed, so vanilla takes the table's
 /// random sequence and each catch differs.
 fn fishing_loot(params: &LootContextParameters<'_>) -> Vec<ItemStack> {
-    get_context_loot_table(params, "minecraft:gameplay/fishing").map_or_else(Vec::new, |handle| {
-        generate_loot_from_handle(&handle, rand::random(), params)
-    })
+    get_context_loot_table(params, "minecraft:gameplay/fishing")
+        .map_or_else(Vec::new, |handle| roll_loot(&handle, 0, params))
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 use super::run_blocking;
-use crate::LockIgnorePoison;
 use crate::pumpkin::plugin::world::HostMobWithStore;
+use crate::{DeferHost, LockIgnorePoison};
 
 use std::sync::Arc;
 use wasmtime::component::{Accessor, HasSelf, Resource};
@@ -707,7 +707,7 @@ impl HostMob for PluginHostState {
 
     #[allow(clippy::too_many_lines)]
     fn set_mob_data(&mut self, this: Resource<WitMob>, data: WitMobData) -> wasmtime::Result<bool> {
-        let entity = self.get(&this)?;
+        let entity = self.get(&this)?.clone();
         let any = entity.cast_any();
 
         match data {
@@ -815,12 +815,25 @@ impl HostMob for PluginHostState {
                 }
             }
             WitMobData::Shulker(shulker_data) => {
-                if let Some(shulker) =
-                    any.downcast_ref::<pumpkin_core::entity::mob::shulker::ShulkerEntity>()
+                if any
+                    .downcast_ref::<pumpkin_core::entity::mob::shulker::ShulkerEntity>()
+                    .is_some()
                 {
-                    shulker.set_attach_face(from_wit_block_direction(shulker_data.attached_face));
-                    shulker.set_raw_peek(shulker_data.peek_amount);
-                    shulker.set_color(shulker_data.color.map(from_wit_dye_color));
+                    let face = from_wit_block_direction(shulker_data.attached_face);
+                    let peek = shulker_data.peek_amount;
+                    let color = shulker_data.color.map(from_wit_dye_color);
+                    // `set_raw_peek` plays the peek sound, which fires `PlayLevelSoundEvent`.
+                    let entity = entity.clone();
+                    self.defer("mob set-mob-data", move || {
+                        if let Some(shulker) = entity
+                            .cast_any()
+                            .downcast_ref::<pumpkin_core::entity::mob::shulker::ShulkerEntity>(
+                        ) {
+                            shulker.set_attach_face(face);
+                            shulker.set_raw_peek(peek);
+                            shulker.set_color(color);
+                        }
+                    })?;
                     return Ok(true);
                 }
             }

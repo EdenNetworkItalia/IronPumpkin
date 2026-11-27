@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use super::load_error::{self, Entry};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use serde_json::Value;
-use tracing::warn;
 
 pub type ContextProviderRegistry = HashMap<String, NbtTag>;
 
@@ -74,8 +74,22 @@ pub fn load_embedded_context_providers(
     (int_count, float_count)
 }
 
+/// Decodes a context provider file as `ContextIntProviders.DIRECT_CODEC` and
+/// `ContextFloatProviders.DIRECT_CODEC` do: a number, or a typed object.
+fn decode(value: &Value) -> Result<(), String> {
+    if value.is_number() {
+        return Ok(());
+    }
+    if value.is_object() {
+        return load_error::type_of(value).map(|_| ());
+    }
+    Err(format!("Not a number: {value}"))
+}
+
 pub fn load_context_providers_from_dir(
     namespace: &str,
+    pack: &str,
+    registry_name: &'static str,
     provider_dir: &Path,
     registry: &mut ContextProviderRegistry,
 ) -> usize {
@@ -84,12 +98,21 @@ pub fn load_context_providers_from_dir(
     }
 
     let before = registry.len();
-    load_context_providers_recursive(namespace, provider_dir, provider_dir, registry);
+    load_context_providers_recursive(
+        namespace,
+        pack,
+        registry_name,
+        provider_dir,
+        provider_dir,
+        registry,
+    );
     registry.len() - before
 }
 
 fn load_context_providers_recursive(
     namespace: &str,
+    pack: &str,
+    registry_name: &'static str,
     base_dir: &Path,
     current_dir: &Path,
     registry: &mut ContextProviderRegistry,
@@ -102,39 +125,26 @@ fn load_context_providers_recursive(
         let path = entry.path();
 
         if path.is_dir() {
-            load_context_providers_recursive(namespace, base_dir, &path, registry);
-        } else if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            && let Ok(rel_path) = path.strip_prefix(base_dir)
-        {
-            let mut stem_path = rel_path.to_string_lossy().to_string();
-
-            if let Some(stem) = stem_path.strip_suffix(".json") {
-                stem_path = stem.to_string();
-            }
-
-            let stem_path = stem_path.replace('\\', "/");
-            let provider_id = format!("{namespace}:{stem_path}");
-
-            match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<Value>(&content) {
-                    Ok(val) => {
-                        let tag = json_value_to_nbt(&val);
-                        registry.insert(provider_id, tag);
+            load_context_providers_recursive(
+                namespace,
+                pack,
+                registry_name,
+                base_dir,
+                &path,
+                registry,
+            );
+        } else if let Some(provider_id) = load_error::entry_id(namespace, base_dir, &path) {
+            let file = Entry {
+                registry: registry_name,
+                id: &provider_id,
+                pack,
+            };
+            if let Some((_, val)) = file.read_json(&path) {
+                match decode(&val) {
+                    Ok(()) => {
+                        registry.insert(provider_id, json_value_to_nbt(&val));
                     }
-                    Err(e) => {
-                        warn!(
-                            "Failed to parse context provider '{provider_id}' from '{}': {e}",
-                            path.display()
-                        );
-                    }
-                },
-                Err(e) => {
-                    warn!(
-                        "Failed to read context provider file '{}': {e}",
-                        path.display()
-                    );
+                    Err(cause) => file.skip(cause),
                 }
             }
         }

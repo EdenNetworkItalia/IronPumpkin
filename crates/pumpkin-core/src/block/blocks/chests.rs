@@ -39,7 +39,9 @@ use crate::entity::passive::tamable::TamableAnimal;
 use crate::entity::player::Player;
 use crate::plugin::api::events::world::loot_generate::LootGenerateEvent;
 use crate::world::World;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle_with_rng};
+use crate::world::loot::{
+    LootContextParameters, RollRandom, generate_loot_from_handle_with_rng, player_luck,
+};
 use pumpkin_data::BlockState;
 
 // TODO vanilla `BaseContainerBlockEntity.canOpen`: the `lock` component, with `container.isLocked` and the
@@ -226,15 +228,15 @@ fn unpack_loot_table(world: &World, entity: &Arc<dyn BlockEntity>, player: Optio
         world.cancelled_by_plugin(|| LootGenerateEvent::new(key.clone()))
     });
     let mut unpacked = None;
-    entity.unpack_loot_table_with(&mut |loot_key, rng| {
+    entity.unpack_loot_table_with(&mut |loot_key, seed| {
         // The cancel only covers the key the event saw.
-        let items = if cancelled_key.as_deref() == Some(loot_key.as_str()) {
-            Vec::new()
+        let roll = if cancelled_key.as_deref() == Some(loot_key.as_str()) {
+            (Vec::new(), RollRandom::seeded(seed))
         } else {
-            generate_chest_loot(world, entity, player, &loot_key, rng)
+            generate_chest_loot(world, entity, player, &loot_key, seed)
         };
         unpacked = Some(loot_key);
-        items
+        roll
     });
     // Outside the loot lock: advancement handlers must not run while it is held.
     // TODO vanilla `CriteriaTriggers.GENERATE_LOOT` runs before `setLootTable(null)` and `LootTable.fill`.
@@ -252,25 +254,23 @@ fn generate_chest_loot(
     entity: &Arc<dyn BlockEntity>,
     player: Option<&Player>,
     loot_key: &str,
-    rng: &mut pumpkin_util::random::xoroshiro128::Xoroshiro,
-) -> Vec<ItemStack> {
+    seed: i64,
+) -> (Vec<ItemStack>, RollRandom) {
     // Vanilla resolves an unknown key to `LootTable.EMPTY`: the key is cleared, nothing is placed.
     let Some(table) = world.get_loot_table(loot_key) else {
-        return Vec::new();
+        return (Vec::new(), RollRandom::seeded(seed));
     };
     let params = LootContextParameters {
         world: Some(world),
         // Vanilla `ORIGIN` is `Vec3.atCenterOf` of the half being unpacked.
         position: Some(entity.get_position().to_centered_f64()),
         this_entity: player.map(|player| player as &dyn EntityBase),
-        luck: player.map_or(0.0, |player| {
-            player
-                .living_entity
-                .get_attribute_value(&pumpkin_data::attributes::Attributes::LUCK) as f32
-        }),
+        luck: player.map_or(0.0, player_luck),
         ..Default::default()
     };
-    generate_loot_from_handle_with_rng(&table, rng, &params)
+    let mut random = RollRandom::new(&params, &table, seed);
+    let items = generate_loot_from_handle_with_rng(&table, random.rng(), &params);
+    (items, random)
 }
 
 /// Vanilla `ChestBlock.getContainer` with `ignoreBeingBlocked = true`: a double chest is one container.

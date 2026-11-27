@@ -246,7 +246,7 @@ use pumpkin_data::attributes::Attributes;
 use pumpkin_data::block_properties::HorizontalFacing;
 use pumpkin_data::damage::DamageScaling;
 use pumpkin_data::damage::DamageType;
-use pumpkin_data::data_component_impl::{AttributeModifiersImpl, EnchantmentsImpl, Operation};
+use pumpkin_data::data_component_impl::Operation;
 use pumpkin_data::data_component_impl::{
     EquipmentSlot, EquippableImpl, GliderImpl, ToolImpl, WeaponImpl,
 };
@@ -1643,7 +1643,7 @@ impl Player {
             if stack.is_empty() {
                 // Vanilla fist: base_attack_speed = -2.4
                 add_speed = -2.4;
-            } else if let Some(modifiers) = stack.get_data_component::<AttributeModifiersImpl>() {
+            } else if let Some(modifiers) = stack.get_attribute_modifiers() {
                 // Only attack speed is read from the item here.
                 // Attack damage is already  part of `base_damage` via the held item's live
                 // ATTACK_DAMAGE modifier, re-adding it here would double it.
@@ -1655,7 +1655,7 @@ impl Player {
                     }
                 }
             }
-            if let Some(enchantments) = stack.get_data_component::<EnchantmentsImpl>() {
+            if let Some(enchantments) = stack.get_all_enchantments() {
                 for (enchantment, level) in enchantments.enchantment.iter() {
                     enchantment.modify_damage_against(
                         *level,
@@ -1733,7 +1733,7 @@ impl Player {
         if is_mace_smash {
             let fall_distance = f64::from(self.living_entity.fall_distance.load());
             let mut smash_bonus_per_block = 0.0f64;
-            if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+            if let Some(enchantments) = item_stack.get_all_enchantments() {
                 for (enchantment, level) in enchantments.enchantment.iter() {
                     enchantment.modify_fall_based_damage(*level, &mut smash_bonus_per_block);
                 }
@@ -1855,7 +1855,7 @@ impl Player {
                 combat::spawn_sweep_particle(attacker_entity, &world);
 
                 let mut sweep_damage = 1.0;
-                if let Some(enchantments) = item_stack.get_data_component::<EnchantmentsImpl>() {
+                if let Some(enchantments) = item_stack.get_all_enchantments() {
                     for (enchantment, level) in enchantments.enchantment.iter() {
                         if **enchantment == Enchantment::SWEEPING_EDGE {
                             sweep_damage += damage as f32 * (*level as f32 / (*level as f32 + 1.0));
@@ -1991,8 +1991,21 @@ impl Player {
         } else if (36..45).contains(&screen_slot)
             && self.inventory().get_selected_slot() as usize == screen_slot - 36
         {
-            self.living_entity
-                .send_equipment_changes(&[(EquipmentSlot::MAIN_HAND, stack.clone())]);
+            self.send_equipment_changes_after_click([(EquipmentSlot::MAIN_HAND, stack.clone())]);
+        }
+    }
+
+    /// Sends the equipment changes of a screen click. The change reads the attribute modifiers of
+    /// the stack, which fires `ItemAttributeModifierEvent`. A click calls this under the lock of
+    /// its screen handler, so it waits for the end of the click when a handler listens.
+    fn send_equipment_changes_after_click(&self, changes: [(EquipmentSlot, ItemStack); 1]) {
+        match self.world().get_player_by_uuid(self.gameprofile.id) {
+            Some(player) if crate::plugin::item_events::listens_to_attribute_modifiers() => {
+                crate::plugin::player_events::defer(move || {
+                    player.living_entity.send_equipment_changes(&changes);
+                });
+            }
+            _ => self.living_entity.send_equipment_changes(&changes),
         }
     }
 
@@ -3800,9 +3813,10 @@ impl Player {
                     self.damage_item_in_slot(&slots[rand::random_range(0..slots.len())], 1);
                 }
             }
-            self.world().emit_game_event(
+            self.world().emit_game_event_by(
                 pumpkin_data::game_event::GameEvent::ElytraGlide.name(),
                 entity.pos.load(),
+                entity,
             );
         }
     }
@@ -7312,6 +7326,15 @@ impl Player {
 
         let slot = packet.slot;
         let raw_slot = slot; // For now raw_slot == slot, as we don't have separate view/inventory indexing yet
+        // `ArmorSlot.mayPickup` reads the enchantments inside the click, under the screen lock:
+        // answer it first, with no lock held.
+        let _armor_answer = (window_type.is_none() && (5..9).contains(&packet.slot))
+            .then(|| {
+                clicked_item
+                    .as_ref()
+                    .and_then(crate::plugin::item_events::preread_armor_change)
+            })
+            .flatten();
         let hotbar_button = if matches!(packet.mode, SlotActionType::Swap) {
             packet.button
         } else {
@@ -7555,6 +7578,40 @@ impl Player {
             }
         }
 
+        // Vanilla `tryItemClickBehaviourOverride`: a pickup click, and a drag over one slot that
+        // ends in a pickup click, fire the event before the item overrides. Here it fires before
+        // the click takes the lock of the screen handler.
+        let stacked_on_other = (matches!(
+            packet.mode,
+            SlotActionType::Pickup | SlotActionType::QuickCraft
+        ) && server
+            .plugin_manager
+            .has_handlers::<crate::plugin::inventory::ItemStackedOnOtherEvent>(
+        ))
+        .then(|| {
+            let handler = self
+                .current_screen_handler
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone();
+            let handler = handler
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            crate::plugin::item_events::ClickTarget::of(
+                &*handler,
+                packet.slot,
+                packet.button,
+                &packet.mode,
+            )
+        })
+        .flatten()
+        .map(|target| {
+            (
+                crate::plugin::item_events::stacked_on_other(self, &target),
+                target,
+            )
+        });
+
         let screen_handler_arc = self
             .current_screen_handler
             .lock()
@@ -7571,12 +7628,32 @@ impl Player {
                 .load(Ordering::Relaxed) as i32);
 
         screen_handler.disable_sync();
-        screen_handler.on_slot_click(
-            i32::from(slot),
-            i32::from(packet.button),
-            packet.mode.clone(),
-            self.as_ref(),
-        );
+        let mut run_click = true;
+        if let Some((change, target)) = &stacked_on_other {
+            change.apply(&*screen_handler, target);
+            match change.outcome {
+                crate::plugin::item_events::StackedOnOther::Continue => {}
+                crate::plugin::item_events::StackedOnOther::SkipOverrides => {
+                    screen_handler.get_behaviour_mut().skip_item_click_overrides = true;
+                }
+                crate::plugin::item_events::StackedOnOther::Handled => {
+                    run_click = false;
+                    if target.from_drag {
+                        // Vanilla `resetQuickCraft` ends the drag after the pickup click.
+                        screen_handler.get_behaviour_mut().drag_slots.clear();
+                    }
+                }
+            }
+        }
+        if run_click {
+            screen_handler.on_slot_click(
+                i32::from(slot),
+                i32::from(packet.button),
+                packet.mode.clone(),
+                self.as_ref(),
+            );
+        }
+        screen_handler.get_behaviour_mut().skip_item_click_overrides = false;
 
         for (key, value) in packet.array_of_changed_slots {
             screen_handler.set_received_hash(key as usize, value);
@@ -9110,6 +9187,13 @@ impl InventoryPlayer for Player {
         self
     }
 
+    fn content_ids(&self) -> pumpkin_data::dynamic::ContentIds {
+        match self.client.as_ref() {
+            ClientPlatform::Java(java) => java.encoding_key().content_ids(),
+            ClientPlatform::Bedrock(_) => pumpkin_data::dynamic::ContentIds::Real,
+        }
+    }
+
     fn drop_item(&self, item: ItemStack, _retain_ownership: bool) {
         self.drop_item(item);
     }
@@ -9519,16 +9603,23 @@ impl InventoryPlayer for Player {
         );
     }
 
+    fn prevents_armor_change(&self, stack: &ItemStack) -> bool {
+        crate::plugin::item_events::armor_change_answer(stack)
+            .unwrap_or_else(|| stack.has_prevent_armor_change())
+    }
+
     fn enqueue_equipment_change(&self, slot: &EquipmentSlot, stack: &ItemStack) {
-        self.living_entity
-            .send_equipment_changes(&[(slot.clone(), stack.clone())]);
+        self.send_equipment_changes_after_click([(slot.clone(), stack.clone())]);
 
         if let Some(equippable) = stack.get_data_component::<EquippableImpl>() {
-            self.world().play_sound_event(
-                &equippable.equip_sound,
-                SoundCategory::Players,
-                &self.position(),
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            let sound = equippable.equip_sound.clone();
+            let position = self.position();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_event(&sound, SoundCategory::Players, &position);
+            });
         }
     }
 
@@ -9549,13 +9640,18 @@ impl InventoryPlayer for Player {
 
     fn play_block_sound(&self, sound: Sound, pitch: f32) {
         if let Some(pos) = self.open_container_pos.load() {
-            self.world().play_sound_fine(
-                sound,
-                SoundCategory::Blocks,
-                &pos.to_centered_f64(),
-                1.0,
-                pitch,
-            );
+            // A caller that holds the screen handler lock has a `Deferral` active: the sound
+            // event runs mod handlers, so it plays after the lock.
+            let world = self.world();
+            crate::plugin::player_events::defer(move || {
+                world.play_sound_fine(
+                    sound,
+                    SoundCategory::Blocks,
+                    &pos.to_centered_f64(),
+                    1.0,
+                    pitch,
+                );
+            });
         }
     }
 
@@ -9651,7 +9747,8 @@ impl InventoryPlayer for Player {
         );
     }
 
-    fn on_brewed_potion(&self) {
+    fn on_brewed_potion(&self, stack: &pumpkin_data::item_stack::ItemStack) {
+        crate::plugin::player_events::brewed_potion(self, stack);
         self.trigger_advancement(
             crate::entity::player::advancement::trigger::AdvancementTrigger::BrewedPotion,
         );

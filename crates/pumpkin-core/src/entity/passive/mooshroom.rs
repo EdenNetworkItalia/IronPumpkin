@@ -44,7 +44,7 @@ use crate::entity::{
     shearable::{Shearable, shear_by_player},
 };
 use crate::item::items::bucket::{create_filled_result, fill_bucket_stack};
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, roll_loot};
 
 const MUTATE_CHANCE: i32 = 1024;
 const SOUND_VOLUME: f32 = 0.4;
@@ -234,7 +234,14 @@ impl Shearable for MooshroomEntity {
         }
         let entity = self.get_entity();
         let world = entity.world.load_full();
-        world.play_sound(Sound::EntityMooshroomShear, category, &entity.pos.load());
+        world.play_sound_at_entity(
+            None,
+            entity,
+            Sound::EntityMooshroomShear,
+            category,
+            1.0,
+            1.0,
+        );
         convert_to(
             self,
             &EntityType::COW,
@@ -259,8 +266,7 @@ impl Shearable for MooshroomEntity {
                     ..Default::default()
                 };
                 let drop_pos = Vector3::new(pos.x, entity.get_y(1.0), pos.z);
-                for stack in generate_loot_from_handle(&table, self.get_random().random(), &params)
-                {
+                for stack in roll_loot(&table, 0, &params) {
                     for _ in 0..stack.item_count {
                         let item_entity = ItemEntity::new(
                             Entity::new(world.clone(), drop_pos, &EntityType::ITEM),

@@ -28,11 +28,14 @@
 
 use std::fmt;
 
-use pumpkin_core::{plugin::api::events::registries::RegisterEvent, world::World};
+use pumpkin_core::{
+    plugin::api::events::registries::RegisterEvent,
+    world::{World, sound::sound_holder_from_name},
+};
 use pumpkin_data::{
     dynamic::{ContentKind, RegistryError},
     dynamic_registries::{self, SoundEventDefinition},
-    sound::{Sound, SoundCategory},
+    sound::SoundCategory,
 };
 use pumpkin_util::math::vector3::Vector3;
 
@@ -98,8 +101,13 @@ impl std::error::Error for UnknownSoundEvent {}
 
 /// Plays `sound` at `position` to the players in its range and returns how many players got it.
 ///
-/// `NeoForge`: `Level#playSound(null, x, y, z, sound, source, volume, pitch)`. The range is the
-/// fixed range of the event, or 16 blocks times a volume above 1.
+/// The count is 0 when the call runs inside the brain tick of a mob: the world queues the sound
+/// until the tick ends.
+///
+/// `NeoForge`: `Level#playSound(null, x, y, z, sound, source, volume, pitch)`. The world fires
+/// `PlayLevelSoundEvent.AtPosition`. A vanilla sound has no fixed range: its range is 16 blocks
+/// times a volume above 1, so a goat horn at volume 16 reaches 256 blocks. A sound of a mod has
+/// the fixed range that it registered.
 ///
 /// # Errors
 ///
@@ -112,16 +120,13 @@ pub fn play_sound(
     volume: f32,
     pitch: f32,
 ) -> Result<usize, UnknownSoundEvent> {
-    let fixed_range = if let Some(path) = sound.name.strip_prefix("minecraft:")
-        && Sound::from_name(path).is_some()
+    let holder = sound_holder_from_name(sound.name);
+    if matches!(holder, pumpkin_protocol::IdOr::Value(_))
+        && dynamic_registries::sound_event_by_name(sound.name).is_none()
     {
-        None
-    } else {
-        dynamic_registries::sound_event_by_name(sound.name)
-            .ok_or_else(|| UnknownSoundEvent(sound.name.to_owned()))?
-            .fixed_range
-    };
-    Ok(world.play_sound_event_near(sound.name, fixed_range, category, position, volume, pitch))
+        return Err(UnknownSoundEvent(sound.name.to_owned()));
+    }
+    Ok(world.play_sound_holder(position, holder, category, volume, pitch))
 }
 
 impl ModInit {

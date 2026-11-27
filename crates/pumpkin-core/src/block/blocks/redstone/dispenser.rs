@@ -275,9 +275,10 @@ impl BlockBehaviour for DispenserBlock {
             } else {
                 args.world
                     .sync_world_event(WorldEvent::SoundDispenserFail, *args.position, 0);
-                args.world.emit_game_event(
+                args.world.emit_game_event_with_context(
                     GameEvent::BlockActivate.name(),
                     args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_state(state.id),
                 );
             }
         }
@@ -964,7 +965,7 @@ impl DispenserBlock {
         let front = Self::target_position(ctx);
         let front_block = ctx.world.get_block(&front);
 
-        if try_wax_block(ctx.world, front, front_block) {
+        if try_wax_block(ctx.world, front, front_block, None) {
             item.decrement(1);
             ctx.world
                 .sync_world_event(WorldEvent::ParticlesWaxOn, front, 0);
@@ -1054,16 +1055,17 @@ impl DispenserBlock {
         ctx.world
             .play_block_sound(Sound::BlockBeehiveShear, SoundCategory::Blocks, target);
         if let Some(table) = ctx.world.get_loot_table("minecraft:harvest/beehive") {
-            let params = crate::world::loot::LootContextParameters {
-                world: Some(ctx.world),
-                position: Some(target.to_f64()),
-                block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
-                tool: Some(tool.clone()),
-                ..Default::default()
-            };
-            for stack in
-                crate::world::loot::generate_loot_from_handle(&table, rand::random(), &params)
-            {
+            // `ShearsDispenseItemBehavior` drops the honeycomb with no interacting entity.
+            let block_entity = ctx.world.get_block_entity(&target);
+            let params = crate::world::loot::LootContextParameters::block_interact(
+                ctx.world,
+                &target,
+                pumpkin_data::BlockState::from_id(state_id),
+                block_entity.as_deref(),
+                None,
+                Some(tool.clone()),
+            );
+            for stack in crate::world::loot::roll_loot(&table, 0, &params) {
                 Self::drop_at(ctx.world, target.to_centered_f64(), stack);
             }
         }
@@ -1366,7 +1368,8 @@ impl DispenserBlock {
 
             living.send_equipment_changes(&[(slot.clone(), stack)]);
             let pos = entity.get_entity().pos.load();
-            ctx.world.emit_game_event(GameEvent::Equip.name(), pos);
+            ctx.world
+                .emit_game_event_by(GameEvent::Equip.name(), pos, entity.get_entity());
             if let Some(mob) = entity.get_mob() {
                 let mob_entity = mob.get_mob_entity();
                 mob_entity.set_guaranteed_drop(slot);

@@ -24,6 +24,7 @@ use super::recipe_provider::{GenericRecipe, RecipeProvider};
 use super::recipes::{RecipeFinderScreenHandler, RecipeInputInventory};
 use crate::crafting::crafting_inventory::CraftingInventory;
 use crate::player::player_inventory::PlayerInventory;
+use crate::recipe_index::RecipeOutput;
 use crate::screen_handler::{
     InventoryPlayer, ScreenHandler, ScreenHandlerBehaviour, ScreenHandlerListener,
 };
@@ -46,7 +47,7 @@ use pumpkin_data::screen::WindowType;
 use pumpkin_data::statistic::StatisticCategory;
 use pumpkin_data::tag;
 use pumpkin_data::tag::Taggable;
-use pumpkin_protocol::codec::recipe::{DynamicRecipe, OwnedCraftingRecipe};
+use pumpkin_protocol::codec::recipe::{DynamicRecipe, OwnedCraftingRecipe, OwnedRecipeResult};
 
 /// The result slot in a crafting screen.
 pub struct ResultSlot {
@@ -84,6 +85,17 @@ impl RecipeResult {
             assembled_stack: None,
             remaining_items: None,
         }
+    }
+
+    /// The result of a data pack or plugin recipe, with its components, as vanilla
+    /// `ShapedRecipe.assemble` creates it from the template (`ShapedRecipe.java:68-69`).
+    #[must_use]
+    pub fn dynamic(result: &OwnedRecipeResult) -> Self {
+        let mut crafted = Self::simple(result.item_id.clone(), result.count, &[]);
+        if result.components.is_some() {
+            crafted.assembled_stack = Some(RecipeOutput::owned(result).assemble());
+        }
+        crafted
     }
 
     #[must_use]
@@ -965,11 +977,7 @@ fn recipe_matches(
                     }
                 }
             }
-            matched.then_some(RecipeResult::simple(
-                result.item_id.clone(),
-                result.count,
-                &[],
-            ))
+            matched.then(|| RecipeResult::dynamic(result))
         }
         GenericRecipe::Dynamic(OwnedCraftingRecipe::Shapeless {
             ingredients,
@@ -993,11 +1001,7 @@ fn recipe_matches(
                 }
                 return None;
             }
-            Some(RecipeResult::simple(
-                result.item_id.clone(),
-                result.count,
-                &[],
-            ))
+            Some(RecipeResult::dynamic(result))
         }
     }
 }
@@ -1047,7 +1051,7 @@ pub fn match_crafting_recipe(
 
     if let Some(provider) = provider {
         let dynamic = provider.get_dynamic_recipes();
-        for recipe in &dynamic {
+        for recipe in dynamic.iter() {
             if let DynamicRecipe::Crafting(crafting) = recipe
                 && let Some(result) = recipe_matches(
                     GenericRecipe::Dynamic(crafting),
@@ -1842,5 +1846,46 @@ mod tests {
         assert_eq!(repaired.get_damage(), max_dmg - expected_rem);
         assert_eq!(repaired.get_enchantment_level(sharpness), 0);
         assert_eq!(repaired.get_enchantment_level(binding_curse), 1);
+    }
+
+    struct Recipes(Vec<DynamicRecipe>);
+
+    impl RecipeProvider for Recipes {
+        fn get_dynamic_recipes(&self) -> Arc<[DynamicRecipe]> {
+            self.0.clone().into()
+        }
+    }
+
+    /// Vanilla `ShapedRecipe.assemble` creates the result from the template with its
+    /// components (`ShapedRecipe.java:68-69`).
+    #[test]
+    fn a_data_pack_crafting_result_keeps_its_components() {
+        let mut components = pumpkin_nbt::compound::NbtCompound::new();
+        components.put_int("minecraft:max_stack_size", 7);
+        let recipes = Recipes(vec![DynamicRecipe::Crafting(
+            OwnedCraftingRecipe::Shapeless {
+                recipe_id: Some("test:dirt_to_diamond".to_string()),
+                category: pumpkin_data::recipes::RecipeCategoryTypes::Misc,
+                group: None,
+                ingredients: vec![
+                    pumpkin_protocol::codec::recipe::OwnedRecipeIngredient::Simple(
+                        "minecraft:dirt".to_string(),
+                    ),
+                ],
+                result: OwnedRecipeResult {
+                    item_id: "minecraft:diamond".to_string(),
+                    count: 2,
+                    components: Some(components),
+                },
+            },
+        )]);
+        let inventory = CraftingInventory::new(2, 2);
+        inventory.set_stack(0, ItemStack::new(1, &Item::DIRT));
+        let stack = match_crafting_recipe(&inventory, Some(&recipes))
+            .unwrap()
+            .to_item_stack();
+        assert_eq!(stack.item.id, Item::DIAMOND.id);
+        assert_eq!(stack.item_count, 2);
+        assert_eq!(stack.get_max_stack_size(), 7);
     }
 }

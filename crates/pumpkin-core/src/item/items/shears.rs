@@ -1,9 +1,11 @@
 use std::any::Any;
 
 use crate::block::registry::BlockActionResult;
+use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::server::Server;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::BlockProperties;
 use pumpkin_data::block_properties::CaveVinesLikeProperties;
 use pumpkin_data::block_properties::KelpLikeProperties;
@@ -89,7 +91,11 @@ fn handle_growing_plant(
     };
 
     world.set_block_state(location, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+    world.emit_game_event_with_context(
+        GameEvent::BlockChange.name(),
+        location.to_centered_f64(),
+        &GameEventContext::of_entity_state(Some(player as &dyn EntityBase), new_state_id),
+    );
     world.play_sound(
         Sound::BlockGrowingPlantCrop,
         SoundCategory::Blocks,

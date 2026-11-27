@@ -73,15 +73,16 @@ impl BeehiveBlock {
             .map_or_else(
                 || vec![ItemStack::new(3, &Item::HONEYCOMB)],
                 |handle| {
-                    let params = crate::world::loot::LootContextParameters {
-                        world: Some(args.world),
-                        position: Some(drop_pos),
-                        block_state: Some(BlockState::from_id(state_id)),
-                        this_entity: Some(args.player.as_ref() as &dyn EntityBase),
-                        tool: Some(args.item_stack.clone()),
-                        ..Default::default()
-                    };
-                    crate::world::loot::generate_loot_from_handle(&handle, rand::random(), &params)
+                    let block_entity = args.world.get_block_entity(args.position);
+                    let params = crate::world::loot::LootContextParameters::block_interact(
+                        args.world,
+                        args.position,
+                        BlockState::from_id(state_id),
+                        block_entity.as_deref(),
+                        Some(args.player.as_ref() as &dyn EntityBase),
+                        Some(args.item_stack.clone()),
+                    );
+                    crate::world::loot::roll_loot(&handle, 0, &params)
                 },
             );
 
@@ -113,8 +114,11 @@ impl BeehiveBlock {
             &args.player.position(),
         );
         args.player.damage_item_in_slot(args.equipment_slot, 1);
-        args.world
-            .emit_game_event(GameEvent::Shear.name(), args.position.to_centered_f64());
+        args.world.emit_game_event_by(
+            GameEvent::Shear.name(),
+            args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
+        );
         true
     }
 
@@ -161,9 +165,10 @@ impl BeehiveBlock {
             args.player.sync_inventory_to_client();
         }
 
-        args.world.emit_game_event(
+        args.world.emit_game_event_by(
             GameEvent::FluidPickup.name(),
             args.position.to_centered_f64(),
+            &args.player.living_entity.entity,
         );
         true
     }

@@ -31,6 +31,8 @@ impl BedrockClient {
     #[allow(clippy::too_many_lines, clippy::collapsible_if, clippy::unreachable)]
     pub fn handle_inventory_action(&self, player: &Arc<Player>, packet: SInventoryTransaction) {
         tracing::debug!("handle_inventory_action: packet={:?}", packet);
+        // The equip sound of a slot change waits for the screen handler lock.
+        let _deferral = crate::plugin::player_events::Deferral::start();
         let mut inventory_updated = false;
         let mut updates = Vec::new();
         let result = 0u8;

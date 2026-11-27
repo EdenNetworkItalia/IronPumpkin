@@ -3,11 +3,13 @@ use std::sync::Arc;
 use crate::block::UseWithItemArgs;
 use crate::block::entities::BlockEntity;
 use crate::block::registry::BlockActionResult;
+use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::plugin::data_maps::builtin::waxed_block;
 use crate::server::Server;
 use crate::world::World;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::block_properties::{
     ChestLikeProperties, ChestType, DoubleBlockHalf, OakDoorLikeProperties,
 };
@@ -43,7 +45,7 @@ impl ItemBehaviour for HoneyCombItem {
         _server: &Server,
     ) -> BlockActionResult {
         let world = player.world();
-        if try_wax_block(&world, location, block) {
+        if try_wax_block(&world, location, block, Some(player)) {
             item.decrement_unless_creative(player.gamemode.load(), 1);
             BlockActionResult::Success
         } else {
@@ -58,13 +60,20 @@ impl ItemBehaviour for HoneyCombItem {
 
 /// Waxes the block at `location` if it has a waxed equivalent, emitting the wax
 /// particles and sound on success.
-pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Block) -> bool {
+pub(crate) fn try_wax_block(
+    world: &Arc<World>,
+    location: BlockPos,
+    block: &Block,
+    player: Option<&Player>,
+) -> bool {
     let Some(replacement) = waxed_block(block) else {
         return false;
     };
     let new_block = replacement.to_block();
     let current_state_id = world.get_block_state_id(&location);
     let new_state_id = new_block.with_properties_of(block, current_state_id);
+    // The other half of a double chest follows the clicked block, as vanilla `useOn`.
+    let mut chest_neighbor = None;
 
     if block.has_tag(&tag::Block::MINECRAFT_DOORS) {
         let door_props = OakDoorLikeProperties::from_state_id(current_state_id);
@@ -106,25 +115,41 @@ pub(crate) fn try_wax_block(world: &Arc<World>, location: BlockPos, block: &Bloc
                     neighbor_new_state,
                     BlockFlags::NOTIFY_LISTENERS,
                 );
-                world.emit_game_event(GameEvent::BlockChange.name(), neighbor_pos.to_f64());
-                world.sync_world_event(WorldEvent::ParticlesWaxOn, neighbor_pos, 0);
-                world.play_sound(
-                    Sound::ItemHoneycombWaxOn,
-                    SoundCategory::Blocks,
-                    &location.to_f64(),
-                );
+                chest_neighbor = Some((neighbor_pos, neighbor_new_state));
             }
         }
     }
 
     world.set_block_state(&location, new_state_id, BlockFlags::NOTIFY_ALL);
-    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+    // A dispenser (no player) waxes with no game event, as vanilla.
+    if let Some(player) = player {
+        world.emit_game_event_with_context(
+            GameEvent::BlockChange.name(),
+            location.to_centered_f64(),
+            &GameEventContext::of_entity_state(Some(player as &dyn EntityBase), new_state_id),
+        );
+    }
     world.sync_world_event(WorldEvent::ParticlesWaxOn, location, 0);
     world.play_sound(
         Sound::ItemHoneycombWaxOn,
         SoundCategory::Blocks,
         &location.to_f64(),
     );
+    if let Some((neighbor_pos, neighbor_state)) = chest_neighbor {
+        if let Some(player) = player {
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                neighbor_pos.to_centered_f64(),
+                &GameEventContext::of_entity_state(Some(player as &dyn EntityBase), neighbor_state),
+            );
+        }
+        world.sync_world_event(WorldEvent::ParticlesWaxOn, neighbor_pos, 0);
+        world.play_sound(
+            Sound::ItemHoneycombWaxOn,
+            SoundCategory::Blocks,
+            &location.to_f64(),
+        );
+    }
     true
 }
 

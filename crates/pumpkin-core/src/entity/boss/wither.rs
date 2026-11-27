@@ -442,7 +442,7 @@ impl WitherEntity {
                 );
 
                 if !entity.silent.load(Ordering::Relaxed) {
-                    world.sync_world_event(
+                    world.sync_global_world_event(
                         WorldEvent::SoundWitherBossSpawn,
                         entity.block_pos.load(),
                         0,

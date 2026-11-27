@@ -515,6 +515,9 @@ interface %world {
         /// Returns whether this entity carries the specified scoreboard tag.
         has-scoreboard-tag: func(tag: string) -> bool;
 
+        /// Removes this entity from its world. The removal can apply after the guest call returns,
+        /// so that a handler of `entity-leave-level-event` can run. A read in the same guest call
+        /// may see the old or the new value: work that reaches no Wasm handler runs at once.
         remove: func();
 
         /// Performs a raycast from the entity's eye position in its looking direction.
@@ -600,17 +603,25 @@ interface %world {
         remove-attribute-modifier: func(attr: attribute, id: string);
         get-attribute-modifiers: func(attr: attribute) -> list<attribute-modifier>;
         reset-attribute: func(attr: attribute);
+        /// The reset applies after the guest call returns, so that a handler of
+        /// `effect-particle-modification-event` can run. A read in the same guest call may see the
+        /// old or the new value: work that reaches no Wasm handler runs at once.
         reset-all-attributes: func();
 
         // Equipment
         get-equipment: func(slot: equipment-slot) -> option<item-stack>;
         set-equipment: async func(slot: equipment-slot, stack: option<item-stack>);
+        /// The clear applies after the guest call returns, so that a handler of
+        /// `item-attribute-modifier-event` can run. A read in the same guest call may see the old
+        /// or the new value: work that reaches no Wasm handler runs at once.
         clear-equipment: func();
 
         // Status Effects
         /// Gives a status effect to this living entity.
         add-effect: async func(effect: status-effect-instance);
         /// Removes a status effect from this living entity. Returns true if an effect was removed.
+        /// Inside a guest call, every event fired during this call reaches native handlers only: a
+        /// Wasm handler does not get it.
         remove-effect: func(effect: status-effect-type) -> bool;
         /// Checks if this living entity currently has the specified status effect.
         has-effect: func(effect: status-effect-type) -> bool;
@@ -672,8 +683,11 @@ interface %world {
         /// Returns the specialized mob-specific data for this mob.
         get-mob-data: func() -> mob-data;
 
-        /// Sets the specialized mob-specific data for this mob.
-        /// Returns false if the provided data variant is incompatible with this mob.
+        /// Sets the specialized mob-specific data for this mob. Returns false if the provided data
+        /// variant is incompatible with this mob. For a shulker, the change can apply after the
+        /// guest call returns, so that a handler of `play-level-sound-event-at-position` for the
+        /// peek sound can run. A read in the same guest call may see the old or the new value: work
+        /// that reaches no Wasm handler runs at once.
         set-mob-data: func(data: mob-data) -> bool;
 
         /// Sets the number of freeze ticks on this entity (0 to 140).
@@ -727,6 +741,8 @@ interface %world {
         is-force-loaded: func() -> bool;
 
         /// Sets whether this chunk is marked as force-loaded.
+        /// The chunk loads after the guest call returns, so that a handler of `chunk-load-event`
+        /// can run.
         set-force-loaded: func(forced: bool);
 
         /// Returns all entities (including players) currently inside this chunk.
@@ -929,6 +945,8 @@ interface %world {
         is-chunk-force-loaded: func(x: s32, z: s32) -> bool;
 
         /// Sets whether the chunk at the specified chunk coordinates is force-loaded.
+        /// The chunk loads after the guest call returns, so that a handler of `chunk-load-event`
+        /// can run.
         set-chunk-force-loaded: func(x: s32, z: s32, forced: bool);
 
         /// Returns the coordinates `(x, z)` of all force-loaded chunks in this world.
@@ -1038,10 +1056,12 @@ interface %world {
         /// Returns the scoreboard associated with this world.
         get-scoreboard: func() -> scoreboard;
 
-        /// Plays a sound at the specified position for all players in the world.
+        /// Plays a sound at the specified position for the players in range. The sound plays after the
+        /// call returns, so that a handler of the sound event can run.
         play-sound: func(sound: sound, category: sound-category, pos: position, volume: f32, pitch: f32);
 
-        /// Plays a custom resource pack sound identifier at the specified position for all players in the world.
+        /// Plays a custom resource pack sound identifier at the specified position for the players in
+        /// range. The sound plays after the call returns, so that a handler of the sound event can run.
         play-custom-sound: func(sound-name: string, category: sound-category, pos: position, volume: f32, pitch: f32);
 
         /// Spawns particles at the specified position.
@@ -1155,7 +1175,10 @@ interface %world {
 
         /// Gets the value of a game rule in this world.
         get-game-rule: func(rule: game-rule) -> game-rule-value;
-        /// Sets the value of a game rule in this world.
+        /// Sets the value of a game rule in this world. The change applies after the guest call
+        /// returns, so that a handler of `game-rule-changed-event` can run. A read in the same
+        /// guest call may see the old or the new value: work that reaches no Wasm handler runs at
+        /// once.
         set-game-rule: func(rule: game-rule, value: game-rule-value);
     }
 

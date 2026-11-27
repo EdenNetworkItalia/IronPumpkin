@@ -91,7 +91,8 @@ pub fn build() -> TokenStream {
         .iter()
         .map(|(name, value)| {
             let variant_name = format_ident!("{}", name.to_pascal_case());
-            let pf = value_to_placed_feature(value);
+            let pf = std::panic::catch_unwind(|| value_to_placed_feature(value))
+                .unwrap_or_else(|_| panic!("cannot convert the placed feature {name}"));
             quote! {
                 map.insert(pumpkin_data::placed_feature::PlacedFeature::#variant_name, #pf);
             }
@@ -106,6 +107,7 @@ pub fn build() -> TokenStream {
                 HasSturdyFacePredicate, InsideWorldBoundsBlockPredicate,
                 MatchingBlockTagPredicate, MatchingBlocksBlockPredicate, MatchingBlocksWrapper,
                 MatchingFluidsBlockPredicate, NotBlockPredicate, OffsetBlocksBlockPredicate,
+                VolumeMatchBlockPredicate,
                 ReplaceableBlockPredicate, SolidBlockPredicate, WouldSurviveBlockPredicate,
                 HeightRangeBlockPredicate,
             };
@@ -155,10 +157,10 @@ fn value_to_placed_feature(v: &Value) -> TokenStream {
 /// Converts a JSON `"feature"` value into a `Feature` token stream.
 ///
 /// # Arguments
-/// - `v` – Either a string (named reference) or object (inline configured feature).
+/// - `v` – A string (named reference).
 ///
 /// # Returns
-/// `Feature::Named(…)` for string values or `Feature::Inlined(…)` for object values.
+/// `Feature::Named(…)` for string values.
 fn value_to_feature(v: &Value) -> TokenStream {
     match v {
         Value::String(s) => {
@@ -166,11 +168,8 @@ fn value_to_feature(v: &Value) -> TokenStream {
             let variant_name = format_ident!("{}", name.to_pascal_case());
             quote! { Feature::Named(pumpkin_data::configured_feature::ConfiguredFeature::#variant_name) }
         }
-        Value::Object(_) => {
-            let cf = value_to_inline_configured_feature(v);
-            quote! { Feature::Inlined(Box::new(#cf)) }
-        }
-        _ => panic!("Wrong feature value"),
+        // No vanilla placed feature inlines its configured feature. Fail instead of placing nothing.
+        _ => panic!("Unsupported feature value in a placed feature: {v}"),
     }
 }
 
@@ -412,7 +411,19 @@ pub fn value_to_block_predicate(v: &Value) -> TokenStream {
 
     let type_str = v["type"].as_str().unwrap_or("");
     match type_str {
-        "minecraft:true" | "minecraft:volume_match" | "" => quote! { BlockPredicate::AlwaysTrue },
+        "minecraft:true" | "" => quote! { BlockPredicate::AlwaysTrue },
+        "minecraft:volume_match" => {
+            let min = value_to_vec3i(&v["min"]);
+            let max = value_to_vec3i(&v["max"]);
+            let predicate = value_to_block_predicate(&v["match"]);
+            quote! {
+                BlockPredicate::VolumeMatch(VolumeMatchBlockPredicate {
+                    min: #min,
+                    max: #max,
+                    predicate: Box::new(#predicate),
+                })
+            }
+        }
         "minecraft:matching_blocks" => {
             let offset = value_to_offset_predicate(&v["offset"]);
             let blocks = value_to_matching_blocks_wrapper(&v["blocks"]);
@@ -771,6 +782,17 @@ fn value_to_offset_predicate(v: &Value) -> TokenStream {
     }
 }
 
+/// Converts a required `[x, y, z]` JSON array into a `Vector3::new(x, y, z)` token stream.
+fn value_to_vec3i(v: &Value) -> TokenStream {
+    let coord = |i: usize| {
+        v[i].as_i64()
+            .and_then(|n| i32::try_from(n).ok())
+            .unwrap_or_else(|| panic!("Expected an [x, y, z] integer array, got {v}"))
+    };
+    let (x, y, z) = (coord(0), coord(1), coord(2));
+    quote! { Vector3::new(#x, #y, #z) }
+}
+
 /// Converts a blocks/fluids JSON value into a `MatchingBlocksWrapper` token stream.
 ///
 /// # Arguments
@@ -809,14 +831,14 @@ fn block_state_name_and_props(v: &Value) -> (&str, Option<&Map<String, Value>>) 
                 .get("Name")
                 .or_else(|| object.get("id"))
                 .and_then(Value::as_str)
-                .unwrap_or("minecraft:air");
+                .unwrap_or_else(|| panic!("block state without a name: {v}"));
             let props = object
                 .get("Properties")
                 .or_else(|| object.get("properties"))
                 .and_then(Value::as_object);
             (name, props)
         }
-        _ => ("minecraft:air", None),
+        _ => panic!("block state is neither a name nor an object: {v}"),
     }
 }
 
@@ -889,9 +911,4 @@ fn value_to_option_i32(v: &Value) -> TokenStream {
     } else {
         quote! { None }
     }
-}
-
-/// Stub for configured feature inline in placed feature
-fn value_to_inline_configured_feature(_v: &Value) -> TokenStream {
-    quote! { crate::generation::feature::configured_features::ConfiguredFeature::NoOp }
 }

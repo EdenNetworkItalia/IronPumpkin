@@ -54,20 +54,16 @@ impl BlockBehaviour for SweetBerryBushBlock {
                             vec![ItemStack::new(count, &Item::SWEET_BERRIES)]
                         },
                         |handle| {
-                            let params = crate::world::loot::LootContextParameters {
-                                world: Some(args.world),
-                                position: Some(args.position.to_centered_f64()),
-                                block_state: Some(pumpkin_data::BlockState::from_id(state_id)),
-                                this_entity: Some(
-                                    args.player.as_ref() as &dyn crate::entity::EntityBase
-                                ),
-                                ..Default::default()
-                            };
-                            crate::world::loot::generate_loot_from_handle(
-                                &handle,
-                                rand::random(),
-                                &params,
-                            )
+                            let block_entity = args.world.get_block_entity(args.position);
+                            let params = crate::world::loot::LootContextParameters::block_interact(
+                                args.world,
+                                args.position,
+                                pumpkin_data::BlockState::from_id(state_id),
+                                block_entity.as_deref(),
+                                Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                                None,
+                            );
+                            crate::world::loot::roll_loot(&handle, 0, &params)
                         },
                     );
                 if let Some(player_arc) = args.world.get_player_by_uuid(args.player.gameprofile.id)

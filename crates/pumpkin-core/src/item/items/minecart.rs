@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
 use crate::entity::Entity;
+use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::entity::vehicle::minecart::MinecartEntity;
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::server::Server;
+use crate::world::game_event::GameEventContext;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::block_properties::{
     BlockProperties, PoweredRailLikeProperties, RailLikeProperties,
@@ -93,7 +95,14 @@ impl ItemBehaviour for MinecartItem {
             Some(player),
         );
         world.spawn_entity(minecart_entity);
-        world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+        world.emit_game_event_with_context(
+            GameEvent::EntityPlace.name(),
+            location.to_centered_f64(),
+            &GameEventContext::of_entity_state(
+                Some(player as &dyn EntityBase),
+                world.get_block_state_id(&location.down()),
+            ),
+        );
         item.decrement_unless_creative(player.gamemode.load(), 1);
         BlockActionResult::Success
     }

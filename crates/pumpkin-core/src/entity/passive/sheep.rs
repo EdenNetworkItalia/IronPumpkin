@@ -25,7 +25,7 @@ use crate::entity::{
     shearable::{Shearable, shear_by_player},
 };
 use crate::world::World;
-use crate::world::loot::{LootContextParameters, generate_loot_from_handle};
+use crate::world::loot::{LootContextParameters, roll_loot};
 
 use pumpkin_data::chunk::Biome;
 use pumpkin_data::dye_color::DyeColor;
@@ -198,7 +198,7 @@ impl Shearable for SheepEntity {
         let entity = self.get_entity();
         let world = entity.world.load();
         let pos = entity.pos.load();
-        world.play_sound(Sound::EntitySheepShear, category, &pos);
+        world.play_sound_at_entity(None, entity, Sound::EntitySheepShear, category, 1.0, 1.0);
         let color = DyeColor::from(self.get_color());
         if let Some(table) =
             world.get_loot_table(&format!("minecraft:shearing/sheep/{}", color.name()))
@@ -211,7 +211,7 @@ impl Shearable for SheepEntity {
                 ..Default::default()
             };
             let mut rng = self.get_random();
-            for stack in generate_loot_from_handle(&table, rng.random(), &params) {
+            for stack in roll_loot(&table, 0, &params) {
                 for _ in 0..stack.item_count {
                     let item_entity = ItemEntity::new(
                         Entity::new(world.clone(), pos.add_raw(0.0, 1.0, 0.0), &EntityType::ITEM),

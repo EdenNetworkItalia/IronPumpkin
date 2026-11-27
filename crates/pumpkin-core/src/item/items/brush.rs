@@ -3,12 +3,16 @@ use std::sync::Arc;
 
 use crate::block::entities::brushable_block::BrushableBlockBlockEntity;
 use crate::block::registry::BlockActionResult;
-use crate::entity::Entity;
 use crate::entity::item::ItemEntity;
 use crate::entity::player::Player;
+use crate::entity::{Entity, EntityBase};
 use crate::item::{ItemBehaviour, ItemMetadata};
 use crate::server::Server;
 use crate::world::World;
+use crate::world::loot::{
+    LootContextParameters, LootTableHandle, RollRandom, generate_loot_from_handle_with_rng,
+    player_luck,
+};
 use pumpkin_data::block_properties::SuspiciousSandLikeProperties;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::item::Item;
@@ -27,11 +31,39 @@ impl ItemMetadata for BrushItem {
         Box::new([Item::BRUSH.id])
     }
 }
+/// `BrushableBlockEntity.unpackLootTable`: the `archaeology` parameter set, rolled with the seed
+/// of the block entity.
+fn archaeology_params<'a>(
+    world: &'a World,
+    location: BlockPos,
+    player: Option<&'a Player>,
+    brush: &ItemStack,
+) -> LootContextParameters<'a> {
+    LootContextParameters {
+        world: Some(world),
+        position: Some(location.to_centered_f64()),
+        this_entity: player.map(|player| player as &dyn EntityBase),
+        luck: player.map_or(0.0, player_luck),
+        tool: Some(brush.clone()),
+        ..Default::default()
+    }
+}
+
+fn roll_archaeology(
+    table: &LootTableHandle,
+    seed: i64,
+    params: &LootContextParameters<'_>,
+) -> Vec<ItemStack> {
+    let mut random = RollRandom::new(params, table, seed);
+    generate_loot_from_handle_with_rng(table, random.rng(), params)
+}
+
 fn get_archaeology_loot(
     is_sand: bool,
     location: BlockPos,
     world: &World,
     player: Option<&Player>,
+    brush: &ItemStack,
 ) -> ItemStack {
     if let Some(block_entity) = world.get_block_entity(&location)
         && let Some(brushable) = block_entity
@@ -55,19 +87,13 @@ fn get_archaeology_loot(
                 );
             }
             let seed = brushable.loot_table_seed.lock().map_or(0, |g| *g);
-            let actual_seed = if seed == 0 { rand::random() } else { seed };
             let stripped = loot_key.strip_prefix("minecraft:").unwrap_or(&loot_key);
             if let Some(table) = world
                 .get_loot_table(&loot_key)
                 .or_else(|| world.get_loot_table(stripped))
             {
-                let items = table.generate_loot_with_context(
-                    actual_seed,
-                    &crate::world::loot::LootContextParameters {
-                        world: Some(world),
-                        ..Default::default()
-                    },
-                );
+                let params = archaeology_params(world, location, player, brush);
+                let items = roll_archaeology(&table, seed, &params);
                 if let Some(first) = items.into_iter().next() {
                     return first;
                 }
@@ -90,13 +116,8 @@ fn get_archaeology_loot(
     }
 
     if let Some(table) = world.get_loot_table(loot_key) {
-        let items = table.generate_loot_with_context(
-            rand::random(),
-            &crate::world::loot::LootContextParameters {
-                world: Some(world),
-                ..Default::default()
-            },
-        );
+        let params = archaeology_params(world, location, player, brush);
+        let items = roll_archaeology(&table, rand::random(), &params);
         if let Some(first) = items.into_iter().next() {
             return first;
         }
@@ -168,7 +189,7 @@ impl ItemBehaviour for BrushItem {
                 &block_center,
             );
         } else {
-            let loot_item = get_archaeology_loot(is_sand, location, &world, Some(player));
+            let loot_item = get_archaeology_loot(is_sand, location, &world, Some(player), item);
             world.sync_world_event(
                 WorldEvent::ParticlesAndSoundBrushBlockComplete,
                 location,

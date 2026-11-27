@@ -176,10 +176,9 @@ impl VehicleEntity {
             let key = format!("minecraft:entities/{resource_name}");
             if let Some(loot_table) = world.get_loot_table(&key) {
                 let pos = self.entity.block_pos.load();
-                let seed: i64 = rand::random();
-                for stack in crate::world::loot::generate_loot_from_handle(
+                for stack in crate::world::loot::roll_loot(
                     &loot_table,
-                    seed,
+                    0,
                     &crate::world::loot::LootContextParameters {
                         world: Some(&world),
                         ..Default::default()

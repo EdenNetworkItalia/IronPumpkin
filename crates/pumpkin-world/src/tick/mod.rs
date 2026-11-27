@@ -67,6 +67,9 @@ pub struct ScheduledTick<T> {
 
 #[derive(Clone)]
 pub struct OrderedTick<T> {
+    /// The ticks since the trigger tick: more than 0 for a tick that waited in a loaded chunk
+    /// that did not block tick.
+    pub ticks_overdue: u64,
     pub priority: TickPriority,
     pub sub_tick_order: u64,
 
@@ -77,6 +80,7 @@ pub struct OrderedTick<T> {
 impl<T> OrderedTick<T> {
     pub const fn new(position: BlockPos, value: T) -> Self {
         Self {
+            ticks_overdue: 0,
             priority: TickPriority::Normal,
             sub_tick_order: 0,
             position,
@@ -87,7 +91,9 @@ impl<T> OrderedTick<T> {
 
 impl<T> PartialEq for OrderedTick<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.priority == other.priority && self.sub_tick_order == other.sub_tick_order
+        self.ticks_overdue == other.ticks_overdue
+            && self.priority == other.priority
+            && self.sub_tick_order == other.sub_tick_order
     }
 }
 
@@ -99,10 +105,14 @@ impl<T> PartialOrd for OrderedTick<T> {
     }
 }
 
+/// Vanilla `ScheduledTick.DRAIN_ORDER`: the earlier trigger tick first, then the priority, then
+/// the sub-tick order.
 impl<T> Ord for OrderedTick<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.priority
-            .cmp(&other.priority)
+        other
+            .ticks_overdue
+            .cmp(&self.ticks_overdue)
+            .then_with(|| self.priority.cmp(&other.priority))
             .then_with(|| self.sub_tick_order.cmp(&other.sub_tick_order))
     }
 }

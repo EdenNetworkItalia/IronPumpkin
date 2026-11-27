@@ -731,53 +731,6 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
         ))
     }
 
-    fn play_sound(
-        &mut self,
-        world: Resource<World>,
-        sound: pumpkin::plugin::sounds::Sound,
-        category: pumpkin::plugin::sounds::SoundCategory,
-        pos: pumpkin::plugin::common::Position,
-        volume: f32,
-        pitch: f32,
-    ) -> wasmtime::Result<()> {
-        let world_ref = self.get(&world)?;
-        let sound_name = format!("{sound:?}").to_lowercase().replace('_', ".");
-        let sound_data = pumpkin_data::sound::Sound::from_name(&sound_name)
-            .ok_or_else(|| wasmtime::Error::msg(format!("Unknown sound: {sound_name}")))?;
-
-        let internal_category = from_wit_sound_category(category);
-
-        world_ref.play_sound_raw(
-            sound_data as u16,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-        );
-        Ok(())
-    }
-
-    fn play_custom_sound(
-        &mut self,
-        world: Resource<World>,
-        sound_name: String,
-        category: pumpkin::plugin::sounds::SoundCategory,
-        pos: pumpkin::plugin::common::Position,
-        volume: f32,
-        pitch: f32,
-    ) -> wasmtime::Result<()> {
-        let world_ref = self.get(&world)?;
-        let internal_category = from_wit_sound_category(category);
-        world_ref.play_custom_sound(
-            &sound_name,
-            internal_category,
-            &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
-            volume,
-            pitch,
-        );
-        Ok(())
-    }
-
     fn spawn_particle(
         &mut self,
         world: Resource<World>,
@@ -1148,6 +1101,59 @@ impl pumpkin::plugin::world::HostWorld for PluginHostState {
 }
 
 impl pumpkin::plugin::world::HostWorldWithStore<PluginHostState> for HasSelf<PluginHostState> {
+    // The sound call fires `PlayLevelSoundEvent`, which can reach a Wasm handler, so the call must
+    // not hold the store of the caller: `pump_blocking` hands it back.
+    async fn play_sound(
+        mut host: Access<'_, PluginHostState, Self>,
+        world: Resource<World>,
+        sound: pumpkin::plugin::sounds::Sound,
+        category: pumpkin::plugin::sounds::SoundCategory,
+        pos: pumpkin::plugin::common::Position,
+        volume: f32,
+        pitch: f32,
+    ) -> wasmtime::Result<()> {
+        let (world, plugin) = world_and_plugin(host.get(), &world)?;
+        let sound_data = pumpkin_data::sound::Sound::slice()[sound as usize];
+        let category = from_wit_sound_category(category);
+        plugin
+            .store
+            .pump_blocking(&mut host, move || {
+                world.play_sound_raw(
+                    sound_data as u16,
+                    category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                );
+            })
+            .await
+    }
+
+    async fn play_custom_sound(
+        mut host: Access<'_, PluginHostState, Self>,
+        world: Resource<World>,
+        sound_name: String,
+        category: pumpkin::plugin::sounds::SoundCategory,
+        pos: pumpkin::plugin::common::Position,
+        volume: f32,
+        pitch: f32,
+    ) -> wasmtime::Result<()> {
+        let (world, plugin) = world_and_plugin(host.get(), &world)?;
+        let category = from_wit_sound_category(category);
+        plugin
+            .store
+            .pump_blocking(&mut host, move || {
+                world.play_custom_sound(
+                    &sound_name,
+                    category,
+                    &pumpkin_util::math::vector3::Vector3::new(pos.0, pos.1, pos.2),
+                    volume,
+                    pitch,
+                );
+            })
+            .await
+    }
+
     async fn set_raining(
         mut host: Access<'_, PluginHostState, Self>,
         world: Resource<World>,

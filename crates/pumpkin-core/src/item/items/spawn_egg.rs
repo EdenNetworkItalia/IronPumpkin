@@ -303,7 +303,11 @@ impl ItemBehaviour for SpawnEggItem {
                 Hand::Left => PlayerInventory::OFF_HAND_SLOT,
             };
             player.sync_hand_slot(slot_index, stack);
-            world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+            world.emit_game_event_by(
+                GameEvent::EntityPlace.name(),
+                pos,
+                &player.living_entity.entity,
+            );
             player.increment_stat(StatisticCategory::Used, i32::from(item.id), 1);
         }
     }
@@ -328,7 +332,11 @@ impl ItemBehaviour for SpawnEggItem {
                 {
                     spawner.set_entity_type(entity_type);
                     world.update_block_entity(&block_entity);
-                    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+                    world.emit_game_event_by(
+                        GameEvent::BlockChange.name(),
+                        location.to_f64(),
+                        &player.living_entity.entity,
+                    );
                     item.decrement_unless_creative(player.gamemode.load(), 1);
                     return BlockActionResult::Success;
                 }
@@ -338,7 +346,7 @@ impl ItemBehaviour for SpawnEggItem {
                 {
                     trial_spawner.set_entity_type(entity_type, &world);
                     world.update_block_entity(&block_entity);
-                    world.emit_game_event(GameEvent::BlockChange.name(), location.to_f64());
+                    world.emit_game_event_by(GameEvent::BlockChange.name(), location.to_f64(), &player.living_entity.entity);
                     item.decrement_unless_creative(player.gamemode.load(), 1);
                     return BlockActionResult::Success;
                 }
@@ -379,7 +387,11 @@ impl ItemBehaviour for SpawnEggItem {
                 world.get_player_by_uuid(player.gameprofile.id),
             ) {
                 item.decrement_unless_creative(player.gamemode.load(), 1);
-                world.emit_game_event(GameEvent::EntityPlace.name(), spawn_block_pos.to_f64());
+                world.emit_game_event_by(
+                    GameEvent::EntityPlace.name(),
+                    spawn_block_pos.to_f64(),
+                    &player.living_entity.entity,
+                );
             }
             BlockActionResult::Success
         } else {
@@ -413,7 +425,11 @@ impl ItemBehaviour for SpawnEggItem {
                 world.get_player_by_uuid(player.gameprofile.id),
             ) {
                 item.decrement_unless_creative(player.gamemode.load(), 1);
-                world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+                world.emit_game_event_by(
+                    GameEvent::EntityPlace.name(),
+                    pos,
+                    &player.living_entity.entity,
+                );
                 if let (Some(parent), Some(offspring)) = (entity.get_mob(), mob.get_mob()) {
                     parent.on_offspring_spawned_from_egg(player, offspring);
                 }

@@ -107,10 +107,11 @@ impl ItemBehaviour for FireworkRocketItem {
                 }
             }
             if dropped_leash {
-                world.play_sound_fine(
+                world.play_sound_at_entity(
+                    None,
+                    &player.living_entity.entity,
                     Sound::ItemLeadBreak,
                     SoundCategory::Neutral,
-                    &player.position(),
                     1.0,
                     1.0,
                 );
@@ -123,7 +124,7 @@ impl ItemBehaviour for FireworkRocketItem {
             );
             let entity = FireworkRocketEntity::new_shot_with_stack(
                 entity,
-                player.get_entity(),
+                &player.living_entity.entity,
                 held.copy_with_count(1),
             );
             world.spawn_entity(Arc::new(entity));

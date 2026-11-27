@@ -67,13 +67,34 @@ fn active_plugin(
 ///
 /// Callbacks from `operation` inherit the active guest call's chain and root admission
 /// The reentry depth is checked before the operation is spawned
+/// `operation` runs inside the guest call mark of the store, so that its packet sends go to the
+/// deferred queue in call order with the sends of the synchronous imports
 pub(crate) async fn run_blocking<R: Send + 'static>(
     accessor: &Accessor<PluginHostState, HasSelf<PluginHostState>>,
     operation: impl FnOnce() -> R + Send + 'static,
 ) -> wasmtime::Result<R> {
+    let item_hooks_off = accessor.with(|mut host| {
+        host.get()
+            .item_hook_handlers
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > 0
+    });
+    let guest_call = pumpkin_core::plugin::guest_call::current();
     active_plugin(accessor)?
         .store
-        .spawn_blocking_in_active_context(operation)
+        .spawn_blocking_in_active_context(move || {
+            let operation = move || {
+                if item_hooks_off {
+                    pumpkin_core::plugin::without_item_hooks(operation)
+                } else {
+                    operation()
+                }
+            };
+            match guest_call {
+                Some(call) => pumpkin_core::plugin::guest_call::enter(&call, operation),
+                None => operation(),
+            }
+        })
         .await
 }
 
@@ -128,6 +149,29 @@ impl AccessorExt for Accessor<PluginHostState, HasSelf<PluginHostState>> {
 pub(crate) trait RequireServer {
     /// Borrows the server, failing if the host state has none set.
     fn require_server(&self) -> wasmtime::Result<&std::sync::Arc<pumpkin_core::server::Server>>;
+}
+
+/// Defers host work until the guest call can release the store, in call order.
+pub(crate) trait DeferHost {
+    /// Queues `run` on the queue of the store. `label` names it in the log. See
+    /// [`pumpkin_wasm_host_common::deferred`].
+    fn defer(
+        &self,
+        label: impl Into<String>,
+        run: impl FnOnce() + Send + 'static,
+    ) -> wasmtime::Result<()>;
+}
+
+impl DeferHost for PluginHostState {
+    fn defer(
+        &self,
+        label: impl Into<String>,
+        run: impl FnOnce() + Send + 'static,
+    ) -> wasmtime::Result<()> {
+        let runtime = self.require_server()?.runtime.clone();
+        self.deferred.push(&runtime, label, run);
+        Ok(())
+    }
 }
 
 impl RequireServer for PluginHostState {

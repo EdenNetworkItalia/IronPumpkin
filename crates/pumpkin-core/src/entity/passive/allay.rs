@@ -244,10 +244,11 @@ impl AllayEntity {
         }
         let mut rng = self.get_random();
         if world.get_world_age() % 7 == 0 && rng.random::<f64>() < 0.9 {
-            world.play_sound_raw(
-                Sound::EntityAllayItemThrown as u16,
+            world.play_sound_at_entity(
+                None,
+                entity,
+                Sound::EntityAllayItemThrown,
                 SoundCategory::Neutral,
-                &entity.pos.load(),
                 1.0,
                 THROW_SOUND_PITCHES[rng.random_range(0..THROW_SOUND_PITCHES.len())],
             );
@@ -331,11 +332,11 @@ impl AllayEntity {
         } else {
             return false;
         }
-        world.play_sound_raw_expect(
-            player,
-            sound as u16,
+        world.play_sound_at_entity(
+            Some(player),
+            entity,
+            sound,
             SoundCategory::Neutral,
-            &entity.pos.load(),
             2.0,
             1.0,
         );

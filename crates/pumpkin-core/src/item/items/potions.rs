@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use crate::block::registry::BlockActionResult;
 use crate::entity::Entity;
-use crate::entity::EntityBase;
 use crate::entity::player::Player;
 use crate::entity::projectile::{
     lingering_potion::LingeringPotionEntity, splash_potion::SplashPotionEntity,
@@ -83,7 +82,11 @@ fn try_convert_to_mud(
         SoundCategory::Blocks,
         &location.to_f64(),
     );
-    world.emit_game_event(GameEvent::FluidPlace.name(), location.to_f64());
+    world.emit_game_event_by(
+        GameEvent::FluidPlace.name(),
+        location.to_f64(),
+        &player.living_entity.entity,
+    );
     world.set_block_state(
         &location,
         Block::MUD.default_state.id,
@@ -174,7 +177,7 @@ impl ItemBehaviour for SplashPotionItem {
             0.4 / (rng().random::<f32>() * 0.4 + 0.8),
         );
         let entity = Entity::new(world.clone(), position, &EntityType::SPLASH_POTION);
-        let splash = SplashPotionEntity::new_shot(entity, player.get_entity());
+        let splash = SplashPotionEntity::new_shot(entity, &player.living_entity.entity);
         splash.set_item_stack(stack.copy_with_count(1));
 
         splash
@@ -244,7 +247,7 @@ impl ItemBehaviour for LingeringPotionItem {
             0.4 / (rng().random::<f32>() * 0.4 + 0.8),
         );
         let entity = Entity::new(world.clone(), position, &EntityType::LINGERING_POTION);
-        let ling = LingeringPotionEntity::new_shot(entity, player.get_entity());
+        let ling = LingeringPotionEntity::new_shot(entity, &player.living_entity.entity);
         ling.set_item_stack(stack.copy_with_count(1));
 
         ling.thrown

@@ -203,9 +203,7 @@ impl ArmadilloEntity {
         entity.world.load().emit_game_event_with_context(
             event.name(),
             entity.pos.load(),
-            &GameEventContext {
-                source_entity: Some(self),
-            },
+            &GameEventContext::of_entity(Some(self)),
         );
     }
 
@@ -231,7 +229,7 @@ impl ArmadilloEntity {
 
     pub fn brush_off_scute(
         &self,
-        _interacting_entity: Option<&dyn EntityBase>,
+        interacting_entity: Option<&dyn EntityBase>,
         tool: &ItemStack,
     ) -> bool {
         if self.is_baby() || !self.get_entity().is_alive() {
@@ -241,18 +239,13 @@ impl ArmadilloEntity {
         let world = entity.world.load();
         let pos = entity.pos.load();
         if let Some(table) = world.get_loot_table(ARMADILLO_BRUSH_LOOT_TABLE) {
-            let params = crate::world::loot::LootContextParameters {
-                world: Some(&world),
-                position: Some(pos),
-                this_entity: Some(self),
-                tool: Some(tool.clone()),
-                ..Default::default()
-            };
-            for drop_stack in crate::world::loot::generate_loot_from_handle(
-                &table,
-                self.get_random().random(),
-                &params,
-            ) {
+            let params = crate::world::loot::LootContextParameters::entity_interact(
+                &world,
+                self,
+                interacting_entity,
+                tool.clone(),
+            );
+            for drop_stack in crate::world::loot::roll_loot(&table, 0, &params) {
                 entity.spawn_at_location(drop_stack);
             }
         }

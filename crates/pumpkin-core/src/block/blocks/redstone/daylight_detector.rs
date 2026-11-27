@@ -28,12 +28,13 @@ impl BlockBehaviour for DaylightDetectorBlock {
     }
 
     fn normal_use(&self, args: NormalUseArgs<'_>) -> BlockActionResult {
-        let player_abilities = args
+        let allow_modify_world = args
             .player
             .abilities
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if !player_abilities.allow_modify_world {
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .allow_modify_world;
+        if !allow_modify_world {
             return BlockActionResult::Pass;
         }
 
@@ -44,9 +45,13 @@ impl BlockBehaviour for DaylightDetectorBlock {
         let new_state = props.to_state_id(args.block);
         args.world
             .set_block_state(args.position, new_state, BlockFlags::NOTIFY_LISTENERS);
-        args.world.emit_game_event(
+        args.world.emit_game_event_with_context(
             GameEvent::BlockChange.name(),
             args.position.to_centered_f64(),
+            &crate::world::game_event::GameEventContext::of_entity_state(
+                Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                new_state,
+            ),
         );
 
         Self::update_signal_strength(args.world, args.position);

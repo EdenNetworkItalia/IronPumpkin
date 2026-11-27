@@ -191,21 +191,22 @@ pub struct SmithingTransformRecipeStruct {
     result: RecipeResultStruct,
 }
 
-impl ToTokens for SmithingTransformRecipeStruct {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+impl SmithingTransformRecipeStruct {
+    fn to_tokens_with_id(&self, recipe_id: &str) -> TokenStream {
         let template = self.template.to_token_stream();
         let base = self.base.to_token_stream();
         let addition = self.addition.to_token_stream();
         let result = self.result.to_token_stream();
 
-        tokens.extend(quote! {
+        quote! {
             SmithingTransformRecipe {
+                recipe_id: #recipe_id,
                 template: #template,
                 base: #base,
                 addition: #addition,
                 result: #result,
             }
-        });
+        }
     }
 }
 
@@ -218,21 +219,22 @@ pub struct SmithingTrimRecipeStruct {
     pattern: String,
 }
 
-impl ToTokens for SmithingTrimRecipeStruct {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+impl SmithingTrimRecipeStruct {
+    fn to_tokens_with_id(&self, recipe_id: &str) -> TokenStream {
         let template = self.template.to_token_stream();
         let base = self.base.to_token_stream();
         let addition = self.addition.to_token_stream();
         let pattern = &self.pattern;
 
-        tokens.extend(quote! {
+        quote! {
             SmithingTrimRecipe {
+                recipe_id: #recipe_id,
                 template: #template,
                 base: #base,
                 addition: #addition,
                 pattern: #pattern,
             }
-        });
+        }
     }
 }
 
@@ -247,8 +249,8 @@ pub struct StonecuttingRecipeStruct {
     result: RecipeResultStruct,
 }
 
-impl ToTokens for StonecuttingRecipeStruct {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
+impl StonecuttingRecipeStruct {
+    fn to_tokens_with_id(&self, recipe_id: &str) -> TokenStream {
         let group = if let Some(group) = &self.group {
             quote! { Some(#group) }
         } else {
@@ -257,13 +259,14 @@ impl ToTokens for StonecuttingRecipeStruct {
         let ingredient = self.ingredient.to_token_stream();
         let result = self.result.to_token_stream();
 
-        tokens.extend(quote! {
+        quote! {
             StonecutterRecipe {
+                recipe_id: #recipe_id,
                 group: #group,
                 ingredient: #ingredient,
                 result: #result,
             }
-        });
+        }
     }
 }
 
@@ -758,8 +761,10 @@ pub fn build() -> TokenStream {
     let mut stonecutting_recipes = Vec::new();
     let mut smithing_trim_recipes = Vec::new();
     let mut smithing_transform_recipes = Vec::new();
+    let mut crafting_recipe_ids = Vec::new();
 
     for (recipe_id, recipe) in recipes_assets {
+        let crafting_count = crafting_recipes.len();
         match recipe {
             RecipeTypes::Blasting(recipe) => {
                 let mut common_cooking_token = TokenStream::new();
@@ -804,10 +809,10 @@ pub fn build() -> TokenStream {
                 cooking_recipes.push(smelting_token);
             }
             RecipeTypes::SmithingTransform(recipe) => {
-                smithing_transform_recipes.push(recipe.to_token_stream());
+                smithing_transform_recipes.push(recipe.to_tokens_with_id(&recipe_id));
             }
             RecipeTypes::SmithingTrim(recipe) => {
-                smithing_trim_recipes.push(recipe.to_token_stream());
+                smithing_trim_recipes.push(recipe.to_tokens_with_id(&recipe_id));
             }
             RecipeTypes::Smoking(recipe) => {
                 let mut common_cooking_token = TokenStream::new();
@@ -820,7 +825,7 @@ pub fn build() -> TokenStream {
                 cooking_recipes.push(smoking_token);
             }
             RecipeTypes::Stonecutting(recipe) => {
-                stonecutting_recipes.push(recipe.to_token_stream());
+                stonecutting_recipes.push(recipe.to_tokens_with_id(&recipe_id));
             }
             RecipeTypes::CraftingDye(r) => {
                 let target = r.target.to_token_stream();
@@ -953,6 +958,9 @@ pub fn build() -> TokenStream {
                 });
             }
             RecipeTypes::CraftingSpecial => {}
+        }
+        if crafting_recipes.len() > crafting_count {
+            crafting_recipe_ids.push(recipe_id);
         }
     }
 
@@ -1110,6 +1118,8 @@ pub fn build() -> TokenStream {
 
         #[derive(Clone, Debug, Serialize)]
         pub struct StonecutterRecipe {
+            /// Vanilla recipe ID.
+            pub recipe_id: &'static str,
             pub group: Option<&'static str>,
             pub ingredient: RecipeIngredientTypes,
             pub result: RecipeResultStruct,
@@ -1147,9 +1157,13 @@ pub fn build() -> TokenStream {
                         let name = format!("minecraft:{}", item.registry_key);
                         name == *ingredient
                     }
-                    Self::Tagged(tag) => item
-                        .is_tagged_with(tag)
-                        .expect("Crafting recipe used invalid tag"),
+                    Self::Tagged(tag) => crate::dynamic::data_pack_item_tag(tag).map_or_else(
+                        || {
+                            item.is_tagged_with(tag)
+                                .expect("Crafting recipe used invalid tag")
+                        },
+                        |ids| ids.contains(&item.id),
+                    ),
                     Self::OneOf(ingredients) => {
                         let name = format!("minecraft:{}", item.registry_key);
                         ingredients.contains(&name.as_str())
@@ -1171,6 +1185,10 @@ pub fn build() -> TokenStream {
         pub static RECIPES_CRAFTING: &[CraftingRecipeTypes] = &[
             #(#crafting_recipes),*
         ];
+        /// The recipe id of each entry of `RECIPES_CRAFTING`, at the same index.
+        pub static RECIPES_CRAFTING_IDS: &[&str] = &[
+            #(#crafting_recipe_ids),*
+        ];
         pub static RECIPES_COOKING: &[CookingRecipeType] = &[
             #(#cooking_recipes ),*
         ];
@@ -1186,6 +1204,8 @@ pub fn build() -> TokenStream {
 
         #[derive(Clone, Debug, Serialize)]
         pub struct SmithingTrimRecipe {
+            /// Vanilla recipe ID.
+            pub recipe_id: &'static str,
             pub template: RecipeIngredientTypes,
             pub base: RecipeIngredientTypes,
             pub addition: RecipeIngredientTypes,
@@ -1214,6 +1234,8 @@ pub fn build() -> TokenStream {
 
         #[derive(Clone, Debug, Serialize)]
         pub struct SmithingTransformRecipe {
+            /// Vanilla recipe ID.
+            pub recipe_id: &'static str,
             pub template: RecipeIngredientTypes,
             pub base: RecipeIngredientTypes,
             pub addition: RecipeIngredientTypes,

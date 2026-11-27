@@ -49,8 +49,7 @@ Rules for every task:
   - Needs: 6.1.
   - Add a generic `DecoderRegistry<T>` in `pumpkin-util`. Move `LootModifierTypes` onto it.
   - Reject a duplicate name and the `minecraft` namespace. Close the registry at the freeze.
-  - Add a manual `PartialEq` for each use-site enum that gets a `Custom` arm.
-  - Put the trait of a loot `Custom` arm in `pumpkin-util`. Let it read the loot context through a context trait that `pumpkin-core` implements.
+  - Add the six registries with demand in `pumpkin-core`, next to their use sites, with the traits that mods implement. Each trait takes the full `pumpkin-core` context.
   - Verify: requirements "Decoder registries" and "Decoder registries are server-only" of `neoforge-static-registries`.
 - [ ] 6.4 Mod block entity types
   - Needs: 6.2, #192.
@@ -97,8 +96,18 @@ Rules for every task:
 
 ### Wave 2: conditions, recipes, registries, game rules, chunk tickets
 
+- [ ] 6.41 Data pack tags
+  - Needs: 6.2.
+  - Build the effective tag table of each static registry at each data pack load and reload: the generated tags, the mod tags registered in code, then the tag files of the enabled packs in pack order, with `replace`, optional entries, nested tags and the NeoForge `remove` list.
+  - Emit the direct `#` references of each generated tag from the codegen. Rebuild every generated tag that reaches a changed tag, in dependency order.
+  - Skip a tag with a missing required entry, with the vanilla log line. Skip a tag in a reference cycle.
+  - Let `Taggable::has_tag` and the tag value lookups read the table, with the generated lookup when the table has no entry for the tag.
+  - Send the effective members in the tags packet at the join and after a reload: mod ids to a `Real` connection, vanilla ids to a `Display` connection.
+  - Fold `dynamic::set_data_pack_item_tags` of #191 into the table.
+  - Verify: requirements "Data pack tags apply to tag checks", "Merge rules", "Missing references", "The tags packet" and "Cost of tag checks" of `neoforge-data-tags`.
+  - Verify: a `has_tag` bench with and without a changed tag, on master and the branch.
 - [ ] 6.9 Data conditions
-  - Needs: 6.2, 6.3.
+  - Needs: 6.2, 6.3, 6.41.
   - Add one module that evaluates `neoforge:conditions` after the JSON parse of each covered loader.
   - Run the loaders in two passes, tags first.
   - Read the mod list from `plugin/startup.rs`. Answer `registered` from the Pumpkin lookups, false with a warning when none exists.
@@ -137,9 +146,11 @@ Rules for every task:
   - Verify: requirements "Mod-defined registries", "Synced mod-defined registries are refused", "Registry callbacks" and "Holder set types" of `neoforge-static-registries`.
 - [ ] 6.14 Decoder registry use sites
   - Needs: 6.3.
-  - Add the `Custom` arm at `DynamicLootCondition`, `AdvancementTrigger` and the predicates.
+  - Add the `Custom` arm at `DynamicLootCondition`, `LootFunctionKind`, `DynamicLootEntryKind`, `AdvancementTrigger` and the predicates.
+  - Give each `pumpkin-util` arm a type-erased value with a manual `PartialEq`, and the parser a decode hook from `pumpkin-core`.
   - Cover `trigger_type`, `loot_function_type`, `loot_pool_entry_type`, `loot_condition_type`, `data_component_predicate_type` and `entity_sub_predicate_type`.
   - Expose a trigger fire call to mods.
+  - Let the data pack loaders of #201 accept the mod types: the advancement loader checks a trigger against the vanilla names and `TRIGGER_TYPES`; the loot table, predicate, item modifier and slot source loaders check a `type` against the vanilla names and the decoder registry of the type.
   - Verify: requirement "Use sites call the decoded behaviour" of `neoforge-static-registries`.
 - [ ] 6.15 Mod game rules
   - Needs: 6.1.

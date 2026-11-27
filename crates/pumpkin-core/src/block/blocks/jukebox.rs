@@ -14,8 +14,8 @@ use pumpkin_data::data_component_impl::JukeboxPlayableImpl;
 use pumpkin_data::entity::EntityType;
 use pumpkin_data::game_event::GameEvent;
 use pumpkin_data::jukebox_song::JukeboxSong;
-use pumpkin_data::world::WorldEvent;
 use pumpkin_data::{Block, BlockStateId, block_properties::JukeboxLikeProperties};
+use pumpkin_inventory::Inventory;
 use pumpkin_macros::pumpkin_block;
 use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
@@ -61,21 +61,10 @@ impl JukeboxBlock {
                 // Vanilla: setToDefaultPickupDelay() = 10 ticks
                 let item_entity = Arc::new(ItemEntity::new(entity, record));
                 world.spawn_entity(item_entity);
+                // Vanilla `popOutTheItem` ends with `onSongChanged`.
+                world.update_neighbors(position, None);
             }
         }
-    }
-
-    /// Stops the music and updates block state
-    fn stop_playing(block: &Block, position: &BlockPos, world: &Arc<World>) {
-        Self::set_record_state(false, block, position, world);
-        world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
-        world.sync_world_event(WorldEvent::SoundStopJukeboxSong, *position, 0);
-        world.update_neighbors(position, None);
-    }
-
-    /// Starts playing music
-    fn start_playing(position: &BlockPos, world: &Arc<World>, song_id: u32) {
-        world.sync_world_event(WorldEvent::SoundPlayJukeboxSong, *position, song_id as i32);
     }
 }
 
@@ -103,10 +92,8 @@ impl BlockBehaviour for JukeboxBlock {
 
         // Vanilla: if (state.get(HAS_RECORD) && world.getBlockEntity(pos) instanceof JukeboxBlockEntity lv)
         if Self::has_record_state(args.block, state_id) {
-            // Drop the record
+            // The block entity clears `has_record` and stops the song, as `popOutTheItem`.
             Self::drop_record(args.position, args.world);
-            // Stop the music and update block state
-            Self::stop_playing(args.block, args.position, args.world);
             return BlockActionResult::Success;
         }
 
@@ -140,35 +127,32 @@ impl BlockBehaviour for JukeboxBlock {
             return BlockActionResult::PassToDefaultBlockAction;
         };
 
-        let Some(jukebox_song) = JukeboxSong::from_name(song_name) else {
+        if JukeboxSong::from_name(song_name).is_none() {
             error!("Jukebox playable song not registered: {song_name}");
             return BlockActionResult::PassToDefaultBlockAction;
-        };
+        }
 
         // Vanilla: ItemStack lv3 = stack.splitUnlessCreative(1, player)
         let record = item_stack.split_unless_creative(args.player.gamemode.load(), 1);
 
-        // Vanilla: lv4.setStack(lv3)
+        // Vanilla `JukeboxPlayable.tryInsertIntoJukebox` reads the state before the insert.
+        let old_state = world.get_block_state_id(args.position);
+
+        // Vanilla: `setTheItem`: `has_record`, `block_change`, then the song.
         if let Some(block_entity) = world.get_block_entity(args.position)
             && let Some(jukebox_entity) = block_entity.as_any().downcast_ref::<JukeboxBlockEntity>()
         {
             jukebox_entity.set_world(Arc::downgrade(world));
-            jukebox_entity.set_record(record);
-            jukebox_entity.start_playing(
-                jukebox_song.length_in_ticks() + JukeboxBlockEntity::SONG_END_PADDING_TICKS,
+            jukebox_entity.set_stack(0, record);
+            world.emit_game_event_with_context(
+                GameEvent::BlockChange.name(),
+                args.position.to_centered_f64(),
+                &crate::world::game_event::GameEventContext::of_entity_state(
+                    Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                    old_state,
+                ),
             );
         }
-
-        // Update block state to has_record = true
-        Self::set_record_state(true, args.block, args.position, world);
-        world.emit_game_event(
-            GameEvent::BlockChange.name(),
-            args.position.to_centered_f64(),
-        );
-
-        // Start playing the music (client-side audio) and notify redstone neighbors
-        Self::start_playing(args.position, world, jukebox_song.get_id());
-        world.update_neighbors(args.position, None);
 
         args.player.increment_stat(
             pumpkin_data::statistic::StatisticCategory::Custom,

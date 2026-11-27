@@ -50,7 +50,7 @@ fn names(loot: &[ItemStack]) -> Vec<&'static str> {
 
 fn apply(modifiers: &LootModifiers, table_id: &str) -> Vec<&'static str> {
     let params = LootContextParameters::default();
-    let mut random = Xoroshiro::from_seed(0);
+    let mut random = crate::world::loot::random_source(0);
     let mut context = LootContext::new(&params, table_id, &mut random);
     names(&modifiers.apply(Vec::new(), &mut context))
 }
@@ -119,7 +119,7 @@ fn neoforge_conditions_are_ignored() {
         &[(
             "test:conditional",
             json!({
-                "neoforge:conditions": [{"type": "neoforge:false"}],
+                "neoforge:conditions": [{"type": "neoforge:never"}],
                 "type": "test:push",
                 "item": "stone"
             }),

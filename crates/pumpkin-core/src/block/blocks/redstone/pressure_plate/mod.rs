@@ -37,7 +37,14 @@ pub(crate) trait PressurePlate {
         }
         let output = self.get_redstone_output(args.block, args.state.id);
         if output == 0 {
-            self.update_plate_state(args.world, args.position, args.block, args.state, output);
+            self.update_plate_state(
+                args.world,
+                args.position,
+                args.block,
+                args.state,
+                output,
+                Some(args.entity),
+            );
         }
     }
 
@@ -55,6 +62,7 @@ pub(crate) trait PressurePlate {
         block: &Block,
         state: &BlockState,
         output: u8,
+        source: Option<&dyn crate::entity::EntityBase>,
     ) {
         let calc_output = self.calculate_redstone_output(world, block, pos);
         let has_output = calc_output > 0;
@@ -85,11 +93,19 @@ pub(crate) trait PressurePlate {
             if !is_pressed && was_pressed {
                 let (_, click_off) = self.click_sounds(block);
                 world.play_block_sound(click_off, SoundCategory::Blocks, *pos);
-                world.emit_game_event(GameEvent::BlockDeactivate.name(), pos.to_centered_f64());
+                world.emit_game_event_with_context(
+                    GameEvent::BlockDeactivate.name(),
+                    pos.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_entity(source),
+                );
             } else if is_pressed && !was_pressed {
                 let (click_on, _) = self.click_sounds(block);
                 world.play_block_sound(click_on, SoundCategory::Blocks, *pos);
-                world.emit_game_event(GameEvent::BlockActivate.name(), pos.to_centered_f64());
+                world.emit_game_event_with_context(
+                    GameEvent::BlockActivate.name(),
+                    pos.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_entity(source),
+                );
             }
         }
         if has_output {

@@ -6,7 +6,7 @@ use pumpkin_data::{
     effect::StatusEffect,
     fluid::Fluid,
     game_event::GameEvent,
-    recipes::{CookingRecipeKind, get_cooking_recipe_with_ingredient},
+    recipes::CookingRecipeKind,
     tag::{self, Taggable},
     world::WorldEvent,
 };
@@ -75,10 +75,9 @@ impl BlockBehaviour for CampfireBlock {
     fn use_with_item(&self, args: UseWithItemArgs<'_>) -> BlockActionResult {
         if let Some(block_entity) = args.world.get_block_entity(args.position)
             && let Some(campfire) = block_entity.as_any().downcast_ref::<CampfireBlockEntity>()
-            && let Some(recipe) = get_cooking_recipe_with_ingredient(
-                args.item_stack.item,
-                CookingRecipeKind::CampfireCooking,
-            )
+            && let Some(recipe) = pumpkin_inventory::recipe_index::current()
+                .cooking_recipe(args.item_stack.item, &CookingRecipeKind::CampfireCooking)
+                .cloned()
         {
             for slot in 0..CampfireBlockEntity::SLOT_COUNT {
                 let mut stored = campfire.items[slot]
@@ -96,7 +95,7 @@ impl BlockBehaviour for CampfireBlock {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = 0;
                 *campfire.cooking_total_times[slot]
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cookingtime;
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = recipe.cooking_time;
                 drop(stored);
 
                 args.player.increment_stat(
@@ -104,9 +103,13 @@ impl BlockBehaviour for CampfireBlock {
                     pumpkin_data::statistic::CustomStatistic::InteractWithCampfire as i32,
                     1,
                 );
-                args.world.emit_game_event(
+                args.world.emit_game_event_with_context(
                     GameEvent::BlockChange.name(),
                     args.position.to_centered_f64(),
+                    &crate::world::game_event::GameEventContext::of_entity_state(
+                        Some(args.player.as_ref() as &dyn crate::entity::EntityBase),
+                        args.world.get_block_state_id(args.position),
+                    ),
                 );
                 args.world.update_block_entity(&block_entity);
                 return BlockActionResult::SuccessServer;
@@ -125,9 +128,10 @@ impl BlockBehaviour for CampfireBlock {
         {
             args.world
                 .sync_world_event(WorldEvent::SoundExtinguishFire, *args.position, 0);
-            args.world.emit_game_event(
+            args.world.emit_game_event_by(
                 GameEvent::BlockChange.name(),
                 args.position.to_centered_f64(),
+                &args.player.living_entity.entity,
             );
             props.lit = false;
             args.world.set_block_state(
@@ -151,16 +155,17 @@ impl BlockBehaviour for CampfireBlock {
             && let Some(living_entity) = args.entity.get_living_entity()
         {
             let has_frost_walker_enchantment = {
-                let equipment = living_entity
+                // The read fires `GetEnchantmentLevelEvent`: no equipment lock is held.
+                let boots = living_entity
                     .entity_equipment
                     .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                equipment
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .equipment
                     .get(&EquipmentSlot::FEET)
-                    .is_some_and(|boots| {
-                        boots.get_enchantment_level(&Enchantment::FROST_WALKER) != 0
-                    })
+                    .cloned();
+                boots.is_some_and(|boots| {
+                    boots.get_enchantment_level(&Enchantment::FROST_WALKER) != 0
+                })
             };
             let has_fire_res = living_entity
                 .get_effect(&StatusEffect::FIRE_RESISTANCE)

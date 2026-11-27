@@ -13,6 +13,47 @@ fn alternatives_use_the_first_matching_child() {
     }
 }
 
+/// A seed other than 0 gives `RandomSource.create(seed)`, a `LegacyRandomSource`
+/// (`LootContext.Builder.withOptionalRandomSeed`). The expected values come from a Python
+/// transcription of `LegacyRandomSource`, `BitRandomSource.nextInt`, `LootPool.addRandomItem` and
+/// `Mth.nextInt`, not from this code.
+#[test]
+fn an_explicit_seed_rolls_with_the_legacy_random_source() {
+    let mut source = random_source(12345);
+    assert_eq!(source.next_i64(), 6_674_089_274_190_705_457);
+    assert_eq!(source.next_i64(), -1_236_052_134_575_208_584);
+    assert_eq!(random_source(12345).next_bounded_i32(7), 5);
+
+    let table = crate::data::datapack::loot_table_loader::parse_loot_table(
+        r#"{"pools":[{"rolls":3,"entries":[
+            {"type":"minecraft:item","name":"minecraft:stone","weight":1,"functions":[
+                {"function":"minecraft:set_count","count":{"type":"minecraft:uniform","min":1,"max":10}}]},
+            {"type":"minecraft:item","name":"minecraft:dirt","weight":3,"functions":[
+                {"function":"minecraft:set_count","count":{"type":"minecraft:uniform","min":1,"max":10}}]}
+        ]}]}"#,
+    )
+    .unwrap();
+    let (stone, dirt) = (&Item::STONE, &Item::DIRT);
+    let expected: [(i64, [(&Item, u8); 3]); 4] = [
+        (1, [(dirt, 9), (dirt, 4), (stone, 5)]),
+        (2, [(dirt, 3), (dirt, 8), (dirt, 1)]),
+        (12345, [(dirt, 1), (dirt, 9), (dirt, 5)]),
+        (987_654_321, [(dirt, 8), (dirt, 2), (stone, 2)]),
+    ];
+    for (seed, items) in expected {
+        let drops = generate_dynamic_loot(&table, seed);
+        let drops: Vec<_> = drops
+            .iter()
+            .map(|stack| (stack.item.id, stack.item_count))
+            .collect();
+        let items: Vec<_> = items
+            .iter()
+            .map(|(item, count)| (item.id, *count))
+            .collect();
+        assert_eq!(drops, items, "seed {seed}");
+    }
+}
+
 #[test]
 fn entity_predicates_do_not_match_a_missing_entity() {
     for key in [
@@ -41,6 +82,7 @@ use pumpkin_data::{
 };
 use pumpkin_util::loot_table::parser::parse_loot_table;
 use pumpkin_util::math::vector3::Vector3;
+use pumpkin_util::random::xoroshiro128::Xoroshiro;
 
 fn assert_drops(
     key: &str,
@@ -227,6 +269,13 @@ async fn damage_source_predicates_use_the_attackers_components() {
                 world: Some(&world),
                 this_entity: Some(cube.as_ref()),
                 killer_entity: Some(frog.as_ref()),
+                // `damage_source_properties` fails without a damage source and an origin.
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::MOB_ATTACK,
+                    attacker: Some(frog.as_ref()),
+                    direct: Some(frog.as_ref()),
+                }),
                 ..Default::default()
             };
             assert_drops("entities/magma_cube", json, &params, &[(light, 1)]);
@@ -544,7 +593,10 @@ async fn enchanted_count_uses_the_attackers_allowed_equipment_and_float_rounding
     };
     let table = parse_loot_table(r#"{"pools":[{"entries":[{"type":"minecraft:item","name":"minecraft:diamond","modifier":[{"type":"minecraft:set_count","count":0},{"type":"minecraft:enchanted_count_increase","enchantment":"minecraft:looting","count":{"type":"minecraft:uniform","min":0.0,"max":1.0}}]}]}]}"#).unwrap();
     let mut bins = [0; 4];
-    for seed in 0..4096 {
+    for index in 0..4096 {
+        // The first draws of a legacy random source follow the seed: consecutive seeds give
+        // nearly equal floats. Mixed seeds give an even spread, as the seeds of containers do.
+        let seed = Xoroshiro::from_seed(index).next_i64();
         let drops = generate_dynamic_loot_with_context(&table, seed, &params);
         let count = drops
             .first()
@@ -715,7 +767,7 @@ async fn double_plants_keep_their_adjacent_half_location_checks() {
 #[test]
 fn negative_uniform_bonus_multiplier_keeps_the_base_count() {
     for seed in 0..32 {
-        let mut rng = Xoroshiro::from_seed(seed);
+        let mut rng = random_source(seed);
         assert_eq!(
             apply_bonus_formula(2, LootBonusFormula::UniformBonusCount(-3), 3, &mut rng),
             2
@@ -991,7 +1043,7 @@ fn loot_fill_skips_occupied_slots() {
     place_items_in_slots(
         &mut slots,
         vec![ItemStack::new(1, &Item::STONE)],
-        &mut Xoroshiro::from_seed(1),
+        &mut random_source(1),
     );
     assert_eq!(slots[0].item.id, Item::DIAMOND.id);
     assert_eq!(slots[0].item_count, 8);
@@ -1012,9 +1064,12 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
         ItemStack::EMPTY.clone(),
         ItemStack::EMPTY.clone(),
     ]);
-    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, _rng| {
+    let key = unpack_loot_into_slots(&loot_table, 1, &items, |key, seed| {
         assert_eq!(key, "minecraft:chests/simple_dungeon");
-        vec![ItemStack::new(1, &Item::STONE)]
+        (
+            vec![ItemStack::new(1, &Item::STONE)],
+            RollRandom::seeded(seed),
+        )
     });
     assert_eq!(key.as_deref(), Some("minecraft:chests/simple_dungeon"));
     assert!(loot_table.lock().unwrap().is_none());
@@ -1028,8 +1083,11 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
         1
     );
     assert!(
-        unpack_loot_into_slots(&loot_table, 1, &items, |_, _| {
-            vec![ItemStack::new(1, &Item::GOLD_INGOT)]
+        unpack_loot_into_slots(&loot_table, 1, &items, |_, seed| {
+            (
+                vec![ItemStack::new(1, &Item::GOLD_INGOT)],
+                RollRandom::seeded(seed),
+            )
         })
         .is_none()
     );
@@ -1043,7 +1101,7 @@ fn unpack_loot_into_slots_preserves_concurrent_inserts() {
 }
 
 /// The slot that receives one stone in 27 empty slots, placed with `rng`.
-fn stone_slot(rng: &mut Xoroshiro) -> usize {
+fn stone_slot(rng: &mut RandomGenerator) -> usize {
     let mut slots = vec![ItemStack::EMPTY.clone(); 27];
     place_items_in_slots(&mut slots, vec![ItemStack::new(1, &Item::STONE)], rng);
     slots.iter().position(|stack| !stack.is_empty()).unwrap()
@@ -1060,9 +1118,10 @@ fn fill_places_with_the_random_source_of_the_roll() {
             ItemStack::EMPTY.clone()
         }));
         // The roll draws once, as `LootTable.fill` rolls before it shuffles.
-        unpack_loot_into_slots(&loot_table, seed, &items, |_, rng| {
-            rng.next_i64();
-            vec![ItemStack::new(1, &Item::STONE)]
+        unpack_loot_into_slots(&loot_table, seed, &items, |_, seed| {
+            let mut random = RollRandom::seeded(seed);
+            random.rng().next_i64();
+            (vec![ItemStack::new(1, &Item::STONE)], random)
         });
         let placed = items
             .read()
@@ -1071,10 +1130,407 @@ fn fill_places_with_the_random_source_of_the_roll() {
             .position(|stack| !stack.is_empty())
             .unwrap();
 
-        let mut after_roll = Xoroshiro::from_seed(seed as u64);
+        let mut after_roll = random_source(seed);
         after_roll.next_i64();
         assert_eq!(placed, stone_slot(&mut after_roll), "seed {seed}");
-        moved |= placed != stone_slot(&mut Xoroshiro::from_seed(seed as u64));
+        moved |= placed != stone_slot(&mut random_source(seed));
     }
     assert!(moved, "no seed tells the two random sources apart");
+}
+
+/// Rolls every vanilla table with the seeds 1 to 15 in 9 contexts, through `roll_loot`, and writes one line per roll to the file
+/// that `LOOT_PARITY_DUMP` names. Diff the files of two builds to prove that a change to the loot
+/// context leaves the loot of the vanilla tables alone:
+/// `LOOT_PARITY_DUMP=target/scratch/parity.txt tools/cargo-slot.sh nextest run -p pumpkin-core --lib --run-ignored only vanilla_tables_dump`.
+#[tokio::test]
+#[ignore = "writes the dump that LOOT_PARITY_DUMP names"]
+#[allow(clippy::too_many_lines)]
+async fn vanilla_tables_dump() {
+    use std::fmt::Write as _;
+
+    let path = std::env::var("LOOT_PARITY_DUMP").expect("LOOT_PARITY_DUMP names the dump file");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../assets/datapack/data/minecraft/loot_table");
+    let mut keys = Vec::new();
+    let mut dirs = vec![root.clone()];
+    while let Some(dir) = dirs.pop() {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if let Some(name) = path.strip_prefix(&root).unwrap().to_str()
+                && let Some(name) = name.strip_suffix(".json")
+            {
+                keys.push(format!("minecraft:{name}"));
+            }
+        }
+    }
+    keys.sort();
+    assert!(keys.len() > 1400, "{} tables", keys.len());
+
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let player = chicken(&world);
+    let pot = crate::block::entities::decorated_pot::DecoratedPotBlockEntity::new(
+        pumpkin_util::math::position::BlockPos::new(0, 0, 0),
+    );
+    let tool = |item: &'static Item| ItemStack::new(1, item);
+    let contexts: Vec<(&str, LootContextParameters<'_>)> = vec![
+        ("default", LootContextParameters::default()),
+        (
+            "pickaxe",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::STONE.default_state),
+                tool: Some(tool(&Item::DIAMOND_PICKAXE)),
+                ..Default::default()
+            },
+        ),
+        (
+            "shears",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::OAK_LEAVES.default_state),
+                tool: Some(tool(&Item::SHEARS)),
+                ..Default::default()
+            },
+        ),
+        (
+            "empty_tool",
+            LootContextParameters {
+                tool: Some(ItemStack::EMPTY.clone()),
+                ..Default::default()
+            },
+        ),
+        (
+            "luck",
+            LootContextParameters {
+                luck: 3.0,
+                ..Default::default()
+            },
+        ),
+        (
+            "player_kill",
+            LootContextParameters {
+                last_damage_player: Some(player.as_ref()),
+                damage_type: Some(DamageType::PLAYER_ATTACK),
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::PLAYER_ATTACK,
+                    attacker: None,
+                    direct: None,
+                }),
+                direct_attacker_weapon: Some(tool(&Item::DIAMOND_SWORD)),
+                ..Default::default()
+            },
+        ),
+        (
+            "explosion",
+            LootContextParameters {
+                explosion_radius: Some(4.0),
+                block_state: Some(pumpkin_data::Block::STONE.default_state),
+                ..Default::default()
+            },
+        ),
+        (
+            "fire_kill",
+            LootContextParameters {
+                is_on_fire: Some(true),
+                damage_type: Some(DamageType::ON_FIRE),
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::ON_FIRE,
+                    attacker: None,
+                    direct: None,
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "rain",
+            LootContextParameters {
+                is_raining: Some(true),
+                is_thundering: Some(true),
+                world_time: 6000,
+                ..Default::default()
+            },
+        ),
+        // The contexts below hold the parameters that issue 171 added. The dump of a build
+        // without them has no line for these names.
+        (
+            "last_player",
+            LootContextParameters {
+                last_damage_player: Some(player.as_ref()),
+                luck: 1.0,
+                ..Default::default()
+            },
+        ),
+        (
+            "attacker_source",
+            LootContextParameters {
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::PLAYER_ATTACK,
+                    attacker: Some(player.as_ref()),
+                    direct: Some(player.as_ref()),
+                }),
+                last_damage_player: Some(player.as_ref()),
+                ..Default::default()
+            },
+        ),
+        (
+            "fire_source",
+            LootContextParameters {
+                position: Some(Vector3::default()),
+                damage_source: Some(LootDamageSource {
+                    damage_type: DamageType::IN_FIRE,
+                    attacker: None,
+                    direct: None,
+                }),
+                ..Default::default()
+            },
+        ),
+        (
+            "block_entity",
+            LootContextParameters {
+                block_state: Some(pumpkin_data::Block::DECORATED_POT.default_state),
+                block_entity: Some(&pot),
+                tool: Some(tool(&Item::DIAMOND_PICKAXE)),
+                ..Default::default()
+            },
+        ),
+    ];
+
+    let mut dump = String::new();
+    for key in &keys {
+        let handle = get_loot_table(key).unwrap_or_else(|| panic!("no table {key}"));
+        for (name, params) in &contexts {
+            // The seed 0 is no seed: a roll with it draws from a random sequence, which a test
+            // world without a server does not have.
+            for seed in 1..16 {
+                write!(dump, "{key} {name} {seed}:").unwrap();
+                for stack in roll_loot(&handle, seed, params) {
+                    write!(dump, " {}*{}", stack.item.registry_key, stack.item_count).unwrap();
+                }
+                dump.push('\n');
+            }
+        }
+    }
+    std::fs::write(path, dump).unwrap();
+}
+
+/// A table of one stone behind `condition`.
+fn stone_if(condition: &str) -> DynamicLootTable {
+    parse_loot_table(&format!(
+        r#"{{"pools":[{{"rolls":1,"entries":[{{"type":"minecraft:item","name":"minecraft:stone"}}],"conditions":[{condition}]}}]}}"#
+    ))
+    .unwrap()
+}
+
+fn passes(condition: &str, params: &LootContextParameters<'_>) -> bool {
+    !generate_dynamic_loot_with_context(&stone_if(condition), 1, params).is_empty()
+}
+
+fn chicken(world: &std::sync::Arc<World>) -> std::sync::Arc<ChickenEntity> {
+    ChickenEntity::new(Entity::new(
+        world.clone(),
+        Vector3::default(),
+        &EntityType::CHICKEN,
+    ))
+}
+
+#[tokio::test]
+async fn killed_by_player_passes_for_a_last_damage_player() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let player = chicken(&world);
+    let condition = r#"{"condition":"minecraft:killed_by_player"}"#;
+    assert!(!passes(condition, &LootContextParameters::default()));
+    assert!(passes(
+        condition,
+        &LootContextParameters {
+            last_damage_player: Some(player.as_ref()),
+            ..Default::default()
+        }
+    ));
+}
+
+#[tokio::test]
+async fn entity_targets_read_the_interaction_parameters() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let chicken = chicken(&world);
+    let entity: &dyn EntityBase = chicken.as_ref();
+    for target in ["attacking_player", "target_entity", "interacting_entity"] {
+        let condition = format!(
+            r#"{{"condition":"minecraft:entity_properties","entity":"{target}","predicate":{{"type":"minecraft:chicken"}}}}"#
+        );
+        let with = |params: LootContextParameters<'_>| passes(&condition, &params);
+        assert!(!with(LootContextParameters::default()), "{target}");
+        let set = match target {
+            "attacking_player" => LootContextParameters {
+                last_damage_player: Some(entity),
+                ..Default::default()
+            },
+            "target_entity" => LootContextParameters {
+                target_entity: Some(entity),
+                ..Default::default()
+            },
+            _ => LootContextParameters {
+                interacting_entity: Some(entity),
+                ..Default::default()
+            },
+        };
+        assert!(with(set), "{target}");
+        // Another parameter does not stand in for the target.
+        let other = LootContextParameters {
+            this_entity: Some(entity),
+            ..Default::default()
+        };
+        assert!(!with(other), "{target}");
+    }
+}
+
+#[tokio::test]
+async fn the_damage_source_feeds_the_damage_conditions() {
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let chicken = chicken(&world);
+    let fire = r#"{"condition":"minecraft:damage_source_properties","predicate":{"tags":[{"id":"minecraft:is_fire","expected":true}]}}"#;
+    let attacker = r#"{"condition":"minecraft:damage_source_properties","predicate":{"source_entity":{"type":"minecraft:chicken"}}}"#;
+    let source = |damage_type, attacker| LootContextParameters {
+        position: Some(Vector3::default()),
+        damage_source: Some(LootDamageSource {
+            damage_type,
+            attacker,
+            direct: None,
+        }),
+        ..Default::default()
+    };
+    assert!(!passes(fire, &LootContextParameters::default()));
+    assert!(passes(fire, &source(DamageType::ON_FIRE, None)));
+    assert!(!passes(fire, &source(DamageType::PLAYER_ATTACK, None)));
+    assert!(!passes(attacker, &source(DamageType::PLAYER_ATTACK, None)));
+    assert!(passes(
+        attacker,
+        &source(DamageType::PLAYER_ATTACK, Some(chicken.as_ref()))
+    ));
+}
+
+/// Review 171: `DamageSourceCondition.test` fails without a damage source or an origin.
+#[test]
+fn damage_source_properties_need_the_damage_source_and_the_origin() {
+    // An empty predicate passes in vanilla when both exist.
+    let any = r#"{"condition":"minecraft:damage_source_properties","predicate":{}}"#;
+    let source = Some(LootDamageSource {
+        damage_type: DamageType::ON_FIRE,
+        attacker: None,
+        direct: None,
+    });
+    let origin = Some(Vector3::default());
+    assert!(passes(
+        any,
+        &LootContextParameters {
+            position: origin,
+            damage_source: source,
+            ..Default::default()
+        }
+    ));
+    for (position, damage_source) in [(None, source), (origin, None), (None, None)] {
+        // The damage type alone is not a damage source.
+        let params = LootContextParameters {
+            position,
+            damage_source,
+            damage_type: Some(DamageType::ON_FIRE),
+            ..Default::default()
+        };
+        assert!(
+            !passes(any, &params),
+            "{position:?} {}",
+            damage_source.is_some()
+        );
+    }
+}
+
+/// Review 171: `DamageSource.isDirect` is true when the causing entity is the direct entity, and
+/// reads the damage source for both, as the other keys do.
+#[tokio::test]
+async fn is_direct_compares_the_causing_and_the_direct_entity() {
+    fn source<'a>(
+        attacker: Option<&'a dyn EntityBase>,
+        direct: Option<&'a dyn EntityBase>,
+    ) -> LootContextParameters<'a> {
+        LootContextParameters {
+            position: Some(Vector3::default()),
+            damage_source: Some(LootDamageSource {
+                damage_type: DamageType::PLAYER_ATTACK,
+                attacker,
+                direct,
+            }),
+            ..Default::default()
+        }
+    }
+
+    let folder = tempfile::tempdir().unwrap();
+    let world = world(&folder);
+    let first = chicken(&world);
+    let second = chicken(&world);
+    let direct =
+        r#"{"condition":"minecraft:damage_source_properties","predicate":{"is_direct":true}}"#;
+    let (a, b) = (
+        first.as_ref() as &dyn EntityBase,
+        second.as_ref() as &dyn EntityBase,
+    );
+    assert!(passes(direct, &source(None, None)));
+    assert!(passes(direct, &source(Some(a), Some(a))));
+    assert!(!passes(direct, &source(Some(a), Some(b))));
+    // The attacker without a direct entity, and a direct entity without an attacker.
+    assert!(!passes(direct, &source(Some(a), None)));
+    assert!(!passes(direct, &source(None, Some(a))));
+}
+
+#[test]
+fn furnace_smelt_multiplies_by_the_input_count_up_to_a_stack() {
+    use pumpkin_protocol::codec::recipe::{
+        DynamicRecipe, OwnedCookingRecipe, OwnedCookingRecipeType, OwnedRecipeIngredient,
+        OwnedRecipeResult,
+    };
+    pumpkin_inventory::recipe_index::install(&[DynamicRecipe::Cooking(
+        OwnedCookingRecipeType::Smelting(OwnedCookingRecipe {
+            recipe_id: "test:three_diamonds".to_string(),
+            category: pumpkin_data::recipes::RecipeCategoryTypes::Misc,
+            group: None,
+            ingredient: OwnedRecipeIngredient::Simple("minecraft:dirt".to_string()),
+            cooking_time: 10,
+            experience: 0.0,
+            result: OwnedRecipeResult {
+                item_id: "minecraft:diamond".to_string(),
+                count: 3,
+                components: None,
+            },
+        }),
+    )]);
+    let drops = |count: u32, function: &str| {
+        let json = format!(
+            r#"{{"pools":[{{"rolls":1,"entries":[{{"type":"minecraft:item","name":"minecraft:dirt","functions":[{{"function":"minecraft:set_count","count":{count}}},{function}]}}]}}]}}"#
+        );
+        generate_dynamic_loot(&parse_loot_table(&json).unwrap(), 0)
+            .iter()
+            .map(|stack| (stack.item.id, stack.item_count))
+            .collect::<Vec<_>>()
+    };
+    let diamond = Item::DIAMOND.id;
+    assert_eq!(
+        drops(2, r#"{"function":"minecraft:furnace_smelt"}"#),
+        [(diamond, 6)]
+    );
+    assert_eq!(
+        drops(40, r#"{"function":"minecraft:furnace_smelt"}"#),
+        [(diamond, 64)]
+    );
+    assert_eq!(
+        drops(
+            2,
+            r#"{"function":"minecraft:furnace_smelt","use_input_count":false}"#
+        ),
+        [(diamond, 3)]
+    );
 }

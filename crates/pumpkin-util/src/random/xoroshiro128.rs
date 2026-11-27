@@ -13,6 +13,7 @@ use super::{
 ///
 /// The generator maintains 128 bits of state split into two 64-bit words (`lo` and `hi`)
 /// and uses XOR, rotation, and shift operations to produce high-quality random numbers.
+#[derive(Clone)]
 pub struct Xoroshiro {
     /// Lower 64 bits of the generator state.
     lo: u64,
@@ -98,6 +99,42 @@ impl Xoroshiro {
         Self::new(lo, hi)
     }
 
+    /// Creates a generator from its 128-bit state, as vanilla `new XoroshiroRandomSource(lo, hi)`
+    /// does. The state is used as it is: no mixing.
+    #[must_use]
+    pub const fn from_state(lo: u64, hi: u64) -> Self {
+        Self::new(lo, hi)
+    }
+
+    /// The 128-bit state `(lo, hi)`, which vanilla saves for a random sequence.
+    #[must_use]
+    pub const fn state(&self) -> (u64, u64) {
+        (self.lo, self.hi)
+    }
+
+    /// Vanilla `RandomSupport.upgradeSeedTo128bitUnmixed`: the state `(lo, hi)` of a 64-bit seed
+    /// before the Stafford 13 mix.
+    #[must_use]
+    pub const fn upgrade_seed_to_128bit_unmixed(seed: u64) -> (u64, u64) {
+        Self::mix_u64(seed)
+    }
+
+    /// Vanilla `RandomSupport.seedFromHashOf`: the MD5 of `input` as a state `(lo, hi)`.
+    #[must_use]
+    pub fn seed_from_hash_of(input: &str) -> (u64, u64) {
+        let bytes = md5::compute(input.as_bytes());
+        (
+            u64::from_be_bytes(bytes[0..8].try_into().unwrap_or([0; 8])),
+            u64::from_be_bytes(bytes[8..16].try_into().unwrap_or([0; 8])),
+        )
+    }
+
+    /// Vanilla `RandomSupport.mixStafford13`.
+    #[must_use]
+    pub const fn mix_stafford_13(z: u64) -> u64 {
+        mix_stafford_13(z)
+    }
+
     /// Generates a random value with the specified number of bits.
     ///
     /// # Arguments
@@ -179,7 +216,8 @@ impl RandomImpl for Xoroshiro {
         let mut m = l.wrapping_mul(bound as u64);
         let mut n = m & 0xFFFF_FFFF;
         if n < bound as u64 {
-            let i = ((!bound).wrapping_add(1) as u64) % (bound as u64);
+            // `Integer.remainderUnsigned(~bound + 1, bound)`: both operands are 32-bit.
+            let i = ((!bound).wrapping_add(1) as u32 % bound as u32) as u64;
             while n < i {
                 l = (self.next_i32() as u64) & 0xFFFF_FFFF;
                 m = l.wrapping_mul(bound as u64);
@@ -307,6 +345,18 @@ mod tests {
         for (input, output) in values {
             assert_eq!(mix_stafford_13(input), output as u64);
         }
+    }
+
+    /// The first draw is rejected: its low word is below `294_967_274`, the unsigned 32-bit
+    /// remainder `(2^32 - bound) % bound`. The sign-extended remainder is another value and
+    /// accepts the draw. The expected values come from a Python transcription of
+    /// `XoroshiroRandomSource.nextInt(int)`.
+    #[test]
+    fn next_bounded_i32_rejects_with_the_unsigned_32_bit_remainder() {
+        let mut xoroshiro = Xoroshiro::from_seed(263);
+        assert_eq!(xoroshiro.next_bounded_i32(2_000_000_011), 1_573_593_854);
+        // The draw took two values, so the next one is the third of the stream.
+        assert_eq!(xoroshiro.next_i64(), -2_951_697_609_983_719_571);
     }
 
     #[test]

@@ -57,7 +57,10 @@ fn discard<T: FromResource>(state: &mut PluginHostState, res: &Resource<T>) {
     state.discard_to_be_removed(res);
 }
 
-fn to_wasm_damage_source(state: &mut PluginHostState, source: &DamageSource) -> WitDamageSource {
+pub(super) fn to_wasm_damage_source(
+    state: &mut PluginHostState,
+    source: &DamageSource,
+) -> WitDamageSource {
     WitDamageSource {
         damage_type: to_wit_damage_type(&source.damage_type),
         direct_entity: source
@@ -72,7 +75,7 @@ fn to_wasm_damage_source(state: &mut PluginHostState, source: &DamageSource) -> 
     }
 }
 
-fn discard_damage_source(state: &mut PluginHostState, source: &WitDamageSource) {
+pub(super) fn discard_damage_source(state: &mut PluginHostState, source: &WitDamageSource) {
     if let Some(entity) = &source.direct_entity {
         discard(state, entity);
     }

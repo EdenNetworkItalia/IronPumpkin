@@ -1,6 +1,8 @@
 use super::*;
 use crate::chunk::format::anvil::SingleChunkDataSerializer;
 use crate::chunk_system::chunk_state::StagedChunkEnum;
+use crate::generation::generator::{CustomChunkGenerator, WorldGenerator};
+use crate::generation::proto_chunk::ProtoChunk;
 use pumpkin_config::world::LevelConfig;
 use pumpkin_nbt::{compound::NbtCompound, tag::NbtTag};
 use std::task::Poll;
@@ -123,6 +125,11 @@ async fn level_with_saved_area(center: Vector2<i32>) -> (TempDir, Arc<Level>) {
         .flat_map(|x| (center.y - radius..=center.y + radius).map(move |z| (x, z)))
         .map(|(x, z)| saved_chunk(Vector2::new(x, z), None))
         .collect();
+    save_chunks(saved).await
+}
+
+/// A level that holds `saved` on disk.
+async fn save_chunks(saved: Vec<(Vector2<i32>, SyncChunk)>) -> (TempDir, Arc<Level>) {
     let temp_dir = TempDir::new().unwrap();
     let level = Level::from_root_folder(
         &LevelConfig::default(),
@@ -235,4 +242,271 @@ async fn fetch_finds_chunk_published_before_its_listener() {
             .unwrap_or(false)
     );
     level.shutdown().await;
+}
+
+/// The step of the tick pass for the chunk `pos` that does block tick.
+fn step(level: &Level, pos: Vector2<i32>) -> TickData {
+    let ticking = FxHashSet::from_iter([pos]);
+    level.get_tick_data(&FxHashSet::default(), &ticking, 0)
+}
+
+/// A chunk that loads from disk with scheduled block and fluid ticks joins the set that the tick
+/// step walks, as vanilla `LevelChunk.registerTickContainerInLevel` adds its tick containers.
+/// The ticks run after their saved delay, with no other tick scheduled in the chunk.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_chunk_loaded_from_disk_steps_its_saved_ticks() {
+    let pos = Vector2::new(0, 0);
+    let radius = StagedChunkEnum::FULL_RADIUS;
+    let at = BlockPos::new(3, 70, 4);
+    let mut saved = Vec::new();
+    for x in -radius..=radius {
+        for z in -radius..=radius {
+            let (chunk_pos, chunk) = saved_chunk(Vector2::new(x, z), None);
+            if chunk_pos == pos {
+                chunk.block_ticks.schedule_tick(
+                    &ScheduledTick {
+                        delay: 5,
+                        priority: TickPriority::Normal,
+                        position: at,
+                        value: &Block::REDSTONE_LAMP,
+                    },
+                    0,
+                );
+                chunk.fluid_ticks.schedule_tick(
+                    &ScheduledTick {
+                        delay: 3,
+                        priority: TickPriority::Normal,
+                        position: at.up(),
+                        value: &Fluid::FLOWING_WATER,
+                    },
+                    1,
+                );
+            }
+            saved.push((chunk_pos, chunk));
+        }
+    }
+    let (_temp_dir, level) = save_chunks(saved).await;
+    assert!(level.chunks_with_scheduled_ticks.is_empty());
+
+    level.get_or_fetch_chunk(pos, |_| ()).await;
+    assert!(
+        level.chunks_with_scheduled_ticks.contains(&pos),
+        "the loaded chunk with ticks is not in the stepped set"
+    );
+    assert!(
+        level.chunks_with_scheduled_ticks.len() == 1,
+        "a loaded chunk without ticks joined the stepped set"
+    );
+
+    for tick in 0..6 {
+        let due = step(&level, pos);
+        assert_eq!(
+            due.fluid_ticks.len(),
+            usize::from(tick == 3),
+            "fluid ticks at step {tick}"
+        );
+        assert_eq!(
+            due.block_ticks.len(),
+            usize::from(tick == 5),
+            "block ticks at step {tick}"
+        );
+    }
+    assert!(!level.chunks_with_scheduled_ticks.contains(&pos));
+    level.shutdown().await;
+}
+
+/// A generator that schedules a fluid tick in each chunk at the carvers stage, as the aquifer
+/// and the carvers of the noise generator do. It makes empty chunks and runs fast in a debug build.
+struct TickingGenerator;
+
+const GENERATED_TICK: (i32, i32, i32) = (1, 40, 2);
+
+impl CustomChunkGenerator for TickingGenerator {
+    fn dimension(&self) -> &Dimension {
+        &Dimension::OVERWORLD
+    }
+
+    fn seed(&self) -> u64 {
+        0
+    }
+
+    fn step_to_carvers(&self, chunk: &mut ProtoChunk) {
+        chunk.snapshot_wg_heightmaps();
+        chunk.schedule_fluid_tick(
+            GENERATED_TICK.0,
+            GENERATED_TICK.1,
+            GENERATED_TICK.2,
+            &Fluid::WATER,
+        );
+        chunk.stage = StagedChunkEnum::Carvers;
+    }
+}
+
+/// The portal that generation needs: no entity spawns and every block places.
+struct NoPortal;
+
+impl WorldPortalExt for NoPortal {
+    fn can_place_at(
+        &self,
+        _block: &Block,
+        _state: &pumpkin_data::BlockState,
+        _block_accessor: &dyn crate::world::BlockAccessor,
+        _block_pos: &BlockPos,
+    ) -> bool {
+        true
+    }
+
+    fn mirror(
+        &self,
+        block: &Block,
+        state_id: BlockStateId,
+        mirror: pumpkin_data::Mirror,
+    ) -> &'static pumpkin_data::BlockState {
+        block.mirror(state_id, mirror)
+    }
+
+    fn rotate(
+        &self,
+        block: &Block,
+        state_id: BlockStateId,
+        rotation: pumpkin_data::Rotation,
+    ) -> &'static pumpkin_data::BlockState {
+        block.rotate(state_id, rotation)
+    }
+
+    fn spawn_mobs_for_chunk_generation(
+        &self,
+        _cache: &mut dyn crate::generation::proto_chunk::GenerationCache,
+        _biome: &'static Biome,
+        _chunk_x: i32,
+        _chunk_z: i32,
+    ) {
+    }
+}
+
+/// A chunk that generation makes with fluid ticks joins the stepped set, and its ticks step with
+/// no other tick scheduled.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_generated_chunk_steps_its_fluid_ticks() {
+    let temp_dir = TempDir::new().unwrap();
+    let level = Level::from_root_folder(
+        &LevelConfig::default(),
+        temp_dir.path().to_path_buf(),
+        0,
+        Dimension::OVERWORLD,
+    );
+    level.set_world_gen(Arc::new(WorldGenerator::Custom(Arc::new(TickingGenerator))));
+    level.world_portal.store(Arc::new(Some(Arc::new(NoPortal))));
+
+    let pos = Vector2::new(0, 0);
+    assert!(
+        level
+            .get_or_fetch_chunk(pos, |chunk| chunk.fluid_ticks.has_ticks())
+            .await,
+        "the generated chunk lost its fluid tick"
+    );
+    assert!(
+        level.chunks_with_scheduled_ticks.contains(&pos),
+        "the generated chunk with fluid ticks is not in the stepped set"
+    );
+
+    let due = step(&level, pos);
+    assert_eq!(
+        due.fluid_ticks.len(),
+        1,
+        "the generated fluid tick did not step"
+    );
+    let at = due.fluid_ticks[0].position.0;
+    assert_eq!((at.x, at.y, at.z), GENERATED_TICK);
+    level.shutdown().await;
+}
+
+/// A chunk that unloads and publishes again while the tick step runs.
+/// The publisher follows the order of `unpublish_chunk` and `publish_chunk` (map, then set).
+/// After each publish it waits two whole steps and checks that a chunk with ticks is still in
+/// the stepped set. The race is rare (about 2 lost publishes in a million without the recheck
+/// in the tick step): set `TICK_RACE_ITER` to 4000000 to reproduce it.
+#[test]
+fn a_chunk_published_again_during_the_tick_step_keeps_its_ticks() {
+    use std::sync::atomic::{AtomicBool, AtomicU64};
+    let temp_dir = TempDir::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let level = Level::from_root_folder(
+        &LevelConfig::default(),
+        temp_dir.path().to_path_buf(),
+        0,
+        Dimension::OVERWORLD,
+    );
+    let pos = Vector2::new(0, 0);
+    let (_, chunk) = saved_chunk(pos, None);
+    let schedule = |chunk: &SyncChunk| {
+        chunk.block_ticks.schedule_tick(
+            &ScheduledTick {
+                delay: 200,
+                priority: TickPriority::Normal,
+                position: BlockPos::new(3, 70, 4),
+                value: &Block::REDSTONE_LAMP,
+            },
+            0,
+        );
+    };
+    schedule(&chunk);
+    level.loaded_chunks.insert(pos, chunk.clone());
+    level.chunks_with_scheduled_ticks.insert(pos);
+    let stop = AtomicBool::new(false);
+    let steps = AtomicU64::new(0);
+    let iterations: u64 = std::env::var("TICK_RACE_ITER")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200_000);
+    let lost = std::thread::scope(|s| {
+        s.spawn(|| {
+            let no_block_tick = std::env::var("TICK_RACE_NOTICK").is_ok();
+            while !stop.load(Ordering::Relaxed) {
+                if no_block_tick {
+                    level.get_tick_data(&FxHashSet::default(), &FxHashSet::default(), 0);
+                } else {
+                    step(&level, pos);
+                }
+                steps.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+        let mut lost = 0u64;
+        for _ in 0..iterations {
+            level.loaded_chunks.remove(&pos);
+            schedule(&chunk);
+            let has_ticks = chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks();
+            level.loaded_chunks.insert(pos, chunk.clone());
+            if has_ticks {
+                level.chunks_with_scheduled_ticks.insert(pos);
+            }
+            let wait_two_steps = || {
+                let start = steps.load(Ordering::SeqCst);
+                while steps.load(Ordering::SeqCst) < start + 2 {
+                    std::hint::spin_loop();
+                }
+            };
+            let missing = || {
+                chunk.block_ticks.has_ticks() && !level.chunks_with_scheduled_ticks.contains(&pos)
+            };
+            wait_two_steps();
+            // The step removes the entry and adds it again, so one read can fall in between.
+            // A lost registration stays lost.
+            if missing() && {
+                wait_two_steps();
+                missing()
+            } {
+                lost += 1;
+                level.chunks_with_scheduled_ticks.insert(pos);
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        lost
+    });
+    rt.block_on(level.shutdown());
+    assert_eq!(
+        lost, 0,
+        "{lost} of {iterations} publishes lost the registration"
+    );
 }

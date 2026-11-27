@@ -76,6 +76,10 @@ pub enum LootEntityTarget {
     This,
     Attacker,
     DirectAttacker,
+    /// `LootContext.EntityTarget.ATTACKING_PLAYER`: the player of the last damage.
+    AttackingPlayer,
+    TargetEntity,
+    InteractingEntity,
 }
 
 /// Bonus count formulas when tools have fortune or looting enchantments.
@@ -115,7 +119,11 @@ pub enum LootFunctionKind {
     },
     ExplosionDecay,
     ApplyBonus(LootBonusFormula),
-    FurnaceSmelt,
+    /// Vanilla `SmeltItemFunction`. With `use_input_count`, the input count multiplies the
+    /// result count.
+    FurnaceSmelt {
+        use_input_count: bool,
+    },
     SetStewEffect(Cow<'static, [LootStewEffect]>),
 }
 
@@ -440,6 +448,9 @@ impl From<LootPool> for DynamicLootPool {
 pub struct DynamicLootTable {
     pub pools: Vec<DynamicLootPool>,
     pub functions: Vec<DynamicLootFunction>,
+    /// The `random_sequence` of the table file: the id of the server random sequence that a roll
+    /// without a seed draws from.
+    pub random_sequence: Option<String>,
 }
 
 impl From<&LootTable> for DynamicLootTable {
@@ -457,6 +468,7 @@ impl From<&LootTable> for DynamicLootTable {
                 .cloned()
                 .map(DynamicLootFunction::from)
                 .collect(),
+            random_sequence: None,
         }
     }
 }

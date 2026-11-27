@@ -21,14 +21,16 @@ static LOOT_PREDICATE_0: std::sync::LazyLock<LootPredicateValue> = std::sync::La
         .collect(),
     )
 });
-static LOOT_PREDICATE_1: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_1: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_2: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [("is_direct".to_owned(), LootPredicateValue::Bool(true))]
             .into_iter()
             .collect(),
     )
 });
-static LOOT_PREDICATE_2: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_3: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [(
             "minecraft:location".to_owned(),
@@ -42,7 +44,7 @@ static LOOT_PREDICATE_2: std::sync::LazyLock<LootPredicateValue> = std::sync::La
         .collect(),
     )
 });
-static LOOT_PREDICATE_3: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_4: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [(
             "minecraft:entity_type".to_owned(),
@@ -52,14 +54,16 @@ static LOOT_PREDICATE_3: std::sync::LazyLock<LootPredicateValue> = std::sync::La
         .collect(),
     )
 });
-static LOOT_PREDICATE_4: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_5: std::sync::LazyLock<LootPredicateValue> =
+    std::sync::LazyLock::new(|| LootPredicateValue::Object([].into_iter().collect()));
+static LOOT_PREDICATE_6: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [("is_direct".to_owned(), LootPredicateValue::Bool(true))]
             .into_iter()
             .collect(),
     )
 });
-static LOOT_PREDICATE_5: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_7: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [(
             "minecraft:entity_type".to_owned(),
@@ -69,7 +73,7 @@ static LOOT_PREDICATE_5: std::sync::LazyLock<LootPredicateValue> = std::sync::La
         .collect(),
     )
 });
-static LOOT_PREDICATE_6: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
+static LOOT_PREDICATE_8: std::sync::LazyLock<LootPredicateValue> = std::sync::LazyLock::new(|| {
     LootPredicateValue::Object(
         [
             (
@@ -642,7 +646,10 @@ impl Enchantment {
                         target: LootEntityTarget::This,
                         predicate: &LOOT_PREDICATE_0,
                     },
-                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_1),
+                    LootCondition::AllOf(&[
+                        LootCondition::DamageSourceProperties(&LOOT_PREDICATE_1),
+                        LootCondition::DamageSourceProperties(&LOOT_PREDICATE_2),
+                    ]),
                 ])),
             }],
             projectile_count: &[],
@@ -870,11 +877,11 @@ impl Enchantment {
                     },
                     LootCondition::EntityProperties {
                         target: LootEntityTarget::This,
-                        predicate: &LOOT_PREDICATE_2,
+                        predicate: &LOOT_PREDICATE_3,
                     },
                     LootCondition::EntityProperties {
                         target: LootEntityTarget::DirectAttacker,
-                        predicate: &LOOT_PREDICATE_3,
+                        predicate: &LOOT_PREDICATE_4,
                     },
                 ])),
             }],
@@ -1146,7 +1153,10 @@ impl Enchantment {
                         per_level_above_first: 4f32,
                     },
                 },
-                requirements: Some(LootCondition::DamageSourceProperties(&LOOT_PREDICATE_4)),
+                requirements: Some(LootCondition::AllOf(&[
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_5),
+                    LootCondition::DamageSourceProperties(&LOOT_PREDICATE_6),
+                ])),
             }],
             projectile_count: &[],
             projectile_spread: &[],
@@ -1604,7 +1614,7 @@ impl Enchantment {
                 }),
                 requirements: Some(LootCondition::EntityProperties {
                     target: LootEntityTarget::Attacker,
-                    predicate: &LOOT_PREDICATE_5,
+                    predicate: &LOOT_PREDICATE_7,
                 }),
             }],
             fishing_time_reduction: &[],
@@ -2902,7 +2912,7 @@ impl Enchantment {
                 },
                 requirements: Some(LootCondition::EntityProperties {
                     target: LootEntityTarget::DirectAttacker,
-                    predicate: &LOOT_PREDICATE_6,
+                    predicate: &LOOT_PREDICATE_8,
                 }),
             }],
             projectile_count: &[],

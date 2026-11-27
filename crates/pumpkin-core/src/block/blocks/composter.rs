@@ -148,9 +148,7 @@ impl ComposterBlock {
         world.emit_game_event_with_context(
             GameEvent::BlockChange.name(),
             location.to_centered_f64(),
-            &GameEventContext {
-                source_entity: source,
-            },
+            &GameEventContext::of_entity_state(source, new_state_id),
         );
         if level == 7 {
             world.schedule_block_tick(block, *location, 20, TickPriority::Normal);
@@ -200,7 +198,10 @@ impl ComposterBlock {
         block: &Block,
         level: u8,
     ) {
-        Self::set_level_with_source(None, world, location, state_id, block, level);
+        // Vanilla `ComposterBlock.tick` changes the state and emits no game event.
+        let mut props = ComposterLikeProperties::from_state_id(state_id);
+        props.level = level;
+        world.set_block_state(location, props.to_state_id(block), BlockFlags::NOTIFY_ALL);
     }
 
     #[must_use]

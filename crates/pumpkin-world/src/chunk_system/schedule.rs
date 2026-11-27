@@ -65,6 +65,7 @@ pub struct GenerationSchedule {
     send_level: Arc<LevelChannel>,
 
     public_chunk_map: Arc<DashMap<Vector2<i32>, SyncChunk, FxBuildHasher>>,
+    chunks_with_scheduled_ticks: Arc<dashmap::DashSet<Vector2<i32>>>,
     loaded_chunk_changes: Arc<crossbeam::queue::SegQueue<LoadedChunkChange>>,
     chunk_map: HashMap<ChunkPos, ChunkHolder>,
     unload_chunks: HashSetType<ChunkPos>,
@@ -91,7 +92,14 @@ pub struct GenerationSchedule {
 
 impl GenerationSchedule {
     fn publish_chunk(&self, pos: ChunkPos, chunk: SyncChunk) -> Option<SyncChunk> {
+        let has_ticks = chunk.block_ticks.has_ticks() || chunk.fluid_ticks.has_ticks();
         let previous = self.public_chunk_map.insert(pos, chunk);
+        // Vanilla `LevelChunk.registerTickContainerInLevel`: the saved ticks and the ticks of
+        // world generation run once the chunk is loaded. The chunk joins the map first: the tick
+        // step drops a chunk of the set that it does not find in the map.
+        if has_ticks {
+            self.chunks_with_scheduled_ticks.insert(pos);
+        }
         if previous.is_none() {
             self.loaded_chunk_changes
                 .push(LoadedChunkChange::Loaded(pos));
@@ -165,6 +173,7 @@ impl GenerationSchedule {
                     last_high_priority: Vec::new(),
                     send_level: level_channel,
                     public_chunk_map: level_sched.loaded_chunks.clone(),
+                    chunks_with_scheduled_ticks: level_sched.chunks_with_scheduled_ticks.clone(),
                     loaded_chunk_changes: level_sched.loaded_chunk_changes.clone(),
                     unload_chunks: HashSetType::default(),
                     waiting_for_chunks: HashSetType::default(),

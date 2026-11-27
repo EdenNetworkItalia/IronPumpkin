@@ -111,7 +111,11 @@ impl ItemBehaviour for CushionItem {
 
         let cushion = CushionEntity::new(entity, CushionEntity::color_from_stack(item));
         world.spawn_entity(Arc::new(cushion));
-        world.emit_game_event(GameEvent::EntityPlace.name(), pos);
+        world.emit_game_event_by(
+            GameEvent::EntityPlace.name(),
+            pos,
+            &player.living_entity.entity,
+        );
         item.decrement_unless_creative(player.gamemode.load(), 1);
         BlockActionResult::Success
     }

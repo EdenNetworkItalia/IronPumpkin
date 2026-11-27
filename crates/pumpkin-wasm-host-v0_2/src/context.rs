@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 use wasmtime::component::Resource;
 
 use crate::{
+    DeferHost,
     events::{ToFromWasmEvent, WasmPluginEventHandler},
     pumpkin::{
         self,
@@ -1796,6 +1797,22 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
                     ctx, &handler, priority, blocking, event_type,
                 );
             }
+            event_type @ (EventType::ItemAttributeModifierEvent
+            | EventType::ItemStackedOnOtherEvent
+            | EventType::GetEnchantmentLevelEvent
+            | EventType::EnchantedBlockLootEvent
+            | EventType::EnchantedEntityLootEvent
+            | EventType::PlayerBrewedPotionEvent) => {
+                crate::events::neoforge_item::register_neoforge_item_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
+            event_type @ (EventType::PlayLevelSoundEventAtPosition
+            | EventType::PlayLevelSoundEventAtEntity) => {
+                crate::events::neoforge_sound::register_neoforge_sound_event(
+                    ctx, &handler, priority, blocking, event_type,
+                );
+            }
             event_type => {
                 register_player_event(ctx, &handler, priority, blocking, event_type);
             }
@@ -1820,9 +1837,12 @@ impl pumpkin::plugin::context::HostContext for PluginHostState {
             Vec::new()
         };
         let node = command.builder.build();
-        context.register_command_with_aliases(node, &aliases, permission);
-
-        Ok(())
+        context.register_command_without_reload(node, &aliases, permission);
+        // The resend runs the requirement of each command for each online player, which fires
+        // `PlayerPermissionCheckEvent`.
+        self.defer("context register-command", move || {
+            context.reload_commands_for_everyone();
+        })
     }
 
     fn register_permission(

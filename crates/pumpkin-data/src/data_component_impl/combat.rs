@@ -185,8 +185,8 @@ impl AttributeModifiersImpl {
             let r#type = attribute_from_name(type_name)?;
             let id = Cow::Owned(comp.get_string("id")?.to_string());
             let amount = comp
-                .get_double("amount")
-                .or_else(|| comp.get_float("amount").map(f64::from))?;
+                .get_numeric_double("amount")
+                .or_else(|| comp.get_numeric_float("amount").map(f64::from))?;
             let operation = Operation::from_name(comp.get_string("operation")?)?;
             let slot = comp
                 .get_string("slot")
@@ -306,7 +306,7 @@ fn read_enchantment_levels(data: &NbtTag) -> Option<Vec<(&'static Enchantment, i
     for (name, level) in levels {
         let enchantment = Enchantment::from_name(name.as_ref())
             .or_else(|| Enchantment::from_name(&format!("minecraft:{name}")))?;
-        let level = level.extract_int()?;
+        let level = level.as_numeric_int()?;
         if !(1..=MAX_ENCHANTMENT_LEVEL).contains(&level) {
             return None;
         }
@@ -433,7 +433,7 @@ impl RepairCostImpl {
 
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         Some(Self {
-            cost: data.extract_int()?,
+            cost: data.as_numeric_int()?,
         })
     }
 }
@@ -533,14 +533,19 @@ impl ToolImpl {
                 {
                     rules.push(ToolRule {
                         blocks,
-                        speed: rule_compound.get_float("speed"),
+                        speed: rule_compound.get_numeric_float("speed"),
                         correct_for_drops: rule_compound.get_bool("correct_for_drops"),
                     });
                 }
             }
         }
-        let default_mining_speed = compound.get_float("default_mining_speed").unwrap_or(1.0);
-        let damage_per_block = compound.get_int("damage_per_block").unwrap_or(1).max(0) as u32;
+        let default_mining_speed = compound
+            .get_numeric_float("default_mining_speed")
+            .unwrap_or(1.0);
+        let damage_per_block = compound
+            .get_numeric_int("damage_per_block")
+            .unwrap_or(1)
+            .max(0) as u32;
         let can_destroy_blocks_in_creative = compound
             .get_bool("can_destroy_blocks_in_creative")
             .unwrap_or(true);
@@ -633,11 +638,11 @@ impl WeaponImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
         let item_damage_per_attack = compound
-            .get_int("item_damage_per_attack")
+            .get_numeric_int("item_damage_per_attack")
             .unwrap_or(1)
             .max(0) as u32;
         let disable_blocking_for_seconds = compound
-            .get_float("disable_blocking_for_seconds")
+            .get_numeric_float("disable_blocking_for_seconds")
             .unwrap_or(0.0);
         Some(Self {
             item_damage_per_attack,
@@ -687,12 +692,16 @@ impl AttackRangeImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
         Some(Self {
-            min_reach: compound.get_float("min_reach").unwrap_or(0.0),
-            max_reach: compound.get_float("max_reach").unwrap_or(3.0),
-            min_creative_reach: compound.get_float("min_creative_reach").unwrap_or(0.0),
-            max_creative_reach: compound.get_float("max_creative_reach").unwrap_or(5.0),
-            hitbox_margin: compound.get_float("hitbox_margin").unwrap_or(0.3),
-            mob_factor: compound.get_float("mob_factor").unwrap_or(1.0),
+            min_reach: compound.get_numeric_float("min_reach").unwrap_or(0.0),
+            max_reach: compound.get_numeric_float("max_reach").unwrap_or(3.0),
+            min_creative_reach: compound
+                .get_numeric_float("min_creative_reach")
+                .unwrap_or(0.0),
+            max_creative_reach: compound
+                .get_numeric_float("max_creative_reach")
+                .unwrap_or(5.0),
+            hitbox_margin: compound.get_numeric_float("hitbox_margin").unwrap_or(0.3),
+            mob_factor: compound.get_numeric_float("mob_factor").unwrap_or(1.0),
         })
     }
     fn values(&self) -> [f32; 6] {
@@ -750,7 +759,7 @@ pub struct EnchantableImpl {
 impl EnchantableImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
-        let value = compound.get_int("value")?;
+        let value = compound.get_numeric_int("value")?;
         Some(Self { value })
     }
 }
@@ -1139,11 +1148,11 @@ impl BlocksAttacksImpl {
             return Some(Self::DEFAULT);
         };
         let block_delay_seconds = compound
-            .get_float("block_delay_seconds")
+            .get_numeric_float("block_delay_seconds")
             .unwrap_or(0.0)
             .max(0.0);
         let disable_cooldown_scale = compound
-            .get_float("disable_cooldown_scale")
+            .get_numeric_float("disable_cooldown_scale")
             .unwrap_or(1.0)
             .max(0.0);
         let damage_reductions = if let Some(list) = compound.get_list("damage_reductions") {
@@ -1152,11 +1161,11 @@ impl BlocksAttacksImpl {
                 let c = item.extract_compound()?;
                 reductions.push(DamageReduction {
                     horizontal_blocking_angle: c
-                        .get_float("horizontal_blocking_angle")
+                        .get_numeric_float("horizontal_blocking_angle")
                         .unwrap_or(90.0),
                     damage_type: c.get("type").and_then(IDSet::<DamageType>::read),
-                    base: c.get_float("base")?,
-                    factor: c.get_float("factor")?,
+                    base: c.get_numeric_float("base")?,
+                    factor: c.get_numeric_float("factor")?,
                 });
             }
             Cow::Owned(reductions)
@@ -1165,9 +1174,9 @@ impl BlocksAttacksImpl {
         };
         let item_damage = if let Some(c) = compound.get_compound("item_damage") {
             ItemDamageFunction {
-                threshold: c.get_float("threshold")?.max(0.0),
-                base: c.get_float("base")?,
-                factor: c.get_float("factor")?,
+                threshold: c.get_numeric_float("threshold")?.max(0.0),
+                base: c.get_numeric_float("base")?,
+                factor: c.get_numeric_float("factor")?,
             }
         } else {
             ItemDamageFunction::DEFAULT
@@ -1373,9 +1382,11 @@ impl KineticConditionImpl {
     fn read(compound: &NbtCompound, key: &str) -> Option<Self> {
         let condition = compound.get_compound(key)?;
         Some(Self {
-            max_duration_ticks: condition.get_int("max_duration_ticks")?,
-            min_speed: condition.get_float("min_speed").unwrap_or(0.0),
-            min_relative_speed: condition.get_float("min_relative_speed").unwrap_or(0.0),
+            max_duration_ticks: condition.get_numeric_int("max_duration_ticks")?,
+            min_speed: condition.get_numeric_float("min_speed").unwrap_or(0.0),
+            min_relative_speed: condition
+                .get_numeric_float("min_relative_speed")
+                .unwrap_or(0.0),
         })
     }
     fn write(&self, compound: &mut NbtCompound, key: &str) {
@@ -1410,13 +1421,19 @@ impl KineticWeaponImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         let compound = data.extract_compound()?;
         Some(Self {
-            contact_cooldown_ticks: compound.get_int("contact_cooldown_ticks").unwrap_or(10),
-            delay_ticks: compound.get_int("delay_ticks").unwrap_or(0),
+            contact_cooldown_ticks: compound
+                .get_numeric_int("contact_cooldown_ticks")
+                .unwrap_or(10),
+            delay_ticks: compound.get_numeric_int("delay_ticks").unwrap_or(0),
             dismount_conditions: KineticConditionImpl::read(compound, "dismount_conditions"),
             knockback_conditions: KineticConditionImpl::read(compound, "knockback_conditions"),
             damage_conditions: KineticConditionImpl::read(compound, "damage_conditions"),
-            forward_movement: compound.get_float("forward_movement").unwrap_or(0.0),
-            damage_multiplier: compound.get_float("damage_multiplier").unwrap_or(1.0),
+            forward_movement: compound
+                .get_numeric_float("forward_movement")
+                .unwrap_or(0.0),
+            damage_multiplier: compound
+                .get_numeric_float("damage_multiplier")
+                .unwrap_or(1.0),
             sound: get_optional_idor(compound, "sound"),
             hit_sound: get_optional_idor(compound, "hit_sound"),
         })
@@ -1601,7 +1618,7 @@ impl SwingAnimationImpl {
                     .unwrap_or(Self::DEFAULT.animation_type);
                 let duration = compound
                     .get("duration")
-                    .and_then(|tag| tag.extract_int())
+                    .and_then(|tag| tag.as_numeric_int())
                     .unwrap_or(Self::DEFAULT.duration);
                 Some(Self {
                     animation_type,
@@ -1677,7 +1694,7 @@ pub struct AdditionalTradeCostImpl {
 impl AdditionalTradeCostImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
         Some(Self {
-            cost: data.extract_int().unwrap_or(0),
+            cost: data.as_numeric_int().unwrap_or(0),
         })
     }
 }
@@ -1716,7 +1733,7 @@ impl MobVisibilityImpl {
         let compound = data.extract_compound()?;
         let targeting_entity_types =
             IDSet::<EntityType>::read(compound.get("targeting_entity_types")?)?;
-        let visibility = compound.get_float("visibility")?;
+        let visibility = compound.get_numeric_float("visibility")?;
         Self::is_valid_visibility(visibility).then_some(Self {
             targeting_entity_types,
             visibility,
@@ -1780,7 +1797,7 @@ pub struct OminousBottleAmplifierImpl {
 }
 impl OminousBottleAmplifierImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_int().map(|amplifier| Self { amplifier })
+        data.as_numeric_int().map(|amplifier| Self { amplifier })
     }
 }
 impl DataComponentImpl for OminousBottleAmplifierImpl {
@@ -1862,7 +1879,7 @@ pub struct MinimumAttackChargeImpl {
 }
 impl MinimumAttackChargeImpl {
     pub fn read_data(data: &NbtTag) -> Option<Self> {
-        data.extract_float().map(|charge| Self { charge })
+        data.as_numeric_float().map(|charge| Self { charge })
     }
 }
 impl DataComponentImpl for MinimumAttackChargeImpl {

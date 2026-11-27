@@ -179,7 +179,11 @@ impl ChiseledBookshelfBlock {
         entity.update_state(properties, world, slot);
 
         world.play_sound(sound, SoundCategory::Blocks, &position.to_centered_f64());
-        world.emit_game_event(GameEvent::BlockChange.name(), position.to_centered_f64());
+        world.emit_game_event_by(
+            GameEvent::BlockChange.name(),
+            position.to_centered_f64(),
+            &player.living_entity.entity,
+        );
     }
 
     const fn is_slot_used(properties: ChiseledBookshelfLikeProperties, slot: usize) -> bool {

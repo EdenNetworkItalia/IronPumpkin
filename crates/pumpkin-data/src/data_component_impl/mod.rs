@@ -145,7 +145,7 @@ pub fn get_idor(nbt: &NbtCompound, key: &str, default: Sound) -> IdOr<basic::Sou
         let Some(sound_name) = sound_compound.get_string("sound_id") else {
             return IdOr::Id(default);
         };
-        let range = sound_compound.get_float("range");
+        let range = sound_compound.get_numeric_float("range");
         IdOr::Value(basic::SoundEvent {
             sound_name: sound_name.to_string(),
             range,

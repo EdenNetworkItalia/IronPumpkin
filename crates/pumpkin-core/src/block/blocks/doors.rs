@@ -1,3 +1,4 @@
+use crate::entity::Entity;
 use pumpkin_data::BlockDirection;
 use pumpkin_data::BlockStateId;
 use pumpkin_data::block_properties::Axis;
@@ -61,7 +62,11 @@ fn toggle_door(player: &Player, world: &Arc<World>, block_pos: &BlockPos) {
     } else {
         pumpkin_data::game_event::GameEvent::BlockClose
     };
-    world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+    world.emit_game_event_by(
+        game_event.name(),
+        block_pos.to_centered_f64(),
+        &player.living_entity.entity,
+    );
 
     world.set_block_state(
         block_pos,
@@ -173,7 +178,7 @@ impl DoorBlock {
         door_props.open
     }
 
-    pub fn set_open(world: &Arc<World>, block_pos: &BlockPos, open: bool) {
+    pub fn set_open(world: &Arc<World>, block_pos: &BlockPos, open: bool, source: Option<&Entity>) {
         let (block, block_state) = world.get_block_and_state_id(block_pos);
         if !block.has_tag(&tag::Block::MINECRAFT_DOORS) {
             return;
@@ -199,7 +204,7 @@ impl DoorBlock {
         } else {
             pumpkin_data::game_event::GameEvent::BlockClose
         };
-        world.emit_game_event(game_event.name(), block_pos.to_centered_f64());
+        world.emit_game_event_by(game_event.name(), block_pos.to_centered_f64(), source);
 
         world.set_block_state(
             block_pos,
