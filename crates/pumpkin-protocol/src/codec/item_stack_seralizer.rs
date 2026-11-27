@@ -398,7 +398,7 @@ impl ItemStackSerializer<'_> {
         const MAX_COMPONENTS: i32 = 256;
 
         let item_count = read.get_var_int()?;
-        if item_count.0 == 0 {
+        if item_count.0 <= 0 {
             return Ok(ItemStackSerializer(Cow::Borrowed(ItemStack::EMPTY)));
         }
         let _nesting = enter_item_nesting()?;
@@ -633,7 +633,7 @@ impl ItemStackSerializer<'_> {
         const MAX_COMPONENTS: i32 = 256;
 
         let item_count = read.get_var_int()?;
-        if item_count.0 == 0 {
+        if item_count.0 <= 0 {
             return Ok(ItemStackSerializer(Cow::Borrowed(ItemStack::EMPTY)));
         }
         let item_count_u8 = item_count
@@ -1408,6 +1408,21 @@ mod tests {
         let speed = i32::from(pumpkin_data::effect::StatusEffect::SPEED.id);
         let bytes = [var_ints(&[0, 0, 1, speed + 65_536]), vec![0; 8]].concat();
         assert!(deserialize(DataComponent::PotionContents, &mut bytes.as_slice()).is_err());
+    }
+
+    /// `ItemStack.OPTIONAL_STREAM_CODEC` returns `EMPTY` for a count of 0 or less and reads
+    /// nothing after the count.
+    #[test]
+    fn a_negative_count_reads_as_an_empty_stack() {
+        let rest = [0xff; 6];
+        let bytes = [var_ints(&[-1]), rest.to_vec()].concat();
+        let mut read = bytes.as_slice();
+        assert!(ItemStackSerializer::read(&mut read).unwrap().0.is_empty());
+        assert_eq!(read, rest);
+        let mut read = bytes.as_slice();
+        let stack = ItemStackSerializer::read_length_prefixed_optional(&mut read).unwrap();
+        assert!(stack.0.is_empty());
+        assert_eq!(read, rest);
     }
 
     /// `HashedPatchMap.STREAM_CODEC` reads the added hashes into a map and the removed types
