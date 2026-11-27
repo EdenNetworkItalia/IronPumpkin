@@ -3309,21 +3309,12 @@ impl DataComponentCodec<Self> for ContainerImpl {
     ) -> Result<(), WritingError> {
         // `ItemContainerContents.STREAM_CODEC`: one optional template per slot, up to the last
         // filled slot.
-        let filled = |slot: usize| {
-            self.items
-                .iter()
-                .find(|(index, stack)| usize::from(*index) == slot && !stack.is_empty())
-        };
-        let slots = self
-            .items
-            .iter()
-            .filter(|(_, stack)| !stack.is_empty())
-            .map(|(slot, _)| usize::from(*slot) + 1)
-            .max()
-            .unwrap_or(0);
+        let filled = self.filled_slots();
+        let slots = filled.last().map_or(0, |(slot, _)| usize::from(*slot) + 1);
         seq.write_var_int(&VarInt(slots as i32))?;
+        let mut filled = filled.into_iter().peekable();
         for slot in 0..slots {
-            match filled(slot) {
+            match filled.next_if(|(index, _)| usize::from(*index) == slot) {
                 Some((_, stack)) => {
                     seq.write_bool(true)?;
                     serialize_item_stack_template(stack, seq, ids)?;

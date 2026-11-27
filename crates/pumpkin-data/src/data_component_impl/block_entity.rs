@@ -165,6 +165,26 @@ impl ContainerImpl {
         }
         Some(Self { items })
     }
+
+    /// `ItemContainerContents.fromSlots`: a later entry for a slot replaces an earlier one.
+    /// Returns the filled slots in index order, which the client gets and hashes.
+    #[must_use]
+    pub fn filled_slots(&self) -> Vec<(u8, &crate::item_stack::ItemStack)> {
+        let mut slots = vec![None; usize::from(u8::MAX) + 1];
+        for (slot, stack) in &self.items {
+            slots[usize::from(*slot)] = Some(stack);
+        }
+        slots
+            .into_iter()
+            .enumerate()
+            .filter_map(|(slot, stack)| {
+                Some((
+                    u8::try_from(slot).ok()?,
+                    stack.filter(|stack| !stack.is_empty())?,
+                ))
+            })
+            .collect()
+    }
 }
 impl DataComponentImpl for ContainerImpl {
     fn write_data(&self) -> NbtTag {
@@ -182,15 +202,9 @@ impl DataComponentImpl for ContainerImpl {
     }
     /// `ItemContainerContents.asSlots`: the non-empty slots in index order.
     fn get_hash(&self) -> i32 {
-        let mut slots: Vec<_> = self
-            .items
-            .iter()
-            .filter(|(_, stack)| !stack.is_empty())
-            .collect();
-        slots.sort_by_key(|(slot, _)| *slot);
-        hash_ops::list(slots.into_iter().map(|(slot, stack)| {
+        hash_ops::list(self.filled_slots().into_iter().map(|(slot, stack)| {
             hash_ops::MapHasher::new()
-                .put("slot", hash_ops::int(i32::from(*slot)))
+                .put("slot", hash_ops::int(i32::from(slot)))
                 .put("item", hash_ops::item_stack_template(stack))
                 .finish()
         })) as i32

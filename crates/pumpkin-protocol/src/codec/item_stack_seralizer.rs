@@ -1270,6 +1270,36 @@ mod tests {
         assert_eq!(decoded.items[0].0, 2);
     }
 
+    /// `ItemContainerContents.fromSlots` keeps the last entry for a slot, on the wire and in the
+    /// hash.
+    #[test]
+    fn the_last_container_entry_for_a_slot_wins() {
+        use crate::codec::data_component::{deserialize, serialize};
+        use pumpkin_data::data_component_impl::ContainerImpl;
+        let container = ContainerImpl {
+            items: vec![
+                (1, ItemStack::new(1, &Item::STICK)),
+                (1, ItemStack::new(2, &Item::DIAMOND)),
+            ],
+        };
+        let mut bytes = Vec::new();
+        serialize(
+            DataComponent::Container,
+            &container,
+            &mut bytes,
+            ContentIds::Display,
+        )
+        .unwrap();
+        let decoded = deserialize(DataComponent::Container, &mut bytes.as_slice()).unwrap();
+        let decoded = decoded.as_any().downcast_ref::<ContainerImpl>().unwrap();
+        assert_eq!(decoded.items.len(), 1);
+        assert_eq!(decoded.items[0].1.item, &Item::DIAMOND);
+        let last = ContainerImpl {
+            items: vec![(1, ItemStack::new(2, &Item::DIAMOND))],
+        };
+        assert_eq!(container.get_hash(), last.get_hash());
+    }
+
     /// `ChargedProjectiles.STREAM_CODEC` is a list of `ItemStackTemplate.STREAM_CODEC` values.
     #[test]
     fn charged_projectiles_write_their_templates() {
