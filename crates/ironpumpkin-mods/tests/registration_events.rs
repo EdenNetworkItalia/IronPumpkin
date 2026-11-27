@@ -29,6 +29,7 @@ use ironpumpkin_mods::{
     pumpkin_core::{
         block::PathComputationType,
         block::entities::barrel::BarrelBlockEntity,
+        content::attributes::default_attributes,
         content::poi::profession_for_block,
         content::spawn_placements::spawn_restriction,
         entity::ai::brain::{
@@ -362,19 +363,11 @@ fn a_mod_attribute_named_in_a_registration_event_is_a_default_of_every_entity_of
             7.0
         );
     }
-    // An entity type that no event names keeps the default of the attribute.
-    let skeleton = from_type(
-        &EntityType::SKELETON,
-        Vector3::new(0.0, 100.0, 0.0),
-        &world,
-        uuid::Uuid::new_v4(),
-    );
-    assert_eq!(
-        skeleton
-            .get_living_entity()
-            .unwrap()
-            .get_attribute_base(mana),
-        20.0
+    // An entity type that no event names does not get the attribute.
+    assert!(
+        default_attributes(&EntityType::SKELETON)
+            .iter()
+            .all(|(attribute, _)| attribute.id != mana.id)
     );
 }
 
