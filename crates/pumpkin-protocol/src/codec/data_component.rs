@@ -2652,12 +2652,7 @@ impl DataComponentCodec<Self> for ChargedProjectilesImpl {
         seq: &mut impl NetworkWriteExt,
         ids: ContentIds,
     ) -> Result<(), WritingError> {
-        let stacks: Vec<_> = self
-            .projectiles
-            .iter()
-            .filter_map(pumpkin_data::item_stack::ItemStack::read_item_stack)
-            .filter(|stack| !stack.is_empty())
-            .collect();
+        let stacks = self.stacks();
         seq.write_var_int(&VarInt(stacks.len() as i32))?;
         for stack in &stacks {
             serialize_item_stack_template(stack, seq, ids)?;

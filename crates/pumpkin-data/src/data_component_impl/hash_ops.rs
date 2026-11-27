@@ -605,6 +605,25 @@ mod tests {
         vanilla::map(&[("id", vanilla::string(id))])
     }
 
+    /// The client gets only the charged projectiles that load as stacks, so the hash leaves
+    /// the others out too.
+    #[test]
+    fn charged_projectiles_hash_only_the_stacks_that_load() {
+        use crate::data_component_impl::ChargedProjectilesImpl;
+        use pumpkin_nbt::compound::NbtCompound;
+        let mut arrow = NbtCompound::new();
+        arrow.put_string("id", "minecraft:arrow".to_owned());
+        let mut unknown = NbtCompound::new();
+        unknown.put_string("id", "minecraft:no_such_item".to_owned());
+        let charged = ChargedProjectilesImpl {
+            projectiles: vec![unknown, arrow],
+        };
+        assert_eq!(
+            charged.get_hash() as u32,
+            vanilla::list(&[template("minecraft:arrow")])
+        );
+    }
+
     #[test]
     fn pot_decorations_hash_has_the_present_sides_as_templates() {
         let pot = PotDecorationsImpl {

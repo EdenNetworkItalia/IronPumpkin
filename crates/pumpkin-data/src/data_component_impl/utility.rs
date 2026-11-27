@@ -553,6 +553,16 @@ impl ChargedProjectilesImpl {
         }
         Some(Self { projectiles })
     }
+
+    /// The projectiles that load as non-empty stacks. The client gets and hashes only these.
+    #[must_use]
+    pub fn stacks(&self) -> Vec<crate::item_stack::ItemStack> {
+        self.projectiles
+            .iter()
+            .filter_map(crate::item_stack::ItemStack::read_item_stack)
+            .filter(|stack| !stack.is_empty())
+            .collect()
+    }
 }
 impl DataComponentImpl for ChargedProjectilesImpl {
     fn write_data(&self) -> NbtTag {
@@ -564,12 +574,7 @@ impl DataComponentImpl for ChargedProjectilesImpl {
     }
     /// A list of `ItemStackTemplate.CODEC` values.
     fn get_hash(&self) -> i32 {
-        hash_ops::list(self.projectiles.iter().map(|projectile| {
-            crate::item_stack::ItemStack::read_item_stack(projectile).map_or_else(
-                || hash_ops::nbt_compound(projectile),
-                |stack| hash_ops::item_stack_template(&stack),
-            )
-        })) as i32
+        hash_ops::list(self.stacks().iter().map(hash_ops::item_stack_template)) as i32
     }
     default_impl!(ChargedProjectiles);
 }
