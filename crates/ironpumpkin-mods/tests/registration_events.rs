@@ -31,7 +31,9 @@ use ironpumpkin_mods::{
         block::entities::barrel::BarrelBlockEntity,
         content::poi::profession_for_block,
         content::spawn_placements::spawn_restriction,
-        entity::ai::brain::behavior::job_site::{acquire_poi::SCAN_RANGE, find_path_to_pois},
+        entity::ai::brain::{
+            behavior::job_site::acquire_poi::SCAN_RANGE, memory::types as memory_types,
+        },
         plugin::{level::EntitySpawnReason, startup::STARTUP_HOOK},
     },
     pumpkin_data::{
@@ -492,10 +494,10 @@ fn a_mod_block_entity_is_removed_on_break_and_survives_a_save_and_load() {
     assert_eq!(items[3].item_count, 5);
 }
 
-/// A villager takes the job site POI of a mod block as one of the vanilla block: the POI search
-/// finds it, the villager paths to it and claims it, and no other villager finds it then.
+/// A villager takes the job site POI of a mod block as one of the vanilla block: its brain runs
+/// `AcquirePoi` until it paths to the desk and claims it, and no other villager finds it then.
 #[test]
-fn a_villager_finds_paths_to_and_claims_the_mod_poi() {
+fn a_villager_acquires_the_mod_poi() {
     boot();
     let desk = block(DESK);
     let world = support::world();
@@ -520,25 +522,20 @@ fn a_villager_finds_paths_to_and_claims_the_mod_poi() {
     }
     let desk_pos = BlockPos::new(x0 + 4, y, z0 + 1);
     world.set_block_state(&desk_pos, desk.default_state.id, BlockFlags::NOTIFY_ALL);
-    let librarian = |poi: PoiType| poi == PoiType::Librarian;
-    let search = || {
+    let free_desks = || {
         world
             .portal_poi
             .lock()
             .unwrap()
             .find_all_closest_first_with_type(
-                &librarian,
-                &|pos| pos == desk_pos,
+                &|poi| poi == PoiType::Librarian,
+                &|_| true,
                 desk_pos,
                 SCAN_RANGE,
                 Occupancy::HasSpace,
             )
     };
-    assert_eq!(search(), [(PoiType::Librarian, desk_pos)]);
-    assert_eq!(
-        VillagerProfession::from_held_job_site(PoiType::Librarian),
-        Some(VillagerProfession::Librarian)
-    );
+    assert_eq!(free_desks(), [(PoiType::Librarian, desk_pos)]);
 
     let villager = from_type(
         &EntityType::VILLAGER,
@@ -551,21 +548,19 @@ fn a_villager_finds_paths_to_and_claims_the_mod_poi() {
         .get_entity()
         .on_ground
         .store(true, Ordering::Relaxed);
-    let path = find_path_to_pois(villager.get_mob().unwrap(), &search()).unwrap();
-    assert!(path.can_reach());
-    assert_eq!(path.get_target(), desk_pos);
-
-    // The claim: the POI has one ticket, so a second search finds no space.
-    let claimed = world.portal_poi.lock().unwrap().take(
-        &librarian,
-        &|_, pos| pos == desk_pos,
-        desk_pos,
-        SCAN_RANGE,
-    );
-    assert_eq!(claimed, Some(desk_pos));
-    assert!(search().is_empty());
-    assert!(world.portal_poi.lock().unwrap().release(&desk_pos));
-    assert_eq!(search().len(), 1);
+    let mob = villager.get_mob().unwrap();
+    let mob_entity = mob.get_mob_entity();
+    let potential_job_site = memory_types::POTENTIAL_JOB_SITE.id();
+    // `AcquirePoi` first waits up to 20 ticks, then scans every 20 to 39 ticks.
+    for time in 1..=100 {
+        mob_entity.with_brain(mob, |brain| brain.tick(&world, mob, time));
+        if mob_entity.brain_has_memory_value(potential_job_site) {
+            break;
+        }
+    }
+    assert!(mob_entity.brain_has_memory_value(potential_job_site));
+    // The claim took the only ticket of the desk.
+    assert!(free_desks().is_empty());
 }
 
 #[test]
