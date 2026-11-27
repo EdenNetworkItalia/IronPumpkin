@@ -1039,161 +1039,137 @@ pub fn deserialize(
     seq: &mut impl NetworkReadExt,
 ) -> Result<Box<dyn DataComponentImpl>, ReadingError> {
     match id {
-        DataComponent::CustomData => Ok(CustomDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MaxStackSize => Ok(MaxStackSizeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MaxDamage => Ok(MaxDamageImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Damage => Ok(DamageImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Unbreakable => Ok(UnbreakableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseEffects => Ok(UseEffectsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CustomName => Ok(CustomNameImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MinimumAttackCharge => {
-            Ok(MinimumAttackChargeImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::DamageType => Ok(DamageTypeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ItemName => Ok(ItemNameImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ItemModel => Ok(ItemModelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Lore => Ok(LoreImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Rarity => Ok(RarityImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Enchantments => Ok(EnchantmentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CanPlaceOn => Ok(CanPlaceOnImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CanBreak => Ok(CanBreakImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttributeModifiers => Ok(AttributeModifiersImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CustomModelData => Ok(CustomModelDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TooltipDisplay => Ok(TooltipDisplayImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::RepairCost => Ok(RepairCostImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CreativeSlotLock => Ok(CreativeSlotLockImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::EnchantmentGlintOverride => {
-            Ok(EnchantmentGlintOverrideImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::IntangibleProjectile => {
-            Ok(IntangibleProjectileImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::Food => Ok(FoodImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Consumable => Ok(ConsumableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseRemainder => Ok(UseRemainderImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::UseCooldown => Ok(UseCooldownImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DamageResistant => Ok(DamageResistantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Tool => Ok(ToolImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Weapon => Ok(WeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttackRange => Ok(AttackRangeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Enchantable => Ok(EnchantableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Equippable => Ok(EquippableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Repairable => Ok(RepairableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Glider => Ok(GliderImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TooltipStyle => Ok(TooltipStyleImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DeathProtection => Ok(DeathProtectionImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlocksAttacks => Ok(BlocksAttacksImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PiercingWeapon => Ok(PiercingWeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::KineticWeapon => Ok(KineticWeaponImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AttackAnimation => Ok(SwingAnimationImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AdditionalTradeCost => {
-            Ok(AdditionalTradeCostImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::StoredEnchantments => Ok(StoredEnchantmentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Dye => Ok(DyeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DyedColor => Ok(DyedColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapId => Ok(MapIdImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapDecorations => Ok(MapDecorationsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MapPostProcessing => Ok(MapPostProcessingImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChargedProjectiles => Ok(ChargedProjectilesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BundleContents => Ok(BundleContentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotionContents => Ok(PotionContentsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotionDurationScale => {
-            Ok(PotionDurationScaleImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::SuspiciousStewEffects => {
-            Ok(SuspiciousStewEffectsImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::WritableBookContent => {
-            Ok(WritableBookContentImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::WrittenBookContent => Ok(WrittenBookContentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Trim => Ok(TrimImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::DebugStickState => Ok(DebugStickStateImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::EntityData => Ok(EntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BucketEntityData => Ok(BucketEntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockEntityData => Ok(BlockEntityDataImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Instrument => Ok(InstrumentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesTrimMaterial => {
-            Ok(ProvidesTrimMaterialImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::OminousBottleAmplifier => {
-            Ok(OminousBottleAmplifierImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::JukeboxPlayable => Ok(JukeboxPlayableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesBannerPatterns => {
-            Ok(ProvidesBannerPatternsImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::Recipes => Ok(RecipesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::LodestoneTracker => Ok(LodestoneTrackerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::FireworkExplosion => Ok(FireworkExplosionImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Fireworks => Ok(FireworksImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Profile => Ok(ProfileImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::NoteBlockSound => Ok(NoteBlockSoundImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BannerPatterns => Ok(BannerPatternsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BaseColor => Ok(BaseColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PotDecorations => Ok(PotDecorationsImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Container => Ok(ContainerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockState => Ok(BlockStateImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Bees => Ok(BeesImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SulfurCubeContent => Ok(SulfurCubeContentImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Lock => Ok(LockImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ContainerLoot => Ok(ContainerLootImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BreakSound => Ok(BreakSoundImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::VillagerVariant => Ok(VillagerVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfVariant => Ok(WolfVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfSoundVariant => Ok(WolfSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::WolfCollar => Ok(WolfCollarImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::FoxVariant => Ok(FoxVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SalmonSize => Ok(SalmonSizeImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ParrotVariant => Ok(ParrotVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::TropicalFishPattern => {
-            Ok(TropicalFishPatternImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::TropicalFishBaseColor => {
-            Ok(TropicalFishBaseColorImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::TropicalFishPatternColor => {
-            Ok(TropicalFishPatternColorImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::MooshroomVariant => Ok(MooshroomVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::RabbitVariant => Ok(RabbitVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PigVariant => Ok(PigVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PigSoundVariant => Ok(PigSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CowVariant => Ok(CowVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CowSoundVariant => Ok(CowSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChickenVariant => Ok(ChickenVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ChickenSoundVariant => {
-            Ok(ChickenSoundVariantImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::ZombieNautilusVariant => {
-            Ok(ZombieNautilusVariantImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::FrogVariant => Ok(FrogVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::HorseVariant => Ok(HorseVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::PaintingVariant => Ok(PaintingVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::LlamaVariant => Ok(LlamaVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::AxolotlVariant => Ok(AxolotlVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatVariant => Ok(CatVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatSoundVariant => Ok(CatSoundVariantImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CatCollar => Ok(CatCollarImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SheepColor => Ok(SheepColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ShulkerColor => Ok(ShulkerColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::InteractAnimation => Ok(InteractAnimationImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BlockTransformer => Ok(BlockTransformerImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::VillagerFood => Ok(VillagerFoodImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::MobVisibility => Ok(MobVisibilityImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::ProvidesPotteryPattern => {
-            Ok(ProvidesPotteryPatternImpl::deserialize(seq)?.to_dyn())
-        }
-        DataComponent::SignTextFront => Ok(SignTextFrontImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::SignTextBack => Ok(SignTextBackImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CushionColor => Ok(CushionColorImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Compostable => Ok(CompostableImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::CookingFuel => Ok(CookingFuelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::BrewingFuel => Ok(BrewingFuelImpl::deserialize(seq)?.to_dyn()),
-        DataComponent::Waxed => Ok(WaxedImpl::deserialize(seq)?.to_dyn()),
+        DataComponent::CustomData => boxed::<CustomDataImpl>(seq),
+        DataComponent::MaxStackSize => boxed::<MaxStackSizeImpl>(seq),
+        DataComponent::MaxDamage => boxed::<MaxDamageImpl>(seq),
+        DataComponent::Damage => boxed::<DamageImpl>(seq),
+        DataComponent::Unbreakable => boxed::<UnbreakableImpl>(seq),
+        DataComponent::UseEffects => boxed::<UseEffectsImpl>(seq),
+        DataComponent::CustomName => boxed::<CustomNameImpl>(seq),
+        DataComponent::MinimumAttackCharge => boxed::<MinimumAttackChargeImpl>(seq),
+        DataComponent::DamageType => boxed::<DamageTypeImpl>(seq),
+        DataComponent::ItemName => boxed::<ItemNameImpl>(seq),
+        DataComponent::ItemModel => boxed::<ItemModelImpl>(seq),
+        DataComponent::Lore => boxed::<LoreImpl>(seq),
+        DataComponent::Rarity => boxed::<RarityImpl>(seq),
+        DataComponent::Enchantments => boxed::<EnchantmentsImpl>(seq),
+        DataComponent::CanPlaceOn => boxed::<CanPlaceOnImpl>(seq),
+        DataComponent::CanBreak => boxed::<CanBreakImpl>(seq),
+        DataComponent::AttributeModifiers => boxed::<AttributeModifiersImpl>(seq),
+        DataComponent::CustomModelData => boxed::<CustomModelDataImpl>(seq),
+        DataComponent::TooltipDisplay => boxed::<TooltipDisplayImpl>(seq),
+        DataComponent::RepairCost => boxed::<RepairCostImpl>(seq),
+        DataComponent::CreativeSlotLock => boxed::<CreativeSlotLockImpl>(seq),
+        DataComponent::EnchantmentGlintOverride => boxed::<EnchantmentGlintOverrideImpl>(seq),
+        DataComponent::IntangibleProjectile => boxed::<IntangibleProjectileImpl>(seq),
+        DataComponent::Food => boxed::<FoodImpl>(seq),
+        DataComponent::Consumable => boxed::<ConsumableImpl>(seq),
+        DataComponent::UseRemainder => boxed::<UseRemainderImpl>(seq),
+        DataComponent::UseCooldown => boxed::<UseCooldownImpl>(seq),
+        DataComponent::DamageResistant => boxed::<DamageResistantImpl>(seq),
+        DataComponent::Tool => boxed::<ToolImpl>(seq),
+        DataComponent::Weapon => boxed::<WeaponImpl>(seq),
+        DataComponent::AttackRange => boxed::<AttackRangeImpl>(seq),
+        DataComponent::Enchantable => boxed::<EnchantableImpl>(seq),
+        DataComponent::Equippable => boxed::<EquippableImpl>(seq),
+        DataComponent::Repairable => boxed::<RepairableImpl>(seq),
+        DataComponent::Glider => boxed::<GliderImpl>(seq),
+        DataComponent::TooltipStyle => boxed::<TooltipStyleImpl>(seq),
+        DataComponent::DeathProtection => boxed::<DeathProtectionImpl>(seq),
+        DataComponent::BlocksAttacks => boxed::<BlocksAttacksImpl>(seq),
+        DataComponent::PiercingWeapon => boxed::<PiercingWeaponImpl>(seq),
+        DataComponent::KineticWeapon => boxed::<KineticWeaponImpl>(seq),
+        DataComponent::AttackAnimation => boxed::<SwingAnimationImpl>(seq),
+        DataComponent::AdditionalTradeCost => boxed::<AdditionalTradeCostImpl>(seq),
+        DataComponent::StoredEnchantments => boxed::<StoredEnchantmentsImpl>(seq),
+        DataComponent::Dye => boxed::<DyeImpl>(seq),
+        DataComponent::DyedColor => boxed::<DyedColorImpl>(seq),
+        DataComponent::MapId => boxed::<MapIdImpl>(seq),
+        DataComponent::MapDecorations => boxed::<MapDecorationsImpl>(seq),
+        DataComponent::MapPostProcessing => boxed::<MapPostProcessingImpl>(seq),
+        DataComponent::ChargedProjectiles => boxed::<ChargedProjectilesImpl>(seq),
+        DataComponent::BundleContents => boxed::<BundleContentsImpl>(seq),
+        DataComponent::PotionContents => boxed::<PotionContentsImpl>(seq),
+        DataComponent::PotionDurationScale => boxed::<PotionDurationScaleImpl>(seq),
+        DataComponent::SuspiciousStewEffects => boxed::<SuspiciousStewEffectsImpl>(seq),
+        DataComponent::WritableBookContent => boxed::<WritableBookContentImpl>(seq),
+        DataComponent::WrittenBookContent => boxed::<WrittenBookContentImpl>(seq),
+        DataComponent::Trim => boxed::<TrimImpl>(seq),
+        DataComponent::DebugStickState => boxed::<DebugStickStateImpl>(seq),
+        DataComponent::EntityData => boxed::<EntityDataImpl>(seq),
+        DataComponent::BucketEntityData => boxed::<BucketEntityDataImpl>(seq),
+        DataComponent::BlockEntityData => boxed::<BlockEntityDataImpl>(seq),
+        DataComponent::Instrument => boxed::<InstrumentImpl>(seq),
+        DataComponent::ProvidesTrimMaterial => boxed::<ProvidesTrimMaterialImpl>(seq),
+        DataComponent::OminousBottleAmplifier => boxed::<OminousBottleAmplifierImpl>(seq),
+        DataComponent::JukeboxPlayable => boxed::<JukeboxPlayableImpl>(seq),
+        DataComponent::ProvidesBannerPatterns => boxed::<ProvidesBannerPatternsImpl>(seq),
+        DataComponent::Recipes => boxed::<RecipesImpl>(seq),
+        DataComponent::LodestoneTracker => boxed::<LodestoneTrackerImpl>(seq),
+        DataComponent::FireworkExplosion => boxed::<FireworkExplosionImpl>(seq),
+        DataComponent::Fireworks => boxed::<FireworksImpl>(seq),
+        DataComponent::Profile => boxed::<ProfileImpl>(seq),
+        DataComponent::NoteBlockSound => boxed::<NoteBlockSoundImpl>(seq),
+        DataComponent::BannerPatterns => boxed::<BannerPatternsImpl>(seq),
+        DataComponent::BaseColor => boxed::<BaseColorImpl>(seq),
+        DataComponent::PotDecorations => boxed::<PotDecorationsImpl>(seq),
+        DataComponent::Container => boxed::<ContainerImpl>(seq),
+        DataComponent::BlockState => boxed::<BlockStateImpl>(seq),
+        DataComponent::Bees => boxed::<BeesImpl>(seq),
+        DataComponent::SulfurCubeContent => boxed::<SulfurCubeContentImpl>(seq),
+        DataComponent::Lock => boxed::<LockImpl>(seq),
+        DataComponent::ContainerLoot => boxed::<ContainerLootImpl>(seq),
+        DataComponent::BreakSound => boxed::<BreakSoundImpl>(seq),
+        DataComponent::VillagerVariant => boxed::<VillagerVariantImpl>(seq),
+        DataComponent::WolfVariant => boxed::<WolfVariantImpl>(seq),
+        DataComponent::WolfSoundVariant => boxed::<WolfSoundVariantImpl>(seq),
+        DataComponent::WolfCollar => boxed::<WolfCollarImpl>(seq),
+        DataComponent::FoxVariant => boxed::<FoxVariantImpl>(seq),
+        DataComponent::SalmonSize => boxed::<SalmonSizeImpl>(seq),
+        DataComponent::ParrotVariant => boxed::<ParrotVariantImpl>(seq),
+        DataComponent::TropicalFishPattern => boxed::<TropicalFishPatternImpl>(seq),
+        DataComponent::TropicalFishBaseColor => boxed::<TropicalFishBaseColorImpl>(seq),
+        DataComponent::TropicalFishPatternColor => boxed::<TropicalFishPatternColorImpl>(seq),
+        DataComponent::MooshroomVariant => boxed::<MooshroomVariantImpl>(seq),
+        DataComponent::RabbitVariant => boxed::<RabbitVariantImpl>(seq),
+        DataComponent::PigVariant => boxed::<PigVariantImpl>(seq),
+        DataComponent::PigSoundVariant => boxed::<PigSoundVariantImpl>(seq),
+        DataComponent::CowVariant => boxed::<CowVariantImpl>(seq),
+        DataComponent::CowSoundVariant => boxed::<CowSoundVariantImpl>(seq),
+        DataComponent::ChickenVariant => boxed::<ChickenVariantImpl>(seq),
+        DataComponent::ChickenSoundVariant => boxed::<ChickenSoundVariantImpl>(seq),
+        DataComponent::ZombieNautilusVariant => boxed::<ZombieNautilusVariantImpl>(seq),
+        DataComponent::FrogVariant => boxed::<FrogVariantImpl>(seq),
+        DataComponent::HorseVariant => boxed::<HorseVariantImpl>(seq),
+        DataComponent::PaintingVariant => boxed::<PaintingVariantImpl>(seq),
+        DataComponent::LlamaVariant => boxed::<LlamaVariantImpl>(seq),
+        DataComponent::AxolotlVariant => boxed::<AxolotlVariantImpl>(seq),
+        DataComponent::CatVariant => boxed::<CatVariantImpl>(seq),
+        DataComponent::CatSoundVariant => boxed::<CatSoundVariantImpl>(seq),
+        DataComponent::CatCollar => boxed::<CatCollarImpl>(seq),
+        DataComponent::SheepColor => boxed::<SheepColorImpl>(seq),
+        DataComponent::ShulkerColor => boxed::<ShulkerColorImpl>(seq),
+        DataComponent::InteractAnimation => boxed::<InteractAnimationImpl>(seq),
+        DataComponent::BlockTransformer => boxed::<BlockTransformerImpl>(seq),
+        DataComponent::VillagerFood => boxed::<VillagerFoodImpl>(seq),
+        DataComponent::MobVisibility => boxed::<MobVisibilityImpl>(seq),
+        DataComponent::ProvidesPotteryPattern => boxed::<ProvidesPotteryPatternImpl>(seq),
+        DataComponent::SignTextFront => boxed::<SignTextFrontImpl>(seq),
+        DataComponent::SignTextBack => boxed::<SignTextBackImpl>(seq),
+        DataComponent::CushionColor => boxed::<CushionColorImpl>(seq),
+        DataComponent::Compostable => boxed::<CompostableImpl>(seq),
+        DataComponent::CookingFuel => boxed::<CookingFuelImpl>(seq),
+        DataComponent::BrewingFuel => boxed::<BrewingFuelImpl>(seq),
+        DataComponent::Waxed => boxed::<WaxedImpl>(seq),
     }
+}
+/// Decodes one component into a box, in a frame of its own. A nested stack decodes through
+/// [`deserialize`] once per level, so its frame must not hold a value of every component type.
+#[inline(never)]
+fn boxed<T: DataComponentCodec<T> + DataComponentImpl>(
+    seq: &mut impl NetworkReadExt,
+) -> Result<Box<dyn DataComponentImpl>, ReadingError> {
+    Ok(T::deserialize(seq)?.to_dyn())
 }
 
 #[allow(clippy::too_many_lines)]

@@ -1133,6 +1133,71 @@ mod tests {
         assert!(read_creative_stack(&nested_bundles(MAX_ITEM_NESTING as usize)).is_err());
     }
 
+    /// A bundle with `MAX_ITEM_NESTING` stacks inside each other. The innermost stick has
+    /// custom data with `data` nested lists, and lore whose text nests `lore` hover texts.
+    fn deepest_stack(data: usize, lore: usize) -> ItemStack {
+        use pumpkin_data::data_component_impl::{BundleContentsImpl, LoreImpl};
+        use pumpkin_data::item_stack::nesting::MAX_ITEM_NESTING;
+        use pumpkin_nbt::compound::NbtCompound;
+        use pumpkin_util::text::hover::HoverEvent;
+        let mut list = NbtTag::List(vec![NbtTag::String("x".into())]);
+        for _ in 1..data {
+            list = NbtTag::List(vec![list]);
+        }
+        let mut custom = NbtCompound::new();
+        custom.put("a", list);
+        let mut text = TextComponent::text("x");
+        for _ in 1..lore {
+            text = TextComponent::text("x").hover_event(HoverEvent::show_text(text));
+        }
+        let mut stack = ItemStack::new(1, &Item::STICK);
+        stack.set_data_component(CustomDataImpl { data: custom });
+        stack.set_data_component(LoreImpl { lines: vec![text] });
+        for _ in 1..MAX_ITEM_NESTING {
+            let mut outer = ItemStack::new(1, &Item::BUNDLE);
+            outer.set_data_component(BundleContentsImpl::new(vec![stack]));
+            stack = outer;
+        }
+        stack
+    }
+
+    fn write_creative_stack(stack: &ItemStack) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        ItemStackSerializer(Cow::Borrowed(stack))
+            .write_untrusted_with_version(&mut bytes, &JavaMinecraftVersion::V_26_3.into())
+            .unwrap();
+        bytes
+    }
+
+    /// The deepest value that the decoders accept: the most nested stacks, the deepest NBT and
+    /// the deepest text, which nests hover texts. A Tokio worker has a 2 MiB stack, and the
+    /// decode, the hash and the write of the value that the server sends back fit in three
+    /// quarters of it in a debug build.
+    #[test]
+    fn the_deepest_nesting_fits_three_quarters_of_a_worker_stack() {
+        // `MAX_NBT_DEPTH` is 512 levels: the custom data holds 511 lists below its root
+        // compound, and the lore line holds 129 texts, four levels each.
+        assert!(read_creative_stack(&write_creative_stack(&deepest_stack(512, 1))).is_err());
+        assert!(read_creative_stack(&write_creative_stack(&deepest_stack(1, 130))).is_err());
+        let bytes = write_creative_stack(&deepest_stack(511, 129));
+        let sent = std::thread::Builder::new()
+            .stack_size(3 * 512 * 1024)
+            .spawn(move || {
+                let stack = read_creative_stack(&bytes).unwrap().to_stack();
+                let hashes: i64 = stack
+                    .patch
+                    .iter()
+                    .filter_map(|(_, data)| data.as_ref())
+                    .map(|data| i64::from(data.get_hash()))
+                    .sum();
+                (write_creative_stack(&stack).len(), hashes)
+            })
+            .unwrap()
+            .join()
+            .expect("the deepest value fits three quarters of a 2 MiB stack");
+        assert!(sent.0 > 4096);
+    }
+
     #[test]
     fn deeply_nested_templates_fail_to_decode() {
         let bytes = nested_bundles(100_000);
