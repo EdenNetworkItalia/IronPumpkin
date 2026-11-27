@@ -1000,7 +1000,20 @@ impl ItemStack {
 
     #[must_use]
     pub fn read_item_stack(compound: &NbtCompound) -> Option<Self> {
-        let _nesting = nesting::NestingGuard::enter()?;
+        let level = nesting::NestingGuard::enter()?;
+        let stack = Self::read_item_stack_level(compound);
+        if level.is_outermost() && nesting::take_dropped_levels() {
+            tracing::warn!(
+                "A saved {} holds item stacks nested deeper than {} levels, which do not load",
+                compound.get_string("id").unwrap_or("item stack"),
+                nesting::MAX_ITEM_NESTING
+            );
+        }
+        stack
+    }
+
+    /// One level of [`Self::read_item_stack`].
+    fn read_item_stack_level(compound: &NbtCompound) -> Option<Self> {
         // Get ID, which is a string like "minecraft:diamond_sword"
         let full_id = compound.get_string("id")?;
 
