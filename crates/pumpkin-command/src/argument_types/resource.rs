@@ -96,8 +96,8 @@ pub static ENTITY_TYPE_ARGUMENT: ResourceArgument =
 
 pub static ENCHANTMENT_ARGUMENT: ResourceArgument =
     ResourceArgument(ENCHANTMENT_REGISTRY, &|id: Identifier| {
-        pumpkin_data::Enchantment::from_name(id.path())
-            .or_else(|| pumpkin_data::Enchantment::from_name(&id.to_string()))
+        // The full name: the path alone would resolve `othermod:sharpness` to vanilla sharpness.
+        pumpkin_data::Enchantment::from_name(&id.to_string())
             .map(|value| value as &'static (dyn Any + Send + Sync))
     });
 
@@ -129,16 +129,13 @@ pub static DAMAGE_TYPE_ARGUMENT: ResourceArgument =
     ResourceArgument(DAMAGE_TYPE_REGISTRY, &|id: Identifier| {
         if let Ok(guard) = DYNAMIC_DAMAGE_TYPE_RESOLVER.read()
             && let Some(resolver) = guard.as_ref()
+            && let Some(dt) = resolver(&id.to_string())
         {
-            let id_str = id.to_string();
-            let path_str = id.path();
-            if let Some(dt) = resolver(&id_str).or_else(|| resolver(path_str)) {
-                return Some(dt as &'static (dyn Any + Send + Sync));
-            }
+            return Some(dt as &'static (dyn Any + Send + Sync));
         }
 
-        let dt = pumpkin_data::damage::DamageType::from_name(id.path())
-            .or_else(|| pumpkin_data::damage::DamageType::from_name(&id.to_string()))?;
+        // The generated names have no namespace, so only a `minecraft` name reaches them.
+        let dt = pumpkin_data::damage::DamageType::from_name(id.is_vanilla_then()?)?;
         let idx = dt.id as usize;
         DAMAGE_TYPES
             .get(idx)
