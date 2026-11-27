@@ -8,6 +8,7 @@
 
 use std::sync::Once;
 
+use pumpkin_command::argument_builder::{ArgumentBuilder, CommandArgumentBuilder, argument};
 use pumpkin_command::argument_types::argument_type::ArgumentType;
 use pumpkin_command::argument_types::resource::{
     DAMAGE_TYPE_ARGUMENT, ENCHANTMENT_ARGUMENT, MOB_EFFECT_ARGUMENT, ResourceArgument,
@@ -15,6 +16,7 @@ use pumpkin_command::argument_types::resource::{
 };
 use pumpkin_command::source::DummySource;
 use pumpkin_command::string_reader::StringReader;
+use pumpkin_command::{CommandContext, CommandDispatcher, CommandExecutorResult};
 use pumpkin_data::Enchantment;
 use pumpkin_data::damage::DamageType;
 use pumpkin_data::dynamic::{self};
@@ -73,6 +75,20 @@ fn a_vanilla_effect_resolves_with_and_without_its_namespace() {
 fn an_unknown_namespace_is_an_error() {
     frozen();
     assert!(parse("nomod:speed").is_none());
+}
+
+#[test]
+fn the_effect_suggestions_list_mod_effects() {
+    frozen();
+    let mut dispatcher = CommandDispatcher::new();
+    let executor: fn(&CommandContext) -> CommandExecutorResult = |_| Ok(1);
+    dispatcher.register(
+        CommandArgumentBuilder::new("effect", "Gives an effect")
+            .then(argument("effect", MOB_EFFECT_ARGUMENT.clone()).executes(executor)),
+    );
+    let suggestions = dispatcher.suggest("effect othermod:", &DummySource::dummy());
+    let texts: Vec<_> = suggestions.iter().map(|s| s.suggestion.as_str()).collect();
+    assert_eq!(texts, ["othermod:speed"]);
 }
 
 #[test]

@@ -225,7 +225,8 @@ impl<S: crate::source::CommandSource> ArgumentType<S> for ResourceArgument {
                 &pumpkin_data::effect::StatusEffect::WIND_CHARGED,
                 &pumpkin_data::effect::StatusEffect::WITHER,
             ]
-            .iter()
+            .into_iter()
+            .chain(pumpkin_data::dynamic_registries::mob_effects())
             .map(|e| e.minecraft_name.to_string());
             suggestions_builder.filter_and_suggest_iter(effects).build()
         } else if self.0 == DAMAGE_TYPE_REGISTRY {

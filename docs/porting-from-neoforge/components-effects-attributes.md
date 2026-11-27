@@ -17,6 +17,7 @@ In IronPumpkin, a mod registers them with `ModInit::register_data_component_type
 | **Play a sound** | `level.playSound(null, x, y, z, sound, source, volume, pitch)` | `sound_events::play_sound(&world, &SOUND, category, &position, volume, pitch)`. The server sends the sound by name, so no client needs a registry entry. |
 | **Mob effect** | A subclass of `MobEffect` | `MobEffectBuilder::new(name, category, color)` and an implementation of the `MobEffect` trait, set with `.behaviour(..)` |
 | **Effect tick** | `MobEffect#shouldApplyEffectTickThisTick`, `applyEffectTick` | `MobEffect::should_apply_effect_tick`, `apply_effect_tick` |
+| **Effect in a command** | `/effect give @s othermod:speed`, with tab completion of every registered effect | The same. The `effect` argument resolves the full name, so `othermod:speed` is never vanilla speed and an unknown namespace is an error, and the tab completion lists the mod effects after the vanilla ones. |
 | **Effect on an entity** | `entity.addEffect(new MobEffectInstance(..))`, `hasEffect`, `getEffect`, `removeEffect` | `mob_effects::add_effect(entity, mob_effects::instance(..))`, `has_effect`, `get_effect`, `remove_effect` |
 | **Attribute** | `RangedAttribute`, `PercentageAttribute`, `BooleanAttribute`, `setSyncable` | `AttributeBuilder::ranged`, `AttributeBuilder::boolean`, `AttributeBuilder::new`, `.syncable(..)` |
 | **Attribute on an entity** | `entity.getAttribute(ATTR)` and its `AttributeInstance` | `entity_attributes::value`, `base_value`, `set_base_value`, `modifiers`, `add_modifier`, `remove_modifier` |
