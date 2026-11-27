@@ -3330,6 +3330,7 @@ dependencies = [
  "bitflags 2.13.2",
  "bytes",
  "cfb8",
+ "crc32c",
  "flate2",
  "indexmap",
  "pumpkin-data",

@@ -1,6 +1,4 @@
-use crate::data_component_impl::{
-    DataComponentImpl, IdOr, get_i32_hash, get_idor_hash, get_str_hash,
-};
+use crate::data_component_impl::{DataComponentImpl, IdOr, get_i32_hash, get_str_hash, hash_ops};
 use crate::sound::Sound;
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
@@ -30,7 +28,7 @@ impl DataComponentImpl for CustomDataImpl {
         NbtTag::Compound(self.data.clone())
     }
     fn get_hash(&self) -> i32 {
-        0
+        hash_ops::nbt_compound(&self.data) as i32
     }
     default_impl!(CustomData);
 }
@@ -67,6 +65,9 @@ impl DataComponentImpl for MaxDamageImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Int(self.max_damage)
     }
+    fn get_hash(&self) -> i32 {
+        get_i32_hash(self.max_damage) as i32
+    }
     default_impl!(MaxDamage);
 }
 
@@ -100,8 +101,9 @@ impl DataComponentImpl for UnbreakableImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
     }
+    /// `Unit.CODEC` encodes an empty map.
     fn get_hash(&self) -> i32 {
-        0
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(Unbreakable);
 }
@@ -152,8 +154,11 @@ impl DataComponentImpl for ItemNameImpl {
         component.put_string("translate", self.name.to_string());
         NbtTag::Compound(component)
     }
+    /// The server sends the name as a translatable text, `{translate: name}`.
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.name) as i32
+        hash_ops::MapHasher::new()
+            .put("translate", hash_ops::string(&self.name))
+            .finish() as i32
     }
     default_impl!(ItemName);
 }
@@ -174,7 +179,7 @@ impl DataComponentImpl for ItemModelImpl {
         NbtTag::String(self.id.clone().into_owned().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(self.id.as_ref()) as i32
+        hash_ops::id(&self.id) as i32
     }
     default_impl!(ItemModel);
 }
@@ -206,6 +211,9 @@ impl DataComponentImpl for LoreImpl {
                 .map(|line| NbtTag::String(line.clone().get_text().into_boxed_str()))
                 .collect(),
         )
+    }
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.lines.iter().map(hash_ops::text)) as i32
     }
     default_impl!(Lore);
 }
@@ -278,7 +286,7 @@ impl DataComponentImpl for RarityImpl {
     }
 
     fn get_hash(&self) -> i32 {
-        crate::data_component_impl::get_i32_hash(self.rarity.to_id()) as i32
+        hash_ops::string(self.rarity.to_name()) as i32
     }
 
     default_impl!(Rarity);
@@ -350,6 +358,35 @@ impl DataComponentImpl for CustomModelDataImpl {
         );
         NbtTag::Compound(compound)
     }
+    /// Each list is an optional field that vanilla omits when it is empty.
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        if !self.floats.is_empty() {
+            fields.put(
+                "floats",
+                hash_ops::list(self.floats.iter().copied().map(hash_ops::float)),
+            );
+        }
+        if !self.flags.is_empty() {
+            fields.put(
+                "flags",
+                hash_ops::list(self.flags.iter().copied().map(hash_ops::boolean)),
+            );
+        }
+        if !self.strings.is_empty() {
+            fields.put(
+                "strings",
+                hash_ops::list(self.strings.iter().map(|s| hash_ops::string(s))),
+            );
+        }
+        if !self.colors.is_empty() {
+            fields.put(
+                "colors",
+                hash_ops::list(self.colors.iter().copied().map(hash_ops::int)),
+            );
+        }
+        fields.finish() as i32
+    }
     default_impl!(CustomModelData);
 }
 
@@ -408,6 +445,23 @@ impl DataComponentImpl for TooltipDisplayImpl {
         }
         NbtTag::Compound(compound)
     }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        if self.hide_tooltip {
+            fields.put("hide_tooltip", hash_ops::boolean(true));
+        }
+        if !self.hidden_components.is_empty() {
+            fields.put(
+                "hidden_components",
+                hash_ops::list(
+                    self.hidden_components
+                        .iter()
+                        .map(|c| hash_ops::string(c.to_name())),
+                ),
+            );
+        }
+        fields.finish() as i32
+    }
     default_impl!(TooltipDisplay);
 }
 
@@ -437,6 +491,9 @@ impl DataComponentImpl for EnchantmentGlintOverrideImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Byte(self.glint as i8)
     }
+    fn get_hash(&self) -> i32 {
+        hash_ops::boolean(self.glint) as i32
+    }
     default_impl!(EnchantmentGlintOverride);
 }
 
@@ -454,7 +511,7 @@ impl DataComponentImpl for TooltipStyleImpl {
         NbtTag::String(self.id.clone().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.id) as i32
+        hash_ops::id(&self.id) as i32
     }
     default_impl!(TooltipStyle);
 }
@@ -475,7 +532,7 @@ impl DataComponentImpl for NoteBlockSoundImpl {
         NbtTag::String(self.sound.clone().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.sound) as i32
+        hash_ops::id(&self.sound) as i32
     }
     default_impl!(NoteBlockSound);
 }
@@ -522,7 +579,7 @@ impl DataComponentImpl for InstrumentImpl {
         NbtTag::String(self.instrument.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.instrument) as i32
+        hash_ops::id(&self.instrument) as i32
     }
     default_impl!(Instrument);
 }
@@ -543,7 +600,7 @@ impl DataComponentImpl for ProvidesTrimMaterialImpl {
         NbtTag::String(self.material.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.material) as i32
+        hash_ops::id(&self.material) as i32
     }
     default_impl!(ProvidesTrimMaterial);
 }
@@ -585,7 +642,7 @@ impl DataComponentImpl for ProvidesPotteryPatternImpl {
         NbtTag::String(self.pattern.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.pattern) as i32
+        hash_ops::id(&self.pattern) as i32
     }
     default_impl!(ProvidesPotteryPattern);
 }
@@ -657,6 +714,18 @@ impl DataComponentImpl for BannerPatternsImpl {
             list.push(NbtTag::Compound(compound));
         }
         NbtTag::List(list)
+    }
+
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.layers.iter().map(|layer| {
+            hash_ops::MapHasher::new()
+                .put(
+                    "pattern",
+                    hash_ops::string(&crate::dynamic::namespaced_name(&layer.pattern)),
+                )
+                .put("color", hash_ops::string(layer.color.name()))
+                .finish()
+        })) as i32
     }
 
     default_impl!(BannerPatterns);
@@ -777,6 +846,20 @@ impl DataComponentImpl for PotDecorationsImpl {
         }
         NbtTag::Compound(compound)
     }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        for (key, side) in [
+            ("back", &self.back),
+            ("left", &self.left),
+            ("right", &self.right),
+            ("front", &self.front),
+        ] {
+            if let Some(side) = side {
+                fields.put(key, hash_ops::item_stack_template(side));
+            }
+        }
+        fields.finish() as i32
+    }
     default_impl!(PotDecorations);
 }
 
@@ -862,6 +945,10 @@ impl DataComponentImpl for LockImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(self.predicate.clone())
     }
+    /// `LockCode.CODEC` is `ItemPredicate.CODEC`.
+    fn get_hash(&self) -> i32 {
+        hash_ops::predicate(&self.predicate) as i32
+    }
     default_impl!(Lock);
 }
 
@@ -906,7 +993,7 @@ impl DataComponentImpl for BreakSoundImpl {
         }
     }
     fn get_hash(&self) -> i32 {
-        get_idor_hash(&self.sound) as i32
+        hash_ops::sound(&self.sound) as i32
     }
     default_impl!(BreakSound);
 }

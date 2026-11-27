@@ -10,13 +10,17 @@ use std::borrow::Cow;
 use std::io::Cursor;
 use std::sync::Once;
 
-use pumpkin_data::dynamic::{self, ItemDefinition};
+use pumpkin_data::data_component::DataComponent;
+use pumpkin_data::data_component_impl::{BundleContentsImpl, DataComponentImpl};
+use pumpkin_data::dynamic::{self, ContentIds, ItemDefinition};
+use pumpkin_data::dynamic_registries::{self, DataComponentTypeDefinition};
 use pumpkin_data::item::Item;
 use pumpkin_data::item_stack::ItemStack;
 use pumpkin_data::recipes::RecipeCategoryTypes;
 use pumpkin_data::tag::RegistryKey;
 use pumpkin_nbt::tag::NbtTag;
 use pumpkin_protocol::ClientPacket;
+use pumpkin_protocol::codec::data_component::{deserialize, serialize};
 use pumpkin_protocol::codec::item_stack_seralizer::{
     ItemStackSerializer, ItemStackTemplateSerializer, OptionalItemStackHash,
 };
@@ -45,6 +49,12 @@ fn ruby() -> &'static Item {
             tags: Vec::new(),
         })
         .expect("register test item");
+        dynamic_registries::register_data_component_type(DataComponentTypeDefinition {
+            name: "test:charge".to_owned(),
+            persistent: true,
+            validate: |_| true,
+        })
+        .expect("register data component type");
         dynamic::freeze().expect("freeze registry");
     });
     Item::from_registry_key("test:ruby").expect("custom item resolves after the freeze")
@@ -215,4 +225,125 @@ fn client_hash_of_display_item_matches_custom_stack() {
     assert!(!hash_of(Item::EMERALD.id).hash_equals(&custom));
     assert!(hash_of(Item::DIAMOND.id).hash_equals(&ItemStack::new(3, &Item::DIAMOND)));
     assert!(!hash_of(ruby.id).hash_equals(&ItemStack::new(3, &Item::DIAMOND)));
+}
+
+/// A diamond stack with the `test:charge` mod component set to the int 7.
+fn charged_stack() -> (ItemStack, u16) {
+    ruby();
+    let charge = dynamic_registries::data_component_type_by_name("test:charge")
+        .expect("type binds")
+        .id;
+    let mut stack = ItemStack::new(3, &Item::DIAMOND);
+    stack.custom_components.push((charge, NbtTag::Int(7)));
+    (stack, charge)
+}
+
+/// `HashOps.createInt(7)`: the int tag, then the value in little endian.
+fn int_seven_hash() -> i32 {
+    crc32c::crc32c(&[8, 7, 0, 0, 0]) as i32
+}
+
+#[test]
+fn client_hash_of_mod_component_matches_like_custom_data() {
+    let (stack, charge) = charged_stack();
+    let hash_of = |added: &[(u16, i32)]| {
+        let mut bytes = [
+            vec![1],
+            var_int(i32::from(Item::DIAMOND.id)),
+            var_int(3),
+            var_int(added.len() as i32),
+        ]
+        .concat();
+        for (id, hash) in added {
+            bytes.extend(var_int(i32::from(*id)));
+            bytes.extend(hash.to_be_bytes());
+        }
+        bytes.extend(var_int(0));
+        OptionalItemStackHash::read(&mut Cursor::new(bytes)).unwrap()
+    };
+    // A `Real` client hashes the mod component.
+    assert!(hash_of(&[(charge, int_seven_hash())]).hash_equals(&stack));
+    assert!(!hash_of(&[(charge, int_seven_hash() ^ 1)]).hash_equals(&stack));
+    // A `Display` client never gets the mod component.
+    assert!(hash_of(&[]).hash_equals(&stack));
+}
+
+#[test]
+fn nested_template_keeps_mod_components() {
+    let (stack, charge) = charged_stack();
+    let bundle = BundleContentsImpl {
+        items: vec![stack],
+        selected_item: -1,
+    };
+
+    let mut real = Vec::new();
+    serialize(
+        DataComponent::BundleContents,
+        &bundle,
+        &mut real,
+        ContentIds::Real,
+    )
+    .unwrap();
+    // The network NBT of an int tag: its type id, then the value in big endian.
+    let expected = [
+        var_int(1),
+        var_int(i32::from(Item::DIAMOND.id)),
+        var_int(3),
+        var_int(1),
+        var_int(0),
+        var_int(i32::from(charge)),
+        vec![3, 0, 0, 0, 7],
+    ]
+    .concat();
+    assert_eq!(real, expected);
+
+    let decoded = deserialize(DataComponent::BundleContents, &mut real.as_slice()).unwrap();
+    let decoded = decoded
+        .as_any()
+        .downcast_ref::<BundleContentsImpl>()
+        .unwrap();
+    assert_eq!(
+        decoded.items[0].custom_components,
+        vec![(charge, NbtTag::Int(7))]
+    );
+
+    // A `Display` client does not know the mod component type.
+    let mut display = Vec::new();
+    serialize(
+        DataComponent::BundleContents,
+        &bundle,
+        &mut display,
+        ContentIds::Display,
+    )
+    .unwrap();
+    assert_eq!(display[display.len() - 2..], [0, 0]);
+
+    // `ItemStackTemplate.CODEC` of the entry, with the mod component hashed like `CustomData`.
+    let string = |value: &str| {
+        let mut bytes = vec![12];
+        bytes.extend((value.len() as i32).to_le_bytes());
+        bytes.extend(value.encode_utf16().flat_map(u16::to_le_bytes));
+        crc32c::crc32c(&bytes)
+    };
+    let map = |entries: &[(&str, u32)]| {
+        let mut entries: Vec<_> = entries.iter().map(|(k, v)| (string(k), *v)).collect();
+        entries.sort_unstable();
+        let mut bytes = vec![2];
+        for (key, value) in entries {
+            bytes.extend(key.to_le_bytes());
+            bytes.extend(value.to_le_bytes());
+        }
+        bytes.push(3);
+        crc32c::crc32c(&bytes)
+    };
+    let template = map(&[
+        ("id", string("minecraft:diamond")),
+        ("count", crc32c::crc32c(&[8, 3, 0, 0, 0])),
+        (
+            "components",
+            map(&[("test:charge", int_seven_hash() as u32)]),
+        ),
+    ]);
+    let list = crc32c::crc32c(&[[4].as_slice(), &template.to_le_bytes(), &[5]].concat());
+    assert_eq!(bundle.get_hash() as u32, list);
 }

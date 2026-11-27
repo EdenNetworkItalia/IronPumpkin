@@ -5301,7 +5301,7 @@ impl LivingEntity {
                         }
                     }
                 }
-                ConsumeEffect::TeleportRandomly(diameter) => {
+                ConsumeEffect::TeleportRandomly { diameter, .. } => {
                     // Java Edition dismounts the consumer before random teleport attempts.
                     if let Some(vehicle) = caller.get_entity().get_vehicle() {
                         vehicle

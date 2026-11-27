@@ -1,6 +1,7 @@
-use super::Digest;
 use crate::data_component_impl::combat::SwingAnimationImpl;
-use crate::data_component_impl::{DataComponentImpl, get_f32_hash, get_i32_hash, get_str_hash};
+use crate::data_component_impl::{
+    DataComponentImpl, get_f32_hash, get_i32_hash, get_str_hash, hash_ops,
+};
 use pumpkin_nbt::compound::NbtCompound;
 use pumpkin_nbt::tag::NbtTag;
 use std::borrow::Cow;
@@ -9,6 +10,17 @@ use std::borrow::Cow;
 pub enum IntProvider {
     Id(Cow<'static, str>),
     Inline(i32),
+}
+
+impl IntProvider {
+    /// The hash of `ResolvableInt.CODEC`: a constant as an int, a reference as its id.
+    #[must_use]
+    pub fn codec_hash(&self) -> u32 {
+        match self {
+            Self::Id(id) => hash_ops::id(id),
+            Self::Inline(value) => hash_ops::int(*value),
+        }
+    }
 }
 
 impl std::hash::Hash for IntProvider {
@@ -43,6 +55,17 @@ impl PartialEq for FloatProvider {
 }
 
 impl Eq for FloatProvider {}
+
+impl FloatProvider {
+    /// The hash of `ResolvableFloat.CODEC`: a constant as a float, a reference as its id.
+    #[must_use]
+    pub fn codec_hash(&self) -> u32 {
+        match self {
+            Self::Id(id) => hash_ops::id(id),
+            Self::Inline(value) => hash_ops::float(*value),
+        }
+    }
+}
 
 impl std::hash::Hash for FloatProvider {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -85,19 +108,35 @@ impl CompostableImpl {
     }
 }
 
-impl DataComponentImpl for CompostableImpl {
-    fn write_data(&self) -> NbtTag {
-        let layers = match self.chance {
+impl CompostableImpl {
+    fn layers(&self) -> Option<&'static str> {
+        Some(match self.chance {
             0.3 => "minecraft:compostable/low",
             0.5 => "minecraft:compostable/low_medium",
             0.65 => "minecraft:compostable/medium",
             0.85 => "minecraft:compostable/medium_high",
             1.0 => "minecraft:compostable/always_add_one",
-            _ => return NbtTag::End,
+            _ => return None,
+        })
+    }
+}
+
+impl DataComponentImpl for CompostableImpl {
+    fn write_data(&self) -> NbtTag {
+        let Some(layers) = self.layers() else {
+            return NbtTag::End;
         };
         let mut compound = NbtCompound::new();
         compound.put_string("layers", layers.to_string());
         NbtTag::Compound(compound)
+    }
+
+    fn get_hash(&self) -> i32 {
+        self.layers().map_or_else(hash_ops::empty, |layers| {
+            hash_ops::MapHasher::new()
+                .put("layers", hash_ops::string(layers))
+                .finish()
+        }) as i32
     }
 
     default_impl!(Compostable);
@@ -213,28 +252,10 @@ impl DataComponentImpl for CookingFuelImpl {
     }
 
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        match &self.burn_time {
-            IntProvider::Id(id) => {
-                digest.update(&[1u8]);
-                digest.update(&get_str_hash(id).to_le_bytes());
-            }
-            IntProvider::Inline(val) => {
-                digest.update(&[2u8]);
-                digest.update(&get_i32_hash(*val).to_le_bytes());
-            }
-        }
-        match &self.speed_multiplier {
-            FloatProvider::Id(id) => {
-                digest.update(&[3u8]);
-                digest.update(&get_str_hash(id).to_le_bytes());
-            }
-            FloatProvider::Inline(val) => {
-                digest.update(&[4u8]);
-                digest.update(&get_f32_hash(*val).to_le_bytes());
-            }
-        }
-        digest.finalize() as i32
+        hash_ops::MapHasher::new()
+            .put("burn_time", self.burn_time.codec_hash())
+            .put("speed_multiplier", self.speed_multiplier.codec_hash())
+            .finish() as i32
     }
 
     default_impl!(CookingFuel);
@@ -253,6 +274,10 @@ impl WaxedImpl {
 impl DataComponentImpl for WaxedImpl {
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
+    }
+    /// `Unit.CODEC` encodes an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(Waxed);
 }
@@ -304,7 +329,7 @@ impl DataComponentImpl for BlockTransformerImpl {
         NbtTag::String(self.transformer.to_string().into())
     }
     fn get_hash(&self) -> i32 {
-        get_str_hash(&self.transformer) as i32
+        hash_ops::id(&self.transformer) as i32
     }
     default_impl!(BlockTransformer);
 }
@@ -398,28 +423,10 @@ impl DataComponentImpl for BrewingFuelImpl {
     }
 
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        match &self.uses {
-            IntProvider::Id(id) => {
-                digest.update(&[1u8]);
-                digest.update(&get_str_hash(id).to_le_bytes());
-            }
-            IntProvider::Inline(val) => {
-                digest.update(&[2u8]);
-                digest.update(&get_i32_hash(*val).to_le_bytes());
-            }
-        }
-        match &self.speed_multiplier {
-            FloatProvider::Id(id) => {
-                digest.update(&[3u8]);
-                digest.update(&get_str_hash(id).to_le_bytes());
-            }
-            FloatProvider::Inline(val) => {
-                digest.update(&[4u8]);
-                digest.update(&get_f32_hash(*val).to_le_bytes());
-            }
-        }
-        digest.finalize() as i32
+        hash_ops::MapHasher::new()
+            .put("uses", self.uses.codec_hash())
+            .put("speed_multiplier", self.speed_multiplier.codec_hash())
+            .finish() as i32
     }
 
     default_impl!(BrewingFuel);
@@ -474,6 +481,10 @@ impl DataComponentImpl for MapDecorationsImpl {
     // TAG_End would close the surrounding components compound and corrupt the chunk.
     fn write_data(&self) -> NbtTag {
         NbtTag::Compound(NbtCompound::new())
+    }
+    /// Pumpkin keeps no decorations, so the value is an empty map.
+    fn get_hash(&self) -> i32 {
+        hash_ops::map(Vec::new()) as i32
     }
     default_impl!(MapDecorations);
 }
@@ -543,6 +554,25 @@ impl ChargedProjectilesImpl {
         }
         Some(Self { projectiles })
     }
+
+    /// Runs `f` on the projectiles that load as non-empty stacks. The client gets and hashes
+    /// only these.
+    ///
+    /// The stacks keep their own projectiles in the saved form, so `f` recurses into them one
+    /// level at a time. Each level holds one level of the item stack nesting limit while `f`
+    /// runs, and loads no projectile past the limit.
+    pub fn with_stacks<R>(&self, f: impl FnOnce(&[crate::item_stack::ItemStack]) -> R) -> R {
+        let Some(_level) = crate::item_stack::nesting::NestingGuard::enter() else {
+            return f(&[]);
+        };
+        let stacks: Vec<_> = self
+            .projectiles
+            .iter()
+            .filter_map(crate::item_stack::ItemStack::read_item_stack)
+            .filter(|stack| !stack.is_empty())
+            .collect();
+        f(&stacks)
+    }
 }
 impl DataComponentImpl for ChargedProjectilesImpl {
     fn write_data(&self) -> NbtTag {
@@ -552,8 +582,10 @@ impl DataComponentImpl for ChargedProjectilesImpl {
         }
         NbtTag::List(list)
     }
+    /// A list of `ItemStackTemplate.CODEC` values.
     fn get_hash(&self) -> i32 {
-        0
+        self.with_stacks(|stacks| hash_ops::list(stacks.iter().map(hash_ops::item_stack_template)))
+            as i32
     }
     default_impl!(ChargedProjectiles);
 }
@@ -796,6 +828,10 @@ impl DataComponentImpl for BundleContentsImpl {
                 .collect(),
         )
     }
+    /// A list of `ItemStackTemplate.CODEC` values.
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.items.iter().map(hash_ops::item_stack_template)) as i32
+    }
     default_impl!(BundleContents);
 }
 
@@ -843,6 +879,23 @@ impl DataComponentImpl for LodestoneTrackerImpl {
         }
         compound.put_bool("tracked", self.tracked);
         NbtTag::Compound(compound)
+    }
+    fn get_hash(&self) -> i32 {
+        let mut fields = hash_ops::MapHasher::new();
+        if let Some(target) = &self.target {
+            // `BlockPos.CODEC` encodes an int stream.
+            fields.put(
+                "target",
+                hash_ops::MapHasher::new()
+                    .put("dimension", hash_ops::id(&target.dimension))
+                    .put("pos", hash_ops::int_array(&[target.x, target.y, target.z]))
+                    .finish(),
+            );
+        }
+        if !self.tracked {
+            fields.put("tracked", hash_ops::boolean(false));
+        }
+        fields.finish() as i32
     }
     default_impl!(LodestoneTracker);
 }
@@ -899,6 +952,28 @@ pub struct FireworkExplosionImpl {
     pub has_twinkle: bool,
 }
 impl FireworkExplosionImpl {
+    /// The hash of `FireworkExplosion.CODEC`.
+    #[must_use]
+    pub fn codec_hash(&self) -> u32 {
+        let mut fields = hash_ops::MapHasher::new();
+        fields.put("shape", hash_ops::string(self.shape.to_name()));
+        for (key, colors) in [("colors", &self.colors), ("fade_colors", &self.fade_colors)] {
+            if !colors.is_empty() {
+                fields.put(
+                    key,
+                    hash_ops::list(colors.iter().copied().map(hash_ops::int)),
+                );
+            }
+        }
+        if self.has_trail {
+            fields.put("has_trail", hash_ops::boolean(true));
+        }
+        if self.has_twinkle {
+            fields.put("has_twinkle", hash_ops::boolean(true));
+        }
+        fields.finish()
+    }
+
     pub fn new(
         shape: FireworkExplosionShape,
         colors: Vec<i32>,
@@ -947,20 +1022,7 @@ impl DataComponentImpl for FireworkExplosionImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[2u8]);
-        digest.update(&[self.shape.to_id() as u8]);
-        for color in &self.colors {
-            digest.update(&get_i32_hash(*color).to_le_bytes());
-        }
-        digest.update(&[3u8]);
-        for color in &self.fade_colors {
-            digest.update(&get_i32_hash(*color).to_le_bytes());
-        }
-        digest.update(&[4u8]);
-        digest.update(&[self.has_trail as u8]);
-        digest.update(&[self.has_twinkle as u8]);
-        digest.finalize() as i32
+        self.codec_hash() as i32
     }
     default_impl!(FireworkExplosion);
 }
@@ -1007,14 +1069,25 @@ impl DataComponentImpl for FireworksImpl {
         NbtTag::Compound(compound)
     }
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
-        digest.update(&[2u8]);
-        digest.update(&get_i32_hash(self.flight_duration).to_le_bytes());
-        for explosion in &self.explosions {
-            digest.update(&get_i32_hash(explosion.get_hash()).to_le_bytes());
+        let mut fields = hash_ops::MapHasher::new();
+        if self.flight_duration != 0 {
+            // `ExtraCodecs.UNSIGNED_BYTE` encodes a byte.
+            fields.put(
+                "flight_duration",
+                hash_ops::byte(self.flight_duration as i8),
+            );
         }
-        digest.update(&[3u8]);
-        digest.finalize() as i32
+        if !self.explosions.is_empty() {
+            fields.put(
+                "explosions",
+                hash_ops::list(
+                    self.explosions
+                        .iter()
+                        .map(FireworkExplosionImpl::codec_hash),
+                ),
+            );
+        }
+        fields.finish() as i32
     }
     default_impl!(Fireworks);
 }
@@ -1121,48 +1194,45 @@ impl DataComponentImpl for ProfileImpl {
         }
         NbtTag::Compound(compound)
     }
+    /// `ResolvableProfile.CODEC` encodes with its full codec. The game profile and the partial
+    /// profile have the same fields, so both hash the same way.
     fn get_hash(&self) -> i32 {
-        let mut digest = Digest::new();
+        let mut fields = hash_ops::MapHasher::new();
         if let Some(name) = &self.name {
-            digest.update(&[1u8]);
-            digest.update(&get_str_hash(name).to_le_bytes());
+            fields.put("name", hash_ops::string(name));
         }
         if let Some(id) = &self.id {
-            digest.update(&[2u8]);
-            for val in id {
-                digest.update(&get_i32_hash(*val).to_le_bytes());
-            }
+            // `UUIDUtil.CODEC` encodes an int stream.
+            fields.put("id", hash_ops::int_array(id));
         }
         if !self.properties.is_empty() {
-            digest.update(&[3u8]);
-            for prop in &self.properties {
-                digest.update(&get_str_hash(&prop.name).to_le_bytes());
-                digest.update(&get_str_hash(&prop.value).to_le_bytes());
-                if let Some(sig) = &prop.signature {
-                    digest.update(&[1u8]);
-                    digest.update(&get_str_hash(sig).to_le_bytes());
-                } else {
-                    digest.update(&[0u8]);
-                }
+            fields.put(
+                "properties",
+                hash_ops::list(self.properties.iter().map(|property| {
+                    let mut fields = hash_ops::MapHasher::new();
+                    fields
+                        .put("name", hash_ops::string(&property.name))
+                        .put("value", hash_ops::string(&property.value));
+                    if let Some(signature) = &property.signature {
+                        fields.put("signature", hash_ops::string(signature));
+                    }
+                    fields.finish()
+                })),
+            );
+        }
+        for (key, texture) in [
+            ("texture", &self.texture),
+            ("cape", &self.cape),
+            ("elytra", &self.elytra),
+        ] {
+            if let Some(texture) = texture {
+                fields.put(key, hash_ops::id(texture));
             }
         }
-        if let Some(texture) = &self.texture {
-            digest.update(&[4u8]);
-            digest.update(&get_str_hash(texture).to_le_bytes());
-        }
-        if let Some(cape) = &self.cape {
-            digest.update(&[5u8]);
-            digest.update(&get_str_hash(cape).to_le_bytes());
-        }
-        if let Some(elytra) = &self.elytra {
-            digest.update(&[6u8]);
-            digest.update(&get_str_hash(elytra).to_le_bytes());
-        }
         if let Some(model) = &self.model {
-            digest.update(&[7u8]);
-            digest.update(&get_str_hash(model).to_le_bytes());
+            fields.put("model", hash_ops::string(model));
         }
-        digest.finalize() as i32
+        fields.finish() as i32
     }
     default_impl!(Profile);
 }
@@ -1252,6 +1322,9 @@ impl DataComponentImpl for JukeboxPlayableImpl {
         };
         NbtTag::String(song.into())
     }
+    fn get_hash(&self) -> i32 {
+        hash_ops::id(self.song) as i32
+    }
     default_impl!(JukeboxPlayable);
 }
 
@@ -1296,6 +1369,9 @@ impl DataComponentImpl for RecipesImpl {
                 .map(|r| NbtTag::String(r.to_string().into()))
                 .collect(),
         )
+    }
+    fn get_hash(&self) -> i32 {
+        hash_ops::list(self.recipes.iter().map(|recipe| hash_ops::id(recipe))) as i32
     }
     default_impl!(Recipes);
 }

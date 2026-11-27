@@ -127,6 +127,38 @@ impl NbtTag {
 
     /// Serializes the tag payload without writing its type ID.
     pub fn serialize_data<W: NbtWriteHelper>(self, w: &mut W) -> serializer::Result<()> {
+        // A nested list or compound writes through this function once per level, so the other
+        // tags write in a frame of their own.
+        match self {
+            Self::List(list) => Self::serialize_list(list, w),
+            Self::Compound(compound) => compound.serialize_content(w),
+            leaf => leaf.serialize_leaf(w),
+        }
+    }
+
+    /// Serializes the payload of a list.
+    fn serialize_list<W: NbtWriteHelper>(list: Vec<Self>, w: &mut W) -> serializer::Result<()> {
+        let len = list.len();
+        if len > i32::MAX as usize {
+            return Err(Error::LargeLength(len));
+        }
+
+        let list_element_id = Self::get_list_element_type_id(&list);
+
+        w.write_u8(list_element_id)?;
+        w.write_i32(len as i32)?;
+        for nbt_tag in list {
+            // Since tags in the same list tag must have the same type,
+            // we need to handle those of different tag types by
+            // wrapping them in `NbtCompound`s if needed.
+            Self::wrap_tag_if_needed(list_element_id, nbt_tag).serialize_data(w)?;
+        }
+        Ok(())
+    }
+
+    /// Serializes the payload of a tag that holds no other tags.
+    #[inline(never)]
+    fn serialize_leaf<W: NbtWriteHelper>(self, w: &mut W) -> serializer::Result<()> {
         match self {
             Self::End => {}
             Self::Byte(byte) => w.write_i8(byte)?,
@@ -151,26 +183,6 @@ impl NbtTag {
             Self::String(string) => {
                 w.write_string(&string)?;
             }
-            Self::List(list) => {
-                let len = list.len();
-                if len > i32::MAX as usize {
-                    return Err(Error::LargeLength(len));
-                }
-
-                let list_element_id = Self::get_list_element_type_id(&list);
-
-                w.write_u8(list_element_id)?;
-                w.write_i32(len as i32)?;
-                for nbt_tag in list {
-                    // Since tags in the same list tag must have the same type,
-                    // we need to handle those of different tag types by
-                    // wrapping them in `NbtCompound`s if needed.
-                    Self::wrap_tag_if_needed(list_element_id, nbt_tag).serialize_data(w)?;
-                }
-            }
-            Self::Compound(compound) => {
-                compound.serialize_content(w)?;
-            }
             Self::IntArray(int_array) => {
                 let len = int_array.len();
                 if len > i32::MAX as usize {
@@ -193,6 +205,7 @@ impl NbtTag {
                     w.write_i64(long)?;
                 }
             }
+            nested @ (Self::List(_) | Self::Compound(_)) => nested.serialize_data(w)?,
         }
         Ok(())
     }
@@ -307,7 +320,6 @@ impl NbtTag {
     }
 
     /// Deserializes a payload whose type is identified by `tag_id` with depth tracking.
-    #[allow(clippy::too_many_lines)]
     pub fn deserialize_data_depth<'a, R: NbtReadHelper<'a>>(
         reader: &mut R,
         tag_id: u8,
@@ -317,6 +329,55 @@ impl NbtTag {
             return Err(Error::MaxDepthExceeded);
         }
 
+        // A nested list or compound decodes through this function once per level, so the other
+        // tags decode in a frame of their own.
+        match tag_id {
+            LIST_ID => Self::deserialize_list_depth(reader, depth),
+            COMPOUND_ID => Ok(Self::Compound(NbtCompound::deserialize_content_depth(
+                reader,
+                depth + 1,
+            )?)),
+            _ => Self::deserialize_leaf(reader, tag_id),
+        }
+    }
+
+    /// Deserializes the payload of a list at `depth`.
+    fn deserialize_list_depth<'a, R: NbtReadHelper<'a>>(
+        reader: &mut R,
+        depth: usize,
+    ) -> Result<Self, Error> {
+        let tag_type_id = reader.get_u8()?;
+        let len = reader.get_i32()?;
+        if len < 0 {
+            return Err(Error::NegativeLength(len));
+        }
+        if tag_type_id == END_ID && len > 0 {
+            return Err(Error::InvalidListTag(tag_type_id));
+        }
+
+        let len = len as usize;
+        if len > crate::MAX_ARRAY_LENGTH {
+            return Err(Error::LargeLength(len));
+        }
+
+        let mut list = Vec::with_capacity(len.min(4096));
+        for _ in 0..len {
+            let tag = Self::deserialize_data_depth(reader, tag_type_id, depth + 1)?;
+            if tag.get_type_id() != tag_type_id {
+                return Err(Error::InvalidListTag(tag.get_type_id()));
+            }
+            // Try unwrapping the tag.
+            list.push(Self::flatten(tag));
+        }
+        Ok(Self::List(list))
+    }
+
+    /// Deserializes the payload of a tag that holds no other tags.
+    #[inline(never)]
+    fn deserialize_leaf<'a, R: NbtReadHelper<'a>>(
+        reader: &mut R,
+        tag_id: u8,
+    ) -> Result<Self, Error> {
         match tag_id {
             END_ID => Ok(Self::End),
             BYTE_ID => {
@@ -356,36 +417,6 @@ impl NbtTag {
                 Ok(Self::ByteArray(reader.get_byte_array(len)?.into()))
             }
             STRING_ID => Ok(Self::String(reader.get_string()?.into_owned().into())),
-            LIST_ID => {
-                let tag_type_id = reader.get_u8()?;
-                let len = reader.get_i32()?;
-                if len < 0 {
-                    return Err(Error::NegativeLength(len));
-                }
-                if tag_type_id == END_ID && len > 0 {
-                    return Err(Error::InvalidListTag(tag_type_id));
-                }
-
-                let len = len as usize;
-                if len > crate::MAX_ARRAY_LENGTH {
-                    return Err(Error::LargeLength(len));
-                }
-
-                let mut list = Vec::with_capacity(len.min(4096));
-                for _ in 0..len {
-                    let tag = Self::deserialize_data_depth(reader, tag_type_id, depth + 1)?;
-                    if tag.get_type_id() != tag_type_id {
-                        return Err(Error::InvalidListTag(tag.get_type_id()));
-                    }
-                    // Try unwrapping the tag.
-                    list.push(Self::flatten(tag));
-                }
-                Ok(Self::List(list))
-            }
-            COMPOUND_ID => Ok(Self::Compound(NbtCompound::deserialize_content_depth(
-                reader,
-                depth + 1,
-            )?)),
             INT_ARRAY_ID => {
                 let len = reader.get_i32()?;
                 if len < 0 {
